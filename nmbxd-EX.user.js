@@ -3619,10 +3619,10 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
           z-index: 3;
           cursor: move;
         }
-        .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 20px; }  /* 8px → 20px */
-        .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 20px; } /* 8px → 20px */
-        .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 20px; }  /* 8px → 20px */
-        .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 20px; } /* 8px → 20px */
+        .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 10px; }
+        .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 10px; }
+        .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 10px; }
+        .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 10px; } 
         /* 标题栏作为拖拽手柄时的指针反馈 */
         .qp-header { cursor: move; }
 
@@ -4121,10 +4121,10 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
             z-index: 3;
             cursor: move;
           }
-          .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 20px; }  /* 8px → 20px */
-          .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 20px; } /* 8px → 20px */
-          .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 20px; }  /* 8px → 20px */
-          .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 20px; } /* 8px → 20px */
+          .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 8px; }
+          .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 8px; } 
+          .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 8px; }
+          .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 8px; } 
 
           .qp-quote.is-dragging { cursor: grabbing !important; }
 
