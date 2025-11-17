@@ -1621,7 +1621,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
       try { if (typeof applyFilters === 'function') applyFilters(cfg); } catch (e) {}
       try { if (typeof initContent === 'function') initContent(); } catch (e) {}
       try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
-      try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
+      //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
       try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
       // if (typeof preventContentOverflow === 'function') {
       //   try { preventContentOverflow(document); } catch (e) {}
@@ -2319,7 +2319,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
                 initContent();   // 重新绑定引用悬浮预览
               }
               initExtendedContent(listClone); // 扩展引用
-              autoHideRefView(listClone); // 拓展引用悬浮
+              //autoHideRefView(listClone); // 拓展引用悬浮
               // ============================================
 
             }
@@ -3730,7 +3730,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
       initExtendedContent($quote[0]);
       hideEmptyTitleAndEmail($quote[0]);
       initContent();
-      autoHideRefView();
+      //autoHideRefView();
     }
 
     function enableDragForTop($quote, $handles) {
@@ -3855,37 +3855,37 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
 
-  function autoHideRefView() {
-      setInterval(() => {
-          const refView = document.getElementById('h-ref-view');
-          if (!refView || getComputedStyle(refView).display === 'none') return;
+  // function autoHideRefView() {
+  //     setInterval(() => {
+  //         const refView = document.getElementById('h-ref-view');
+  //         if (!refView || getComputedStyle(refView).display === 'none') return;
 
-          // 获取当前引用框中的引用号 ID
-          const infoId = refView.querySelector('.h-threads-info-id');
-          if (!infoId) return;
+  //         // 获取当前引用框中的引用号 ID
+  //         const infoId = refView.querySelector('.h-threads-info-id');
+  //         if (!infoId) return;
 
-          const tidMatch = infoId.textContent.match(/\d+/);
-          if (!tidMatch) return;
+  //         const tidMatch = infoId.textContent.match(/\d+/);
+  //         if (!tidMatch) return;
 
-          const tid = tidMatch[0];
+  //         const tid = tidMatch[0];
 
-          // 查找所有引用号元素
-          const quoteFonts = document.querySelectorAll("font[color='#789922']");
+  //         // 查找所有引用号元素
+  //         const quoteFonts = document.querySelectorAll("font[color='#789922']");
 
-          let isHovering = false;
-          quoteFonts.forEach(font => {
-              const text = font.textContent;
-              if (text.includes(tid) && font.matches(':hover')) {
-                  isHovering = true;
-              }
-          });
+  //         let isHovering = false;
+  //         quoteFonts.forEach(font => {
+  //             const text = font.textContent;
+  //             if (text.includes(tid) && font.matches(':hover')) {
+  //                 isHovering = true;
+  //             }
+  //         });
 
-          // 如果没有任何引用号处于 hover 状态 → 隐藏引用框
-          if (!isHovering) {
-              refView.style.display = 'none';
-          }
-      }, 300); // 每 300ms 检查一次
-  }
+  //         // 如果没有任何引用号处于 hover 状态 → 隐藏引用框
+  //         if (!isHovering) {
+  //             refView.style.display = 'none';
+  //         }
+  //     }, 300); // 每 300ms 检查一次
+  // }
 
   //引用格式拓展
   function extendQuote(root = document) {
@@ -4530,9 +4530,9 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
         try { initContent(root); } catch (e) { try { initContent(document); } catch (e) {} }
       }
 
-      if (typeof autoHideRefView === 'function') {
-        try { autoHideRefView(root); } catch (e) { try { autoHideRefView(); } catch (e) {} }
-      }
+      // if (typeof autoHideRefView === 'function') {
+      //   try { autoHideRefView(root); } catch (e) { try { autoHideRefView(); } catch (e) {} }
+      // }
 
       // 保存引用
       ov.__formEl = formEl;
@@ -5410,7 +5410,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
             try { if (typeof applyFilters === 'function') applyFilters(cfg2); } catch (e) {}
             try { if (typeof initContent === 'function') initContent(); } catch (e) {}
             try { if (typeof initExtendedContent === 'function') initExtendedContent(targetReplies); } catch (e) {}
-            try { if (typeof autoHideRefView === 'function') autoHideRefView(targetReplies); } catch (e) {}
+            //try { if (typeof autoHideRefView === 'function') autoHideRefView(targetReplies); } catch (e) {}
             try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
             // // 立即调用一次
             // if (typeof preventContentOverflow === 'function') {
@@ -6460,7 +6460,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
       if (typeof extendQuote === 'function') extendQuote(root);
       if (typeof initExtendedContent === 'function') initExtendedContent(root);
       if (typeof initContent === 'function') initContent(root);
-      if (typeof autoHideRefView === 'function') autoHideRefView(root);
+      //if (typeof autoHideRefView === 'function') autoHideRefView(root);
     }
     // 只有在页面存在发帖表单容器时才插入预览
     function initPreviewBox() {
@@ -7445,7 +7445,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
           const root = $replyModeText[0];
           if (typeof initExtendedContent === 'function') { try { initExtendedContent(root); } catch(e){} }
           if (typeof initContent === 'function') { try { initContent(root); } catch(e){} }
-          if (typeof autoHideRefView === 'function') { try { autoHideRefView(root); } catch(e){} }
+          //if (typeof autoHideRefView === 'function') { try { autoHideRefView(root); } catch(e){} }
 
           toast('已自动填充回复串号，请确认无误后再发送');
           pendingReplyParams = null; // 用过一次就清空
@@ -7671,7 +7671,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
               const root = $replyModeText[0];
               if (typeof initExtendedContent === 'function') { try { initExtendedContent(root); } catch(e){} }
               if (typeof initContent === 'function') { try { initContent(root); } catch(e){} }
-              if (typeof autoHideRefView === 'function') { try { autoHideRefView(root); } catch(e){} }
+              //if (typeof autoHideRefView === 'function') { try { autoHideRefView(root); } catch(e){} }
             }
 
             if (tid !== rid) {
@@ -7791,7 +7791,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
               try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(targetNode); } catch (e) {}
               try { if (typeof initContent === 'function') initContent(targetNode); } catch (e) {}
               try { if (typeof initExtendedContent === 'function') initExtendedContent(targetNode); } catch (e) {}
-              try { if (typeof autoHideRefView === 'function') autoHideRefView(targetNode); } catch (e) {}
+              //try { if (typeof autoHideRefView === 'function') autoHideRefView(targetNode); } catch (e) {}
             });
             enableHDImageAndLayoutFix(document);
             enableHDImage(document);
@@ -8352,7 +8352,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
     enhancePostFormLayout();                                         //发帖UI调整
     applyFilters(cfg);                                               //标记/屏蔽/过滤-饼干/关键词
     initExtendedContent();                                           //扩展引用
-    autoHideRefView();                                               //原生引用弹窗自动隐藏
+    //autoHideRefView();                                               //原生引用弹窗自动隐藏
     enablePostExpand();                                              //添加串展开-折叠按钮
     searchServiceBy4sY();                                            //野生搜索酱
     monitorRefView();                                                //监视引用弹窗变化
