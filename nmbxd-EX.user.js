@@ -1966,7 +1966,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
         //     console.warn('restore multiple active images on newReplies failed', e);
         //   }
         // }
-
+        //  TODO 将局部刷新修改为新增而非替换，应该可以避免已active的图片发生变化
 
         // 替换目标回复区内容（保留容器，替换 innerHTML）—— 原子性替换已有，插入的是已处理好的 newReplies HTML
         targetReplies.innerHTML = newReplies.innerHTML;
@@ -3631,12 +3631,30 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
       document.head.appendChild(style);
     }
 
-    //✅ 保留原生悬浮预览，但让其不拦点击
+    //✅ 监听原生引用浮窗的显示，如果鼠标不在引用号上则立即隐藏
     const observer = new MutationObserver(() => {
       const refView = document.getElementById('h-ref-view');
-      if (refView) {
-        // 不再隐藏，只在点击/移开时手动关闭
+      if (refView && refView.style.display === 'block') {
+        // 引用浮窗刚显示时，检查鼠标是否在引用号上
+        const quoteFonts = document.querySelectorAll('font[color="#789922"]');
+        let isHovering = false;
+        quoteFonts.forEach(font => {
+          if (font.matches(':hover')) {
+            isHovering = true;
+          }
+        });
+        
+        // 如果鼠标不在任何引用号上，立即隐藏
+        if (!isHovering) {
+          refView.style.display = 'none';
+        }
       }
+    });
+    observer.observe(document.body, { 
+      childList: true, 
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style']  // 监听 style 属性变化
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -3829,7 +3847,22 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
     $(document).on('mouseleave', 'font[color="#789922"]', function () {
         $('#h-ref-view').hide();   // 鼠标移开时关闭原生引用框
     });
-
+    // 全局监听多个事件，确保原生引用浮窗及时隐藏
+    $(document).on('mousemove.refview scroll.refview wheel.refview', function(e) {
+      const refView = document.getElementById('h-ref-view');
+      if (!refView || refView.style.display === 'none') return;
+      
+      // 检查鼠标当前位置下的元素是否是引用号
+      const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
+      const isOnQuote = elementsUnderMouse.some(el => {
+        return el.tagName === 'FONT' && el.getAttribute('color') === '#789922';
+      });
+      
+      // 如果不在引用号上，立即隐藏
+      if (!isOnQuote) {
+        refView.style.display = 'none';
+      }
+    });
   }
 
   function monitorRefView(){
@@ -6182,7 +6215,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","_(:зゝ∠)_",
+              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","_(:зゝ∠)_","(　ﾟ 灬ﾟ)",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
@@ -7054,7 +7087,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
         break;
       case 'Member':
         if (路径.startsWith('/Member/User/Cookie/export/id/')) {
-          console.debug('//TODO');
+          console.debug('//不是我的TODO');
         }
         break;
       default:
@@ -7336,7 +7369,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
         // 当前是时间线页，无表单 → 插入一个回串表单
         $formReply = $(`
             <form action="/Home/Forum/doReplyThread.html" method="post" id="timeline-reply-form">
-                <!-- TODO: 这里填入串内页回复表单的必要字段 -->
+                <!-- 这里填入串内页回复表单的必要字段 -->
             </form>
         `);
         $('body').append($formReply);
