@@ -27,9 +27,9 @@
 
 (function($){
   'use strict';
-
+ 
   /* --------------------------------------------------
-   * 0. 通用与工具函数
+   * tag 0. 通用与工具函数
    * -------------------------------------------------- */
   const toastQueue = [];
   let isShowing = false;
@@ -141,14 +141,25 @@
     '#EE82EE','#FFA500','#FFE211','#FAAFBE','#0000FF'
   ];
 
-  // 解析“最后一个冒号分隔”的分组：返回 {desc, list}
+  // 解析"最后一个冒号分隔"的分组：返回 {desc, list}
   function parseDescAndListByLastColon(raw) {
     const idx = Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('：'));
-    const desc = idx > 0 ? raw.slice(0, idx).trim() : '';
-    const cookiePart = idx > 0 ? raw.slice(idx + 1).trim() : '';
+    let desc = '';
+    let cookiePart = '';
+    
+    if (idx > 0) {
+      // 有冒号：冒号前是备注/说明，冒号后是饼干
+      desc = raw.slice(0, idx).trim();
+      cookiePart = raw.slice(idx + 1).trim();
+    } else {
+      // 没有冒号：整个字符串都是饼干
+      cookiePart = raw.trim();
+    }
+    
     const list = Utils.strToList(cookiePart);
     return { desc, list };
   }
+
   // 校验分组说明长度（<=20 字符；满足“10个汉字/20个英文字符”的近似约束）
   function isValidDesc(desc) { return !desc || desc.length <= 20; }
 
@@ -185,7 +196,7 @@
   }
 
   /* --------------------------------------------------
-   * 1. 设置面板
+   * tag 1. 设置面板
    * -------------------------------------------------- */
   const SettingPanel = {
     key: 'myScriptSettings',
@@ -481,7 +492,14 @@
 
       })();
 
-
+      // 标记：新增组输入
+      $('#btn_group_marked').off('click').on('click', e=>{
+        e.stopPropagation();
+        $('#marked-inputs-container').append(
+          `<input class="marked-input" style="width:100%;padding:5px;"
+                  placeholder="备注:3-7位饼干ID,多个用逗号隔开">`
+        ).find('input').last().focus();
+      });
       // 屏蔽：新增组输入
       $('#btn_group_blocked').off('click').on('click', e=>{
         e.stopPropagation();
@@ -501,7 +519,7 @@
           if (!v) return;
           const { desc, list } = parseDescAndListByLastColon(v);
           if (!list.length) { toast(`“${v}” 未指定饼干`); valid=false; return false; }
-          if (!isValidDesc(desc)) { toast(`“${v}” 分组说明过长`); valid=false; return false; }
+          if (!isValidDesc(desc)) { toast(`“${v}” 备注过长`); valid=false; return false; }
           if (list.some(id=>!Utils.cookieLegal(id))) { toast(`“${v}” 存在不合法饼干`); valid=false; return false; }
           parsed.push({ desc, cookies: list });
         });
@@ -529,7 +547,7 @@
         if (!valid) return;
         this.state.blockedCookies = parsed;
         GM_setValue(this.key, this.state);
-        toast('屏蔽饼干已保存');
+        toast('屏蔽分组已保存');
         applyFilters(this.state);
       });
 
@@ -540,7 +558,7 @@
         if (v && !Utils.strToList(v).length) return toast('屏蔽关键词 规则有误');
         this.state.blockedKeywords = v;
         GM_setValue(this.key, this.state);
-        toast('屏蔽关键词 已保存');
+        toast('屏蔽关键词已保存');
         applyFilters(this.state);
       });
 
@@ -773,7 +791,7 @@
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
       const $m = $('#marked-inputs-container').empty();
       groupsM.forEach(g=>{
-        const v = g.desc ? `${g.desc}:${g.cookies.join(',')}` : '';
+        const v = g.desc ? `${g.desc}:${g.cookies.join(',')}` : g.cookies.join(',');
         $m.append(
           `<input class="marked-input" style="width:100%;padding:5px;"
                   placeholder="说明:饼干1,饼干2">`
@@ -784,7 +802,7 @@
       const groupsB = this.state.blockedCookies.length ? this.state.blockedCookies : [{desc:'',cookies:[]}];
       const $b = $('#blocked-inputs-container').empty();
       groupsB.forEach(g=>{
-        const v = g.desc ? `${g.desc}:${g.cookies.join(',')}` : '';
+        const v = g.desc ? `${g.desc}:${g.cookies.join(',')}` : g.cookies.join(',');
         $b.append(
           `<input class="blocked-input" style="width:100%;padding:5px;"
                   placeholder="备注:3-7位饼干ID,多个用逗号隔开">`
@@ -802,14 +820,14 @@
       $('.sp_fold_body').hide();
       $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked').addClass('xdex-inv');
 
-$('#sp_replyModeDefault').val(this.state.replyModeDefault);
-$('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
+      $('#sp_replyModeDefault').val(this.state.replyModeDefault);
+      $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
 
     }
   };
 
   /* --------------------------------------------------
-   * 2. 回复编号
+   * tag 2. 回复编号
    * -------------------------------------------------- */
   // 数字样式：包裹为『n』
   const circledNumber = n => `『${n}』`;
@@ -835,25 +853,39 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 3. 饼干标记 / 屏蔽 逻辑
+   * tag 3. 饼干标记 / 屏蔽 逻辑
    * -------------------------------------------------- */
   // 标记：支持同一饼干命中多个分组时，title 展示多行备注，颜色取首匹配组
   function markAllCookies(groups) {
     $('span.h-threads-info-uid').each(function(){
       const $el = $(this);
       const cid = ($el.text().split(':')[1]||'').trim();
+      
+      // 收集所有匹配的分组索引和备注
+      let firstMatchIdx = -1;
       const hits = [];
-      for (let i=0;i<groups.length;i++){
+      
+      for (let i=0; i<groups.length; i++){
         const g = groups[i];
         if (g.cookies.some(p=>Utils.cookieMatch(cid,p))) {
-          if (g.desc) hits.push(g.desc);
+          if (firstMatchIdx === -1) firstMatchIdx = i; // 记录第一个匹配的分组索引
+          if (g.desc) hits.push(g.desc); // 只有有备注时才加入 hits
         }
       }
-      if (!hits.length) return;
-      const firstIdx = groups.findIndex(g=>g.cookies.some(p=>Utils.cookieMatch(cid,p)));
-      const color = markColors[firstIdx % markColors.length];
-      $el.css({ background: color, padding:'0 3px', borderRadius:'2px' })
-         .attr('title', hits.join('\n'));
+      
+      // 如果没有匹配到任何分组，跳过
+      if (firstMatchIdx === -1) return;
+      
+      // 根据第一个匹配的分组索引选择颜色
+      const color = markColors[firstMatchIdx % markColors.length];
+      $el.css({ background: color, padding:'0 3px', borderRadius:'2px' });
+      
+      // 只有当有备注时才设置 title
+      if (hits.length > 0) {
+        $el.attr('title', hits.join('\n'));
+      } else {
+        $el.removeAttr('title'); // 没有备注时移除 title 属性
+      }
     });
   }
 
@@ -983,7 +1015,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 4. 外部图床显示
+   * tag 4. 外部图床显示
    * -------------------------------------------------- */
   const ExternalImagePreview = (function(){
     let started = false;
@@ -1291,7 +1323,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   })();
 
   /* --------------------------------------------------
-   * 5. 手动切换饼干 + 自动刷新饼干
+   * tag 5. 手动切换饼干 + 自动刷新饼干
    * -------------------------------------------------- */
   const abbreviateName = n => n.replace(/\s*-\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/, '');
   const getCookiesList   = () => GM_getValue('cookies', {});
@@ -1520,7 +1552,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 6. 页面增强：页首页码 / 关闭水印 / 预览区真实饼干 / 隐藏无标题+无名氏+版规
+   * tag 6. 页面增强：页首页码 / 关闭水印 / 预览区真实饼干 / 隐藏无标题+无名氏+版规
    * -------------------------------------------------- */
   function duplicatePagination(){
     const tit=document.querySelector('h2.h-title');
@@ -1599,7 +1631,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
 
 
   /* --------------------------------------------------
-   * 7. 自动+手动无缝翻页
+   * tag 7. 自动+手动无缝翻页
    * -------------------------------------------------- */
   // ========== 公共增强函数 ==========
   // root: 新插入或替换的 DOM 节点（例如 repliesClone 或 targetReplies）
@@ -2566,7 +2598,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 8. 移植‘X岛-揭示板的增强型体验’功能：启用高清图片链接+图片控件+布局调整/串在新标签页打开
+   * tag 8. 移植‘X岛-揭示板的增强型体验’功能：启用高清图片链接+图片控件+布局调整/串在新标签页打开
    * -------------------------------------------------- */
   /* --------------------------------------------------
   * 合并后的图片处理函数：高清图片 + 防溢出 + 图片控件
@@ -3546,7 +3578,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 9. 引用浮窗/鼠标离开后自动隐藏原生引用
+   * tag 9. 引用浮窗/鼠标离开后自动隐藏原生引用
    * -------------------------------------------------- */
   function enableQuotePreview() {
     const cache = Object.create(null);
@@ -4094,7 +4126,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
 
 
   /* --------------------------------------------------
-   * 10. 创建拓展坞+reply按钮呼出回复悬浮窗
+   * tag 10. 创建拓展坞+reply按钮呼出回复悬浮窗
    * -------------------------------------------------- */
   function replaceRightSidebar() {
     // 移除原始工具栏
@@ -4821,7 +4853,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 11. 拦截回复中间页
+   * tag 11. 拦截回复中间页
    * -------------------------------------------------- */
   function interceptReplyForm() {
     // —— 缓存工具（GM_* 优先；localStorage 兜底；返回对象型默认值） ——
@@ -5615,7 +5647,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 12. 高亮Po主+回复表单UI调整
+   * tag 12. 高亮Po主+回复表单UI调整
    * -------------------------------------------------- */
   // 高亮 Po 主（内置并先执行楼层编号）
   function highlightPO() {
@@ -5765,14 +5797,14 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
 
         // 使用现有 collapse 能力（依赖 jQuery）
         if (typeof Utils !== 'undefined' && typeof Utils.collapse === 'function' && typeof $ === 'function') {
-          Utils.collapse($(wrapper), '发帖选项');
+          Utils.collapse($(wrapper), '发串选项');
         }
       }
     }
 
 
   /* --------------------------------------------------
-   * 13. 颜文字增强-光标处插入/选择框优化/额外颜文字拓展
+   * tag 13. 颜文字增强-光标处插入/选择框优化/额外颜文字拓展
    * -------------------------------------------------- */
   function kaomojiEnhancer() {
       // 初始化所有功能
@@ -6393,7 +6425,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   // }
 
   /* --------------------------------------------------
-   * 14. ‘增强x岛匿名版’：添加预览框+草稿保存/恢复/自动设置网页标题/人类友好时间显示/引用追记/粘贴图片上传
+   * tag 14. ‘增强x岛匿名版’：添加预览框+草稿保存/恢复/自动设置网页标题/人类友好时间显示/引用追记/粘贴图片上传
    * -------------------------------------------------- */
   // 统一生成草稿存储用的 key
   // 统一：草稿 key 生成
@@ -7107,7 +7139,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 15. 板块页快速回复入口（含时间线支持）
+   * tag 15. 板块页快速回复入口（含时间线支持）
    * -------------------------------------------------- */
   function replyQuicklyOnBoardPage() {
     // 同时识别 /f/ 板块 和 /Forum/timeline/id/{id} 时间线
@@ -7883,7 +7915,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 16. 允许展开/收起被板块页折叠的长串
+   * tag 16. 允许展开/收起被板块页折叠的长串
    * -------------------------------------------------- */
   function enablePostExpand() {
     // 注入样式（同前，保留 overflow-anchor: none）
@@ -8288,7 +8320,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 17. 替换搜索按钮为野生搜索酱（来自4sYbzEX https://www.nmbxd.com/t/64792841）
+   * tag 17. 替换搜索按钮为野生搜索酱（来自4sYbzEX https://www.nmbxd.com/t/64792841）
    * -------------------------------------------------- */
   function searchServiceBy4sY() {
     const btn = document.querySelector('#h-menu-search-keyword');
@@ -8312,7 +8344,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * 18. 侧栏收起（来自acVMxuvhttps://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88）
+   * tag 18. 侧栏收起（来自acVMxuvhttps://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88）
    * -------------------------------------------------- */
   function toggleSidebar() {
     // --- 侧边栏自动收起功能 ---
@@ -8355,7 +8387,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
   }
 
   /* --------------------------------------------------
-   * -1. 入口初始化
+   * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => enableHDImageAndLayoutFix(document));
 
