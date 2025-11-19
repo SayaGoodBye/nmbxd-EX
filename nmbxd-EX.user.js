@@ -1398,6 +1398,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
     });
   }
 
+  //TODO : 弹出登录提示弹窗未修复
   function showLoginPrompt(force = false){
     const url = window.location.href;
     const allowed = (
@@ -5782,6 +5783,7 @@ $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
       /**
        * 功能 1：选择颜文字后插入到光标位置
        */
+      // BUG:win7与部分win10环境下颜文字插入两次。
       function initInsertAtCaret() {
         const SELECTOR = '#h-emot-select';
         const TA_SELECTOR = 'textarea.h-post-form-textarea[name="content"]';
