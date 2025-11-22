@@ -1999,10 +1999,26 @@
         //     console.warn('restore multiple active images on newReplies failed', e);
         //   }
         // }
-        //  TODO 将局部刷新修改为新增而非替换，应该可以避免已active的图片发生变化
+        // done 将局部刷新修改为新增而非替换，应该可以避免已active的图片发生变化
 
         // 替换目标回复区内容（保留容器，替换 innerHTML）—— 原子性替换已有，插入的是已处理好的 newReplies HTML
-        targetReplies.innerHTML = newReplies.innerHTML;
+        // === 改为增量新增：比较新旧回复差异，只添加缺失部分，避免覆盖 h-active ===
+
+        // 1. 收集原先 targetReplies 中已有的回复 ID
+        const oldItems = Array.from(targetReplies.querySelectorAll('[data-threads-id]'));
+        const oldIdSet = new Set(oldItems.map(i => i.dataset.threadsId));
+
+        // 2. 收集新拉取页面中的回复项
+        const newItems = Array.from(newReplies.querySelectorAll('[data-threads-id]'));
+
+        // 3. 逐项比较，把 newReplies 中不存在于 oldReplies 的部分依顺序追加到正确位置
+        for (const item of newItems) {
+            const tid = item.dataset.threadsId;
+            if (!oldIdSet.has(tid)) {
+                // 新增回复项，插入到 targetReplies 最后（保持服务器顺序）
+                targetReplies.appendChild(item.cloneNode(true));
+            }
+        }
 
 
         // 同步替换底部分页条（取返回页的最后一个分页）
@@ -2039,6 +2055,7 @@
         // 如果用户回复 < 19 => 肯定是最后一页
         if (userCount < 19) {
           if (typeof done === 'function') done({ status: 'last' });
+          addRefreshButtonIfNeeded();
           return;
         }
 
@@ -2048,6 +2065,7 @@
           return;
         } else {
           if (typeof done === 'function') done({ status: 'last' });
+          addRefreshButtonIfNeeded();
           return;
         }
       })
@@ -2072,6 +2090,97 @@
                         doc.querySelector('ul.uk-pagination');
         return { replies, pagination, doc };
       }
+
+      function addRefreshButtonIfNeeded() {
+        // 若按钮已存在则不重复创建
+        let btn = document.getElementById('seamless-refresh-btn');
+        if (!btn) {
+            btn = document.createElement('div');
+            btn.id = 'seamless-refresh-btn';
+            btn.className = 'qp-reset-btn seamless-refresh-btn';
+            btn.textContent = '🗘';
+    
+            // --- 固定位置样式 ---
+            btn.style.position = 'fixed';
+            btn.style.right = '12px';
+            btn.style.bottom = '60px';
+            btn.style.fontSize = '20px';
+            btn.style.lineHeight = '1';
+            btn.style.color = '#fff';
+            btn.style.background = 'rgba(0,0,0,.6)';
+            btn.style.padding = '6px 12px';
+            btn.style.borderRadius = '6px';
+            btn.style.cursor = 'pointer';
+            btn.style.zIndex = '9001';
+            btn.style.userSelect = 'none';
+            btn.style.display = 'none';   // 默认不显示
+    
+            document.body.appendChild(btn);
+    
+            // 点击触发“局部刷新 → 若有下一页则无缝翻页”
+            btn.addEventListener('click', () => {
+                try {
+                    refreshRepliesAndCheckNext(result => {
+                        if (result.status === 'hasNext' && result.nextPage) {
+                            loadedPages.delete(result.nextPage);
+                            loading = false;
+                            lastLoadedPage = result.nextPage - 1;
+                            lastCheckAt = 0;
+                            setTimeout(() => loadNext(), 50);
+                        }
+                    });
+                } catch (e) {
+                    console.warn('刷新按钮触发失败:', e);
+                }
+            });
+        }
+    
+        // --- 始终监听页面最底部的分页栏 ---
+        function getBottomPagination() {
+            const allPaginations = document.querySelectorAll('ul.uk-pagination');
+            return allPaginations.length ? allPaginations[allPaginations.length - 1] : null;
+        }
+    
+        function updateBtnDisplay(pag) {
+            if (!pag) {
+                btn.style.display = 'none';
+                return;
+            }
+            const hasNext = !!pag.querySelector('li:last-child a');
+            btn.style.display = hasNext ? 'none' : 'block';
+        }
+    
+        // 建立一个 MutationObserver，始终监听最新的分页栏
+        let currentObserver = null;
+        function observeBottomPagination() {
+            const pag = getBottomPagination();
+            if (!pag) return;
+    
+            // 先更新一次显示状态
+            updateBtnDisplay(pag);
+    
+            // 如果已有旧的 observer，先断开
+            if (currentObserver) {
+                currentObserver.disconnect();
+            }
+    
+            // 新建 observer 监听底部分页栏的变化
+            currentObserver = new MutationObserver(() => {
+                updateBtnDisplay(getBottomPagination());
+            });
+            currentObserver.observe(pag, { childList: true, subtree: true });
+        }
+    
+        // 初始监听一次
+        observeBottomPagination();
+    
+        // 每次 DOM 可能插入新分页栏时，重新绑定监听
+        const globalObserver = new MutationObserver(() => {
+            observeBottomPagination();
+        });
+        globalObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    
 
       // 串内页加载
       async function loadNext() {
@@ -2218,7 +2327,6 @@
           // ======== 新增：让其他脚本对新内容生效 ========
           reinitForNewContent(repliesClone);
           applyPageEnhancements(repliesClone, cfg);
-
           // ============================================
 
           // 更新底部分页条
@@ -2589,7 +2697,7 @@
 
       console.log('=== window.SeamlessPaging 定义完成 ===');
       console.log('window.SeamlessPaging:', window.SeamlessPaging);
-
+      addRefreshButtonIfNeeded();
 
     } catch (err) {
         console.error('initSeamlessPaging failed', err);
