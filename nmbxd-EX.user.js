@@ -2834,7 +2834,10 @@
       expandMsgWidthIfImageExists(msgMain) {
         const imgBox = msgMain.querySelector('.h-threads-img-box');
         if (!imgBox) return; // 没有图片则跳过
-
+      
+        // ☆ 新增：检查是否已经扩展过，如果已扩展则跳过
+        if (msgMain.__imageWidthExpanded === true) return;
+      
         // 如果图片未激活
         if (!imgBox.classList.contains('h-active')) {
           const currentWidth = msgMain.offsetWidth;
@@ -2847,6 +2850,8 @@
           }
 
           msgMain.style.width = targetWidth + 'px';
+          // ☆ 新增：标记已经扩展过，防止重复调用时继续加宽
+          msgMain.__imageWidthExpanded = true;
         }
       },
 
