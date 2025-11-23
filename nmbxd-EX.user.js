@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.0.6.2
+// @version      2.0.7
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -1877,7 +1877,7 @@
       }
 
       // ========== 新增：无缝翻页内部专用的刷新 / 判定工具（放在 loadNext 之前） ==========
-      // TODO 为当前认定的末页添加手动局部刷新按钮，以避免回复数太少，无法滚动触发局部刷新，检测到为末页时一直存在
+      // done 为当前认定的末页添加手动局部刷新按钮，以避免回复数太少，无法滚动触发局部刷新，检测到为末页时一直存在
       // 从 root 中获取第一个非预览的 .h-threads-list （避免误取预览区）
       function getRealThreadsList(root = document) {
         const lists = Array.from((root || document).querySelectorAll('.h-threads-list'));
@@ -2120,6 +2120,7 @@
             // 点击触发“局部刷新 → 若有下一页则无缝翻页”
             btn.addEventListener('click', () => {
                 try {
+                    toast("正在刷新……");
                     refreshRepliesAndCheckNext(result => {
                         if (result.status === 'hasNext' && result.nextPage) {
                             loadedPages.delete(result.nextPage);
@@ -5486,7 +5487,7 @@
       });
     }
 
-
+    // done 将拦截中间页-局部刷新修改为增量模式
     function refreshRepliesWithSeamlessPaging(done) {
       const currentPage = getCurrentPage();
       const maxPage = getMaxPageFromPagination();
@@ -5546,6 +5547,9 @@
           }
 
           // ——— 离线处理（关键） ———
+          const cfg2 = (typeof safeGetConfig === 'function') ? safeGetConfig() : null;
+
+          // 先准备一个离线 fragment（仅作为工作台，不再整体套用 innerHTML）
           const fragment = document.createElement('div');
           fragment.innerHTML = newReplies.innerHTML;
 
@@ -5553,9 +5557,7 @@
           Array.from(fragment.querySelectorAll('.h-threads-item-reply[data-threads-id="9999999"]'))
             .forEach(el => el.remove());
 
-          const cfg2 = (typeof safeGetConfig === 'function') ? safeGetConfig() : null;
-
-          // 在离线 fragment 上预处理（参考无缝翻页的 refreshRepliesAndCheckNext）
+          // 离线预处理：对 fragment 做一次过滤（主要保证新增项的 DOM 是处理过的）
           try {
             if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(fragment));
             if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2, fragment);
@@ -5563,13 +5565,47 @@
             console.warn('预处理过滤失败', e);
           }
 
-          // 原子替换目标节点（保留容器，替换 innerHTML）
-          targetReplies.innerHTML = fragment.innerHTML;
+          // === 改为增量新增：比较新旧回复差异，只添加缺失部分，避免覆盖 h-active ===
 
-          // 立即执行视觉相关过滤，避免闪烁
-          try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
-          try { if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2); } catch (e) {}
-          try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
+          // 1) 收集当前目标区原有的回复 ID（排除系统提示）
+          const oldItems = Array.from(targetReplies.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
+          const oldIdSet = new Set(
+            oldItems
+              .map(i => i.getAttribute('data-threads-id'))
+              .filter(id => id && id !== '9999999')
+          );
+
+          // 2) 收集新页面的回复项（使用 newReplies，而非 fragment，以维持服务器顺序）
+          const newItems = Array.from(newReplies.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
+            .filter(i => i.getAttribute('data-threads-id') !== '9999999');
+
+          // 3) 逐项比较，把新页面中不存在于旧页面的项依顺序追加（保持服务器顺序）
+          const appendedNodes = [];
+          for (const item of newItems) {
+            const tid = item.getAttribute('data-threads-id');
+            if (!oldIdSet.has(tid)) {
+              // 新增回复项：克隆并追加到 targetReplies 末尾
+              const node = item.cloneNode(true);
+              targetReplies.appendChild(node);
+              appendedNodes.push(node);
+            }
+          }
+
+          // 4) 针对“新增的节点”做精细化处理，避免全局覆盖旧节点状态
+          try {
+            // 立即处理新增节点，降低闪烁
+            if (typeof hideEmptyTitleAndEmail === 'function') {
+              appendedNodes.forEach(n => { try { hideEmptyTitleAndEmail($(n)); } catch (_) {} });
+            }
+            if (cfg2 && typeof applyFilters === 'function') {
+              appendedNodes.forEach(n => { try { applyFilters(cfg2, n); } catch (_) {} });
+            }
+            if (typeof enablePostExpand === 'function') {
+              appendedNodes.forEach(n => { try { enablePostExpand(); } catch (_) {} }); // 若该函数无 root 参数，则保持原用法
+            }
+          } catch (e) {
+            // 局部处理不影响整体流程
+          }
 
           // 延迟执行其他增强
           setTimeout(() => {
@@ -7896,6 +7932,7 @@
     // }
 
     // ---------- 子函数3：板块/时间线快速回复刷新逻辑（已扩展以支持时间线） ----------
+    // done 将板块页快速回复-局部刷新修改为增量模式
     function bindBoardQuickReplyRefresh() {
       document.addEventListener('tempReplySuccess', handleBoardQuickReplyRefresh);
       document.addEventListener('contReplySuccess', handleBoardQuickReplyRefresh);
@@ -7946,10 +7983,37 @@
           const processedNode = fragment.firstChild;
 
           // ——— 替换当前页面所有相同串号的节点 ———
+          // document.querySelectorAll(`.h-threads-list div[data-threads-id="${tid}"]`).forEach(oldNode => {
+          //   const newNode = processedNode.cloneNode(true);
+          //   oldNode.parentNode.replaceChild(newNode, oldNode);
+          // });
+          // === 改为增量新增：比较新旧回复差异，如有交集，新回复区可与旧回复区合并，否则替换 ===
           document.querySelectorAll(`.h-threads-list div[data-threads-id="${tid}"]`).forEach(oldNode => {
-            const newNode = processedNode.cloneNode(true);
-            oldNode.parentNode.replaceChild(newNode, oldNode);
+            const oldReplies = Array.from(oldNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
+            const oldIds = oldReplies.map(r => r.getAttribute('data-threads-id'));
+          
+            const newReplies = Array.from(processedNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
+            const newIds = newReplies.map(r => r.getAttribute('data-threads-id'));
+          
+            // 判断是否有交集
+            const hasIntersection = newIds.some(id => oldIds.includes(id));
+          
+            if (hasIntersection) {
+              // 合并：保留旧的，再追加新的（避免重复）
+              const oldIdSet = new Set(oldIds);
+              for (const reply of newReplies) {
+                const tidReply = reply.getAttribute('data-threads-id');
+                if (!oldIdSet.has(tidReply)) {
+                  oldNode.querySelector('.h-threads-item-replies').appendChild(reply.cloneNode(true));
+                }
+              }
+            } else {
+              // 无交集：整块替换
+              const newNode = processedNode.cloneNode(true);
+              oldNode.parentNode.replaceChild(newNode, oldNode);
+            }
           });
+          
 
           // 立即执行视觉相关过滤，避免闪烁
           try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(); } catch (e) {}
