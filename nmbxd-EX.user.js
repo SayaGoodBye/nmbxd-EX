@@ -2143,13 +2143,42 @@
         }
     
         function updateBtnDisplay(pag) {
-            if (!pag) {
-                btn.style.display = 'none';
-                return;
-            }
-            const hasNext = !!pag.querySelector('li:last-child a');
-            btn.style.display = hasNext ? 'none' : 'block';
+          if (!pag) {
+              btn.style.display = 'none';
+              return;
+          }
+          const hasNext = !!pag.querySelector('li:last-child a');
+          if (hasNext) {
+              btn.style.display = 'none';
+              return;
+          }
+      
+          // 检查浮窗状态
+          const overlay = document.querySelector('.qp-overlay');
+          const overlayQuote = document.querySelector('.qp-overlay-quote');
+          const overlayOpen = (overlay && overlay.style.display === 'block');
+          const overlayQuoteOpen = (overlayQuote && overlayQuote.style.display === 'block');
+      
+          if (overlayOpen || overlayQuoteOpen) {
+              btn.style.display = 'none';
+          } else {
+              btn.style.display = 'block';
+          }
+      }
+      
+        function observeOverlays() {
+          const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
+          overlays.forEach(el => {
+              if (!el) return;
+              const obs = new MutationObserver(() => {
+                  updateBtnDisplay(getBottomPagination());
+              });
+              obs.observe(el, { attributes: true, attributeFilter: ['style'] });
+          });
         }
+      
+        // 初始绑定
+        observeOverlays();
     
         // 建立一个 MutationObserver，始终监听最新的分页栏
         let currentObserver = null;
@@ -2241,6 +2270,10 @@
             const now2 = Date.now();
             if (now2 - lastFinalToastTs > 3000) {
               toast(state.message);
+              // 延迟 0.5 秒后再执行
+              setTimeout(() => {
+                toast("正在刷新……");
+              }, 500);
               lastFinalToastTs = now2;
             }
           }
@@ -5290,8 +5323,8 @@
                             <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
                           </div>
                           <div class="h-threads-info">
-                            <span class="h-threads-info-title">无标题</span>
-                            <span class="h-threads-info-email">无名氏</span>
+                            <span class="h-threads-info-title"></span>
+                            <span class="h-threads-info-email"></span>
                             <span class="h-threads-info-createdat">2077-01-01(四)00:00:01</span>
                             <span class="h-threads-info-uid">ID:--</span>
                             <span class="h-threads-info-report-btn">
@@ -6650,8 +6683,8 @@
                   <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
                 </div>
                 <div class="h-threads-info">
-                  <span class="h-threads-info-title">无标题</span>
-                  <span class="h-threads-info-email">无名氏</span>
+                  <span class="h-threads-info-title"></span>
+                  <span class="h-threads-info-email"></span>
                   <span class="h-threads-info-createdat">2077-01-01(四)00:00:01</span>
                   <span class="h-threads-info-uid">ID:${cookieText}</span>
                   <span class="h-threads-info-report-btn">
@@ -7730,8 +7763,8 @@
                             <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
                           </div>
                           <div class="h-threads-info">
-                            <span class="h-threads-info-title">无标题</span>
-                            <span class="h-threads-info-email">无名氏</span>
+                            <span class="h-threads-info-title"></span>
+                            <span class="h-threads-info-email"></span>
                             <span class="h-threads-info-createdat">2077-01-01(四)00:00:01</span>
                             <span class="h-threads-info-uid">ID:${cookieText}</span>
                             <span class="h-threads-info-report-btn">
