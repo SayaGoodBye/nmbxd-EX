@@ -8598,6 +8598,46 @@
   }
 
   /* --------------------------------------------------
+   * tag 19. 替换顶栏图片点击事件，串内刷新，板块页回到首页
+   * -------------------------------------------------- */
+  function overrideTopImageClick() {
+    const topImgLink = document.querySelector('#h-menu-top-img');
+    if (!topImgLink) return;
+
+    // 判断是否是串内页
+    function isThreadPage(path) {
+        return /\/t\/\d{4,}/.test(path) || /^\/Forum\/po\/id\/\d+/.test(path);
+    }
+
+    // 判断是否是板块页
+    function isBoardPage(path) {
+        return /^\/f\//.test(path) || /^\/Forum\/timeline\/id\/\d+/.test(path);
+    }
+
+    topImgLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        const path = location.pathname;
+        let url = location.href;
+
+        if (isThreadPage(path)) {
+            // 串内页：刷新当前页面
+            location.reload();
+        } else if (isBoardPage(path)) {
+            // 板块页：跳转到第一页
+            if (/\/Forum\/timeline\/id\/\d+\/page\/\d+\.html/.test(url)) {
+                url = url.replace(/\/page\/\d+\.html/, '/page/1.html');
+            } else if (/\/f\/.+\?page=\d+/.test(url)) {
+                url = url.replace(/page=\d+/, 'page=1');
+            }
+            location.href = url;
+        } else {
+            // 其他情况：跳转首页
+            location.href = '/';
+        }
+    });
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => enableHDImageAndLayoutFix(document));
@@ -8636,6 +8676,7 @@
     monitorRefView();                                                //监视引用弹窗变化
     //preventContentOverflow();                                      //防止内容超出浏览器边缘-已合并入enableHDImageAndLayoutFix
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
+    overrideTopImageClick();                                         //替换顶栏图片点击事件
     enhanceIsland({                                                  //增强X岛匿名版
       // 这些都可选，默认全开
       enablePreview: true,                                           //添加预览框
