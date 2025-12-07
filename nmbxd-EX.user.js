@@ -7009,8 +7009,8 @@
     function 注册追记引用串号() {
       if (!cfg.enableQuoteInsert) return;
       $('body').on('click', 'a.h-threads-info-id', e => {
-        // 如果按住 Ctrl/Meta 键，允许浏览器默认行为（在新标签页打开链接）
-        if (e.ctrlKey || e.metaKey) return;
+        // 如果按住 Ctrl/Meta/Shift 键，允许浏览器默认行为（在新标签页/新窗口打开链接）
+        if (e.ctrlKey || e.metaKey || e.shiftKey) return;
         if (!正文框.length) return;
         const start = 正文框.prop('selectionStart');
         const end = 正文框.prop('selectionEnd');
