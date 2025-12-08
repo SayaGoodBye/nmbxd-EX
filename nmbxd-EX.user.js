@@ -6339,8 +6339,8 @@
 
             // 清除所有颜文字的样式
             items.forEach(item => {
-                item.style.background = '';
-                item.style.outline = '';
+              item.style.removeProperty('background');
+              item.style.removeProperty('outline');
             });
 
             currentIndex = 0;
@@ -6363,17 +6363,37 @@
                 // const cols = gridCols > 0 ? gridCols : 1;
 
                 // 通过实际位置计算列数
-                let cols = items.length; // 默认只有一行
+                // let cols = items.length; // 默认只有一行
+                // if (items.length > 1) {
+                //     const firstTop = items[0].getBoundingClientRect().top;
+                //     for (let i = 1; i < items.length; i++) {
+                //         if (items[i].getBoundingClientRect().top > firstTop) {
+                //             cols = i;
+                //             break;
+                //         }
+                //     }
+                // }
+                // 通过实际位置计算列数
+                let cols = 1; // 默认至少一列
                 if (items.length > 1) {
+                    const firstLeft = items[0].getBoundingClientRect().left;
                     const firstTop = items[0].getBoundingClientRect().top;
+                    
+                    // 计算第一行有多少个元素
                     for (let i = 1; i < items.length; i++) {
-                        if (items[i].getBoundingClientRect().top > firstTop) {
+                        const itemRect = items[i].getBoundingClientRect();
+                        // 如果 top 值明显增加（超过半个元素高度），说明换行了
+                        if (itemRect.top - firstTop > ITEM_H / 2) {
                             cols = i;
                             break;
                         }
                     }
+                    
+                    // 如果所有元素都在一行
+                    if (cols === 1) {
+                        cols = items.length;
+                    }
                 }
-
                 let newIndex = currentIndex;
 
                 const key = e.key.toLowerCase();
@@ -6397,17 +6417,19 @@
                 }
 
                 if (newIndex !== currentIndex) {
-                  // 👇 修改：先清除当前高亮，不使用 Set
-                  items[currentIndex].style.background = '';
-                  items[currentIndex].style.outline = '';
-
+                  // 👇 清除所有元素的样式，防止残留
+                  items.forEach(item => {
+                    item.style.removeProperty('background');
+                    item.style.removeProperty('outline');
+                  });
+                
                   currentIndex = newIndex;
                   items[currentIndex].style.background = '#e0e0e0';
                   items[currentIndex].style.outline = '2px solid #66ccff';
                   items[currentIndex].focus();
-
+                
                   items[currentIndex].scrollIntoView({ block: 'nearest', behavior: 'instant' });
-              }
+                }
             };
 
             window.addEventListener('keydown', keyboardHandler);
@@ -6422,8 +6444,8 @@
             // 清除所有颜文字的高亮样式
             const items = panel.querySelectorAll('.kaomoji-item');
             items.forEach(item => {
-                item.style.background = '';
-                item.style.outline = '';
+                item.style.removeProperty('background');
+                item.style.removeProperty('outline');
             });
 
             currentIndex = -1;
