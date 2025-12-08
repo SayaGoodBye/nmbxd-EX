@@ -211,6 +211,7 @@
       enableAutoCookieRefresh: true,
       enableAutoCookieRefreshToast: false,
       interceptReplyFormUnvcode: true, // 拦截回复中间页--unvcode
+      interceptReplyFormU200B: true,
       enableSeamlessPaging: true,
       enableAutoSeamlessPaging: true,
       enableHDImageAndLayoutFix: true,               // 启用高清图片链接
@@ -259,7 +260,7 @@
                       padding:4px 8px;
                       font-size:12px;
                       border:none;
-                      background:#2196F3;
+                      background:#66CCFF;
                       color:#fff;
                       border-radius:20px;
                       white-space:nowrap;
@@ -343,11 +344,12 @@
                 <div style="width:50%;"><input type="checkbox" id="sp_enableQuotePreview"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_extendQuote"><label for="sp_extendQuote"> 拓展引用格式</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_toggleSidebar"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
-                <div style="width:50%;"><label for="sp_占位"> </label></div>
+                <div style="width:50%;"><input type="checkbox" id="sp_interceptReplyFormUnvcode"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
+                <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
                 <!-- 以下是默认勾选项不可更改 -->
                 <div style="width:50%;"><input type="checkbox" id="sp_updateReplyNumbers" class="fixed-on" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_replaceRightSidebar" class="fixed-on" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="hidden" name="sp_interceptReplyForm" value="1"><input type="checkbox" id="sp_interceptReplyFormUnvcode" style="margin-left:8px;"><label for="sp_interceptReplyFormUnvcode"> unvcode</label></div>
+                <div style="width:50%;"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_kaomojiEnhancer" class="fixed-on" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
@@ -575,6 +577,7 @@
           'enableAutoCookieRefresh',
           'enableAutoCookieRefreshToast',
           'interceptReplyFormUnvcode',
+          'interceptReplyFormU200B',
           'enableSeamlessPaging',
           'enableAutoSeamlessPaging',
           'enableHDImageAndLayoutFix',
@@ -682,6 +685,7 @@
         sp_replaceRightSidebar: '增强右侧扩展坞功能，点击REPLY按钮打开回复弹窗，点击非回复弹窗区域或ESC键可关闭回复弹窗，另外支持使用CTRL+ENTER发送消息',
         sp_interceptReplyForm: '拦截回复跳转中间页，使用toast提示发送成功/失败信息',
         sp_interceptReplyFormUnvcode: '不可明说的功能，请参照https://wordsaway.krytro.com/simple.html说明',
+        sp_interceptReplyFormU200B: '优先使用插入零宽空格模式而非unvcode替换模式',
         sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
         sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面',
@@ -777,6 +781,7 @@
         'enableAutoCookieRefresh',
         'enableAutoCookieRefreshToast',
         'interceptReplyFormUnvcode',
+        'interceptReplyFormU200B',
         'enableSeamlessPaging',
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
@@ -5201,7 +5206,7 @@
       }
       return false;
     }
-    // TODO 可选unvcode模式或者零宽空格模式，目前来看unvcode模式下长文本中被替换的文字较多，观感受影响，只要没有复制需求，零宽空格更实用
+    // done 可选unvcode模式或者零宽空格模式，目前来看unvcode模式下长文本中被替换的文字较多，观感受影响，只要没有复制需求，零宽空格更实用
     // 第三次保底：对所有非 URL 段内的汉字插入 U+200B（不使用排除集合）
     function fallbackInsertZWSP(text) {
       const hanRegex = /[\u4E00-\u9FFF]/;
@@ -5393,71 +5398,98 @@
 
             if (/含有非法词语/.test(msg)) {
               if (cfg.interceptReplyFormUnvcode) {
-                const normalRetries = 2;       // 前两次正常替换
-                const fallbackRetryIndex = 2;  // 第三次（索引为2）执行保底
-                const maxRetriesAll = 3;       // 共尝试三次：0、1（正常），2（保底）
-
-                form.__illegalRetryCount = (form.__illegalRetryCount || 0);
-
-                const textarea = form.querySelector('textarea[name="content"]');
-                const currentInput = textarea
-                  ? textarea.value
-                  : (formData.get('content') || '').toString();
-
-                // 首次记录本次提交的原始内容
-                if (form.__illegalRetryCount === 0) {
-                  form.__originalContent = currentInput;
-                }
-
-                // 超过所有尝试：恢复 + 刷新缓存（针对本条消息）
-                if (form.__illegalRetryCount >= maxRetriesAll) {
-                  toast('替换后仍提交失败，已恢复原始文本，请手动处理', 3000);
-
-                  if (textarea && form.__originalContent != null) {
-                    textarea.value = form.__originalContent;
-                  }
-                  // 动态刷新缓存：仅清空本条消息中应处理字符的缓存
-                  resetCacheForFailedContent(form.__originalContent);
-
-                  form.__originalContent = null;
-                  form.__illegalRetryCount = 0;
-                  return;
-                }
-
-                // 构造本次尝试的文本
-                let safeText;
-                if (form.__illegalRetryCount < normalRetries) {
-                  // 第 0、1 次：选择性替换（保留 URL 跳过、英文加 U+200B、中文替换、排除集合）
-                  safeText = unvcodeSelective(currentInput);
-                } else {
-                  // 第 2 次：保底，所有非 URL 段汉字插入 U+200B（忽略排除集合）
-                  safeText = fallbackInsertZWSP(currentInput);
-                }
-
-                // 第三次保底不因“无变化”而中止；正常模式下则只有变化才重试
-                const shouldRetry =
-                  (form.__illegalRetryCount < normalRetries && safeText !== currentInput)
-                  || (form.__illegalRetryCount === fallbackRetryIndex); // 保底必试
-
-                if (shouldRetry) {
-                  toast('已尝试替换并重试', 2000);
-
+                // 新增：优先判断 interceptReplyFormU200B
+                if (cfg.interceptReplyFormU200B) {
+                  const textarea = form.querySelector('textarea[name="content"]');
+                  const currentInput = textarea
+                    ? textarea.value
+                    : (formData.get('content') || '').toString();
+            
+                  // 构造安全文本：对所有非 URL 段的中文与英文字符插入 U+200B
+                  const urlRegex = /\b((https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
+                  const hanRegex = /[\u4E00-\u9FFF]/;
+                  const engRegex = /[A-Za-z]/;
+            
+                  const safeText = currentInput
+                    .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi)
+                    .map(part => {
+                      if (!part) return '';
+                      if (urlRegex.test(part)) {
+                        urlRegex.lastIndex = 0;
+                        return part; // URL 段跳过
+                      }
+                      let out = '';
+                      for (const ch of part) {
+                        if (hanRegex.test(ch) || engRegex.test(ch)) {
+                          out += ch + '\u200B'; // 中文或英文 → 插入零宽空格
+                        } else {
+                          out += ch;
+                        }
+                      }
+                      return out;
+                    })
+                    .join('');
+            
                   const newFD = new FormData(form);
                   newFD.set('content', safeText);
-
-                  form.__illegalRetryCount++;
+            
+                  toast('已尝试插入零宽空格模式并重试提交', 2000);
                   doSubmit(newFD);
                   return;
+                } else {
+                  // 原有三次重试逻辑
+                  const normalRetries = 2;       // 前两次正常替换
+                  const fallbackRetryIndex = 2;  // 第三次（索引为2）执行保底
+                  const maxRetriesAll = 3;       // 共尝试三次：0、1（正常），2（保底）
+            
+                  form.__illegalRetryCount = (form.__illegalRetryCount || 0);
+            
+                  const textarea = form.querySelector('textarea[name="content"]');
+                  const currentInput = textarea
+                    ? textarea.value
+                    : (formData.get('content') || '').toString();
+            
+                  if (form.__illegalRetryCount === 0) {
+                    form.__originalContent = currentInput;
+                  }
+            
+                  if (form.__illegalRetryCount >= maxRetriesAll) {
+                    toast('替换后仍提交失败，已恢复原始文本，请手动处理', 3000);
+                    if (textarea && form.__originalContent != null) {
+                      textarea.value = form.__originalContent;
+                    }
+                    resetCacheForFailedContent(form.__originalContent);
+                    form.__originalContent = null;
+                    form.__illegalRetryCount = 0;
+                    return;
+                  }
+            
+                  let safeText;
+                  if (form.__illegalRetryCount < normalRetries) {
+                    safeText = unvcodeSelective(currentInput);
+                  } else {
+                    safeText = fallbackInsertZWSP(currentInput);
+                  }
+            
+                  const shouldRetry =
+                    (form.__illegalRetryCount < normalRetries && safeText !== currentInput)
+                    || (form.__illegalRetryCount === fallbackRetryIndex);
+            
+                  if (shouldRetry) {
+                    toast('已尝试unvcode替换模式并重试提交', 2000);
+                    const newFD = new FormData(form);
+                    newFD.set('content', safeText);
+                    form.__illegalRetryCount++;
+                    doSubmit(newFD);
+                    return;
+                  }
+            
+                  toast(msg);
                 }
-
-                // 正常替换无变化 → 提示原始错误
-                toast(msg);
               } else {
                 toast(msg);
               }
-            } else {
-              toast(msg);
-            }
+            }            
           }
 
         })
