@@ -3832,6 +3832,7 @@
         // 如果鼠标不在任何引用号上，立即隐藏
         if (!isHovering) {
           refView.style.display = 'none';
+          refView.style.opacity = '';  // 重置透明度
         }
       }
     });
@@ -4022,7 +4023,7 @@
 
 
     $(document).off('click.qp').on('click.qp', 'font[color="#789922"]', function(e){
-      $('#h-ref-view').hide();   // 点击时关闭原生引用框
+      $('#h-ref-view').hide().css('opacity', '');   // 点击时关闭原生引用框并重置透明度
       e.preventDefault();
       e.stopPropagation();
       const tid = (this.textContent.match(/\d+/) || [])[0];
@@ -4030,7 +4031,7 @@
       fetchData(tid).then(showQuote);
     });
     $(document).on('mouseleave', 'font[color="#789922"]', function () {
-        $('#h-ref-view').hide();   // 鼠标移开时关闭原生引用框
+      $('#h-ref-view').hide();   // 鼠标移开时关闭原生引用框
     });
     // 全局监听多个事件，确保原生引用浮窗及时隐藏
     $(document).on('mousemove.refview scroll.refview wheel.refview', function(e) {
@@ -4046,6 +4047,7 @@
       // 如果不在引用号上，立即隐藏
       if (!isOnQuote) {
         refView.style.display = 'none';
+        refView.style.opacity = '';  // 重置透明度
       }
     });
   }
