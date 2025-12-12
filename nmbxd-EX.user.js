@@ -1560,18 +1560,65 @@
    * tag 6. 页面增强：页首页码 / 关闭水印 / 预览区真实饼干 / 隐藏无标题+无名氏+版规
    * -------------------------------------------------- */
   function duplicatePagination(){
-    const tit=document.querySelector('h2.h-title');
-    const pag=document.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination');
-    if(!tit||!pag)return;
-    const clone=pag.cloneNode(true);
-    tit.parentNode.insertBefore(clone,tit.nextSibling);
-    clone.querySelectorAll('a').forEach(a=>{
-      if(a.textContent.trim()==='末页'){
-        const m=a.href.match(/page=(\d+)/);
-        if(m) a.textContent=`末页(${m[1]})`;
+
+    // 获取所有分页栏，而不是只获取一个
+    const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+    if(!pags.length) return;
+  
+    pags.forEach(pag => {
+      const tit = document.querySelector('h2.h-title');
+      if(!tit || !pag) return;
+  
+      // 克隆分页栏并插入标题后
+      const clone = pag.cloneNode(true);
+      tit.parentNode.insertBefore(clone, tit.nextSibling);
+  
+      // 对克隆分页栏执行末页补全
+      processPagination(clone);
+    });
+  
+    // 监听 DOM 变化，自动处理后续新增的分页栏
+    const observer = new MutationObserver(mutations => {
+      mutations.forEach(m => {
+        m.addedNodes.forEach(node => {
+          if(node.nodeType === 1){
+            // 判断是否是分页栏
+            if(node.matches && node.matches('ul.uk-pagination.uk-pagination-left.h-pagination')){
+              processPagination(node);
+            }
+            // 判断是否包含分页栏
+            const innerPags = node.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination');
+            innerPags?.forEach(p => processPagination(p));
+          }
+        });
+      });
+    });
+  
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+  // 专门处理“末页”按钮的函数
+  function processPagination(pag){
+    pag.querySelectorAll('a').forEach(a => {
+      if(a.textContent.trim().startsWith('末页')){
+  
+        // 如果已经有页码则跳过
+        if(/\(\d+\)$/.test(a.textContent.trim())) return;
+  
+        // 第一种格式：?page=13
+        let m = a.href.match(/page=(\d+)/);
+  
+        // 第二种格式：/page/6.html
+        if(!m){
+          m = a.href.match(/\/page\/(\d+)\.html/);
+        }
+  
+        if(m){
+          a.textContent = `末页(${m[1]})`;
+        }
       }
     });
   }
+  
   const disableWatermark = () => {
     const c = document.querySelector('input[type="checkbox"][name="water"][value="true"]');
     if(c) c.checked = false;
