@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.0.7
+// @version      2.0.8
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -1927,10 +1927,22 @@
           targetReplies = list.querySelector('.h-threads-item-replies:not([data-cloned-page])');
         }
 
-          if (!targetReplies) {
-            toast("调试：未找到目标回复区 targetReplies");
+        // 如果没有找到回复区，说明当前串没有回复，需要创建回复区容器
+        if (!targetReplies) {
+          const threadItem = list.querySelector('.h-threads-item');
+          if (threadItem) {
+            targetReplies = document.createElement('div');
+            targetReplies.className = 'h-threads-item-replies';
+            if (maxCloned > 0) {
+              targetReplies.setAttribute('data-cloned-page', String(maxCloned));
+            }
+            threadItem.appendChild(targetReplies);
+            console.log('调试：已创建空的回复区容器');
+          } else {
+            toast("调试：未找到串容器，无法创建回复区");
             return done && done({ status: "error" });
           }
+        }
 
         // 构建请求 URL：优先用 threadId + ?page=N，否则回退到 location.href
         let fetchUrl = location.href;
