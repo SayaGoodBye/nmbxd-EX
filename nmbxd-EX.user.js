@@ -33,12 +33,12 @@
    * -------------------------------------------------- */
   const toastQueue = [];
   let isShowing = false;
-
+  
   function toast(msg, duration = 1800) {
     toastQueue.push({ msg, duration });
     if (!isShowing) showNextToast();
   }
-
+  
   function showNextToast() {
     if (toastQueue.length === 0) {
       isShowing = false;
@@ -46,20 +46,23 @@
     }
     isShowing = true;
     const { msg, duration } = toastQueue.shift();
-
-    let $t = $('#ae-toast');
-    if (!$t.length) {
-      $t = $(`<div id="ae-toast" style="
-        position:fixed;top:10px;left:50%;transform:translateX(-50%);
-        background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
-        border-radius:5px;z-index:9999;display:none;font-size:14px;"></div>`);
-      $('body').append($t);
-    }
-
-    $t.text(msg).stop(true).fadeIn(240).delay(duration).fadeOut(240, () => {
-      showNextToast(); // 显示完一个再显示下一个
+  
+    // ✅ 每次创建一个新的 toast 节点
+    const $t = $(`<div class="ae-toast" style="
+      position:fixed;top:10px;left:50%;transform:translateX(-50%);
+      background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
+      border-radius:5px;z-index:9999;display:none;font-size:14px;">
+      ${msg}
+    </div>`);
+  
+    $('body').append($t);
+  
+    $t.fadeIn(240).delay(duration).fadeOut(240, () => {
+      $t.remove();     // ✅ 动画结束后删除节点
+      showNextToast(); // ✅ 显示下一个
     });
   }
+  
 
   const Utils = {
       // 逗号(中英)分隔，支持转义 \, \， \\
@@ -684,7 +687,7 @@
         sp_updateReplyNumbers: '添加当页内回复编号显示',
         sp_replaceRightSidebar: '增强右侧扩展坞功能，点击REPLY按钮打开回复弹窗，点击非回复弹窗区域或ESC键可关闭回复弹窗，另外支持使用CTRL+ENTER发送消息',
         sp_interceptReplyForm: '拦截回复跳转中间页，使用toast提示发送成功/失败信息',
-        sp_interceptReplyFormUnvcode: '不可明说的功能，请参照https://wordsaway.krytro.com/simple.html说明',
+        sp_interceptReplyFormUnvcode: '不可明说的功能，请参照https://words-away.typeboom.com/说明',
         sp_interceptReplyFormU200B: '优先使用插入零宽空格模式而非unvcode替换模式',
         sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
@@ -2088,7 +2091,7 @@
         if (hasUpdate) {
           toast("已更新");
         } else {
-            toast("无更新");
+          toast("无更新");
         }
 
         // 同步替换底部分页条（取返回页的最后一个分页）
@@ -2190,7 +2193,7 @@
             // 点击触发“局部刷新 → 若有下一页则无缝翻页”
             btn.addEventListener('click', () => {
                 try {
-                    toast("正在刷新……");
+                    toast("正在刷新……",1500);
                     refreshRepliesAndCheckNext(result => {
                         if (result.status === 'hasNext' && result.nextPage) {
                             loadedPages.delete(result.nextPage);
@@ -2340,10 +2343,7 @@
             const now2 = Date.now();
             if (now2 - lastFinalToastTs > 3000) {
               toast(state.message);
-              // 延迟 0.5 秒后再执行
-              setTimeout(() => {
-                toast("正在刷新……");
-              }, 500);
+                toast("正在刷新……",1500);
               lastFinalToastTs = now2;
             }
           }
