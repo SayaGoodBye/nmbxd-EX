@@ -2074,16 +2074,22 @@
 
         // 2. 收集新拉取页面中的回复项
         const newItems = Array.from(newReplies.querySelectorAll('[data-threads-id]'));
+        let hasUpdate = false;
 
         // 3. 逐项比较，把 newReplies 中不存在于 oldReplies 的部分依顺序追加到正确位置
         for (const item of newItems) {
             const tid = item.dataset.threadsId;
             if (!oldIdSet.has(tid)) {
                 // 新增回复项，插入到 targetReplies 最后（保持服务器顺序）
+                hasUpdate = true;
                 targetReplies.appendChild(item.cloneNode(true));
             }
         }
-
+        if (hasUpdate) {
+          toast("已更新");
+        } else {
+            toast("无更新");
+        }
 
         // 同步替换底部分页条（取返回页的最后一个分页）
         const newPags = doc.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
@@ -5370,8 +5376,10 @@
             const previewBox = document.querySelector('.h-preview-box');
             if (typeof enableHDImage === 'function') {
               enableHDImage(previewBox);
-          }
+            }
             if (previewBox) {
+              const cur = getCurrentCookie();
+              const cookieText = cur ? cur.name : '--';
               // 先放一个占位 ID，等刷新完成后再更新
               previewBox.innerHTML = `
                 <div class="h-preview-box">
@@ -5392,7 +5400,7 @@
                             <span class="h-threads-info-title"></span>
                             <span class="h-threads-info-email"></span>
                             <span class="h-threads-info-createdat">2077-01-01(四)00:00:01</span>
-                            <span class="h-threads-info-uid">ID:--</span>
+                            <span class="h-threads-info-uid">ID:${cookieText}</span>
                             <span class="h-threads-info-report-btn">
                               [<a href="/f/值班室" target="_blank">举报</a>]
                             </span>
