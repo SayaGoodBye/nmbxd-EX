@@ -3884,29 +3884,42 @@
     //✅ 监听原生引用浮窗的显示，如果鼠标不在引用号上则立即隐藏
     const observer = new MutationObserver(() => {
       const refView = document.getElementById('h-ref-view');
-      if (refView && refView.style.display === 'block') {
-        // 引用浮窗刚显示时，检查鼠标是否在引用号上
+      if (!refView) return;
+    
+      const display = refView.style.display;
+    
+      // ✅ 当浮窗被隐藏时（none），重置透明度
+      if (display === 'none') {
+        refView.style.opacity = '';
+        return;
+      }
+    
+      // ✅ 当浮窗显示时（block），检查鼠标是否在引用号上
+      if (display === 'block') {
         const quoteFonts = document.querySelectorAll('font[color="#789922"]');
         let isHovering = false;
+    
         quoteFonts.forEach(font => {
           if (font.matches(':hover')) {
             isHovering = true;
           }
         });
-        
-        // 如果鼠标不在任何引用号上，立即隐藏
+    
+        // ✅ 显示但鼠标不在引用号上 → 立即隐藏并重置透明度
         if (!isHovering) {
           refView.style.display = 'none';
-          refView.style.opacity = '';  // 重置透明度
+          refView.style.opacity = '';
         }
       }
     });
+    
     observer.observe(document.body, { 
       childList: true, 
       subtree: true,
       attributes: true,
-      attributeFilter: ['style']  // 监听 style 属性变化
+      attributeFilter: ['style']
     });
+    
     observer.observe(document.body, { childList: true, subtree: true });
 
 
@@ -5469,6 +5482,20 @@
               if (cfg.interceptReplyFormUnvcode) {
                 // 新增：优先判断 interceptReplyFormU200B
                 if (cfg.interceptReplyFormU200B) {
+                  // 新增：初始化或递增重试计数
+                  form.__illegalRetryCountU200B = (form.__illegalRetryCountU200B || 0);
+                  // 新增：检查是否已经重试过
+                  if (form.__illegalRetryCountU200B >= 1) {
+                    toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 3000);
+                    const textarea = form.querySelector('textarea[name="content"]');
+                    if (textarea && form.__originalContent != null) {
+                      textarea.value = form.__originalContent;
+                    }
+                    form.__originalContent = null;
+                    form.__illegalRetryCountU200B = 0;
+                    return;
+                  }
+
                   const textarea = form.querySelector('textarea[name="content"]');
                   const currentInput = textarea
                     ? textarea.value
@@ -5502,6 +5529,9 @@
                   const newFD = new FormData(form);
                   newFD.set('content', safeText);
             
+                  // 新增：递增计数
+                  form.__illegalRetryCountU200B++;
+
                   toast('已尝试插入零宽空格模式并重试提交', 2000);
                   doSubmit(newFD);
                   return;
@@ -5523,7 +5553,7 @@
                   }
             
                   if (form.__illegalRetryCount >= maxRetriesAll) {
-                    toast('替换后仍提交失败，已恢复原始文本，请手动处理', 3000);
+                    toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 3000);
                     if (textarea && form.__originalContent != null) {
                       textarea.value = form.__originalContent;
                     }
