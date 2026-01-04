@@ -205,8 +205,8 @@
     key: 'myScriptSettings',
     defaults: {
       enableCookieSwitch: true,
-      duplicatePagination: true,
       disableWatermark: true,
+      // note: `duplicatePagination` 已弃用，使用 `enablePaginationDuplication`
       enablePaginationDuplication: true,
       updatePreviewCookie: true,
       hideEmptyTitleEmail: true,
@@ -571,7 +571,6 @@
       $('#sp_apply').off('click').on('click', ()=>{
         [
           'enableCookieSwitch',
-          'duplicatePagination',
           'disableWatermark',
           'enablePaginationDuplication',
           'updatePreviewCookie',
@@ -775,7 +774,6 @@
       // 勾选框
       [
         'enableCookieSwitch',
-        'duplicatePagination',
         'disableWatermark',
         'enablePaginationDuplication',
         'updatePreviewCookie',
@@ -1562,7 +1560,7 @@
   /* --------------------------------------------------
    * tag 6. 页面增强：页首页码 / 关闭水印 / 预览区真实饼干 / 隐藏无标题+无名氏+版规
    * -------------------------------------------------- */
-  function duplicatePagination(){
+  function enablePaginationDuplication  (){
 
     // 获取所有分页栏，而不是只获取一个
     const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
@@ -1629,7 +1627,7 @@
   function updatePreviewCookieId(){
     if(!$('.h-preview-box').length) return;
     const cur=getCurrentCookie();
-    const name=cur&&cur.name?abbreviateName(cur.name):'cookies';
+    const name=cur&&cur.name?abbreviateName(cur.name):'无饼干';
     $('.h-preview-box .h-threads-info-uid').text('ID:'+name);
   }
   function hideEmptyTitleAndEmail(){
@@ -5287,6 +5285,7 @@
       return false;
     }
     // done 可选unvcode模式或者零宽空格模式，目前来看unvcode模式下长文本中被替换的文字较多，观感受影响，只要没有复制需求，零宽空格更实用
+    // done BUG 其他报错似乎不toast提示-大概是好了吧，新增了500报错的toast，但目前图床有问题没法确定图片安全性审核不通过是不是也会toast
     // 第三次保底：对所有非 URL 段内的汉字插入 U+200B（不使用排除集合）
     function fallbackInsertZWSP(text) {
       const hanRegex = /[\u4E00-\u9FFF]/;
@@ -5356,9 +5355,26 @@
         })
         .then(res => res.text())
         .then(html => {
+          // 增加调试输出：打印响应 HTML 的前 2000 字符，避免控制台被大量内容淹没
+          try { console.log('[interceptReplyForm] response html (truncated):', html.slice(0, 2000)); } catch (e) { console.log('[interceptReplyForm] response html (full):', html); }
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const successMsg = doc.querySelector('p.success');
           const errorMsg   = doc.querySelector('p.error');
+          // 打印解析到的 success / error 节点，便于调试未触发 toast 的情况
+          console.log('[interceptReplyForm] parsed successMsg:', successMsg, 'errorMsg:', errorMsg);
+
+          // 新增：如果既没有 successMsg 也没有 errorMsg，检查是否包含 500 错误页面
+          if (!successMsg && !errorMsg) {
+            try {
+              if (/500\s+Internal\s+Server\s+Error/i.test(html) || html.indexOf('<title>500 Internal Server Error</title>') !== -1) {
+                toast('500 Internal Server Error,可能是图床故障');
+                console.warn('[interceptReplyForm] detected 500 Internal Server Error in response');
+                return; // 不继续后续处理
+              }
+            } catch (e) {
+              console.warn('[interceptReplyForm] error while checking 500 page:', e);
+            }
+          }
 
           if (successMsg) {
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'));
@@ -5478,6 +5494,16 @@
             const msg = errorMsg.textContent.trim() || '提交失败';
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
 
+            // 如果不是“含有非法词语”的特殊情况，直接提示并返回，避免被后续分支忽略
+            if (!/含有非法词语/.test(msg)) {
+              try {
+                toast(msg);
+              } catch (e) {
+                console.warn('[interceptReplyForm] toast error for message:', msg, e);
+              }
+              return;
+            }
+
             if (/含有非法词语/.test(msg)) {
               if (cfg.interceptReplyFormUnvcode) {
                 // 新增：优先判断 interceptReplyFormU200B
@@ -5592,7 +5618,7 @@
           }
 
         })
-        .catch(() => toast('未知错误'));
+        .catch((err) => { console.error('[interceptReplyForm] fetch error:', err); toast('未知错误'); });
       }
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
       form.__illegalRetryCount = 0;
@@ -6403,11 +6429,15 @@
           let outsideHandler, escHandler;
           function bindGlobalClose() {
               outsideHandler = (e) => {
-                  // 捕获阶段执行，防止被其他脚本阻止
-                  const target = e.target;
-                  if (!panel.contains(target) && target !== trigger) {
-                      hidePanel();
-                  }
+                // 👇 忽略由键盘触发的伪鼠标事件 
+                if (e.pointerType === '' || e.detail === 0) { 
+                  return; 
+                }
+                // 捕获阶段执行，防止被其他脚本阻止
+                const target = e.target;
+                if (!panel.contains(target) && target !== trigger) {
+                    hidePanel();
+                }
               };
 
               escHandler = (e) => {
@@ -7498,10 +7528,10 @@
       '7': '生活线'
     };
 
-    // boardName：板块名或时间线的默认显示文本（用于 "发串" 模式显示）
-    const boardName = isTimeline
-      ? (timelineNameMap[timelineId] ? `${timelineNameMap[timelineId]}-快速回复` : '时间线-快速回复')
-      : decodeURIComponent(location.pathname.replace(/^\/f\//, '').split('/')[0]);
+    // boardBaseName：仅板块/时间线的基础名称（不包含后缀），显示文本按模式拼接后缀
+    const boardBaseName = isTimeline
+      ? (timelineNameMap[timelineId] || '时间线')
+      : decodeURIComponent((location.pathname || '').replace(/^\/f\//, '').split('/')[0] || '');
 
     // 持久变量：保存当前正在回复的串号 / 缓存的回复参数
     let currentReplyTid = null;
@@ -7814,9 +7844,9 @@
       $modeBtns.removeClass('active').filter('[data-mode="'+mode+'"]').addClass('active');
 
       if (mode === '发串') {
-        $formPost.attr('action', '/Home/Forum/doPostThread.html');
-        $row.find('.js-reply-extra').hide().empty();
-        $row.find('.js-reply-mode-text').text(boardName);
+      $formPost.attr('action', '/Home/Forum/doPostThread.html');
+      $row.find('.js-reply-extra').hide().empty();
+      $row.find('.js-reply-mode-text').text(boardBaseName ? (boardBaseName + '-发串') : '板块-发串');
         window.replyModeState = { mode: '发串', extra: null };
 
         if (!silent) {
@@ -7861,7 +7891,7 @@
           $hash.val('cirns');
           // 对于时间线，默认显示的文本已经在插入表单时写成 `${timeline}-快速回复`，这里保持不变
           if (!isTimeline) {
-            $row.find('.js-reply-mode-text').text(boardName + '-快速回复');
+            $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
           }
         }
 
@@ -7884,7 +7914,7 @@
               const label = timelineNames[timelineId] || '时间线';
               $row.find('.js-reply-mode-text').text(label + '-快速回复');
             } else {
-              $row.find('.js-reply-mode-text').text(boardName + '-快速回复');
+              $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
             }
 
             // **清空正文 textarea**
@@ -8013,7 +8043,7 @@
         $form.find('input[name="__hash__"]').val('cirns');
         const displayName = isTimeline
           ? (timelineNameMap[timelineId] || '时间线')
-          : boardName;
+          : (boardBaseName || '板块');
 
         $('.js-reply-mode-row .js-reply-mode-text').text(`${displayName}-快速回复`);
 
@@ -8802,7 +8832,7 @@
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
-    if (cfg.enablePaginationDuplication) duplicatePagination();     //添加页首页码
+    if (cfg.enablePaginationDuplication) enablePaginationDuplication();     //添加页首页码
     if (cfg.disableWatermark)            disableWatermark();        //关闭图片水印
     if (cfg.updatePreviewCookie)         updatePreviewCookieId();   //预览真实饼干
     if (cfg.hideEmptyTitleEmail) {hideEmptyTitleAndEmail();         //隐藏无名氏/无标题/回复/发串/版规
