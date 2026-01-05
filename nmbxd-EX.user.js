@@ -27,7 +27,17 @@
 
 (function($){
   'use strict';
- 
+  // 双刷新支持：如果上一次保存设置时要求执行第二次重载（localStorage 标记），
+  // 则在页面加载时触发第二次重载并清理标记。
+  try {
+    const _flag = localStorage.getItem('myScriptSettings_doSecondReload');
+    if (_flag === '1') {
+      localStorage.removeItem('myScriptSettings_doSecondReload');
+      console.log('[Settings] detected second-reload flag, performing second reload');
+      // 延迟短暂时间以让页面先完成初始化任务，再执行第二次重载
+      setTimeout(() => { try { location.reload(); } catch (e) { console.warn(e); } }, 200);
+    }
+  } catch (e) { /* ignore */ }
   /* --------------------------------------------------
    * tag 0. 通用与工具函数
    * -------------------------------------------------- */
@@ -231,22 +241,44 @@
     },
     state: {},
 
-    init() {
-      const saved = GM_getValue(this.key, {});
-      this.state = Object.assign({}, this.defaults, saved);
-      // 兼容迁移：屏蔽饼干到组结构
-      this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
-      GM_setValue(this.key, this.state);
+init() {
+  const saved = GM_getValue(this.key, {});
+  const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
+  
+  console.log('init读取的原始数据:', JSON.stringify(saved));
+  this.state = Object.assign({}, this.defaults, saved);
+  console.log('init合并后的state:', JSON.stringify(this.state));
+  
+  // 兼容迁移：屏蔽饼干到组结构
+  this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+  
+  // 清理废弃字段
+  const validKeys = Object.keys(this.defaults);
+  let needCleanup = false;
+  Object.keys(this.state).forEach(key => {
+    if (!validKeys.includes(key)) {
+      delete this.state[key];
+      needCleanup = true;
+    }
+  });
+  
+  console.log('init清理后的state:', JSON.stringify(this.state));
+  
+  // 只在首次初始化或需要清理废弃字段时才保存
+  if (isFirstInit || needCleanup) {
+    console.log('首次初始化或需要清理，执行保存');
+    GM_setValue(this.key, this.state);
+  }
 
-      this.render();
-      GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
-        if(remote && !$('#sp_cover').is(':visible')){
-          this.state = Object.assign({}, this.defaults, nv);
-          this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
-          this.syncInputs();
-        }
-      });
-    },
+  this.render();
+  GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
+    if(remote && !$('#sp_cover').is(':visible')){
+      this.state = Object.assign({}, this.defaults, nv);
+      this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+      this.syncInputs();
+    }
+  });
+},
 
     render() {
       if (!$('#xdex-setting-style').length) {
@@ -568,26 +600,26 @@
       });
 
       // 应用更改：保存开关、屏蔽(组)、标记(组)
-      $('#sp_apply').off('click').on('click', ()=>{
-        [
-          'enableCookieSwitch',
-          'disableWatermark',
-          'enablePaginationDuplication',
-          'updatePreviewCookie',
-          'hideEmptyTitleEmail',
-          'enableExternalImagePreview',
-          'enableAutoCookieRefresh',
-          'enableAutoCookieRefreshToast',
-          'interceptReplyFormUnvcode',
-          'interceptReplyFormU200B',
-          'enableSeamlessPaging',
-          'enableAutoSeamlessPaging',
-          'enableHDImageAndLayoutFix',
-          'enableLinkBlank',
-          'enableQuotePreview',
-          'extendQuote',
-          'toggleSidebar'
-        ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
+$('#sp_apply').off('click').on('click', ()=>{
+  [
+    'enableCookieSwitch',
+    'disableWatermark',
+    'enablePaginationDuplication',
+    'updatePreviewCookie',
+    'hideEmptyTitleEmail',
+    'enableExternalImagePreview',
+    'enableAutoCookieRefresh',
+    'enableAutoCookieRefreshToast',
+    'interceptReplyFormUnvcode',
+    'interceptReplyFormU200B',
+    'enableSeamlessPaging',
+    'enableAutoSeamlessPaging',
+    'enableHDImageAndLayoutFix',
+    'enableLinkBlank',
+    'enableQuotePreview',
+    'extendQuote',
+    'toggleSidebar'
+  ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
       // ====== 新增：sp_enablePostExpandAll 按钮（即时生效 & 持久化） ======
       $('#sp_enablePostExpandAll').off('click').on('click', (e)=>{
           e.stopPropagation();
@@ -654,9 +686,33 @@
         if (!valid) return;
         this.state.blockedCookies = bk;
 
-        GM_setValue(this.key, this.state);
-        toast('保存成功，即将刷新页面');
-        setTimeout(()=>location.reload(),500);
+        // GM_setValue(this.key, this.state);
+        // toast('保存成功，即将刷新页面');
+        // setTimeout(()=>location.reload(),500);
+GM_setValue(this.key, this.state);
+console.log('GM_setValue执行成功');
+
+// 立即读取验证
+const saved = GM_getValue(this.key);
+console.log('读取验证:', JSON.stringify(saved));
+
+toast('保存成功，即将刷新页面');
+
+// Edge 浏览器需要更长的延迟确保存储完成
+setTimeout(() => {
+  // 再次验证保存是否成功
+  const finalCheck = GM_getValue(this.key);
+  console.log('刷新前最终验证:', JSON.stringify(finalCheck));
+  // 两次刷新
+  try {
+    // 设置标记，下一次页面加载时脚本会检测到并执行第二次重载
+    localStorage.setItem(this.key + '_doSecondReload', '1');
+  } catch (e) {
+    console.warn('[Settings] set second-reload flag failed', e);
+  }
+  location.reload();
+}, 800);  // 将延迟从 500ms 增加到 800ms
+
       });
 
       // 关闭面板
