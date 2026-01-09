@@ -5187,6 +5187,7 @@ setTimeout(() => {
     const KAOMOJI_EXCLUDE_CHARS = new Set([
       '旦','开','摆','摔','低','好','钩','我','咬','接','龙','大','成','功',
       '举','高','糕','咩','吁','肥','喵','酱','狗','比','汪','哈','電','柱',
+      'N','o','O','o'
     ]);
 
     // —— 单字符替换（回归稳定候选：优先第一个），但保留缓存为数组以便未来扩展 ——
@@ -5228,12 +5229,12 @@ setTimeout(() => {
 
     // —— 保留你之前的选择性规则：URL 整段跳过；非 URL 部分中文 → unvcode；英文 → 原样 + U+200B；其他原样 ——
     function unvcodeSelective(text) {
-      const urlRegex = /\b((https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
+      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
       const hanRegex = /[\u4E00-\u9FFF]/;
       const engRegex = /[A-Za-z]/;
 
       return text
-        .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi)
+        .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
         .map(part => {
           if (!part) return '';
 
@@ -5261,14 +5262,14 @@ setTimeout(() => {
     // —— 根据当前失败文本，精准刷新需处理字符的缓存 ——
     // 仅刷新：非 URL 段中的中文与英文，且不在排除集合中的字符
     function resetCacheForFailedContent(text) {
-      const urlRegex = /\b((https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
+      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
       const hanRegex = /[\u4E00-\u9FFF]/;
       const engRegex = /[A-Za-z]/;
 
       const CACHE_KEY_CHARMAP = 'unvcodeCharMap.v3';
       const charMap = cacheGet(CACHE_KEY_CHARMAP, {});
 
-      const parts = text.split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi);
+      const parts = text.split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi);
       let changed = false;
 
       for (const part of parts) {
@@ -5299,11 +5300,11 @@ setTimeout(() => {
     }
     // —— 备用方案：仅在中文后插入零宽空格 ——
     function fallbackInsertZWSP(text) {
-      const urlRegex = /\b((https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
+      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
       const hanRegex = /[\u4E00-\u9FFF]/;
 
       return text
-        .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi)
+        .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
         .map(part => {
           if (!part) return '';
           if (urlRegex.test(part)) {
@@ -5325,7 +5326,7 @@ setTimeout(() => {
     }
     // 提取所有 URL 范围
     function findUrlRanges(text) {
-      const re = /\b(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
+      const re = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
       const ranges = [];
       for (const m of text.matchAll(re)) {
         ranges.push({ start: m.index, end: m.index + m[0].length });
@@ -5584,12 +5585,12 @@ setTimeout(() => {
                     : (formData.get('content') || '').toString();
             
                   // 构造安全文本：对所有非 URL 段的中文与英文字符插入 U+200B
-                  const urlRegex = /\b((https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
+                  const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
                   const hanRegex = /[\u4E00-\u9FFF]/;
                   const engRegex = /[A-Za-z]/;
             
                   const safeText = currentInput
-                    .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi)
+                    .split(/((?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
                     .map(part => {
                       if (!part) return '';
                       if (urlRegex.test(part)) {
