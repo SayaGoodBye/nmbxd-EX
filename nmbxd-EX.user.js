@@ -27,17 +27,6 @@
 
 (function($){
   'use strict';
-  // 双刷新支持：如果上一次保存设置时要求执行第二次重载（localStorage 标记），
-  // 则在页面加载时触发第二次重载并清理标记。
-  try {
-    const _flag = localStorage.getItem('myScriptSettings_doSecondReload');
-    if (_flag === '1') {
-      localStorage.removeItem('myScriptSettings_doSecondReload');
-      console.log('[Settings] detected second-reload flag, performing second reload');
-      // 延迟短暂时间以让页面先完成初始化任务，再执行第二次重载
-      setTimeout(() => { try { location.reload(); } catch (e) { console.warn(e); } }, 200);
-    }
-  } catch (e) { /* ignore */ }
   /* --------------------------------------------------
    * tag 0. 通用与工具函数
    * -------------------------------------------------- */
@@ -207,7 +196,17 @@
     }
     return [];
   }
-
+  // 双刷新支持：如果上一次保存设置时要求执行第二次重载（localStorage 标记），
+  // 则在页面加载时触发第二次重载并清理标记。
+  try {
+    const _flag = localStorage.getItem('myScriptSettings_doSecondReload');
+    if (_flag === '1') {
+      localStorage.removeItem('myScriptSettings_doSecondReload');
+      console.log('[Settings] detected second-reload flag, performing second reload');
+      // 延迟短暂时间以让页面先完成初始化任务，再执行第二次重载
+      setTimeout(() => { try { location.reload(); } catch (e) { console.warn(e); } }, 200);
+    }
+  } catch (e) { /* ignore */ }
   /* --------------------------------------------------
    * tag 1. 设置面板
    * -------------------------------------------------- */
@@ -686,32 +685,52 @@ $('#sp_apply').off('click').on('click', ()=>{
         if (!valid) return;
         this.state.blockedCookies = bk;
 
+        // 原版
         // GM_setValue(this.key, this.state);
         // toast('保存成功，即将刷新页面');
         // setTimeout(()=>location.reload(),500);
-GM_setValue(this.key, this.state);
-console.log('GM_setValue执行成功');
+        // Edge双重刷新版
+        // GM_setValue(this.key, this.state);
+        // console.log('GM_setValue执行成功');
 
-// 立即读取验证
-const saved = GM_getValue(this.key);
-console.log('读取验证:', JSON.stringify(saved));
+        // // 立即读取验证
+        // const saved = GM_getValue(this.key);
+        // console.log('读取验证:', JSON.stringify(saved));
 
-toast('保存成功，即将刷新页面');
+        // toast('保存成功，即将刷新页面');
 
-// Edge 浏览器需要更长的延迟确保存储完成
-setTimeout(() => {
-  // 再次验证保存是否成功
-  const finalCheck = GM_getValue(this.key);
-  console.log('刷新前最终验证:', JSON.stringify(finalCheck));
-  // 两次刷新
-  try {
-    // 设置标记，下一次页面加载时脚本会检测到并执行第二次重载
-    localStorage.setItem(this.key + '_doSecondReload', '1');
-  } catch (e) {
-    console.warn('[Settings] set second-reload flag failed', e);
-  }
-  location.reload();
-}, 800);  // 将延迟从 500ms 增加到 800ms
+        // // Edge 浏览器需要更长的延迟确保存储完成
+        // setTimeout(() => {
+        //   // 再次验证保存是否成功
+        //   const finalCheck = GM_getValue(this.key);
+        //   console.log('刷新前最终验证:', JSON.stringify(finalCheck));
+        //   // 两次刷新
+        //   try {
+        //     // 设置标记，下一次页面加载时脚本会检测到并执行第二次重载
+        //     localStorage.setItem(this.key + '_doSecondReload', '1');
+        //   } catch (e) {
+        //     console.warn('[Settings] set second-reload flag failed', e);
+        //   }
+        //   location.reload();
+        // }, 800);  // 将延迟从 500ms 增加到 800ms
+        // 当前版本
+        GM_setValue(this.key, this.state);
+        console.log('GM_setValue执行成功');
+
+        // 立即读取验证
+        const saved = GM_getValue(this.key);
+        console.log('读取验证:', JSON.stringify(saved));
+
+        toast('保存成功，即将刷新页面');
+
+        // Edge 浏览器需要更长的延迟确保存储完成
+        setTimeout(() => {
+          // 再次验证保存是否成功
+          const finalCheck = GM_getValue(this.key);
+          console.log('刷新前最终验证:', JSON.stringify(finalCheck));
+          // 只刷新一次
+          location.reload();
+        }, 800);  // 将延迟从 500ms 增加到 800ms
 
       });
 
@@ -6315,7 +6334,7 @@ setTimeout(() => {
     }
 
       /**
-       * 功能 2：颜文字选择框样式优化（占位）
+       * 功能 2：颜文字选择框样式优化
        */
       function optimizeSelectorStyle() {
         const SELECTOR = '#h-emot-select';
@@ -6382,8 +6401,19 @@ setTimeout(() => {
                     line-height: 1.2;
                     word-break: break-word;
                 }
+                /* 禁用默认 focus 白框/发白 */
+                .kaomoji-item:focus {
+                  outline: none;
+                }
+                /* 鼠标悬停：仅变色，不显示蓝框（避免与键盘选中混淆） */
                 .kaomoji-item:hover {
-                    background: #f2f2f2;
+                  background: #f2f2f2;
+                }
+                /* 键盘选中：变色 + 蓝框（专属样式） */
+                .kaomoji-item.kaomoji-active {
+                  background: #e0e0e0;
+                  outline: 2px solid #66ccff;
+                  outline-offset: -2px;
                 }
             `;
             document.head.appendChild(style);
@@ -6412,6 +6442,7 @@ setTimeout(() => {
                 item.className = 'kaomoji-item';
                 item.textContent = opt.textContent;
                 item.dataset.value = opt.value;
+              item.tabIndex = -1; // 使 item 可聚焦，避免 focus 时“发白/丢焦点”
                 item.addEventListener('click', () => {
                     select.value = opt.value;
                     select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -6519,20 +6550,34 @@ setTimeout(() => {
           let keyboardHandler;
           //let highlightedItems = new Set();
 
+          function clearActive(items) {
+            items.forEach(item => item.classList.remove('kaomoji-active'));
+          }
+
+          function setActive(items, index) {
+            if (!items.length) return;
+            const next = Math.max(0, Math.min(index, items.length - 1));
+            if (currentIndex === next && items[currentIndex] && items[currentIndex].classList.contains('kaomoji-active')) {
+              return;
+            }
+            if (currentIndex >= 0 && items[currentIndex]) {
+              items[currentIndex].classList.remove('kaomoji-active');
+            }
+            currentIndex = next;
+            const el = items[currentIndex];
+            el.classList.add('kaomoji-active');
+            el.focus({ preventScroll: true });
+            el.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+          }
+
           function initKeyboardNav() {
             const items = Array.from(panel.querySelectorAll('.kaomoji-item'));
             if (!items.length) return;
 
-            // 清除所有颜文字的样式
-            items.forEach(item => {
-              item.style.removeProperty('background');
-              item.style.removeProperty('outline');
-            });
-
-            currentIndex = 0;
-            items[currentIndex].style.background = '#e0e0e0';
-            items[currentIndex].style.outline = '2px solid #66ccff';
-            items[currentIndex].focus();
+            // 重置状态
+            clearActive(items);
+            currentIndex = -1;
+            setActive(items, 0);
 
             keyboardHandler = (e) => {
                 // 如果面板不可见，直接返回
@@ -6559,26 +6604,19 @@ setTimeout(() => {
                 //         }
                 //     }
                 // }
-                // 通过实际位置计算列数
+                // 通过首行实际 offsetTop 统计列数，避免两行颜文字导致行高变化影响判定
                 let cols = 1; // 默认至少一列
                 if (items.length > 1) {
-                    const firstLeft = items[0].getBoundingClientRect().left;
-                    const firstTop = items[0].getBoundingClientRect().top;
-                    
-                    // 计算第一行有多少个元素
-                    for (let i = 1; i < items.length; i++) {
-                        const itemRect = items[i].getBoundingClientRect();
-                        // 如果 top 值明显增加（超过半个元素高度），说明换行了
-                        if (itemRect.top - firstTop > ITEM_H / 2) {
-                            cols = i;
-                            break;
-                        }
+                  const firstTop = items[0].offsetTop;
+                  let count = 1;
+                  for (let i = 1; i < items.length; i++) {
+                    if (Math.abs(items[i].offsetTop - firstTop) <= 1) {
+                      count++;
+                    } else {
+                      break;
                     }
-                    
-                    // 如果所有元素都在一行
-                    if (cols === 1) {
-                        cols = items.length;
-                    }
+                  }
+                  cols = Math.max(1, count);
                 }
                 let newIndex = currentIndex;
 
@@ -6603,18 +6641,7 @@ setTimeout(() => {
                 }
 
                 if (newIndex !== currentIndex) {
-                  // 👇 清除所有元素的样式，防止残留
-                  items.forEach(item => {
-                    item.style.removeProperty('background');
-                    item.style.removeProperty('outline');
-                  });
-                
-                  currentIndex = newIndex;
-                  items[currentIndex].style.background = '#e0e0e0';
-                  items[currentIndex].style.outline = '2px solid #66ccff';
-                  items[currentIndex].focus();
-                
-                  items[currentIndex].scrollIntoView({ block: 'nearest', behavior: 'instant' });
+                  setActive(items, newIndex);
                 }
             };
 
@@ -6626,13 +6653,9 @@ setTimeout(() => {
                 window.removeEventListener('keydown', keyboardHandler);
                 keyboardHandler = null;
             }
-
             // 清除所有颜文字的高亮样式
             const items = panel.querySelectorAll('.kaomoji-item');
-            items.forEach(item => {
-                item.style.removeProperty('background');
-                item.style.removeProperty('outline');
-            });
+            items.forEach(item => item.classList.remove('kaomoji-active'));
 
             currentIndex = -1;
           }
@@ -6651,7 +6674,7 @@ setTimeout(() => {
                     select.value = opt.value;
                     select.dispatchEvent(new Event('change', { bubbles: true }));
                     trigger.textContent = opt.textContent || '选择颜文字';
-                    panel.style.display = 'none';
+                  hidePanel();
                 });
 
               panel.appendChild(item);
@@ -6661,7 +6684,7 @@ setTimeout(() => {
     }
 
       /**
-       * 功能 3：颜文字样式拓展（占位）
+       * 功能 3：颜文字样式拓展
        */
       function extendKaomojiSet() {
           const SELECTOR = '#h-emot-select';
