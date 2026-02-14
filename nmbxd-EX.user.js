@@ -6381,7 +6381,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                     overflow-y: auto;
 
                     /* 关键调整 */
-                    width: 100%; /* 占满可用宽度 */
+                    width: auto; /* 宽度由 JS 按 qp-quote 动态设置 */
                     max-width: calc(100vw - ${PAD * 2}px); /* 不超过视口宽度 */
                     min-width: ${ITEM_W}px; /* 至少一列 */
                     max-height: calc(${ITEM_H}px * 5 + ${GAP}px * 4 + ${PAD}px * 2);
@@ -6455,41 +6455,121 @@ $('#sp_apply').off('click').on('click', ()=>{
             select.parentNode.insertBefore(trigger, select.nextSibling);
             document.body.appendChild(panel);
 
-            function positionPanel() {
-              const rect = trigger.getBoundingClientRect();
+            function getQuoteElement() {
+              return trigger.closest('.qp-quote') || document.querySelector('.qp-quote');
+            }
 
-              // 临时给 panel 一个最大宽度，避免 Firefox 只算一列
-              panel.style.width = `calc(100vw - ${PAD * 2}px)`;
-              panel.style.display = 'grid';
-              panel.style.visibility = 'hidden';
+            function getPanelAnchorRect() {
+              const quoteEl = getQuoteElement();
+              if (quoteEl) return quoteEl.getBoundingClientRect();
+              return trigger.getBoundingClientRect();
+            }
+
+            function getPanelTargetWidth() {
+              const anchorRect = getPanelAnchorRect();
+              const w = Math.round(anchorRect.width || 0);
+              if (w > 0) return Math.max(ITEM_W, w);
+              // 兜底：至少与按钮同宽
+              return Math.max(ITEM_W, Math.round(trigger.getBoundingClientRect().width));
+            }
+
+            function positionPanel() {
+              const triggerRect = trigger.getBoundingClientRect();
+              const anchorRect = getPanelAnchorRect();
+              const margin = 6;
+
+              // 宽度跟随 qp-quote，并限制在可视区域内（窗口变窄时同步变窄）
+              const targetW = getPanelTargetWidth();
+              const maxW = Math.max(ITEM_W, window.innerWidth - margin * 2);
+              const finalW = Math.min(targetW, maxW);
+              panel.style.width = `${Math.round(finalW)}px`;
+
+              // 若当前不可见，临时显示用于测量
+              const wasHidden = (panel.style.display === 'none' || panel.style.display === '');
+              if (wasHidden) {
+                panel.style.display = 'grid';
+                panel.style.visibility = 'hidden';
+              }
 
               const panelRect = panel.getBoundingClientRect();
               const panelW = panelRect.width;
               const panelH = panelRect.height;
 
-              let left = rect.left;
-              let top = rect.top - panelH - 6;
+              // 横向跟随 qp-quote 左边缘；纵向跟随 trigger
+              let left = anchorRect.left;
+              let top = triggerRect.top - panelH - 6;
 
-              const margin = 6;
               if (left + panelW > window.innerWidth - margin) {
                   left = window.innerWidth - margin - panelW;
               }
               if (left < margin) left = margin;
 
               if (top < margin) {
-                  top = rect.bottom + 6;
+                  top = triggerRect.bottom + 6;
+              }
+              if (top + panelH > window.innerHeight - margin) {
+                  top = Math.max(margin, window.innerHeight - margin - panelH);
               }
 
               panel.style.left = `${Math.round(left)}px`;
               panel.style.top = `${Math.round(top)}px`;
-              panel.style.visibility = '';
+
+              if (wasHidden) {
+                panel.style.visibility = '';
+              }
+          }
+
+          let followRafId = 0;
+          let followResizeHandler = null;
+          let followScrollHandler = null;
+
+          function startPanelFollow() {
+            stopPanelFollow();
+
+            followResizeHandler = () => {
+              if (panel.style.display === 'grid') positionPanel();
+            };
+            followScrollHandler = () => {
+              if (panel.style.display === 'grid') positionPanel();
+            };
+
+            window.addEventListener('resize', followResizeHandler);
+            // 捕获阶段监听，兼容任意滚动容器
+            window.addEventListener('scroll', followScrollHandler, true);
+
+            const tick = () => {
+              if (panel.style.display !== 'grid') {
+                followRafId = 0;
+                return;
+              }
+              positionPanel();
+              followRafId = window.requestAnimationFrame(tick);
+            };
+            followRafId = window.requestAnimationFrame(tick);
+          }
+
+          function stopPanelFollow() {
+            if (followRafId) {
+              window.cancelAnimationFrame(followRafId);
+              followRafId = 0;
+            }
+            if (followResizeHandler) {
+              window.removeEventListener('resize', followResizeHandler);
+              followResizeHandler = null;
+            }
+            if (followScrollHandler) {
+              window.removeEventListener('scroll', followScrollHandler, true);
+              followScrollHandler = null;
+            }
           }
 
           function showPanel() {
             positionPanel();
             panel.style.display = 'grid';
+            panel.style.visibility = '';
             panel.scrollTop = 0;
             bindGlobalClose();
+            startPanelFollow();
             initKeyboardNav();
             // 👇 添加：延迟聚焦，确保 DOM 渲染完成
             setTimeout(() => {
@@ -6503,6 +6583,7 @@ $('#sp_apply').off('click').on('click', ()=>{
           function hidePanel() {
             panel.style.display = 'none';
             unbindGlobalClose();
+            stopPanelFollow();
             removeKeyboardNav();
           }
             trigger.addEventListener('click', (e) => {
