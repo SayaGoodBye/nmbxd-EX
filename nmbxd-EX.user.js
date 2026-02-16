@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.0.8
+// @version      2.0.9
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -229,10 +229,12 @@
       enableHDImageAndLayoutFix: true,               // 启用高清图片链接
       enableLinkBlank: true, // 串页新标签打开
       enableQuotePreview: true, // 优化引用弹窗
+      enableImageHideMode: true, // 图片隐藏/无图模式
+      applyImageHideMode: 'default', // default | blur | noimage | tips
       extendQuote: true, // 拓展引用格式
-      enablePostExpandAll: false, // 默认展开/收起板块页长串
+      enablePostExpandAll: true, // 默认展开板块页长串
       toggleSidebar: false, // 侧边栏收起功能
-      replyModeDefault: '发串',   // 板块页默认模式：发串/回复
+      replyModeDefault: '回复',   // 板块页默认模式：发串/回复
       replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
       markedGroups: [],
       blockedCookies: [],
@@ -391,8 +393,16 @@ init() {
                 <div style="width:50%;"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><input type="hidden" name="sp_enhanceIsland" value="1"></div>
                 <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><button id="sp_enablePostExpandAll" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">全部展开</button><input type="hidden" name="sp_enablePostExpand" value="1"></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" id="sp_enableImageHideMode" class="fixed-on" checked disabled><label for="sp_enableImageHideMode"> 模糊/无图/Tips模式</label>
+                  <select id="sp_applyImageHideMode" style="height:24px;">
+                    <option value="default">默认</option>
+                    <option value="blur">模糊</option>
+                    <option value="noimage">无图</option>
+                    <option value="tips">Tips</option>
+                  </select>
+                </div>
             </div>
-
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
                 <div style="display:flex; gap:12px; margin:4px 0;">
@@ -468,6 +478,26 @@ init() {
 
       // 同步已有配置 & 默认折叠
       this.syncInputs();
+
+      // 图片隐藏模式：即时切换并即时应用（无需点“应用更改”）
+      const applyImageHideModeImmediately = () => {
+        const enabled = $('#sp_enableImageHideMode').is(':checked');
+        const mode = $('#sp_applyImageHideMode').val() || 'default';
+
+        this.state.enableImageHideMode = enabled;
+        this.state.applyImageHideMode = mode;
+
+        try { GM_setValue(this.key, this.state); } catch (e) {}
+
+        if (enabled && typeof applyImageHideMode === 'function') {
+          applyImageHideMode(mode, document);
+        } else if (typeof applyImageHideMode === 'function') {
+          applyImageHideMode('default', document);
+        }
+      };
+
+      $('#sp_enableImageHideMode').off('change').on('change', applyImageHideModeImmediately);
+      $('#sp_applyImageHideMode').off('change').on('change', applyImageHideModeImmediately);
 
       // --- 初始化“全部展开/全部收起”按钮 (id = sp_enablePostExpandAll) ---
       (function initExpandAllButton() {
@@ -616,6 +646,7 @@ $('#sp_apply').off('click').on('click', ()=>{
     'enableHDImageAndLayoutFix',
     'enableLinkBlank',
     'enableQuotePreview',
+    'enableImageHideMode',
     'extendQuote',
     'toggleSidebar'
   ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
@@ -655,6 +686,7 @@ $('#sp_apply').off('click').on('click', ()=>{
 
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
+        this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
 
         // 标记分组
         const mk = [];
@@ -770,7 +802,8 @@ $('#sp_apply').off('click').on('click', ()=>{
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
         sp_replyQuicklyOnBoardPage: '为板块页添加快速回复模式，在板块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“板块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
-        sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841'
+        sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
+        sp_enableimageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
       };
 
       // ====== 2. 创建 tooltip 元素并添加样式 ======
@@ -863,10 +896,13 @@ $('#sp_apply').off('click').on('click', ()=>{
         'enableHDImageAndLayoutFix',
         'enableLinkBlank',
         'enableQuotePreview',
+        'enableImageHideMode',
         'extendQuote',
         'enablePostExpandAll',
         'toggleSidebar'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
+
+      $('#sp_applyImageHideMode').val(this.state.applyImageHideMode || 'default');
 
       // 标记分组
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
@@ -1409,6 +1445,9 @@ $('#sp_apply').off('click').on('click', ()=>{
   const abbreviateName = n => n.replace(/\s*-\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/, '');
   const getCookiesList   = () => GM_getValue('cookies', {});
   const getCurrentCookie = () => GM_getValue('now-cookie', null);
+  const LOGIN_PROMPT_SUPPRESS_KEY = 'loginPromptSuppressAuto';
+  const getLoginPromptSuppressAuto = () => !!GM_getValue(LOGIN_PROMPT_SUPPRESS_KEY, false);
+  const setLoginPromptSuppressAuto = (v) => GM_setValue(LOGIN_PROMPT_SUPPRESS_KEY, !!v);
 
   function removeDateString(){
     $('#cookie-switcher-ui').find('*').addBack().contents()
@@ -1424,7 +1463,7 @@ $('#sp_apply').off('click').on('click', ()=>{
       const nm = abbreviateName(cur.name);
       $d.text(nm + (cur.desc ? ' - ' + cur.desc : '')).css('color','#000');
     } else {
-      $d.text('已删除').css('color','red');
+      $d.text('无饼干').css('color','red');
       //showLoginPrompt(); // 这里触发
     }
     removeDateString();
@@ -1433,20 +1472,33 @@ $('#sp_apply').off('click').on('click', ()=>{
 
   function updateDropdownUI(list){
     const $dd = $('#cookie-dropdown'); $dd.empty();
-    Object.keys(list).forEach(id=>{
+    const ids = Object.keys(list);
+    ids.forEach(id=>{
       const c=list[id];
       const txt=abbreviateName(c.name)+(c.desc?' - '+c.desc:'');
       $dd.append(`<option value="${id}">${txt}</option>`);
     });
     const cur = getCurrentCookie();
-    cur && list[cur.id] ? $dd.val(cur.id) : $dd.val('');
+    if (cur && list[cur.id]) {
+      $dd.val(cur.id);
+    } else {
+      $dd.val(ids[0] || '');
+    }
     removeDateString();
   }
-  function switch_cookie(cookie){
-    if(!cookie || !cookie.id) return toast('无效的饼干信息！');
+  function switch_cookie(cookie, opts = {}){
+    const silent = !!opts.silent;
+    const onDone = typeof opts.onDone === 'function' ? opts.onDone : null;
+    const onFail = typeof opts.onFail === 'function' ? opts.onFail : null;
+
+    if(!cookie || !cookie.id) {
+      if (!silent) toast('无效的饼干信息！');
+      onFail && onFail();
+      return;
+    }
     $.get(`https://www.nmbxd1.com/Member/User/Cookie/switchTo/id/${cookie.id}.html`)
       .done(()=>{
-        toast('切换成功! 当前饼干为 '+abbreviateName(cookie.name));
+        if (!silent) toast('切换成功! 当前饼干为 '+abbreviateName(cookie.name));
         GM_setValue('now-cookie',cookie);
         updateCurrentCookieDisplay(cookie);
         updateDropdownUI(getCookiesList());
@@ -1460,10 +1512,46 @@ $('#sp_apply').off('click').on('click', ()=>{
             textarea.focus();
           }, 100); // 延迟100ms确保UI更新完成
         }
+
+        onDone && onDone(cookie);
       })
-      .fail(()=>toast('切换失败，请重试'));
+      .fail(()=>{
+        if (!silent) toast('切换失败，请重试');
+        onFail && onFail();
+      });
   }
-  function refreshCookies(cb, showToast = true){
+
+  function autoApplyFirstCookieIfNeeded(list, opts = {}) {
+    const ids = Object.keys(list || {});
+    if (!ids.length) return false;
+
+    const cur = getCurrentCookie();
+    if (cur && list[cur.id]) return false;
+
+    const first = list[ids[0]];
+    if (!first || !first.id) return false;
+
+    if (window.__cookieAutoApplying) return true;
+    window.__cookieAutoApplying = true;
+
+    switch_cookie(first, {
+      silent: !!opts.silent,
+      onDone: (cookie) => {
+        window.__cookieAutoApplying = false;
+        if (opts.showDefaultToast) {
+          toast('已应用默认饼干：' + abbreviateName(cookie.name));
+        }
+        if (typeof opts.onDone === 'function') opts.onDone(cookie);
+      },
+      onFail: () => {
+        window.__cookieAutoApplying = false;
+        if (typeof opts.onFail === 'function') opts.onFail();
+      }
+    });
+
+    return true;
+  }
+  function refreshCookies(cb, showToast = true, opts = {}){
     GM_xmlhttpRequest({
       method:'GET',
       url:'https://www.nmbxd1.com/Member/User/Cookie/index.html',
@@ -1487,6 +1575,24 @@ $('#sp_apply').off('click').on('click', ()=>{
         }
         let cur=getCurrentCookie();
         if(cur && !list[cur.id]) cur=null;
+
+        // 若已登录且有饼干列表，但当前未应用任何饼干，则自动应用第一个
+        if (!cur && Object.keys(list).length) {
+          const started = autoApplyFirstCookieIfNeeded(list, {
+            silent: true,
+            showDefaultToast: true,
+            onDone: () => { cb&&cb(); },
+            onFail: () => {
+              GM_setValue('now-cookie', null);
+              updateCurrentCookieDisplay(null);
+              removeDateString();
+              updatePreviewCookieId();
+              cb&&cb();
+            }
+          });
+          if (started) return;
+        }
+
         GM_setValue('now-cookie',cur);
         updateCurrentCookieDisplay(cur);
         removeDateString();
@@ -1499,7 +1605,7 @@ $('#sp_apply').off('click').on('click', ()=>{
           !$dropdown.children().length ||
           ($display.length && $display.text().trim() === '已删除')
         ) {
-          //showLoginPrompt();
+          showLoginPrompt(!!opts.manualPrompt);
         }
 
         cb&&cb();
@@ -1521,7 +1627,9 @@ $('#sp_apply').off('click').on('click', ()=>{
     );
     if (!allowed) return; // 不在指定页面 → 直接退出
 
+    if (!force && (window.__loginPromptSuppressUntilRefresh || getLoginPromptSuppressAuto())) return; // 持久化“不再提醒”后，自动场景不再弹出
     if (!force && window.__loginPromptShown) return; // 自动触发只弹一次
+    if ($('#login-modal-wrapper').length) return; // 避免重复插入
     window.__loginPromptShown = true;
 
     const $m = $(`
@@ -1534,8 +1642,9 @@ $('#sp_apply').off('click').on('click', ()=>{
           <p>当前已退出登录，无法切换饼干。</p>
           <p>请注意：此时仍可作为最后一次应用的饼干回复。</p>
           <div style="text-align:right;">
-            <button id="login-open" style="margin-right:10px;">登录</button>
-            <button id="login-close">关闭</button>
+            <button id="login-open" style="margin-right:10px;">去登录</button>
+            <button id="login-no-remind" style="margin-right:10px;">不再提醒</button>
+            <!-- <button id="login-close">关闭</button> -->
           </div>
         </div>
       </div>
@@ -1553,8 +1662,14 @@ $('#sp_apply').off('click').on('click', ()=>{
       $m.fadeOut(200, () => $m.remove());
     });
 
+    $('#login-no-remind').on('click', () => {
+      window.__loginPromptSuppressUntilRefresh = true;
+      setLoginPromptSuppressAuto(true);
+      $m.fadeOut(200, () => $m.remove());
+    });
+
     $m.on('click', (e) => {
-      if (e.target.id === 'login-modal') {
+      if (e.target.classList && e.target.classList.contains('login-backdrop')) {
         $m.fadeOut(200, () => $m.remove());
       }
     });
@@ -1593,14 +1708,17 @@ $('#sp_apply').off('click').on('click', ()=>{
     updateCurrentCookieDisplay(cur);
     updateDropdownUI(list);
 
+    // 登录但未应用任何饼干时，自动应用第一个
+    autoApplyFirstCookieIfNeeded(list, { silent: true, showDefaultToast: true });
+
     // === 新增：检测是否无饼干，立即弹出登录提示 ===
     const $display = $('#current-cookie-display');
     const $dropdown = $('#cookie-dropdown');
     if (
       !$dropdown.children().length ||
-      ($display.length && $display.text().trim() === '已删除')
+      ($display.length && $display.text().trim() === '无饼干')
     ) {
-      //showLoginPrompt();
+      showLoginPrompt();
     }
 
 
@@ -1608,7 +1726,7 @@ $('#sp_apply').off('click').on('click', ()=>{
     $('#cookie-dropdown').on('change', function(){
       const sel = $(this).val();
       const l = getCookiesList();
-      if(!Object.keys(l).length) return //showLoginPrompt();
+      if(!Object.keys(l).length) return showLoginPrompt();
       if(!sel) return toast('请选择饼干');
       l[sel] ? switch_cookie(l[sel]) : toast('饼干信息无效');
     });
@@ -1616,18 +1734,10 @@ $('#sp_apply').off('click').on('click', ()=>{
     // 刷新按钮
     $('#refresh-cookie').on('click', e=>{
       e.preventDefault();
-      const $display = $('#current-cookie-display');
-      const $dropdown = $('#cookie-dropdown');
+      // 用户手动点击“刷新”：若未登录，则作为“手动弹出”强制提示，不受“不再提醒”影响
+      window.__loginPromptShown = false;
 
-      if (
-        !$dropdown.children().length ||
-        ($display.length && $display.text().trim() === '已删除')
-      ) {
-        //showLoginPrompt(true); // 👈 强制弹出
-        return;
-      }
-
-      refreshCookies(null, true);
+      refreshCookies(null, true, { manualPrompt: true });
     });
 
   }
@@ -1765,21 +1875,43 @@ $('#sp_apply').off('click').on('click', ()=>{
   // root: 新插入或替换的 DOM 节点（例如 repliesClone 或 targetReplies）
   // cfg: 当前配置对象
   function applyPageEnhancements(root, cfg) {
+    const getLatestCfg = () => {
+      try {
+        // 关键：以 GM 最新配置为最高优先级，避免旧 cfg 覆盖新设置
+        return Object.assign({}, SettingPanel.defaults, cfg || {}, GM_getValue(SettingPanel.key, {}));
+      } catch (e) {
+        return Object.assign({}, SettingPanel.defaults, cfg || {});
+      }
+    };
+
+    let liveCfg = getLatestCfg();
+
     try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
-    try { if (cfg && typeof applyFilters === 'function') applyFilters(cfg, root); } catch (e) {}
+    try { if (liveCfg && typeof applyFilters === 'function') applyFilters(liveCfg, root); } catch (e) {}
     try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
 
     setTimeout(() => {
+      liveCfg = getLatestCfg();
+
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
       try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
-      try { if (cfg && cfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
-      try { if (cfg && cfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
+      try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
+      try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
       enableHDImageAndLayoutFix(document);
       enableHDImage(document);
-      try { if (cfg && cfg.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(root); } catch (e) {}
-      try { if (cfg && cfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
-      try { if (cfg && cfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
-      try { if (typeof applyFilters === 'function') applyFilters(cfg); } catch (e) {}
+      try {
+        if (typeof applyImageHideMode === 'function') {
+          if (liveCfg && liveCfg.enableImageHideMode) {
+            applyImageHideMode(liveCfg.applyImageHideMode || 'default', root);
+          } else {
+            applyImageHideMode('default', root);
+          }
+        }
+      } catch (e) {}
+      try { if (liveCfg && liveCfg.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(root); } catch (e) {}
+      try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
+      try { if (liveCfg && liveCfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
+      try { if (typeof applyFilters === 'function') applyFilters(liveCfg); } catch (e) {}
       try { if (typeof initContent === 'function') initContent(); } catch (e) {}
       try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
@@ -4040,6 +4172,35 @@ $('#sp_apply').off('click').on('click', ()=>{
       return $root;
     }
 
+    function simplifyQuoteInfoIdLinks($root) {
+      if (!$root || !$root.find) return;
+
+      $root.find('a.h-threads-info-id[href]').each(function () {
+        const a = this;
+        const href = a.getAttribute('href') || '';
+        if (!href) return;
+
+        let url;
+        try {
+          url = new URL(href, location.origin);
+        } catch (e) {
+          return;
+        }
+
+        // 仅处理 /t/{tid}?r={...} 这类链接
+        const m = url.pathname.match(/^\/t\/(\d{4,})$/);
+        if (!m) return;
+
+        const tid = m[1];
+        const rid = url.searchParams.get('r');
+
+        // 仅当 r 与 tid 完全一致时精简为 /t/{tid}
+        if (rid && rid === tid) {
+          a.setAttribute('href', `/t/${tid}`);
+        }
+      });
+    }
+
     function showQuote(html) {
       const depth = $stack.children('.qp-quote').length;
 
@@ -4061,6 +4222,7 @@ $('#sp_apply').off('click').on('click', ()=>{
       $quote.append($header);
 
       const $content = stripIds($('<div></div>').html(html));
+      simplifyQuoteInfoIdLinks($content);
       $quote.append($content.contents());
 
       // 在 $quote 内添加四条边框拖拽手柄
@@ -5880,27 +6042,20 @@ $('#sp_apply').off('click').on('click', ()=>{
 
           // 延迟执行其他增强
           setTimeout(() => {
-            try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
-            try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
-            //try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(targetReplies); } catch (e) {}
-            enableHDImageAndLayoutFix(document);
-            enableHDImage(document);
-            try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(targetReplies); } catch (e) {}
-            try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(targetReplies); } catch (e) {}
-            try { if (cfg2 && cfg2.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
-            try { if (typeof applyFilters === 'function') applyFilters(cfg2); } catch (e) {}
-            try { if (typeof initContent === 'function') initContent(); } catch (e) {}
-            try { if (typeof initExtendedContent === 'function') initExtendedContent(targetReplies); } catch (e) {}
-            //try { if (typeof autoHideRefView === 'function') autoHideRefView(targetReplies); } catch (e) {}
-            try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
-            // // 立即调用一次
-            // if (typeof preventContentOverflow === 'function') {
-            //   try {
-            //     preventContentOverflow(document);
-            //   } catch (e) {
-            //     console.warn('preventContentOverflow immediate call error:', e);
-            //   }
-            // }
+            // 统一走公共增强函数，确保与无缝翻页保持一致（包括 applyImageHideMode）
+            try {
+              if (typeof applyPageEnhancements === 'function') {
+                applyPageEnhancements(targetReplies, cfg2 || (typeof safeGetConfig === 'function' ? safeGetConfig() : null));
+              } else {
+                // 兜底（极端情况下公共函数不可用）
+                try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
+                try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
+                try { if (typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(document); } catch (e) {}
+                try { if (typeof enableHDImage === 'function') enableHDImage(document); } catch (e) {}
+                try { if (typeof initContent === 'function') initContent(); } catch (e) {}
+                try { if (typeof initExtendedContent === 'function') initExtendedContent(targetReplies); } catch (e) {}
+              }
+            } catch (e) {}
           }, 50);
 
           // 同步更新底部分页栏
@@ -6772,7 +6927,7 @@ $('#sp_apply').off('click').on('click', ()=>{
           const EXTRA_EMOTS = [
               "( ´_ゝ`)旦","(<ゝω・) ☆","(`ε´ (つ*⊂)","=͟͟͞͞( 'ヮ' 三 'ヮ' =͟͟͞͞)","↙(`ヮ´ )↗ 开摆！",
               "(っ˘Д˘)ノ<","(ﾉ#)`д´)σ","₍₍(ง`ᝫ´ )ว⁾","( `ᵂ´)","( *・ω・)✄╰ひ╯","U•ェ•*U","⊂( ﾟωﾟ)つ",
-              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
+              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
               "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","_(:зゝ∠)_","(　ﾟ 灬ﾟ)",
@@ -8984,6 +9139,381 @@ $('#sp_apply').off('click').on('click', ()=>{
   }
 
   /* --------------------------------------------------
+   * tag 20. 默认/模糊/无图/Tips模式
+   * -------------------------------------------------- */
+  function applyImageHideMode(mode = 'default', root = document) {
+    const COVER_URL = 'https://moetu.org/xdchan/cover.php?from=index';
+    const VALID_MODES = new Set(['default', 'blur', 'noimage', 'tips', 'none']);
+    const finalMode = VALID_MODES.has(mode) ? mode : 'default';
+    const scope = root && root.querySelectorAll ? root : document;
+    const coverCache = applyImageHideMode.__coverCache || (applyImageHideMode.__coverCache = []);
+    const coverCacheSet = applyImageHideMode.__coverCacheSet || (applyImageHideMode.__coverCacheSet = new Set());
+    const COVER_CACHE_MAX = 80;
+
+    // 样式只注入一次
+    if (!document.getElementById('xdex-image-hide-style')) {
+      const style = document.createElement('style');
+      style.id = 'xdex-image-hide-style';
+      style.textContent = `
+        /* 模式1：模糊遮罩（不替换容器/不替换图片） */
+        .h-threads-img-box.xdex-hide-blur:not(.h-active) .h-threads-img,
+        img.xdex-hide-blur-img {
+          filter: blur(14px) brightness(0.5);
+          transition: filter .15s ease;
+        }
+
+        /* 悬浮时取消遮罩 */
+        .h-threads-img-box.xdex-hide-blur:not(.h-active):hover .h-threads-img,
+        img.xdex-hide-blur-img:hover {
+          filter: none;
+        }
+
+        /* 放大（h-active）时始终不遮罩；缩小时自动恢复 */
+        .h-threads-img-box.xdex-hide-blur.h-active .h-threads-img {
+          filter: none !important;
+        }
+
+        /* 模式2：无图（隐藏，不删除 DOM） */
+        .h-threads-img-box.xdex-hide-noimage {
+          display: none !important;
+        }
+        img.xdex-hide-noimage-img {
+          display: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    function getAllImgs(target) {
+      const imgs = [];
+      if (target instanceof HTMLImageElement) imgs.push(target);
+      if (target && target.querySelectorAll) {
+        target.querySelectorAll('img').forEach(img => imgs.push(img));
+      }
+      return imgs;
+    }
+
+    function addCoverToCache(url) {
+      if (!url || coverCacheSet.has(url)) return;
+      coverCacheSet.add(url);
+      coverCache.push(url);
+      if (coverCache.length > COVER_CACHE_MAX) {
+        const removed = coverCache.shift();
+        if (removed) coverCacheSet.delete(removed);
+      }
+    }
+
+    function removeCoverFromCache(url) {
+      if (!url || !coverCacheSet.has(url)) return;
+      coverCacheSet.delete(url);
+      const idx = coverCache.indexOf(url);
+      if (idx >= 0) coverCache.splice(idx, 1);
+    }
+
+    function buildNewCoverUrl(idx) {
+      return `${COVER_URL}&xdex=${Date.now()}_${idx}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    function pickCoverUrl(idx, triedSet) {
+      // 优先复用缓存 URL，降低重复请求压力
+      const usableCached = coverCache.filter(u => !triedSet.has(u));
+      if (usableCached.length > 0) {
+        const u = usableCached[Math.floor(Math.random() * usableCached.length)];
+        return { url: u, fromCache: true };
+      }
+      return { url: buildNewCoverUrl(idx), fromCache: false };
+    }
+
+    function isExcludedImage(img) {
+      if (!img || !img.closest) return false;
+      try {
+        return !!img.closest([
+          
+          '#h-bottom-nav',
+          '#h-menu-top',
+          '#h-preview-box',
+          '.h-preview-box',
+          '.h-threads-item-reply[data-threads-id="9999999"]'
+        ].join(', '));
+      } catch (e) {
+        // 选择器异常时兜底，避免中断后续逻辑
+        return false;
+      }
+    }
+
+    function restoreNoImage(img) {
+      if (!img || img.dataset.xdexNoImgApplied !== '1') return;
+
+      const box = img.closest('.h-threads-img-box');
+      if (box) {
+        box.classList.remove('xdex-hide-noimage');
+        box.dataset.xdexNoImgBox = '0';
+      }
+      img.classList.remove('xdex-hide-noimage-img');
+      img.dataset.xdexNoImgImg = '0';
+
+      delete img.dataset.xdexNoImgApplied;
+    }
+
+    function restoreReplacedImage(img) {
+      if (!img || img.dataset.xdexHideReplaceApplied !== '1') return;
+
+      const origSrc = img.dataset.xdexOrigSrc;
+      const origSrcset = img.dataset.xdexOrigSrcset;
+      const origSizes = img.dataset.xdexOrigSizes;
+      const origAlt = img.dataset.xdexOrigAlt;
+      const origTitle = img.dataset.xdexOrigTitle;
+      const origStyle = img.dataset.xdexOrigStyle;
+
+      if (origSrc) img.setAttribute('src', origSrc); else img.removeAttribute('src');
+      if (origSrcset) img.setAttribute('srcset', origSrcset); else img.removeAttribute('srcset');
+      if (origSizes) img.setAttribute('sizes', origSizes); else img.removeAttribute('sizes');
+      if (origAlt) img.setAttribute('alt', origAlt); else img.removeAttribute('alt');
+      if (origTitle) img.setAttribute('title', origTitle); else img.removeAttribute('title');
+      if (origStyle) img.setAttribute('style', origStyle); else img.removeAttribute('style');
+
+      const box = img.closest('.h-threads-img-box');
+      if (box) box.dataset.xdexHideReplaceBox = '0';
+
+      if (img.__xdexRestoreOnClick) {
+        img.removeEventListener('click', img.__xdexRestoreOnClick, true);
+        img.__xdexRestoreOnClick = null;
+      }
+      img.onload = null;
+      img.onerror = null;
+
+      delete img.dataset.xdexHideReplaceApplied;
+      delete img.dataset.xdexOrigSrc;
+      delete img.dataset.xdexOrigSrcset;
+      delete img.dataset.xdexOrigSizes;
+      delete img.dataset.xdexOrigAlt;
+      delete img.dataset.xdexOrigTitle;
+      delete img.dataset.xdexOrigStyle;
+      delete img.dataset.xdexLockWidth;
+      delete img.dataset.xdexLockHeight;
+    }
+
+    function clearBlurMarks(target) {
+      if (!target || !target.querySelectorAll) return;
+      target.querySelectorAll('.h-threads-img-box.xdex-hide-blur').forEach(box => {
+        box.classList.remove('xdex-hide-blur');
+        box.dataset.xdexHideBlurBox = '0';
+      });
+      target.querySelectorAll('img.xdex-hide-blur-img').forEach(img => {
+        img.classList.remove('xdex-hide-blur-img');
+        img.dataset.xdexHideBlurImg = '0';
+      });
+    }
+
+    function clearNoImageMarks(target) {
+      if (!target || !target.querySelectorAll) return;
+      target.querySelectorAll('.h-threads-img-box.xdex-hide-noimage').forEach(box => {
+        box.classList.remove('xdex-hide-noimage');
+        box.dataset.xdexNoImgBox = '0';
+      });
+      target.querySelectorAll('img.xdex-hide-noimage-img').forEach(img => {
+        img.classList.remove('xdex-hide-noimage-img');
+        img.dataset.xdexNoImgImg = '0';
+      });
+      target.querySelectorAll('img[data-xdex-no-img-applied="1"]').forEach(restoreNoImage);
+    }
+
+    function applyBlur(img) {
+      const box = img.closest('.h-threads-img-box');
+
+      // blur 模式下若之前替换过，先恢复原图
+      if (img.dataset.xdexHideReplaceApplied === '1') {
+        restoreReplacedImage(img);
+      }
+      // blur 模式下若之前处于无图，先恢复
+      if (img.dataset.xdexNoImgApplied === '1') {
+        restoreNoImage(img);
+      }
+
+      if (box) {
+        if (box.dataset.xdexHideBlurBox === '1') return;
+        box.classList.add('xdex-hide-blur');
+        box.dataset.xdexHideBlurBox = '1';
+        return;
+      }
+
+      if (img.dataset.xdexHideBlurImg === '1') return;
+      img.classList.add('xdex-hide-blur-img');
+      img.dataset.xdexHideBlurImg = '1';
+    }
+
+    function applyNoImage(img) {
+      const box = img.closest('.h-threads-img-box');
+
+      if (img.dataset.xdexHideReplaceApplied === '1') {
+        restoreReplacedImage(img);
+      }
+
+      if (box) {
+        box.classList.remove('xdex-hide-blur');
+        box.dataset.xdexHideBlurBox = '0';
+      }
+      img.classList.remove('xdex-hide-blur-img');
+      img.dataset.xdexHideBlurImg = '0';
+
+      if (img.dataset.xdexNoImgApplied === '1') return;
+
+      img.dataset.xdexNoImgApplied = '1';
+      if (box) {
+        box.classList.add('xdex-hide-noimage');
+        box.dataset.xdexNoImgBox = '1';
+      } else {
+        img.classList.add('xdex-hide-noimage-img');
+        img.dataset.xdexNoImgImg = '1';
+      }
+    }
+
+    function applyReplace(img, idx) {
+      const box = img.closest('.h-threads-img-box');
+
+      // Tips 模式下若之前处于无图，先恢复
+      if (img.dataset.xdexNoImgApplied === '1') {
+        restoreNoImage(img);
+      }
+
+      // Tips 模式下移除 blur 标记
+      if (box) {
+        box.classList.remove('xdex-hide-blur');
+        box.dataset.xdexHideBlurBox = '0';
+        box.classList.remove('xdex-hide-noimage');
+        box.dataset.xdexNoImgBox = '0';
+      }
+      img.classList.remove('xdex-hide-blur-img');
+      img.dataset.xdexHideBlurImg = '0';
+      img.classList.remove('xdex-hide-noimage-img');
+      img.dataset.xdexNoImgImg = '0';
+
+      if (img.dataset.xdexHideReplaceApplied === '1') return;
+
+      // 锁定当前显示尺寸，防止替换图挤压回复区域
+      const rect = img.getBoundingClientRect();
+      const cs = window.getComputedStyle(img);
+      const lockW = Math.round(rect.width || parseFloat(cs.width) || 0);
+      const lockH = Math.round(rect.height || parseFloat(cs.height) || 0);
+
+      img.dataset.xdexOrigSrc = img.getAttribute('src') || '';
+      img.dataset.xdexOrigSrcset = img.getAttribute('srcset') || '';
+      img.dataset.xdexOrigSizes = img.getAttribute('sizes') || '';
+      img.dataset.xdexOrigAlt = img.getAttribute('alt') || '';
+      img.dataset.xdexOrigTitle = img.getAttribute('title') || '';
+      img.dataset.xdexOrigStyle = img.getAttribute('style') || '';
+      img.dataset.xdexLockWidth = lockW > 0 ? String(lockW) : '';
+      img.dataset.xdexLockHeight = lockH > 0 ? String(lockH) : '';
+
+      img.dataset.xdexHideReplaceApplied = '1';
+      if (box) box.dataset.xdexHideReplaceBox = '1';
+
+      // 不预加载原图：仅保存原链接，点击恢复时再加载
+      img.removeAttribute('srcset');
+      img.removeAttribute('sizes');
+      img.setAttribute('title', 'Tips');
+      img.setAttribute('alt', 'Tips');
+      if (lockW > 0) {
+        img.style.width = `${lockW}px`;
+        img.style.minWidth = `${lockW}px`;
+        img.style.maxWidth = `${lockW}px`;
+      } else {
+        img.style.maxWidth = '100%';
+      }
+      if (lockH > 0) {
+        img.style.height = `${lockH}px`;
+      } else {
+        img.style.height = 'auto';
+      }
+      img.style.maxHeight = '60vh';
+      img.style.objectFit = 'cover';
+
+      const tried = new Set();
+      const applyCoverWithRetry = (remain = 6) => {
+        if (img.dataset.xdexHideReplaceApplied !== '1') return;
+
+        const picked = pickCoverUrl(idx, tried);
+        const fakeUrl = picked.url;
+        tried.add(fakeUrl);
+
+        img.onload = () => {
+          addCoverToCache(fakeUrl);
+          img.onload = null;
+          img.onerror = null;
+        };
+
+        img.onerror = () => {
+          removeCoverFromCache(fakeUrl);
+          if (remain <= 0) {
+            img.onload = null;
+            img.onerror = null;
+            return;
+          }
+          // 失败后立即尝试下一张（优先缓存池，其次新 URL）
+          applyCoverWithRetry(remain - 1);
+        };
+
+        img.setAttribute('src', fakeUrl);
+      };
+
+      applyCoverWithRetry();
+
+      // 首次点击：仅恢复原图；后续点击回归原逻辑
+      const restoreOnFirstClick = (e) => {
+        if (img.dataset.xdexHideReplaceApplied !== '1') return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        restoreReplacedImage(img);
+      };
+
+      img.__xdexRestoreOnClick = restoreOnFirstClick;
+      img.addEventListener('click', restoreOnFirstClick, true);
+    }
+
+    if (finalMode === 'none' || finalMode === 'default') {
+      clearBlurMarks(document);
+      clearNoImageMarks(document);
+      document.querySelectorAll('img[data-xdex-hide-replace-applied="1"]').forEach(restoreReplacedImage);
+      window.__xdexImageHideMode = 'default';
+      return;
+    }
+
+    const imgs = getAllImgs(scope);
+    imgs.forEach((img, idx) => {
+      // 排除顶栏和底栏导航中的图片，不参与替换/模糊
+      if (isExcludedImage(img)) {
+        if (img.dataset.xdexHideReplaceApplied === '1') restoreReplacedImage(img);
+        if (img.dataset.xdexNoImgApplied === '1') restoreNoImage(img);
+        img.classList.remove('xdex-hide-blur-img');
+        img.dataset.xdexHideBlurImg = '0';
+        img.classList.remove('xdex-hide-noimage-img');
+        img.dataset.xdexNoImgImg = '0';
+        const box = img.closest('.h-threads-img-box');
+        if (box) {
+          box.classList.remove('xdex-hide-blur');
+          box.classList.remove('xdex-hide-noimage');
+          box.dataset.xdexHideBlurBox = '0';
+          box.dataset.xdexNoImgBox = '0';
+          box.dataset.xdexHideReplaceBox = '0';
+        }
+        return;
+      }
+
+      // 跳过无 src 的占位图（但保留 h-threads-img 处理）
+      if (!img.classList.contains('h-threads-img') && !(img.getAttribute('src') || '').trim()) return;
+      if (finalMode === 'blur') applyBlur(img);
+      else if (finalMode === 'noimage') applyNoImage(img);
+      else if (finalMode === 'tips') applyReplace(img, idx);
+    });
+
+    window.__xdexImageHideMode = finalMode;
+  }
+
+  // 暴露给外部：window.applyImageHideMode('default'|'blur'|'noimage'|'tips'|'none', root)
+  window.applyImageHideMode = applyImageHideMode;
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => enableHDImageAndLayoutFix(document));
@@ -9008,6 +9538,7 @@ $('#sp_apply').off('click').on('click', ()=>{
     if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
     if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
+    if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
     replaceRightSidebar();                                           //扩展坞增强
     interceptReplyForm();                                            //拦截回复中间页
     if (cfg.extendQuote)                 extendQuote();              //扩展引用格式
