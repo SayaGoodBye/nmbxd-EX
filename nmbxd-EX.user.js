@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.0.9
+// @version      2.0.9.1
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -6621,15 +6621,21 @@ $('#sp_apply').off('click').on('click', ()=>{
             }
 
             function getPanelTargetWidth() {
-              const anchorRect = getPanelAnchorRect();
-              const w = Math.round(anchorRect.width || 0);
-              if (w > 0) return Math.max(ITEM_W, w);
-              // 兜底：至少与按钮同宽
-              return Math.max(ITEM_W, Math.round(trigger.getBoundingClientRect().width));
+              const quoteEl = getQuoteElement();
+              if (quoteEl) {
+                const w = Math.round(quoteEl.getBoundingClientRect().width || 0);
+                if (w > 0) return Math.max(ITEM_W, w);
+              }
+
+              // 未打开回复面板时，使用与回复面板一致的初始宽度：min(90vw, 820px)
+              // （与 replaceRightSidebar 中 .qp-stack 的初始宽度保持一致）
+              const replyInitW = Math.round(Math.min(window.innerWidth * 0.9, 820));
+              return Math.max(ITEM_W, replyInitW);
             }
 
             function positionPanel() {
               const triggerRect = trigger.getBoundingClientRect();
+              const quoteEl = getQuoteElement();
               const anchorRect = getPanelAnchorRect();
               const margin = 6;
 
@@ -6650,8 +6656,8 @@ $('#sp_apply').off('click').on('click', ()=>{
               const panelW = panelRect.width;
               const panelH = panelRect.height;
 
-              // 横向跟随 qp-quote 左边缘；纵向跟随 trigger
-              let left = anchorRect.left;
+              // 横向：有 qp-quote 时跟随其左边缘；无 qp-quote 时居中
+              let left = quoteEl ? anchorRect.left : (window.innerWidth - panelW) / 2;
               let top = triggerRect.top - panelH - 6;
 
               if (left + panelW > window.innerWidth - margin) {
