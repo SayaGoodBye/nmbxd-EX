@@ -1840,9 +1840,25 @@ $('#sp_apply').off('click').on('click', ()=>{
     const name=cur&&cur.name?abbreviateName(cur.name):'无饼干';
     $('.h-preview-box .h-threads-info-uid').text('ID:'+name);
   }
-  function hideEmptyTitleAndEmail(){
-    $('.h-threads-info-title').each(function(){ if($(this).text().trim()==='无标题') $(this).hide(); });
-    $('.h-threads-info-email').each(function(){ if($(this).text().trim()==='无名氏') $(this).hide(); });
+  function hideEmptyTitleAndEmail(root){
+    const $root = root ? $(root) : null;
+    const $titles = $root
+      ? $root.find('.h-threads-info-title').add($root.filter('.h-threads-info-title'))
+      : $('.h-threads-info-title');
+    const $emails = $root
+      ? $root.find('.h-threads-info-email').add($root.filter('.h-threads-info-email'))
+      : $('.h-threads-info-email');
+
+    $titles.each(function(){
+      if ($(this).text().trim() === '无标题' && this.style.display !== 'none') {
+        this.style.display = 'none';
+      }
+    });
+    $emails.each(function(){
+      if ($(this).text().trim() === '无名氏' && this.style.display !== 'none') {
+        this.style.display = 'none';
+      }
+    });
   }
 
   function addLastPageNumber(){
@@ -4375,13 +4391,34 @@ $('#sp_apply').off('click').on('click', ()=>{
     $(document).on('mousemove.refview scroll.refview wheel.refview', function(e) {
       const refView = document.getElementById('h-ref-view');
       if (!refView || refView.style.display === 'none') return;
-      
+
+      // scroll/wheel 事件可能没有有效坐标，直接隐藏更稳妥
+      if (e.type === 'scroll' || e.type === 'wheel') {
+        refView.style.display = 'none';
+        refView.style.opacity = '';
+        return;
+      }
+
+      const x = Number(e.clientX);
+      const y = Number(e.clientY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return;
+      }
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+        return;
+      }
+
       // 检查鼠标当前位置下的元素是否是引用号
-      const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
+      let elementsUnderMouse = [];
+      try {
+        elementsUnderMouse = document.elementsFromPoint(x, y) || [];
+      } catch (_) {
+        return;
+      }
       const isOnQuote = elementsUnderMouse.some(el => {
         return el.tagName === 'FONT' && el.getAttribute('color') === '#789922';
       });
-      
+
       // 如果不在引用号上，立即隐藏
       if (!isOnQuote) {
         refView.style.display = 'none';
@@ -4394,13 +4431,18 @@ $('#sp_apply').off('click').on('click', ()=>{
     const refView = document.getElementById('h-ref-view');
     if (!refView) return;
 
+    if (refView.dataset.exMonitorBound === '1') return;
+    refView.dataset.exMonitorBound = '1';
+
+    let rafLock = 0;
+
     const observer = new MutationObserver(mutations => {
-      mutations.forEach(mutation => {
-        // 1) 预览窗格显示时
-        if (refView.style.display === 'block') {
-          // 2) 每次有子节点变化时都执行隐藏
-          hideEmptyTitleAndEmail();
-        }
+      if (refView.style.display !== 'block') return;
+      if (rafLock) return;
+      rafLock = requestAnimationFrame(() => {
+        rafLock = 0;
+        // 仅处理引用窗内部，避免全局反复写样式触发观察器风暴
+        hideEmptyTitleAndEmail(refView);
       });
     });
 
