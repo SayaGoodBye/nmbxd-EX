@@ -6412,16 +6412,35 @@ $('#sp_apply').off('click').on('click', ()=>{
         }
       }
 
-      // 2) 折叠「回应模式 / 名 称 / E-mail / 标题」四行为一个折叠面板
+      // 2) 折叠「标题 / 名称(含管理员) / E-mail」为一个折叠面板，并固定顺序
       // 重新抓一次，避免移动节点导致 NodeList 顺序问题
       const freshRows = Array.from(form.querySelectorAll('.h-post-form-grid'));
-      const targets = new Set(['名 称', 'E-mail', '标题']);
-      const rowsToCollapse = [];
+      const norm = (s) => String(s || '').replace(/[\s-]+/g, '').toLowerCase();
+      const rowMap = new Map();
 
       for (const row of freshRows) {
-        const label = row.querySelector('.h-post-form-title')?.textContent?.trim() || '';
-        if (targets.has(label)) rowsToCollapse.push(row);
+        const label = row.querySelector('.h-post-form-title')?.textContent || '';
+        const k = norm(label);
+        if (k === '标题') rowMap.set('title', row);
+        else if (k === '名称') rowMap.set('name', row); // 原文“名 称”会被规整成“名称”
+        else if (k === 'email') rowMap.set('email', row); // 原文 “E-mail”
       }
+
+      const rowsToCollapse = ['title', 'name', 'email']
+        .map(k => rowMap.get(k))
+        .filter(Boolean);
+
+      // 关闭浏览器推荐填充（title/name/email）
+      form.setAttribute('autocomplete', 'off');
+      const noPersistInputs = rowsToCollapse.flatMap(row =>
+        Array.from(row.querySelectorAll('input[type="text"], textarea'))
+      );
+      noPersistInputs.forEach(input => {
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('autocapitalize', 'off');
+        input.setAttribute('autocorrect', 'off');
+        input.setAttribute('spellcheck', 'false');
+      });
 
       if (rowsToCollapse.length) {
         const wrapper = document.createElement('div');
