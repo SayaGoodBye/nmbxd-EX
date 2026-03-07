@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.1.0.1
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode / 侧边栏收起 / 图片隐藏模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -6614,6 +6614,8 @@ $('#sp_apply').off('click').on('click', ()=>{
         }
 
         function kaomojiKeyFromOption(opt) {
+          const stableKey = (opt?.dataset?.kaoKey || '').trim();
+          if (stableKey) return `sk:${stableKey}`;
           const text = (opt?.textContent || '').trim();
           const value = normalizeKaomojiValue(opt?.value);
           // 用“显示文本 + 实际值”作为唯一键，避免脚本扩展颜文字（尤其富文本）统计丢失或冲突
@@ -6653,10 +6655,9 @@ $('#sp_apply').off('click').on('click', ()=>{
             if (!Number.isFinite(Number(stats[key].lastUsed))) stats[key].lastUsed = 0;
           });
 
-          // 仅清理“新 key 格式”且当前页面已不存在的项，避免误删
-          Object.keys(stats).forEach(k => {
-            if (k.startsWith('k:') && !keysOnPage.has(k)) delete stats[k];
-          });
+          // 不主动删除缺失 key：时间线等场景下，扩展颜文字可能晚于首次渲染注入，
+          // 若此处清理会把“扩展项统计”反复删掉，表现为计数长期为 0。
+          // 如需清理可后续增加手动/定时 GC，而不是在每次渲染时做强清理。
 
           saveKaomojiStats(stats);
           return stats;
@@ -7326,7 +7327,9 @@ $('#sp_apply').off('click').on('click', ()=>{
               const frag = document.createDocumentFragment();
               EXTRA_EMOTS.forEach(txt => {
                   if (!existingValues.has(txt)) {
-                      frag.appendChild(new Option(txt, txt));
+                    const op = new Option(txt, txt);
+                    op.dataset.kaoKey = `extra:${txt}`;
+                    frag.appendChild(op);
                       existingValues.add(txt);
                   }
               });
@@ -7347,10 +7350,13 @@ $('#sp_apply').off('click').on('click', ()=>{
               ORDERED_RICH.forEach(key => {
                   let node = bucket.get(key);
                   if (node) {
+                    node.dataset.kaoKey = `rich:${key}`;
                       richFrag.appendChild(node);
                   } else if (EXTRA_RICH[key]) {
                       const val = NEED_LF.has(key) ? ("\n" + EXTRA_RICH[key] + "\n") : EXTRA_RICH[key];
-                      richFrag.appendChild(new Option(key, val));
+                    const op = new Option(key, val);
+                    op.dataset.kaoKey = `rich:${key}`;
+                    richFrag.appendChild(op);
                   }
               });
               if (richFrag.childNodes.length) sel.appendChild(richFrag);
