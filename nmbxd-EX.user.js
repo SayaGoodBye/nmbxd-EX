@@ -249,6 +249,8 @@ init() {
   
   console.log('init读取的原始数据:', JSON.stringify(saved));
   this.state = Object.assign({}, this.defaults, saved);
+  // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
+  this.state.enableImageHideMode = true;
   console.log('init合并后的state:', JSON.stringify(this.state));
   
   // 兼容迁移：屏蔽饼干到组结构
@@ -482,18 +484,16 @@ init() {
 
       // 图片隐藏模式：即时切换并即时应用（无需点“应用更改”）
       const applyImageHideModeImmediately = () => {
-        const enabled = $('#sp_enableImageHideMode').is(':checked');
         const mode = $('#sp_applyImageHideMode').val() || 'default';
 
-        this.state.enableImageHideMode = enabled;
+        // 固定启用，仅切换具体模式
+        this.state.enableImageHideMode = true;
         this.state.applyImageHideMode = mode;
 
         try { GM_setValue(this.key, this.state); } catch (e) {}
 
-        if (enabled && typeof applyImageHideMode === 'function') {
+        if (typeof applyImageHideMode === 'function') {
           applyImageHideMode(mode, document);
-        } else if (typeof applyImageHideMode === 'function') {
-          applyImageHideMode('default', document);
         }
       };
 
@@ -669,10 +669,12 @@ $('#sp_apply').off('click').on('click', ()=>{
     'enableHDImageAndLayoutFix',
     'enableLinkBlank',
     'enableQuotePreview',
-    'enableImageHideMode',
     'extendQuote',
     'toggleSidebar'
   ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
+
+        // 固定启用：不受面板勾选状态影响
+        this.state.enableImageHideMode = true;
       // ====== 新增：sp_enablePostExpandAll 按钮（即时生效 & 持久化） ======
       $('#sp_enablePostExpandAll').off('click').on('click', (e)=>{
           e.stopPropagation();
@@ -827,7 +829,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         sp_replyQuicklyOnBoardPage: '为板块页添加快速回复模式，在板块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“板块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
-        sp_enableimageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
+        sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
       };
 
       // ====== 2. 创建 tooltip 元素并添加样式 ======
@@ -925,6 +927,9 @@ $('#sp_apply').off('click').on('click', ()=>{
         'enablePostExpandAll',
         'toggleSidebar'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
+
+      // 固定启用项：始终显示为开启
+      $('#sp_enableImageHideMode').prop('checked', true);
 
       $('#sp_applyImageHideMode').val(this.state.applyImageHideMode || 'default');
       $('#sp_kaomojiSort').val(this.state.kaomojiSort || 'default');
