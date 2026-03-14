@@ -4049,7 +4049,17 @@ $('#sp_apply').off('click').on('click', ()=>{
    * tag 9. 引用浮窗/鼠标离开后自动隐藏原生引用
    * -------------------------------------------------- */
   function enableQuotePreview() {
+
     const cache = Object.create(null);
+
+    // 防止短时间内重复点击同一引用号导致多重弹窗
+
+    let lastQuoteTid = null;
+
+    let lastQuoteAt = 0;
+
+    const QUOTE_DOUBLE_CLICK_WINDOW = 250;
+
     // 注入样式（只注入一次）
     if (!document.getElementById('qp-styles')) {
       const style = document.createElement('style');
@@ -4382,13 +4392,37 @@ $('#sp_apply').off('click').on('click', ()=>{
 
 
     $(document).off('click.qp').on('click.qp', 'font[color="#789922"]', function(e){
+
       $('#h-ref-view').hide().css('opacity', '');   // 点击时关闭原生引用框并重置透明度
+
       e.preventDefault();
+
       e.stopPropagation();
+
       const tid = (this.textContent.match(/\d+/) || [])[0];
+
       if (!tid) return;
+
+
+
+      const now = Date.now();
+
+      if (lastQuoteTid === tid && now - lastQuoteAt <= QUOTE_DOUBLE_CLICK_WINDOW) {
+
+        return; // 同一引用号短时间内重复点击，忽略
+
+      }
+
+      lastQuoteTid = tid;
+
+      lastQuoteAt = now;
+
+
+
       fetchData(tid).then(showQuote);
+
     });
+
     $(document).on('mouseleave', 'font[color="#789922"]', function () {
       $('#h-ref-view').hide();   // 鼠标移开时关闭原生引用框
     });
