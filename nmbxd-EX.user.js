@@ -462,9 +462,16 @@ init() {
               </div>
             </div>
 
-            <div id="sp_panel_footer" style="padding:10px 18px;text-align:right;border-top:1px solid #eee;background:#fff;">
-              <button id="sp_apply" style="margin-right:10px;padding:6px 10px;">应用更改</button>
-              <button id="sp_close" style="padding:6px 10px;">关闭</button>
+            <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#fff;">
+              <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
+                <a href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
+                <a href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">油猴</a>
+                <a href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
+              </div>
+              <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
+                <button id="sp_apply" style="padding:6px 10px;">应用更改</button>
+                <button id="sp_close" style="padding:6px 10px;">关闭</button>
+              </div>
             </div>
           </div>
         </div>`;
