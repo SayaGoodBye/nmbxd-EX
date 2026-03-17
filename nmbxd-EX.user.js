@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0.1
+// @version      2.1.0.2
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode / 侧边栏收起 / 图片隐藏模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -368,7 +368,14 @@ init() {
               max-height:calc(100vh - 80px);background:#fff;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;">
-              <h2 style="margin:0 0 10px;">X岛-EX 设置</h2>
+              <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
+
+                <span style="font-size:20px; font-weight:bold;">X岛-EX</span>
+
+                <a id="sp_version_link" href="javascript:void(0)" style="position:absolute; right:0; top:50%; transform:translateY(-50%); font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
+
+              </div>
+
               <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
                 <div style="width:50%;"><input type="checkbox" id="sp_enableCookieSwitch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_enablePaginationDuplication"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
@@ -800,15 +807,28 @@ $('#sp_apply').off('click').on('click', ()=>{
       });
 
       // 关闭面板
+
       $('#sp_close,#sp_cover').off('click').on('click', e=>{
+
         if (e.target.id==='sp_close' || e.target.id==='sp_cover')
+
           $('#sp_cover').fadeOut();
+
       });
+
+
 
       //鼠标悬浮在具体功能上显示提示
       // ====== 1. 定义功能描述映射表 ======
+
       const spDescriptions = {
+
+        sp_updateLog: '【更新日志占位】
+- 在这里填写更新内容
+- 支持多行文本',
+
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
+
         sp_enablePaginationDuplication: '在串首页添加页码导航栏',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
@@ -839,7 +859,42 @@ $('#sp_apply').off('click').on('click', ()=>{
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
       };
 
-      // ====== 2. 创建 tooltip 元素并添加样式 ======
+      
+      // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
+      if (!document.getElementById('sp_update_log')) {
+        const $log = $(
+          '<div id=\"sp_update_log\" style=\"display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10001;\">' +
+            '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.2);\">' +
+              '<div style=\"padding:10px 12px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;\">' +
+                '<span style=\"font-weight:bold;\">更新日志</span>' +
+                '<span id=\"sp_update_log_close\" style=\"cursor:pointer;\">✕</span>' +
+              '</div>' +
+              '<div style=\"padding:12px;font-size:12px;white-space:pre-line;\">' +
+                (spDescriptions.sp_updateLog || '') +
+              '</div>' +
+            '</div>' +
+          '</div>'
+        );
+        $('body').append($log);
+        $('#sp_update_log_close,#sp_update_log').on('click', (e) => {
+          if (e.target.id === 'sp_update_log' || e.target.id === 'sp_update_log_close') {
+            $('#sp_update_log').fadeOut(120);
+          }
+        });
+      }
+
+      // 版本号同步到当前脚本版本
+      try {
+        const ver = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) ? GM_info.script.version : '';
+        if (ver) $('#sp_version_link').text('v' + ver);
+      } catch (e) {}
+
+      $('#sp_version_link').off('click').on('click', (e) => {
+        e.preventDefault();
+        $('#sp_update_log').fadeIn(120);
+      });
+
+// ====== 2. 创建 tooltip 元素并添加样式 ======
       if (!$('#sp_tooltip').length) {
         $('body').append('<div id="sp_tooltip"></div>');
         const tooltipStyle = `
