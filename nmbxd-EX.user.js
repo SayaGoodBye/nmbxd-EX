@@ -823,9 +823,7 @@ $('#sp_apply').off('click').on('click', ()=>{
 
       const spDescriptions = {
 
-        sp_updateLog: '【更新日志占位】
-- 在这里填写更新内容
-- 支持多行文本',
+        sp_updateLog: '2.1.0.2\n新增：\n1.新增设置面板更新日志\n2.新增设置面板反馈入口\n\n修复：\n1.修复短时间内点击引用号导致的多重弹窗\n',
 
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
 
