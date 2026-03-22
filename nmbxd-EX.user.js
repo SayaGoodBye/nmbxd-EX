@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0.2
+// @version      2.1.1
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode / 侧边栏收起 / 图片隐藏模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -224,6 +224,7 @@
       enableAutoCookieRefreshToast: false,
       interceptReplyFormUnvcode: true, // 拦截回复中间页--unvcode
       interceptReplyFormU200B: true,
+      interceptReplyFormAutoCompress: true,
       enableSeamlessPaging: true,
       enableAutoSeamlessPaging: true,
       enableHDImageAndLayoutFix: true,               // 启用高清图片链接
@@ -364,7 +365,7 @@ init() {
         </style>
         <div id="sp_cover" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;">
           <div id="sp_panel" style="
-              position:relative;margin:40px auto;width:480px;
+              position:relative;margin:40px auto;width:min(560px, calc(100vw - 32px));
               max-height:calc(100vh - 80px);background:#fff;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;">
@@ -383,26 +384,26 @@ init() {
                 <div style="width:50%;"><input type="checkbox" id="sp_updatePreviewCookie"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_hideEmptyTitleEmail"><label for="sp_hideEmptyTitleEmail"> 隐藏无标题/无名氏/版规</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_enableExternalImagePreview"><label for="sp_enableExternalImagePreview"> 显示外部图床</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enableAutoCookieRefresh"><label for="sp_enableAutoCookieRefresh"> 自动刷新饼干</label><input type="checkbox" id="sp_enableAutoCookieRefreshToast" style="margin-left:8px;"><label for="sp_enableAutoCookieRefreshToast"> toast提示</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enableSeamlessPaging"><label for="sp_enableSeamlessPaging"> 无缝翻页</label><input type="checkbox" id="sp_enableAutoSeamlessPaging" checked style="margin-left:8px;"><label for="sp_enableAutoSeamlessPaging"> 自动翻页</label></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enableAutoCookieRefresh"><label for="sp_enableAutoCookieRefresh"> 自动刷新饼干</label><input type="checkbox" id="sp_enableAutoCookieRefreshToast"><label for="sp_enableAutoCookieRefreshToast"> toast提示</label></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enableSeamlessPaging"><label for="sp_enableSeamlessPaging"> 无缝翻页</label><input type="checkbox" id="sp_enableAutoSeamlessPaging" checked><label for="sp_enableAutoSeamlessPaging"> 自动翻页</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_enableHDImageAndLayoutFix"><label for="sp_enableHDImageAndLayoutFix"> 图片控件-布局调整</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_enableLinkBlank"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_enableQuotePreview"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_extendQuote"><label for="sp_extendQuote"> 拓展引用格式</label></div>
                 <div style="width:50%;"><input type="checkbox" id="sp_toggleSidebar"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_interceptReplyFormUnvcode"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
-                <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
+                <div style="width:50%;"><label for="sp_占位"> </label></div>
                 <!-- 以下是默认勾选项不可更改 -->
-                <div style="width:50%;"><input type="checkbox" id="sp_updateReplyNumbers" class="fixed-on" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_replaceRightSidebar" class="fixed-on" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_interceptReplyFormUnvcode"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_updateReplyNumbers" class="fixed-on" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_replaceRightSidebar" class="fixed-on" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
                 <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_kaomojiEnhancer" class="fixed-on" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><input type="hidden" name="sp_applyFilters" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><input type="hidden" name="sp_enhanceIsland" value="1"></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><input type="hidden" name="sp_applyFilters" value="1"></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><input type="hidden" name="sp_enhanceIsland" value="1"></div>
                 <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><button id="sp_enablePostExpandAll" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">全部展开</button><input type="hidden" name="sp_enablePostExpand" value="1"></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
+                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
                 <div style="width:50%; display:flex; align-items:center; gap:8px;">
                   <input type="checkbox" id="sp_enableImageHideMode" class="fixed-on" checked disabled><label for="sp_enableImageHideMode"> 模糊/无图/Tips模式</label>
                   <select id="sp_applyImageHideMode" style="height:24px;">
@@ -678,6 +679,7 @@ $('#sp_apply').off('click').on('click', ()=>{
     'enableAutoCookieRefreshToast',
     'interceptReplyFormUnvcode',
     'interceptReplyFormU200B',
+    'interceptReplyFormAutoCompress',
     'enableSeamlessPaging',
     'enableAutoSeamlessPaging',
     'enableHDImageAndLayoutFix',
@@ -823,7 +825,7 @@ $('#sp_apply').off('click').on('click', ()=>{
 
       const spDescriptions = {
 
-        sp_updateLog: '2.1.0.2\n新增：\n1.新增设置面板更新日志\n2.新增设置面板反馈入口\n\n修复：\n1.修复短时间内点击引用号导致的多重弹窗\n',
+        sp_updateLog: '2.1.1\n新增：\n1.新增自动压缩>2048KB图片功能\n',
 
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
 
@@ -846,6 +848,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         sp_interceptReplyForm: '拦截回复跳转中间页，使用toast提示发送成功/失败信息',
         sp_interceptReplyFormUnvcode: '不可明说的功能，请参照https://words-away.typeboom.com/说明',
         sp_interceptReplyFormU200B: '优先使用插入零宽空格模式而非unvcode替换模式',
+        sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片。',
         sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
         sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面',
@@ -977,6 +980,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         'enableAutoCookieRefreshToast',
         'interceptReplyFormUnvcode',
         'interceptReplyFormU200B',
+        'interceptReplyFormAutoCompress',
         'enableSeamlessPaging',
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
@@ -5751,14 +5755,292 @@ $('#sp_apply').off('click').on('click', ()=>{
         }
       }
 
-      function doSubmit(fd) {
+      async function compressImageToSize(file, maxSizeKB = 2048, minQuality = 0.6) {
+        const maxSizeBytes = maxSizeKB * 1024;
+        const targetUpperBytes = maxSizeBytes;
+        const targetLowerBytes = Math.max(0, (maxSizeKB - 68) * 1024);
+
+        if (file.size <= maxSizeBytes) {
+          return file;
+        }
+
+        console.log(`[compressImage] 开始压缩: ${(file.size / 1024).toFixed(1)}KB -> 目标区间 ${(targetLowerBytes / 1024).toFixed(0)}-${maxSizeKB}KB`);
+        const startTime = performance.now();
+
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          const url = URL.createObjectURL(file);
+
+          img.onload = async () => {
+            URL.revokeObjectURL(url);
+
+            const originalType = file.type || 'image/jpeg';
+            const isJPEG = originalType === 'image/jpeg' || originalType === 'image/jpg';
+            const isWEBP = originalType === 'image/webp';
+            const outputType = isWEBP ? 'image/webp' : (isJPEG ? 'image/jpeg' : 'image/png');
+
+            const drawToCanvas = (scale) => {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              canvas.width = Math.max(1, Math.floor(img.width * scale));
+              canvas.height = Math.max(1, Math.floor(img.height * scale));
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              return canvas;
+            };
+
+            const canvasToBlob = (canvas, quality) => new Promise((resolveBlob, rejectBlob) => {
+              canvas.toBlob((blob) => {
+                if (!blob) {
+                  rejectBlob(new Error('图片压缩失败'));
+                  return;
+                }
+                resolveBlob(blob);
+              }, outputType, quality);
+            });
+
+            const toFile = (blob) => new File([blob], file.name, {
+              type: outputType,
+              lastModified: Date.now()
+            });
+
+            const formatSupportsQuality = outputType !== 'image/png';
+            const clampScale = (scale, minScale = 0.12, maxScale = 1) => Math.min(maxScale, Math.max(minScale, scale));
+            let bestBlob = null;
+            let bestScore = Infinity;
+            let totalAttempts = 0;
+
+            const considerBlob = (blob) => {
+              if (blob.size > targetUpperBytes) return;
+              const score = targetUpperBytes - blob.size;
+              if (score < bestScore) {
+                bestScore = score;
+                bestBlob = blob;
+              }
+            };
+
+            const searchBestQualityAtScale = async (scale) => {
+              const canvas = drawToCanvas(scale);
+
+              if (!formatSupportsQuality) {
+                totalAttempts++;
+                const blob = await canvasToBlob(canvas, 0.92);
+                console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=png-default -> ${(blob.size / 1024).toFixed(1)}KB`);
+                considerBlob(blob);
+                return { blob, exceeded: blob.size > targetUpperBytes, hitRange: blob.size >= targetLowerBytes && blob.size <= targetUpperBytes };
+              }
+
+              let low = minQuality;
+              let high = 0.95;
+              let localBest = null;
+              let localBestScore = Infinity;
+
+              for (let i = 0; i < 7; i++) {
+                const quality = (low + high) / 2;
+                totalAttempts++;
+                const blob = await canvasToBlob(canvas, quality);
+                const sizeKB = blob.size / 1024;
+                console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${quality.toFixed(4)} -> ${sizeKB.toFixed(1)}KB`);
+
+                if (blob.size <= targetUpperBytes) {
+                  const score = targetUpperBytes - blob.size;
+                  if (score < localBestScore) {
+                    localBestScore = score;
+                    localBest = blob;
+                  }
+                  considerBlob(blob);
+                  low = quality;
+                } else {
+                  high = quality;
+                }
+              }
+
+              if (localBest) {
+                return {
+                  blob: localBest,
+                  exceeded: false,
+                  hitRange: localBest.size >= targetLowerBytes && localBest.size <= targetUpperBytes
+                };
+              }
+
+              const fallbackBlob = await canvasToBlob(canvas, minQuality);
+              totalAttempts++;
+              console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${minQuality.toFixed(4)}(fallback) -> ${(fallbackBlob.size / 1024).toFixed(1)}KB`);
+              considerBlob(fallbackBlob);
+              return {
+                blob: fallbackBlob,
+                exceeded: fallbackBlob.size > targetUpperBytes,
+                hitRange: fallbackBlob.size >= targetLowerBytes && fallbackBlob.size <= targetUpperBytes
+              };
+            };
+
+            const searchBestPngScale = async () => {
+              const relaxedLowerBytes = Math.max(Math.floor(maxSizeBytes * 0.84), Math.floor(targetLowerBytes * 0.88));
+              const baseScale = Math.sqrt(targetUpperBytes / file.size);
+              const minScale = clampScale(baseScale * 0.7, 0.12, 0.55);
+              let scale = clampScale(baseScale * 1.08, minScale, 0.92);
+              let lastUnderLimitBlob = null;
+              const seenScales = new Set();
+
+              for (let phase = 0; phase < 6; phase++) {
+                const scaleKey = scale.toFixed(4);
+                if (seenScales.has(scaleKey)) break;
+                seenScales.add(scaleKey);
+
+                const result = await searchBestQualityAtScale(scale);
+                if (!result.exceeded) lastUnderLimitBlob = result.blob;
+                if (result.hitRange) return result;
+
+                if (result.exceeded) {
+                  const shrinkRatio = Math.sqrt(targetUpperBytes / result.blob.size);
+                  const nextScale = clampScale(scale * shrinkRatio * 0.97, minScale, scale * 0.98);
+                  if (Math.abs(nextScale - scale) < 0.005) break;
+                  scale = nextScale;
+                  continue;
+                }
+
+                if (result.blob.size >= relaxedLowerBytes) {
+                  return {
+                    blob: result.blob,
+                    exceeded: false,
+                    hitRange: false
+                  };
+                }
+
+                const growRatio = Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1));
+                const nextScale = clampScale(scale * Math.min(growRatio * 0.985, 1.12), minScale, 0.98);
+                if (nextScale <= scale + 0.004 || nextScale >= 0.995) break;
+                scale = nextScale;
+              }
+
+              if (bestBlob) {
+                return {
+                  blob: bestBlob,
+                  exceeded: false,
+                  hitRange: bestBlob.size >= targetLowerBytes && bestBlob.size <= targetUpperBytes
+                };
+              }
+
+              if (lastUnderLimitBlob) {
+                return {
+                  blob: lastUnderLimitBlob,
+                  exceeded: false,
+                  hitRange: lastUnderLimitBlob.size >= targetLowerBytes && lastUnderLimitBlob.size <= targetUpperBytes
+                };
+              }
+
+              return {
+                blob: null,
+                exceeded: true,
+                hitRange: false
+              };
+            };
+
+            try {
+              if (!formatSupportsQuality) {
+                const pngResult = await searchBestPngScale();
+                const finalBlob = pngResult.blob || bestBlob;
+                if (finalBlob) {
+                  const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+                  console.log(`[compressImage] ✓ PNG完成: ${(file.size / 1024).toFixed(1)}KB -> ${(finalBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
+                  resolve(toFile(finalBlob));
+                  return;
+                }
+
+                reject(new Error('无法将PNG压缩到限制以内'));
+                return;
+              }
+
+              let result = await searchBestQualityAtScale(1);
+              if (result.hitRange) {
+                const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+                console.log(`[compressImage] ✓ 原尺寸命中目标: ${(bestBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
+                resolve(toFile(bestBlob));
+                return;
+              }
+
+              if (result.exceeded) {
+                let scale = clampScale(Math.sqrt(targetUpperBytes / result.blob.size) * 0.98, 0.5, 0.98);
+
+                for (let phase = 0; phase < 4; phase++) {
+                  result = await searchBestQualityAtScale(scale);
+                  if (result.hitRange) break;
+
+                  if (result.exceeded) {
+                    scale = clampScale(scale * 0.92, 0.5, 0.98);
+                  } else if (bestBlob && bestBlob.size < targetLowerBytes) {
+                    scale = clampScale(scale * 1.03, 0.5, 1);
+                    if (scale >= 0.999) break;
+                  } else {
+                    break;
+                  }
+                }
+              }
+
+              if (bestBlob) {
+                const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+                console.log(`[compressImage] ✓ 完成: ${(file.size / 1024).toFixed(1)}KB -> ${(bestBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
+                resolve(toFile(bestBlob));
+                return;
+              }
+
+              reject(new Error('无法将图片压缩到目标大小'));
+            } catch (err) {
+              reject(err);
+            }
+          };
+
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('图片加载失败'));
+          };
+
+          img.src = url;
+        });
+      }
+
+      // 检查错误信息是否与图片大小有关
+      function isImageSizeError(msg) {
+        if (!msg) return false;
+        const patterns = [
+          /图片.*大/i,
+          /不能超过.*2048/i,
+          /超过.*2048/i,
+          /2048.*kb/i,
+          /文件.*大/i,
+          /image.*size/i,
+          /file.*large/i,
+          /too\s*large/i
+        ];
+        return patterns.some(p => p.test(msg));
+      }
+
+      function cloneFormData(sourceFd) {
+        const cloned = new FormData();
+        for (const [key, value] of sourceFd.entries()) {
+          cloned.append(key, value);
+        }
+        return cloned;
+      }
+
+      function resetIllegalRetryState(options = {}) {
+        const { clearOriginalContent = false } = options;
+        form.__illegalRetryCount = 0;
+        form.__illegalRetryCountU200B = 0;
+        if (clearOriginalContent) {
+          form.__originalContent = null;
+        }
+      }
+
+      async function doSubmit(fd, isRetry = false) {
         fetch(form.action, {
           method: form.method,
           body: fd,
           credentials: 'include'
         })
         .then(res => res.text())
-        .then(html => {
+        .then(async html => {
           // 增加调试输出：打印响应 HTML 的前 2000 字符，避免控制台被大量内容淹没
           try { console.log('[interceptReplyForm] response html (truncated):', html.slice(0, 2000)); } catch (e) { console.log('[interceptReplyForm] response html (full):', html); }
           const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -5898,7 +6180,53 @@ $('#sp_apply').off('click').on('click', ()=>{
             const msg = errorMsg.textContent.trim() || '提交失败';
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
 
-            // 如果不是“含有非法词语”的特殊情况，直接提示并返回，避免被后续分支忽略
+            // 检查是否是图片大小错误
+            if (isImageSizeError(msg)) {
+              if (!cfg.interceptReplyFormAutoCompress) {
+                try {
+                  toast(msg);
+                } catch (e) {
+                  console.warn('[interceptReplyForm] toast error for image-size message:', msg, e);
+                }
+                return;
+              }
+
+              const fileInput = form.querySelector('input[type="file"][name="image"]');
+              const file = fileInput && fileInput.files && fileInput.files[0];
+
+              if (file && !isRetry) {
+                const isGif = (file.type || '').toLowerCase() === 'image/gif' || /\.gif$/i.test(file.name || '');
+                if (isGif) {
+                  toast('暂不支持GIF自动压缩', 3000);
+                  return;
+                }
+
+                toast('正在尝试自动压缩', 3000);
+                console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩...`);
+
+                try {
+                  const compressedFile = await compressImageToSize(file, 2048);
+                  console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+
+                  resetIllegalRetryState({ clearOriginalContent: false });
+                  const newFD = cloneFormData(fd);
+                  newFD.set('image', compressedFile);
+
+                  toast(`图片已压缩至 ${(compressedFile.size / 1024).toFixed(1)}KB，正在重新提交...`, 2000);
+                  await doSubmit(newFD, true);
+                  return;
+                } catch (compressErr) {
+                  console.error('[interceptReplyForm] 图片压缩失败:', compressErr);
+                  toast('图片压缩失败，请手动压缩后再试', 3000);
+                  return;
+                }
+              } else if (isRetry) {
+                toast('压缩后图片仍然超过限制，请手动压缩后再试', 3000);
+                return;
+              }
+            }
+
+            // 如果不是"含有非法词语"的特殊情况，直接提示并返回，避免被后续分支忽略
             if (!/含有非法词语/.test(msg)) {
               try {
                 toast(msg);
@@ -5963,7 +6291,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                   form.__illegalRetryCountU200B++;
 
                   toast('已尝试插入零宽空格模式并重试提交', 2000);
-                  doSubmit(newFD);
+                  doSubmit(newFD, false);
                   return;
                 } else {
                   // 原有三次重试逻辑
@@ -6009,7 +6337,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                     const newFD = new FormData(form);
                     newFD.set('content', safeText);
                     form.__illegalRetryCount++;
-                    doSubmit(newFD);
+                    doSubmit(newFD, false);
                     return;
                   }
             
@@ -6025,12 +6353,12 @@ $('#sp_apply').off('click').on('click', ()=>{
         .catch((err) => { console.error('[interceptReplyForm] fetch error:', err); toast('未知错误'); });
       }
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
-      form.__illegalRetryCount = 0;
+      resetIllegalRetryState({ clearOriginalContent: false });
       const textarea = form.querySelector('textarea[name="content"]');
       form.__originalContent = textarea
         ? textarea.value
         : (formData.get('content') || '').toString();
-      doSubmit(formData);
+      doSubmit(formData, false);
     }, true);
 
     // ————— helpers —————
