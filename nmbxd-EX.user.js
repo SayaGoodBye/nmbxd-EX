@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.1
+// @version      2.1.4
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -10,6 +10,7 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_xmlhttpRequest
 // @grant        GM_deleteValue
+// @grant        GM_listValues
 // @grant        GM_addStyle
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @license      WTFPL
@@ -165,6 +166,125 @@
   // 校验分组说明长度（<=20 字符；满足“10个汉字/20个英文字符”的近似约束）
   function isValidDesc(desc) { return !desc || desc.length <= 20; }
 
+  function isValidThreadId(threadId) {
+    return /^\d{8}$/.test(threadId);
+  }
+
+  function parseThreadCookieWhitelistRule(raw) {
+    const idx = Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('：'));
+    let threadPart = '';
+    let cookiePart = '';
+
+    if (idx > 0) {
+      threadPart = raw.slice(0, idx).trim();
+      cookiePart = raw.slice(idx + 1).trim();
+    } else {
+      threadPart = raw.trim();
+    }
+
+    return {
+      threads: Utils.strToList(threadPart),
+      cookies: Utils.strToList(cookiePart),
+    };
+  }
+
+  function buildThreadCookieWhitelistRowHtml(index, group = {}) {
+    const desc = group.desc || '';
+    const threadText = Array.isArray(group.threads) ? group.threads.join(',') : '';
+    const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
+    return `
+      <div class="thread-cookie-whitelist-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="8位串号1,8位串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
+          <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-7位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+        </div>
+      </div>`;
+  }
+
+  function buildCookieGroupRowHtml(type, index, value, placeholder) {
+    return `
+      <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="${type}-input" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${placeholder}" value="${Utils.escapeHTML ? Utils.escapeHTML(value || '') : (value || '')}">
+        </div>
+      </div>`;
+  }
+
+  function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
+    const desc = group.desc || '';
+    const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
+    return `
+      <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-7位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+        </div>
+      </div>`;
+  }
+
+  function normalizeThreadCookieWhitelistGroups(val) {
+    if (!Array.isArray(val)) return [];
+    return val.map((g) => ({
+      desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
+      threads: Array.isArray(g.threads) ? [...new Set(g.threads.filter(isValidThreadId))] : [],
+      cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : [],
+    })).filter((g) => g.threads.length && g.cookies.length);
+  }
+
+  function mergeThreadCookieWhitelistGroups(groups) {
+    const threadOrder = [];
+    const threadToState = new Map();
+    const mergeEvents = [];
+
+    groups.forEach((group, idx) => {
+      const desc = typeof group.desc === 'string' && isValidDesc(group.desc.trim()) ? group.desc.trim() : '';
+      const cookies = [...new Set((group.cookies || []).filter(Utils.cookieLegal))];
+      const threads = [...new Set((group.threads || []).filter(isValidThreadId))];
+      threads.forEach((threadId) => {
+        if (!threadToState.has(threadId)) {
+          threadToState.set(threadId, { desc, cookies: new Set(), firstIndex: typeof group.rowIndex === 'number' ? group.rowIndex : idx });
+          threadOrder.push(threadId);
+        } else {
+          mergeEvents.push({
+            threadId,
+            rowIndex: typeof group.rowIndex === 'number' ? group.rowIndex : idx,
+            desc,
+            cookies,
+          });
+        }
+        cookies.forEach((cookie) => threadToState.get(threadId).cookies.add(cookie));
+      });
+    });
+
+    const grouped = new Map();
+    const mergedGroups = [];
+
+    threadOrder.forEach((threadId) => {
+      const state = threadToState.get(threadId);
+      const cookies = Array.from(state.cookies);
+      const desc = state.desc || '';
+      const key = `${desc}\u0002${cookies.slice().sort().join('\u0001')}`;
+      if (!grouped.has(key)) {
+        const group = { desc, threads: [], cookies };
+        grouped.set(key, group);
+        mergedGroups.push(group);
+      }
+      grouped.get(key).threads.push(threadId);
+    });
+
+    return {
+      groups: mergedGroups,
+      mergeEvents,
+    };
+  }
+
   // 兼容旧版本 blockedCookies 值到“组结构”
   function normalizeBlockedGroups(val) {
     if (!val) return [];
@@ -192,6 +312,37 @@
           map.get(key).push(cookie);
         });
         return [...map.entries()].map(([desc, cookies])=>({desc, cookies}));
+      }
+    }
+    return [];
+  }
+
+  function normalizeMarkedGroups(val) {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      const tokens = Utils.strToList(val);
+      return tokens.map(t => {
+        const { desc, list } = parseDescAndListByLastColon(t);
+        const cookies = list.filter(Utils.cookieLegal);
+        return cookies.length ? { desc, cookies } : null;
+      }).filter(Boolean);
+    }
+    if (Array.isArray(val)) {
+      if (val.length && 'cookies' in val[0]) {
+        return val.map(g => ({
+          desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
+          cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : []
+        })).filter(g => g.cookies.length);
+      }
+      if (val.length && 'cookie' in val[0]) {
+        const map = new Map();
+        val.forEach(({ cookie, desc }) => {
+          if (!Utils.cookieLegal(cookie)) return;
+          const key = typeof desc === 'string' && isValidDesc(desc.trim()) ? desc.trim() : '';
+          if (!map.has(key)) map.set(key, []);
+          map.get(key).push(cookie);
+        });
+        return [...map.entries()].map(([desc, cookies]) => ({ desc, cookies: [...new Set(cookies)] }));
       }
     }
     return [];
@@ -229,9 +380,11 @@
       enableAutoSeamlessPaging: true,
       enableHDImageAndLayoutFix: true,               // 启用高清图片链接
       enableLinkBlank: true, // 串页新标签打开
+      enableAutoUrlLinkify: true,
       enableQuotePreview: true, // 优化引用弹窗
       enableImageHideMode: true, // 图片隐藏/无图模式
       applyImageHideMode: 'default', // default | blur | noimage | tips
+      enableDraft: true,
       extendQuote: true, // 拓展引用格式
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
@@ -240,9 +393,25 @@
       replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
       markedGroups: [],
       blockedCookies: [],
+      threadCookieWhitelistGroups: [],
       blockedKeywords: ''
     },
     state: {},
+
+    syncAuxiliaryControls() {
+      const draftBtn = document.getElementById('sp_toggleDraftCache');
+      if (draftBtn) {
+        const enabled = !!(this.state && this.state.enableDraft);
+        draftBtn.textContent = enabled ? '关闭草稿' : '开启草稿';
+        draftBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      }
+      const expandBtn = document.getElementById('sp_enablePostExpandAll');
+      if (expandBtn) {
+        const enabled = !!(this.state && this.state.enablePostExpandAll);
+        expandBtn.textContent = enabled ? '全部收起' : '全部展开';
+        expandBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      }
+    },
 
 init() {
   const saved = GM_getValue(this.key, {});
@@ -255,7 +424,9 @@ init() {
   console.log('init合并后的state:', JSON.stringify(this.state));
   
   // 兼容迁移：屏蔽饼干到组结构
+  this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
   this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+  this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
   
   // 清理废弃字段
   const validKeys = Object.keys(this.defaults);
@@ -277,10 +448,13 @@ init() {
 
   this.render();
   GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
-    if(remote && !$('#sp_cover').is(':visible')){
+    if(remote){
       this.state = Object.assign({}, this.defaults, nv);
+      this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
       this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+      this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
       this.syncInputs();
+      this.syncAuxiliaryControls();
     }
   });
 },
@@ -289,7 +463,40 @@ init() {
       if (!$('#xdex-setting-style').length) {
           $('head').append(`
               <style id="xdex-setting-style">
+                  :root {
+                      --xdex-sp-panel-bg: #FFFFEE;
+                      --xdex-sp-fold-bg: #F0E0D6;
+                      --xdex-sp-footer-bg: #FFFFEE;
+                      --xdex-sp-border: #eee;
+                      --xdex-sp-shadow: rgba(0,0,0,0.2);
+                  }
+
+                  :root.xdex-darkreader-active {
+                      --xdex-sp-panel-bg: #2b2c2d;
+                      --xdex-sp-fold-bg: #483327;
+                      --xdex-sp-footer-bg: #2b2c2d;
+                      --xdex-sp-border: #4b4d50;
+                      --xdex-sp-shadow: rgba(0,0,0,0.55);
+                  }
+
                   .xdex-inv {opacity:0;pointer-events:none;}
+
+                  #sp_panel {
+                      background: var(--xdex-sp-panel-bg) !important;
+                      box-shadow: 0 2px 10px var(--xdex-sp-shadow) !important;
+                  }
+
+                  .sp_fold,
+                  .sp_fold_head,
+                  .sp_fold_body {
+                      background: var(--xdex-sp-fold-bg) !important;
+                      border-color: var(--xdex-sp-border) !important;
+                  }
+
+                  #sp_panel_footer {
+                      background: var(--xdex-sp-footer-bg) !important;
+                      border-top-color: var(--xdex-sp-border) !important;
+                  }
 
                   /* 默认按钮样式：迷你 EX */
                   #sp_btn {
@@ -333,23 +540,31 @@ init() {
       if (!$('#sp_btn').length) {
         $('body').append(
             $('<button id="sp_btn">EX<span>设置</span></button>')
-                .on('click',()=>$('#sp_cover').fadeIn())
+                .on('click',()=>{
+                  if (typeof window.__xdexSyncDarkReaderTheme === 'function') window.__xdexSyncDarkReaderTheme();
+                  $('#sp_cover').fadeIn();
+                })
         );
     }
 
 
       const fold = (id,title,ph) => `
-        <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;">
+        <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
           <div class="sp_fold_head" data-btn="#btn_${id}"
-              style="display:flex;align-items:center;padding:6px 8px;background:#fafafa;cursor:pointer;">
+              style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
             <span>${title}</span>
             <button id="btn_${id}" class="sp_save xdex-inv" data-id="${id}"
                     style="margin-left:auto;padding:2px 8px;">保存</button>
           </div>
-          <div class="sp_fold_body" style="display:none;padding:8px 10px;">
-            <input id="${id}" style="width:100%;padding:5px;" placeholder="${ph}">
+          <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+          <input id="${id}" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${ph}">
           </div>
         </div>`;
+
+      const checkboxItemStyle = 'width:50%; display:flex; align-items:center; gap:8px;';
+      const checkboxRowStyle = 'width:50%; display:flex; align-items:center; gap:8px;';
+      const quickReplyRowStyle = 'display:flex; align-items:center; gap:12px; margin:4px 0;';
+      const quickReplyColumnStyle = 'flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:4px;';
 
       const html = `
         <style>
@@ -366,7 +581,7 @@ init() {
         <div id="sp_cover" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;">
           <div id="sp_panel" style="
               position:relative;margin:40px auto;width:min(560px, calc(100vw - 32px));
-              max-height:calc(100vh - 80px);background:#fff;border-radius:8px;
+              max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;">
               <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
@@ -378,33 +593,34 @@ init() {
               </div>
 
               <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
-                <div style="width:50%;"><input type="checkbox" id="sp_enableCookieSwitch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enablePaginationDuplication"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_disableWatermark"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_updatePreviewCookie"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_hideEmptyTitleEmail"><label for="sp_hideEmptyTitleEmail"> 隐藏无标题/无名氏/版规</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enableExternalImagePreview"><label for="sp_enableExternalImagePreview"> 显示外部图床</label></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enableAutoCookieRefresh"><label for="sp_enableAutoCookieRefresh"> 自动刷新饼干</label><input type="checkbox" id="sp_enableAutoCookieRefreshToast"><label for="sp_enableAutoCookieRefreshToast"> toast提示</label></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enableSeamlessPaging"><label for="sp_enableSeamlessPaging"> 无缝翻页</label><input type="checkbox" id="sp_enableAutoSeamlessPaging" checked><label for="sp_enableAutoSeamlessPaging"> 自动翻页</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enableHDImageAndLayoutFix"><label for="sp_enableHDImageAndLayoutFix"> 图片控件-布局调整</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enableLinkBlank"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_enableQuotePreview"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_extendQuote"><label for="sp_extendQuote"> 拓展引用格式</label></div>
-                <div style="width:50%;"><input type="checkbox" id="sp_toggleSidebar"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
-                <div style="width:50%;"><label for="sp_占位"> </label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_updatePreviewCookie"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_hideEmptyTitleEmail"><label for="sp_hideEmptyTitleEmail"> 隐藏无标题/无名氏/版规</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableExternalImagePreview"><label for="sp_enableExternalImagePreview"> 显示外部图床</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableAutoCookieRefresh"><label for="sp_enableAutoCookieRefresh"> 自动刷新饼干</label><input type="checkbox" id="sp_enableAutoCookieRefreshToast"><label for="sp_enableAutoCookieRefreshToast"> toast提示</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSeamlessPaging"><label for="sp_enableSeamlessPaging"> 无缝翻页</label><input type="checkbox" id="sp_enableAutoSeamlessPaging" checked><label for="sp_enableAutoSeamlessPaging"> 自动翻页</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableHDImageAndLayoutFix"><label for="sp_enableHDImageAndLayoutFix"> 图片控件-布局调整</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableLinkBlank"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableAutoUrlLinkify"><label for="sp_enableAutoUrlLinkify"> 自动识别网址链接</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableQuotePreview"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote"><label for="sp_extendQuote"> 拓展引用格式</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
+                <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
                 <!-- 以下是默认勾选项不可更改 -->
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_interceptReplyFormUnvcode"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_updateReplyNumbers" class="fixed-on" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_replaceRightSidebar" class="fixed-on" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_kaomojiEnhancer" class="fixed-on" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><input type="hidden" name="sp_applyFilters" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><input type="hidden" name="sp_enhanceIsland" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><button id="sp_enablePostExpandAll" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">全部展开</button><input type="hidden" name="sp_enablePostExpand" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
-                <div style="width:50%; display:flex; align-items:center; gap:8px;">
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyFormUnvcode"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_updateReplyNumbers" class="fixed-on" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="fixed-on" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_kaomojiEnhancer" class="fixed-on" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><input type="hidden" name="sp_applyFilters" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><button id="sp_toggleDraftCache" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;" aria-pressed="true">关闭草稿</button><input type="hidden" name="sp_enhanceIsland" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><button id="sp_enablePostExpandAll" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">全部展开</button><input type="hidden" name="sp_enablePostExpand" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
+                <div style="${checkboxRowStyle}">
                   <input type="checkbox" id="sp_enableImageHideMode" class="fixed-on" checked disabled><label for="sp_enableImageHideMode"> 模糊/无图/Tips模式</label>
                   <select id="sp_applyImageHideMode" style="height:24px;">
                     <option value="default">默认</option>
@@ -416,9 +632,9 @@ init() {
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
-                <div style="display:flex; gap:12px; margin:4px 0;">
+                <div style="${quickReplyRowStyle}">
                   <!-- 左侧：板块页默认模式 -->
-                  <div style="flex:1; display:flex; flex-direction:column;">
+                  <div style="${quickReplyColumnStyle}">
                     <label for="sp_replyModeDefault" style="margin-bottom:4px;">板块页默认模式</label>
                     <select id="sp_replyModeDefault" style="width:100%;">
                       <option value="发串">发串</option>
@@ -426,7 +642,7 @@ init() {
                     </select>
                   </div>
                   <!-- 右侧：回复默认模式 -->
-                  <div style="flex:1; display:flex; flex-direction:column;">
+                  <div style="${quickReplyColumnStyle}">
                     <label for="sp_replyExtraDefault" style="margin-bottom:4px;">回复默认模式</label>
                     <select id="sp_replyExtraDefault" style="width:100%;">
                       <option value="临时">临时</option>
@@ -438,30 +654,44 @@ init() {
 
               <div style="margin-top:12px;">
                 <!-- 标记饼干（组） -->
-                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;">
+                  <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_marked,#btn_group_marked"
-                      style="display:flex;align-items:center;padding:6px 8px;background:#fafafa;cursor:pointer;">
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>标记饼干</span>
                     <button id="btn_group_marked" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
                     <button id="btn_sp_marked" class="sp_save xdex-inv" data-id="sp_marked"
                             style="margin-left:4px;padding:2px 8px;">保存</button>
                   </div>
-                  <div class="sp_fold_body" style="display:none;padding:8px 10px;">
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="marked-inputs-container"></div>
                   </div>
                 </div>
 
                 <!-- 屏蔽饼干（组，含备注） -->
-                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;">
+                  <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_blocked,#btn_group_blocked"
-                      style="display:flex;align-items:center;padding:6px 8px;background:#fafafa;cursor:pointer;">
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>屏蔽饼干</span>
                     <button id="btn_group_blocked" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
                     <button id="btn_sp_blocked" class="sp_save xdex-inv" data-id="sp_blocked"
                             style="margin-left:4px;padding:2px 8px;">保存</button>
                   </div>
-                  <div class="sp_fold_body" style="display:none;padding:8px 10px;">
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-inputs-container"></div>
+                  </div>
+                </div>
+
+                <!-- 只看饼干（组，按串号） -->
+                  <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_threadCookieWhitelist,#btn_group_threadCookieWhitelist"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>只看饼干</span>
+                    <button id="btn_group_threadCookieWhitelist" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
+                    <button id="btn_sp_threadCookieWhitelist" class="sp_save xdex-inv" data-id="sp_threadCookieWhitelist"
+                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div id="thread-cookie-whitelist-inputs-container"></div>
                   </div>
                 </div>
 
@@ -470,7 +700,7 @@ init() {
               </div>
             </div>
 
-            <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#fff;">
+            <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
                 <a href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
                 <a href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">油猴</a>
@@ -592,67 +822,177 @@ init() {
 
               // 保存状态
               try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
+
+              toast(newState ? '已展开长串' : '已折叠长串');
           });
 
+      })();
+
+      (function initDraftToggleButton() {
+          const btn = document.getElementById('sp_toggleDraftCache');
+          if (!btn) return;
+
+          const updateButton = (enabled) => {
+            btn.textContent = enabled ? '关闭草稿' : '开启草稿';
+            btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+          };
+
+          updateButton(!!(SettingPanel.state && SettingPanel.state.enableDraft));
+
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const enabled = !SettingPanel.state.enableDraft;
+            SettingPanel.state.enableDraft = enabled;
+            updateButton(enabled);
+
+            try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
+
+            if (!enabled) {
+              deleteAllDraftsSafe();
+              toast('已清除缓存草稿并关闭草稿功能');
+            } else {
+              try { migrateLegacyDraftIfNeeded(); } catch (err) {}
+              try { if (typeof 载入编辑 === 'function') 载入编辑(); } catch (err) {}
+              try { if (typeof 注册自动保存编辑 === 'function') 注册自动保存编辑(); } catch (err) {}
+              toast('已开启草稿缓存');
+            }
+          });
       })();
 
       // 标记：新增组输入
       $('#btn_group_marked').off('click').on('click', e=>{
         e.stopPropagation();
+        const nextIndex = $('#marked-inputs-container .marked-row').length + 1;
         $('#marked-inputs-container').append(
-          `<input class="marked-input" style="width:100%;padding:5px;"
-                  placeholder="备注:3-7位饼干ID,多个用逗号隔开">`
-        ).find('input').last().focus();
+          buildCookieGroupTwoFieldRowHtml('marked', nextIndex)
+        ).find('.marked-desc-input').last().focus();
       });
       // 屏蔽：新增组输入
       $('#btn_group_blocked').off('click').on('click', e=>{
         e.stopPropagation();
+        const nextIndex = $('#blocked-inputs-container .blocked-row').length + 1;
         $('#blocked-inputs-container').append(
-          `<input class="blocked-input" style="width:100%;padding:5px;"
-                  placeholder="备注:3-7位饼干ID,多个用逗号隔开">`
-        ).find('input').last().focus();
+          buildCookieGroupTwoFieldRowHtml('blocked', nextIndex)
+        ).find('.blocked-desc-input').last().focus();
+      });
+      $('#btn_group_threadCookieWhitelist').off('click').on('click', e=>{
+        e.stopPropagation();
+        const nextIndex = $('#thread-cookie-whitelist-inputs-container .thread-cookie-whitelist-row').length + 1;
+        $('#thread-cookie-whitelist-inputs-container').append(buildThreadCookieWhitelistRowHtml(nextIndex));
+        $('#thread-cookie-whitelist-inputs-container .thread-cookie-whitelist-row').last().find('.thread-cookie-whitelist-desc-input').focus();
+      });
+
+      const saveMarkedGroups = ({ fromDelete = false } = {}) => {
+        const parsed = [];
+        let valid = true;
+        $('#marked-inputs-container .marked-row').each((idx, el)=>{
+          const $row = $(el);
+          const desc = ($row.find('.marked-desc-input').val() || '').trim();
+          const cookies = Utils.strToList(($row.find('.marked-cookies-input').val() || '').trim());
+          if (!desc && !cookies.length) return;
+          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
+          if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
+          parsed.push({ desc, cookies });
+        });
+        if (!valid) return false;
+        this.state.markedGroups = parsed;
+        GM_setValue(this.key, this.state);
+        this.syncInputs();
+        toast(fromDelete ? '已删除标记分组' : '标记分组已保存');
+        applyFilters(this.state);
+        return true;
+      };
+
+      const saveBlockedGroups = ({ fromDelete = false } = {}) => {
+        const parsed = [];
+        let valid = true;
+        $('#blocked-inputs-container .blocked-row').each((idx, el)=>{
+          const $row = $(el);
+          const desc = ($row.find('.blocked-desc-input').val() || '').trim();
+          const cookies = Utils.strToList(($row.find('.blocked-cookies-input').val() || '').trim());
+          if (!desc && !cookies.length) return;
+          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
+          if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
+          parsed.push({ desc, cookies });
+        });
+        if (!valid) return false;
+        this.state.blockedCookies = parsed;
+        GM_setValue(this.key, this.state);
+        this.syncInputs();
+        toast(fromDelete ? '已删除屏蔽分组' : '屏蔽分组已保存');
+        applyFilters(this.state);
+        return true;
+      };
+
+      const saveThreadCookieWhitelistGroups = ({ fromDelete = false } = {}) => {
+        const parsed = [];
+        let valid = true;
+        $('#thread-cookie-whitelist-inputs-container .thread-cookie-whitelist-row').each((idx, el) => {
+          const $row = $(el);
+          const desc = ($row.find('.thread-cookie-whitelist-desc-input').val() || '').trim();
+          const threads = Utils.strToList(($row.find('.thread-cookie-whitelist-threads-input').val() || '').trim());
+          const cookies = Utils.strToList(($row.find('.thread-cookie-whitelist-cookies-input').val() || '').trim());
+          if (!desc && !threads.length && !cookies.length) return;
+          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid = false; return false; }
+          if (!threads.length) { toast(`第${idx + 1}条未指定串号`); valid = false; return false; }
+          if (threads.some(id => !isValidThreadId(id))) { toast(`第${idx + 1}条存在不合法串号`); valid = false; return false; }
+          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid = false; return false; }
+          if (cookies.some(id => !Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid = false; return false; }
+          parsed.push({ desc, threads, cookies, rowIndex: idx + 1 });
+        });
+        if (!valid) return false;
+        const { groups, mergeEvents } = mergeThreadCookieWhitelistGroups(parsed);
+        this.state.threadCookieWhitelistGroups = groups;
+        GM_setValue(this.key, this.state);
+        mergeEvents.forEach((event) => {
+          if (event.desc) {
+            toast(`第${event.rowIndex}条（${event.desc}）中的串号 ${event.threadId} 已与现有只看规则合并`);
+          } else {
+            toast(`第${event.rowIndex}条的串号 ${event.threadId}（${event.cookies.join('，')}）已与现有只看规则合并`);
+          }
+        });
+        this.syncInputs();
+        toast(fromDelete ? '已删除只看饼干分组' : '只看饼干分组已保存');
+        applyFilters(this.state);
+        return true;
+      };
+
+      $('#marked-inputs-container').off('click', '.marked-delete').on('click', '.marked-delete', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $(e.currentTarget).closest('.marked-row').remove();
+        saveMarkedGroups({ fromDelete: true });
+        return false;
+      });
+
+      $('#blocked-inputs-container').off('click', '.blocked-delete').on('click', '.blocked-delete', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $(e.currentTarget).closest('.blocked-row').remove();
+        saveBlockedGroups({ fromDelete: true });
+        return false;
+      });
+
+      $('#thread-cookie-whitelist-inputs-container').off('click', '.thread-cookie-whitelist-delete').on('click', '.thread-cookie-whitelist-delete', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $(e.currentTarget).closest('.thread-cookie-whitelist-row').remove();
+        saveThreadCookieWhitelistGroups({ fromDelete: true });
+        return false;
       });
 
       // 标记：保存
       $('#btn_sp_marked').off('click').on('click', e=>{
         e.stopPropagation();
-        const parsed = [];
-        let valid = true;
-        $('#marked-inputs-container .marked-input').each((_,el)=>{
-          const v = $(el).val().trim();
-          if (!v) return;
-          const { desc, list } = parseDescAndListByLastColon(v);
-          if (!list.length) { toast(`“${v}” 未指定饼干`); valid=false; return false; }
-          if (!isValidDesc(desc)) { toast(`“${v}” 备注过长`); valid=false; return false; }
-          if (list.some(id=>!Utils.cookieLegal(id))) { toast(`“${v}” 存在不合法饼干`); valid=false; return false; }
-          parsed.push({ desc, cookies: list });
-        });
-        if (!valid) return;
-        this.state.markedGroups = parsed;
-        GM_setValue(this.key, this.state);
-        toast('标记分组已保存');
-        applyFilters(this.state);
+        saveMarkedGroups();
       });
 
       // 屏蔽：保存
       $('#btn_sp_blocked').off('click').on('click', e=>{
         e.stopPropagation();
-        const parsed = [];
-        let valid = true;
-        $('#blocked-inputs-container .blocked-input').each((_,el)=>{
-          const v = $(el).val().trim();
-          if (!v) return;
-          const { desc, list } = parseDescAndListByLastColon(v);
-          if (!list.length) { toast(`“${v}” 未指定饼干`); valid=false; return false; }
-          if (!isValidDesc(desc)) { toast(`“${v}” 备注过长`); valid=false; return false; }
-          if (list.some(id=>!Utils.cookieLegal(id))) { toast(`“${v}” 存在不合法饼干`); valid=false; return false; }
-          parsed.push({ desc, cookies: list });
-        });
-        if (!valid) return;
-        this.state.blockedCookies = parsed;
-        GM_setValue(this.key, this.state);
-        toast('屏蔽分组已保存');
-        applyFilters(this.state);
+        saveBlockedGroups();
       });
 
       // 屏蔽关键词：单项保存
@@ -664,6 +1004,11 @@ init() {
         GM_setValue(this.key, this.state);
         toast('屏蔽关键词已保存');
         applyFilters(this.state);
+      });
+
+      $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
+        e.stopPropagation();
+        saveThreadCookieWhitelistGroups();
       });
 
       // 应用更改：保存开关、屏蔽(组)、标记(组)
@@ -684,6 +1029,7 @@ $('#sp_apply').off('click').on('click', ()=>{
     'enableAutoSeamlessPaging',
     'enableHDImageAndLayoutFix',
     'enableLinkBlank',
+    'enableAutoUrlLinkify',
     'enableQuotePreview',
     'extendQuote',
     'toggleSidebar'
@@ -759,6 +1105,31 @@ $('#sp_apply').off('click').on('click', ()=>{
         if (!valid) return;
         this.state.blockedCookies = bk;
 
+        const wlg = [];
+        $('#thread-cookie-whitelist-inputs-container .thread-cookie-whitelist-row').each((idx, el) => {
+          const $row = $(el);
+          const desc = ($row.find('.thread-cookie-whitelist-desc-input').val() || '').trim();
+          const threads = Utils.strToList(($row.find('.thread-cookie-whitelist-threads-input').val() || '').trim());
+          const cookies = Utils.strToList(($row.find('.thread-cookie-whitelist-cookies-input').val() || '').trim());
+          if (!desc && !threads.length && !cookies.length) return;
+          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid = false; return false; }
+          if (!threads.length) { toast(`第${idx + 1}条未指定串号`); valid = false; return false; }
+          if (threads.some(id => !isValidThreadId(id))) { toast(`第${idx + 1}条存在不合法串号`); valid = false; return false; }
+          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid = false; return false; }
+          if (cookies.some(id => !Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid = false; return false; }
+          wlg.push({ desc, threads, cookies, rowIndex: idx + 1 });
+        });
+        if (!valid) return;
+        const { groups: mergedWhitelistGroups, mergeEvents } = mergeThreadCookieWhitelistGroups(wlg);
+        this.state.threadCookieWhitelistGroups = mergedWhitelistGroups;
+        mergeEvents.forEach((event) => {
+          if (event.desc) {
+            toast(`第${event.rowIndex}条（${event.desc}）中的串号 ${event.threadId} 已与现有只看规则合并`);
+          } else {
+            toast(`第${event.rowIndex}条的串号 ${event.threadId}（${event.cookies.join('，')}）已与现有只看规则合并`);
+          }
+        });
+
         // 原版
         // GM_setValue(this.key, this.state);
         // toast('保存成功，即将刷新页面');
@@ -825,7 +1196,7 @@ $('#sp_apply').off('click').on('click', ()=>{
 
       const spDescriptions = {
 
-        sp_updateLog: '2.1.1\n新增：\n1.新增自动压缩>2048KB图片功能\n',
+        sp_updateLog: '2.1.4\n新增：\n1.新增自动识别网址，点击新标签页打开，可与“拓展引用格式”共同生效\n2.新增“只看饼干”分组规则，可按串号限定只显示指定饼干回复，在指定串号内优先级高于“屏蔽饼干/屏蔽关键词”，只看饼干作用到的回复不会被这二者的规则折叠\n3.新增“增强X岛匿名版”的“自动保存编辑”功能的“开启/关闭草稿”开关，注意关闭草稿时会清空全局所有草稿\n\n优化：\n1.优化UI，回复浮窗、引用浮窗与设置面板更改为岛配色，并且新增 Dark Reader 兼容配色，可在Dark Reader切换开关时随之变化\n2.优化标记饼干/屏蔽饼干/只看饼干输入框，现在将备注、（串号）、饼干分为对应的输入框，无需使用冒号连接\n3.优化“增强X岛匿名版”的“人类友好时间显示”功能，现在只有当前在看页面实时刷新（5s一次），尽量降低脚本负载\n',
 
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
 
@@ -840,6 +1211,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
+        sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
@@ -865,8 +1237,8 @@ $('#sp_apply').off('click').on('click', ()=>{
       if (!document.getElementById('sp_update_log')) {
         const $log = $(
           '<div id=\"sp_update_log\" style=\"display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10001;\">' +
-            '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.2);\">' +
-              '<div style=\"padding:10px 12px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;\">' +
+            '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;background:var(--xdex-sp-panel-bg);border:1px solid var(--xdex-sp-border);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow);\">' +
+              '<div style=\"padding:10px 12px;border-bottom:1px solid var(--xdex-sp-border);display:flex;align-items:center;justify-content:space-between;\">' +
                 '<span style=\"font-weight:bold;\">更新日志</span>' +
                 '<span id=\"sp_update_log_close\" style=\"cursor:pointer;\">✕</span>' +
               '</div>' +
@@ -985,6 +1357,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
         'enableLinkBlank',
+        'enableAutoUrlLinkify',
         'enableQuotePreview',
         'enableImageHideMode',
         'extendQuote',
@@ -1001,23 +1374,21 @@ $('#sp_apply').off('click').on('click', ()=>{
       // 标记分组
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
       const $m = $('#marked-inputs-container').empty();
-      groupsM.forEach(g=>{
-        const v = g.desc ? `${g.desc}:${g.cookies.join(',')}` : g.cookies.join(',');
-        $m.append(
-          `<input class="marked-input" style="width:100%;padding:5px;"
-                  placeholder="说明:饼干1,饼干2">`
-        ).find('input').last().val(v);
+      groupsM.forEach((g, idx)=>{
+        $m.append(buildCookieGroupTwoFieldRowHtml('marked', idx + 1, g));
       });
 
       // 屏蔽分组
       const groupsB = this.state.blockedCookies.length ? this.state.blockedCookies : [{desc:'',cookies:[]}];
       const $b = $('#blocked-inputs-container').empty();
-      groupsB.forEach(g=>{
-        const v = g.desc ? `${g.desc}:${g.cookies.join(',')}` : g.cookies.join(',');
-        $b.append(
-          `<input class="blocked-input" style="width:100%;padding:5px;"
-                  placeholder="备注:3-7位饼干ID,多个用逗号隔开">`
-        ).find('input').last().val(v);
+      groupsB.forEach((g, idx)=>{
+        $b.append(buildCookieGroupTwoFieldRowHtml('blocked', idx + 1, g));
+      });
+
+      const groupsW = this.state.threadCookieWhitelistGroups.length ? this.state.threadCookieWhitelistGroups : [{threads:[],cookies:[]}];
+      const $w = $('#thread-cookie-whitelist-inputs-container').empty();
+      groupsW.forEach((g, idx)=>{
+        $w.append(buildThreadCookieWhitelistRowHtml(idx + 1, g));
       });
 
       // 屏蔽关键词
@@ -1029,7 +1400,7 @@ $('#sp_apply').off('click').on('click', ()=>{
 
       // 初始折叠与按钮隐藏
       $('.sp_fold_body').hide();
-      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked').addClass('xdex-inv');
+      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist').addClass('xdex-inv');
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
@@ -1100,14 +1471,132 @@ $('#sp_apply').off('click').on('click', ()=>{
     });
   }
 
+  function getFilterConfig(cfg) {
+    if (cfg && typeof cfg === 'object') {
+      const next = Object.assign({}, cfg);
+      next.blockedCookies = normalizeBlockedGroups(next.blockedCookies);
+      next.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(next.threadCookieWhitelistGroups);
+      return next;
+    }
+    try {
+      const next = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      next.markedGroups = normalizeMarkedGroups(next.markedGroups);
+      next.blockedCookies = normalizeBlockedGroups(next.blockedCookies);
+      next.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(next.threadCookieWhitelistGroups);
+      return next;
+    } catch (e) {
+      return Object.assign({}, SettingPanel.defaults);
+    }
+  }
+
+  function asFilterRoot(root) {
+    if (!root) return $(document);
+    return root.jquery ? root : $(root);
+  }
+
+  function withSelf($root, selector) {
+    return $root.filter(selector).add($root.find(selector));
+  }
+
+  function resetTag3FilterState(root) {
+    const $root = asFilterRoot(root);
+    withSelf($root, '[data-xdex-filter-target="1"]').each((_, el) => {
+      $(el)
+        .show()
+        .removeData('xdex-collapsed')
+        .removeAttr('data-xdex-filter-target')
+        .removeClass('xdex-generic-collapsed');
+    });
+    withSelf($root, '[data-xdex-filter-placeholder="1"]').remove();
+  }
+
+  function decorateFilterPlaceholder($ph, $el, placeholderClass, expandedFlex = '0 0 auto') {
+    $ph.attr('data-xdex-filter-placeholder', '1').addClass(placeholderClass);
+    $el.attr('data-xdex-filter-target', '1');
+    if ($ph && $el.hasClass('h-threads-item-reply-main')) {
+      const $row  = $el.closest('.h-threads-item-reply');
+      const $icon = $row.find('.h-threads-item-reply-icon').first();
+      if ($row.length) {
+        $row.css({ display: 'flex', alignItems: 'flex-start' });
+      }
+      if ($icon.length) {
+        $icon.css({ flex: '0 0 3em', textAlign: 'center' });
+      }
+      const applyWidth = () => {
+        const txt = ($ph.text() || '').trim();
+        if (txt === '点击折叠') {
+          $ph.css({
+            flex: '0 0 auto',
+            maxWidth: '8em',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            marginRight: '0.5em'
+          });
+        } else {
+          $ph.css({
+            flex: expandedFlex,
+            maxWidth: 'none',
+            whiteSpace: 'normal',
+            overflow: 'visible',
+            textOverflow: 'clip',
+            marginRight: '0'
+          });
+        }
+      };
+      applyWidth();
+      $ph.off('click.xdex-filter-width').on('click.xdex-filter-width', () => {
+        setTimeout(applyWidth, 0);
+      });
+    }
+  }
+
+  function getThreadIdForElement($el) {
+    const $index = $el.closest('.h-threads-item-index[data-threads-id]');
+    const indexTid = ($index.attr('data-threads-id') || '').trim();
+    if (isValidThreadId(indexTid)) return indexTid;
+
+    const pathMatch = location.pathname.match(/\/t\/(\d{8,})/);
+    if (pathMatch) return pathMatch[1].slice(0, 8);
+
+    const href = $el.closest('.h-threads-item-index, .h-threads-item, .h-threads-item-reply, .h-threads-item-reply-main')
+      .find('.h-threads-info-id[href*="/t/"]').first().attr('href') || '';
+    const hrefMatch = href.match(/\/t\/(\d{8,})/);
+    return hrefMatch ? hrefMatch[1].slice(0, 8) : '';
+  }
+
+  function getThreadWhitelistGroup(threadId, groups) {
+    if (!threadId || !groups.length) return null;
+    for (const group of groups) {
+      if ((group.threads || []).includes(threadId)) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  function isSystemReplyElement($el) {
+    if ($el.closest('.h-threads-item-reply[data-threads-id="9999999"]').length) return true;
+    const replyIdText = ($el.find('.h-threads-info-id').first().text() || '').trim();
+    return replyIdText === 'No.9999999';
+  }
+
   function applyFilters(cfg) {
+    const root = arguments.length > 1 ? arguments[1] : undefined;
+    const $root = asFilterRoot(root);
+    cfg = getFilterConfig(cfg);
+    resetTag3FilterState($root);
     // 标记
     markAllCookies(cfg.markedGroups||[]);
 
     // 屏蔽（按组，匹配到则折叠，文案含备注）
     const blkG = (cfg.blockedCookies||[]);
     const blkK = Utils.strToList(cfg.blockedKeywords);
-    const check = $el => {
+    const whitelistGroups = normalizeThreadCookieWhitelistGroups(cfg.threadCookieWhitelistGroups || []);
+
+    const checkBlocked = $el => {
+      if ($el.closest('.h-preview-box').length) return;
+      if (isSystemReplyElement($el)) return;
       const cid = ($el.find('.h-threads-info-uid').first().text().split(':')[1]||'').trim();
       const txt = $el.find('.h-threads-content').first().text();
 
@@ -1121,50 +1610,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         if (matchedCookie) {
           const label = matchedDesc ? `${matchedCookie}：${matchedDesc}` : matchedCookie;
           const $ph = Utils.collapse($el, `饼干屏蔽『${label}』`);
-          if ($ph && $el.hasClass('h-threads-item-reply-main')) {
-            // 只标记“被屏蔽的占位符”
-            $ph.addClass('xdex-placeholder-blocked');
-
-            // 仅对这一条回复行启用左右并排（不会影响别处）
-            const $row  = $el.closest('.h-threads-item-reply');
-            const $icon = $row.find('.h-threads-item-reply-icon').first();
-            if ($row.length) {
-              $row.css({ display: 'flex', alignItems: 'flex-start' });
-            }
-            if ($icon.length) {
-              $icon.css({ flex: '0 0 3em', textAlign: 'center' }); // 固定左列宽
-            }
-
-            // 折叠状态（显示“关键词屏蔽…”）应占满；展开状态（“点击折叠”）应缩成小按钮
-            const applyWidth = () => {
-              const txt = ($ph.text() || '').trim();
-              if (txt === '点击折叠') {
-                $ph.css({
-                  flex: '0 0 auto',
-                  maxWidth: '8em',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  marginRight: '0.5em'
-                });
-              } else {
-                $ph.css({
-                  flex: '0 0 auto',
-                  maxWidth: 'none',
-                  whiteSpace: 'normal',
-                  overflow: 'visible',
-                  textOverflow: 'clip',
-                  marginRight: '0'
-                });
-              }
-            };
-            // 初次应用一次
-            applyWidth();
-            // 点击后（折叠/展开切换文本之后）再应用一次
-            $ph.off('click.xdex-blocked').on('click.xdex-blocked', () => {
-              setTimeout(applyWidth, 0);
-            });
-          }
+          if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '0 0 auto');
           return;
         }
       }
@@ -1172,56 +1618,66 @@ $('#sp_apply').off('click').on('click', ()=>{
       const kw = Utils.firstHit(txt, blkK);
       if (kw) {
         const $ph = Utils.collapse($el, `关键词屏蔽『${kw}』`);
-        if ($ph && $el.hasClass('h-threads-item-reply-main')) {
-          $ph.addClass('xdex-placeholder-blocked');
-
-          const $row  = $el.closest('.h-threads-item-reply');
-          const $icon = $row.find('.h-threads-item-reply-icon').first();
-          if ($row.length) {
-            $row.css({ display: 'flex', alignItems: 'flex-start' });
-          }
-          if ($icon.length) {
-            $icon.css({ flex: '0 0 3em', textAlign: 'center' });
-          }
-
-          const applyWidth = () => {
-            const txt = ($ph.text() || '').trim();
-            if (txt === '点击折叠') {
-              $ph.css({
-                flex: '0 0 auto',
-                maxWidth: '8em',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                marginRight: '0.5em'
-              });
-            } else {
-              $ph.css({
-                flex: '1 1 auto',
-                maxWidth: 'none',
-                whiteSpace: 'normal',
-                overflow: 'visible',
-                textOverflow: 'clip',
-                marginRight: '0'
-              });
-            }
-          };
-          applyWidth();
-          $ph.off('click.xdex-blocked').on('click.xdex-blocked', () => {
-            setTimeout(applyWidth, 0);
-          });
-        }
+        if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '1 1 auto');
       }
     };
 
+    const checkWhitelistReply = ($reply, whitelistGroup) => {
+      if ($reply.closest('.h-preview-box').length) return;
+      if (isSystemReplyElement($reply)) return;
+      const cid = ($reply.find('.h-threads-info-uid').first().text().split(':')[1] || '').trim();
+      if (!cid) return;
+      const whitelistCookies = whitelistGroup?.cookies || [];
+      if (whitelistCookies.some((pattern) => Utils.cookieMatch(cid, pattern))) {
+        return;
+      }
+      const prefix = whitelistGroup && whitelistGroup.desc ? `『${whitelistGroup.desc}』` : '';
+      const $ph = Utils.collapse($reply, `${prefix}只看饼干『${whitelistCookies.join('，')}』`);
+      if ($ph) decorateFilterPlaceholder($ph, $reply, 'xdex-placeholder-whitelist', '0 0 auto');
+    };
+
     if(/\/t\/\d{8,}/.test(location.pathname)){
-      $('.h-threads-item-reply-main').each((_,el)=>check($(el)));
-    } else {
-      $('.h-threads-item-index').each((_,el)=>{
-        const $th=$(el);
-        check($th);
-        $th.find('.h-threads-item-reply-main').each((_,s)=>check($(s)));
+      const currentThreadId = getThreadIdForElement($root);
+      const whitelistGroup = getThreadWhitelistGroup(currentThreadId, whitelistGroups);
+      withSelf($root, '.h-threads-item-reply-main').each((_,el)=>{
+        const $reply = $(el);
+        if (whitelistGroup) {
+          checkWhitelistReply($reply, whitelistGroup);
+        } else {
+          checkBlocked($reply);
+        }
       });
+    } else {
+      const $threads = withSelf($root, '.h-threads-item-index');
+      if ($threads.length) {
+        $threads.each((_,el)=>{
+        const $th=$(el);
+        const threadId = getThreadIdForElement($th);
+        const whitelistGroup = getThreadWhitelistGroup(threadId, whitelistGroups);
+        if (!whitelistGroup) {
+          checkBlocked($th);
+        }
+        $th.find('.h-threads-item-reply-main').each((_,s)=>{
+          const $reply = $(s);
+          if (whitelistGroup) {
+            checkWhitelistReply($reply, whitelistGroup);
+          } else {
+            checkBlocked($reply);
+          }
+        });
+        });
+      } else {
+        withSelf($root, '.h-threads-item-reply-main').each((_, el) => {
+          const $reply = $(el);
+          const threadId = getThreadIdForElement($reply);
+          const whitelistGroup = getThreadWhitelistGroup(threadId, whitelistGroups);
+          if (whitelistGroup) {
+            checkWhitelistReply($reply, whitelistGroup);
+          } else {
+            checkBlocked($reply);
+          }
+        });
+      }
     }
   }
 
@@ -1731,7 +2187,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         <!-- 遮罩层 -->
         <div class="login-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>
         <!-- 弹窗内容 -->
-        <div class="login-dialog" style="position:relative;top:30%;width:400px;background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.3);z-index:10001;">
+        <div class="login-dialog" style="position:relative;top:30%;width:400px;background:#FFFFEE;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.3);z-index:10001;">
           <h2>提示</h2>
           <p>当前已退出登录，无法切换饼干。</p>
           <p>请注意：此时仍可作为最后一次应用的饼干回复。</p>
@@ -1998,6 +2454,7 @@ $('#sp_apply').off('click').on('click', ()=>{
 
     try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
     try { if (liveCfg && typeof applyFilters === 'function') applyFilters(liveCfg, root); } catch (e) {}
+    try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
     try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
 
     setTimeout(() => {
@@ -2019,9 +2476,11 @@ $('#sp_apply').off('click').on('click', ()=>{
         }
       } catch (e) {}
       try { if (liveCfg && liveCfg.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(root); } catch (e) {}
+      try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
       try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
       try { if (typeof applyFilters === 'function') applyFilters(liveCfg); } catch (e) {}
+      try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
       try { if (typeof initContent === 'function') initContent(); } catch (e) {}
       try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
@@ -4109,6 +4568,187 @@ $('#sp_apply').off('click').on('click', ()=>{
     });
   }
 
+  function runAutoUrlLinkify(root = document) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const processedAttr = 'data-xdex-linkified';
+    const containerSelector = '.h-threads-content, .h-preview-box';
+    const protocolUrlRegex = /https?:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
+    const wwwUrlRegex = /www\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
+    const bareDomainScanRegex = /(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
+    const bareDomainCandidateRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?$/i;
+    const trailingPunctuationRegex = /[),.!?\]}'"，。！？；：、】【）》」』、]+$/;
+    const skipTags = new Set(['A', 'CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'BUTTON']);
+    const tightBoundaryRegex = /[0-9A-Za-z_\-\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/u;
+
+    const shouldSkipTextNode = (node) => {
+      const parent = node.parentElement;
+      if (!parent) return true;
+      if (parent.closest('a, code, pre, script, style, textarea, input, select, button')) return true;
+      return skipTags.has(parent.tagName);
+    };
+
+    const normalizeHref = (value) => {
+      if (/^https?:\/\//i.test(value)) return value;
+      return `https://${value}`;
+    };
+
+    const hasTightBoundary = (char) => !!char && tightBoundaryRegex.test(char);
+
+    const extractCandidate = (text, match, type) => {
+      let matchedText = match[0];
+      while (trailingPunctuationRegex.test(matchedText)) {
+        matchedText = matchedText.replace(trailingPunctuationRegex, '');
+      }
+      if (!matchedText) return null;
+
+      const startIndex = match.index;
+      const endIndex = startIndex + matchedText.length;
+      const prevChar = text[startIndex - 1] || '';
+      const nextChar = text[endIndex] || '';
+      const isBareDomain = type === 'bare';
+
+      if (type === 'www' && hasTightBoundary(prevChar)) {
+        return null;
+      }
+      if (type === 'bare' && hasTightBoundary(prevChar)) {
+        return null;
+      }
+      if (hasTightBoundary(nextChar)) {
+        return null;
+      }
+
+      if (isBareDomain) {
+        if (!bareDomainCandidateRegex.test(matchedText)) return null;
+      }
+
+      return {
+        text: matchedText,
+        href: normalizeHref(matchedText),
+        startIndex,
+        endIndex
+      };
+    };
+
+    const linkifyTextNode = (textNode) => {
+      const text = textNode.nodeValue || '';
+      if (!text.trim()) return;
+
+      protocolUrlRegex.lastIndex = 0;
+      wwwUrlRegex.lastIndex = 0;
+      bareDomainScanRegex.lastIndex = 0;
+      const matches = [
+        ...Array.from(text.matchAll(protocolUrlRegex)).map(match => ({ match, type: 'protocol' })),
+        ...Array.from(text.matchAll(wwwUrlRegex)).map(match => ({ match, type: 'www' })),
+        ...Array.from(text.matchAll(bareDomainScanRegex)).map(match => ({ match, type: 'bare' }))
+      ].sort((a, b) => a.match.index - b.match.index || b.match[0].length - a.match[0].length);
+      if (matches.length === 0) return;
+
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      let changed = false;
+
+      matches.forEach(({ match, type }) => {
+        const candidate = extractCandidate(text, match, type);
+        if (!candidate) return;
+        if (candidate.startIndex < cursor) return;
+
+        if (candidate.startIndex > cursor) {
+          fragment.appendChild(document.createTextNode(text.slice(cursor, candidate.startIndex)));
+        }
+
+        const anchor = document.createElement('a');
+        anchor.href = candidate.href;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        anchor.textContent = candidate.text;
+        anchor.style.color = '#007bff';
+        anchor.style.textDecoration = 'none';
+        anchor.addEventListener('mouseenter', () => {
+          anchor.style.textDecoration = 'underline';
+          anchor.style.textDecorationColor = '#007bff';
+        });
+        anchor.addEventListener('mouseleave', () => {
+          anchor.style.textDecoration = 'none';
+        });
+        fragment.appendChild(anchor);
+
+        cursor = candidate.endIndex;
+        changed = true;
+      });
+
+      if (!changed) return;
+      if (cursor < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(cursor)));
+      }
+      textNode.parentNode.replaceChild(fragment, textNode);
+    };
+
+    const processContainer = (container) => {
+      if (!container) return;
+
+      const pendingWalker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
+            protocolUrlRegex.lastIndex = 0;
+            if (protocolUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            wwwUrlRegex.lastIndex = 0;
+            if (wwwUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            const bareMatches = Array.from(node.nodeValue.matchAll(bareDomainScanRegex));
+            return bareMatches.some(({ 0: value, index }) => extractCandidate(node.nodeValue, { 0: value, index }, 'bare'))
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          }
+        }
+      );
+      const hasPendingText = !!pendingWalker.nextNode();
+      if (container.getAttribute(processedAttr) === '1' && !hasPendingText) return;
+
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
+            protocolUrlRegex.lastIndex = 0;
+            if (protocolUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            wwwUrlRegex.lastIndex = 0;
+            if (wwwUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            const bareMatches = Array.from(node.nodeValue.matchAll(bareDomainScanRegex));
+            return bareMatches.some(({ 0: value, index }) => extractCandidate(node.nodeValue, { 0: value, index }, 'bare'))
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          }
+        }
+      );
+
+      const nodes = [];
+      let currentNode;
+      while ((currentNode = walker.nextNode())) {
+        nodes.push(currentNode);
+      }
+      nodes.forEach(linkifyTextNode);
+      container.setAttribute(processedAttr, '1');
+    };
+
+    const containers = new Set();
+    if (scope.matches && scope.matches(containerSelector)) {
+      containers.add(scope);
+    }
+    if (scope.closest) {
+      const closestContainer = scope.closest(containerSelector);
+      if (closestContainer) containers.add(closestContainer);
+    }
+    if (scope.querySelectorAll) {
+      scope.querySelectorAll(containerSelector).forEach(node => containers.add(node));
+    }
+    containers.forEach(processContainer);
+  }
+
   /* --------------------------------------------------
    * tag 9. 引用浮窗/鼠标离开后自动隐藏原生引用
    * -------------------------------------------------- */
@@ -4158,7 +4798,7 @@ $('#sp_apply').off('click').on('click', ()=>{
           top: 0; left: 0;
           width: 100%; max-height: 100%;
           overflow: auto;
-          background: #fff;
+          background: #FFFFEE;
           border: 1px solid #ccc;
           outline: 2px solid #fff;
           border-radius: 8px;
@@ -4769,11 +5409,55 @@ $('#sp_apply').off('click').on('click', ()=>{
     // 移除原始工具栏
     $('#h-tool').remove();
 
+      const isDarkReaderActive = () => {
+        const root = document.documentElement;
+        if (!root) return false;
+        const mode = root.getAttribute('data-darkreader-mode');
+        const scheme = root.getAttribute('data-darkreader-scheme');
+        return !!(mode && mode !== 'off') || !!(scheme && scheme !== 'off');
+      };
+
+      const syncQuotePopupTheme = () => {
+        const root = document.documentElement;
+        if (!root) return;
+        root.classList.toggle('xdex-darkreader-active', isDarkReaderActive());
+
+        const previewBg = isDarkReaderActive() ? '#483327' : '#F0E0D6';
+        document.querySelectorAll('.qp-body .qp-content-wrap .h-preview-box, .qp-body .qp-content-wrap .h-preview-box .h-threads-item, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main').forEach((el) => {
+          el.style.setProperty('background', previewBg, 'important');
+        });
+      };
+      window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
+
     // 样式（只注入一次）
     if (!document.getElementById('qp-style')) {
         const style = document.createElement('style');
         style.id = 'qp-style';
         style.textContent = `
+          :root {
+            --xdex-qp-shell-bg: #FFFFEE;
+            --xdex-qp-form-bg: #FFFFEE;
+            --xdex-qp-preview-bg: #F0E0D6;
+            --xdex-qp-textarea-bg: #fff;
+            --xdex-qp-border: #ccc;
+            --xdex-qp-outline: #fff;
+            --xdex-qp-shadow: rgba(0,0,0,.24);
+            --xdex-qp-reset-bg: rgba(0,0,0,.6);
+            --xdex-qp-reset-color: #fff;
+          }
+
+          :root.xdex-darkreader-active {
+            --xdex-qp-shell-bg: #2b2c2d;
+            --xdex-qp-form-bg: #2b2c2d;
+            --xdex-qp-preview-bg: #483327;
+            --xdex-qp-textarea-bg: #1f2021;
+            --xdex-qp-border: #4b4d50;
+            --xdex-qp-outline: #3a3c3f;
+            --xdex-qp-shadow: rgba(0,0,0,.55);
+            --xdex-qp-reset-bg: rgba(19,20,21,.88);
+            --xdex-qp-reset-color: #e8e6e3;
+          }
+
           .qp-overlay {
             position: fixed; inset: 0; z-index: 9000;
             background: rgba(0,0,0,.45); display: none;
@@ -4794,11 +5478,11 @@ $('#sp_apply').off('click').on('click', ()=>{
             max-height: 100%;
           overflow-x: hidden;  /* 隐藏横向滚动条 */
           overflow-y: auto;    /* 保留竖向滚动条 */
-            background: #fff;
-            border: 1px solid #ccc;
-            outline: 2px solid #fff;
+            background: var(--xdex-qp-shell-bg);
+            border: 1px solid var(--xdex-qp-border);
+            outline: 2px solid var(--xdex-qp-outline);
             border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,.24);
+            box-shadow: 0 8px 24px var(--xdex-qp-shadow);
             padding: 18px 20px 20px;
             box-sizing: border-box;
           }
@@ -4835,7 +5519,7 @@ $('#sp_apply').off('click').on('click', ()=>{
           .qp-reset-btn {
             position: fixed; right: 12px; bottom: 12px;
             font-size: 20px; line-height: 1;
-            color: #fff; background: rgba(0,0,0,.6);
+            color: var(--xdex-qp-reset-color); background: var(--xdex-qp-reset-bg);
             padding: 6px 12px; border-radius: 6px; cursor: pointer;
             z-index: 9001; /* 比 overlay 高 */
             user-select: none;
@@ -4848,11 +5532,13 @@ $('#sp_apply').off('click').on('click', ()=>{
             gap: 10px;
             max-width: none;       /* 改为 none，不限制最大宽度 */
             margin: 0 auto;
+            background: var(--xdex-qp-form-bg);
           }
 
           .qp-body .qp-content-wrap form {
             max-width: 100%;
             box-sizing: border-box;
+            background: var(--xdex-qp-form-bg);
           }
 
 
@@ -4864,6 +5550,7 @@ $('#sp_apply').off('click').on('click', ()=>{
             width: auto;        /* 不要强制 100% */
             max-width: none;    /* 允许无限扩展 */
             box-sizing: border-box;
+            background: var(--xdex-qp-textarea-bg);
           }
 
 
@@ -4885,6 +5572,7 @@ $('#sp_apply').off('click').on('click', ()=>{
               margin: 0 !important;
               box-sizing: border-box;
               display: block;
+              background: var(--xdex-qp-preview-bg);
           }
 
           /* 浮窗内：仅在非 h-active 状态下限制缩略图宽度 */
@@ -4909,6 +5597,18 @@ $('#sp_apply').off('click').on('click', ()=>{
           .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
         `;
         document.head.appendChild(style);
+    }
+
+    syncQuotePopupTheme();
+    if (!replaceRightSidebar.__darkReaderObserver) {
+      const observer = new MutationObserver(() => syncQuotePopupTheme());
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'style', 'class'],
+        childList: true,
+        subtree: true,
+      });
+      replaceRightSidebar.__darkReaderObserver = observer;
     }
 
     // 扩展坞 DOM
@@ -7868,6 +8568,119 @@ $('#sp_apply').off('click').on('click', ()=>{
     return window.location.pathname;
   }
 
+  function getDraftStorageKey(pathname = getDraftKey()) {
+    return `xdex_draft:${pathname}`;
+  }
+
+  function getDraftRegistryKey() {
+    return 'xdex_draft_registry';
+  }
+
+  function isLegacyDraftKey(key) {
+    return /^\/t\/\d+$/.test(key) || /^\/f\/[^/]+$/.test(key) || /^\/Forum\/timeline\/id\/\d+$/.test(key);
+  }
+
+  function getDraftRegistry() {
+    try {
+      if (typeof GM_getValue === 'function') {
+        const value = GM_getValue(getDraftRegistryKey(), []);
+        return Array.isArray(value) ? value : [];
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  function saveDraftRegistry(list) {
+    try {
+      if (typeof GM_setValue === 'function') {
+        GM_setValue(getDraftRegistryKey(), Array.from(new Set(Array.isArray(list) ? list : [])));
+      }
+    } catch (_) {}
+  }
+
+  function addDraftKeyToRegistry(storageKey) {
+    if (!storageKey) return;
+    const registry = getDraftRegistry();
+    if (!registry.includes(storageKey)) {
+      registry.push(storageKey);
+      saveDraftRegistry(registry);
+    }
+  }
+
+  function removeDraftKeyFromRegistry(storageKey) {
+    if (!storageKey) return;
+    const next = getDraftRegistry().filter((key) => key !== storageKey);
+    saveDraftRegistry(next);
+  }
+
+  function getDraftEnabledNow() {
+    try {
+      if (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+        return !!SettingPanel.state.enableDraft;
+      }
+      if (typeof GM_getValue === 'function') {
+        const saved = GM_getValue(SettingPanel.key, {});
+        return !!Object.assign({}, SettingPanel.defaults, saved).enableDraft;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  function getLegacyDraftValue(pathname = getDraftKey()) {
+    try {
+      if (typeof GM_getValue === 'function') {
+        const value = GM_getValue(pathname, '');
+        return typeof value === 'string' ? value : '';
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  function readDraftValue(pathname = getDraftKey()) {
+    const storageKey = getDraftStorageKey(pathname);
+    let value = '';
+    try {
+      if (typeof GM_getValue === 'function') {
+        value = GM_getValue(storageKey, '');
+      }
+    } catch (_) {}
+    if (typeof value === 'string' && value !== '') return value;
+    return getLegacyDraftValue(pathname);
+  }
+
+  function saveDraftValue(pathname, content) {
+    if (!getDraftEnabledNow()) return;
+    const storageKey = getDraftStorageKey(pathname);
+    try {
+      if (typeof GM_setValue === 'function') {
+        GM_setValue(storageKey, content);
+        addDraftKeyToRegistry(storageKey);
+      }
+    } catch (_) {}
+  }
+
+  function migrateLegacyDraftIfNeeded(pathname = getDraftKey()) {
+    const legacyValue = getLegacyDraftValue(pathname);
+    if (typeof legacyValue !== 'string' || legacyValue === '') return '';
+    const storageKey = getDraftStorageKey(pathname);
+    let current = '';
+    try {
+      if (typeof GM_getValue === 'function') {
+        current = GM_getValue(storageKey, '');
+      }
+    } catch (_) {}
+    if (!current) {
+      try {
+        if (typeof GM_setValue === 'function') {
+          GM_setValue(storageKey, legacyValue);
+          addDraftKeyToRegistry(storageKey);
+        }
+      } catch (_) {}
+    }
+    deleteDraftSafe(pathname);
+    return legacyValue;
+  }
+
   // 统一：安全删除草稿（有 GM_deleteValue 用之；否则写空串兜底）
   function deleteDraftSafe(key) {
     try {
@@ -7880,6 +8693,27 @@ $('#sp_apply').off('click').on('click', ()=>{
         // 无 GM_* 时不做处理
       }
     } catch (_) {}
+    removeDraftKeyFromRegistry(key);
+  }
+
+  function deleteAllDraftsSafe() {
+    const keysToDelete = new Set(getDraftRegistry());
+    try { keysToDelete.add(getDraftStorageKey()); } catch (_) {}
+    try {
+      if (typeof GM_listValues === 'function') {
+        const allKeys = GM_listValues();
+        allKeys.forEach((key) => {
+          if (!isLegacyDraftKey(key)) return;
+          let value = '';
+          try { value = GM_getValue(key, ''); } catch (_) {}
+          if (typeof value === 'string') keysToDelete.add(key);
+        });
+      }
+    } catch (_) {}
+    keysToDelete.forEach((key) => {
+      try { deleteDraftSafe(key); } catch (_) {}
+    });
+    saveDraftRegistry([]);
   }
 
   // 完整移植为可调用函数。需要：jQuery 2.2.4+；GM_setValue/GM_getValue/GM_deleteValue 授权
@@ -7912,6 +8746,9 @@ $('#sp_apply').off('click').on('click', ()=>{
     });
     const 路径 = window.location.pathname;
     const 路径分块 = 路径.split('/').splice(1);
+
+    const isDraftEnabled = () => getDraftEnabledNow();
+    let draftAutosaveBound = false;
 
     // 动态生成预览区域 DOM
     function buildPreviewHtml() {
@@ -8165,8 +9002,9 @@ $('#sp_apply').off('click').on('click', ()=>{
 
   // 草稿：发帖成功清空（拦截模式优先）
   function 清空编辑(key) {
-    if (!cfg.enableDraft) return;
+    if (!isDraftEnabled()) return;
     if (key) {
+      deleteDraftSafe(getDraftStorageKey(key));
       deleteDraftSafe(key);
       return;
     }
@@ -8180,6 +9018,7 @@ $('#sp_apply').off('click').on('click', ()=>{
 
     const m = /https?:\/\/[^/]+(\/t\/\d+)/.exec(hrefEl.href);
     if (!m) return;
+    deleteDraftSafe(getDraftStorageKey(m[1]));
     deleteDraftSafe(m[1]);
   }
 
@@ -8190,13 +9029,12 @@ $('#sp_apply').off('click').on('click', ()=>{
 
     // 草稿：载入
     function 载入编辑() {
-      if (!cfg.enableDraft) return;
+      if (!isDraftEnabled()) return;
       if (!正文框.length) return;
-      const key = window.location.pathname;
-      let draft = '';
-      if (typeof GM_getValue === 'function') {
-        draft = GM_getValue(key, '');
-      }
+      const key = getDraftKey();
+      const migratedLegacy = migrateLegacyDraftIfNeeded(key);
+      let draft = readDraftValue(key);
+      if (!draft && migratedLegacy) draft = migratedLegacy;
 
       // 检查 URL 参数 r
       if (搜索参数.r) {
@@ -8211,7 +9049,11 @@ $('#sp_apply').off('click').on('click', ()=>{
 
     // 草稿：注册自动保存 + 初始化一次保存触发（原脚本用 $(保存编辑)）
     function 注册自动保存编辑() {
-      if (!cfg.enableDraft) return;
+      if (draftAutosaveBound) {
+        保存编辑();
+        return;
+      }
+      draftAutosaveBound = true;
 
       // 原有正文框监听
       $('form').on('input', 保存编辑);
@@ -8225,10 +9067,9 @@ $('#sp_apply').off('click').on('click', ()=>{
 
 
     function 保存编辑() {
-      if (!cfg.enableDraft) return;
       if (!正文框.length) return;
-      if (typeof GM_setValue === 'function') {
-        GM_setValue(window.location.pathname, 正文框.val());
+      if (isDraftEnabled()) {
+        saveDraftValue(getDraftKey(), 正文框.val());
       }
       renderContent(正文框.val());
 
@@ -8468,9 +9309,11 @@ $('#sp_apply').off('click').on('click', ()=>{
       return `${friendlyDate}(${weekday})${friendlyTime}`;
     }
 
-    function formatDateStrOnPage() {
+    function formatDateStrOnPage(root = document) {
       if (!cfg.enableRelativeTime) return;
-      const targets = $('span.h-threads-info-createdat');
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      const $root = root && root.jquery ? root : $(root || document);
+      const targets = withSelf($root, 'span.h-threads-info-createdat');
       targets.each(function () {
         const target = $(this);
         const timeStr = target.attr('title') || target.text().trim();
@@ -8481,42 +9324,80 @@ $('#sp_apply').off('click').on('click', ()=>{
       });
     }
 
+    function stopRelativeTimeScheduler() {
+      if (window.__xdexRelativeTimeTimer) {
+        clearInterval(window.__xdexRelativeTimeTimer);
+        window.__xdexRelativeTimeTimer = null;
+      }
+      if (window.__xdexRelativeTimeVisibilityHandler) {
+        document.removeEventListener('visibilitychange', window.__xdexRelativeTimeVisibilityHandler);
+        window.__xdexRelativeTimeVisibilityHandler = null;
+      }
+    }
+
+    function ensureRelativeTimeScheduler() {
+      if (!cfg.enableRelativeTime) {
+        stopRelativeTimeScheduler();
+        return;
+      }
+
+      if (!window.__xdexRelativeTimeVisibilityHandler) {
+        window.__xdexRelativeTimeVisibilityHandler = () => {
+          if (document.visibilityState === 'visible') {
+            formatDateStrOnPage();
+          }
+        };
+        document.addEventListener('visibilitychange', window.__xdexRelativeTimeVisibilityHandler, { passive: true });
+      }
+
+      if (!window.__xdexRelativeTimeTimer) {
+        window.__xdexRelativeTimeTimer = setInterval(() => {
+          formatDateStrOnPage();
+        }, 5000);
+      }
+
+      if (!document.visibilityState || document.visibilityState === 'visible') {
+        formatDateStrOnPage();
+      }
+    }
+
     // 路由：各页面初始化（与原逻辑一致）
     function 串() {
       if (cfg.enablePreview) initPreviewBox();
-      if (cfg.enableDraft) 载入编辑();
+      if (isDraftEnabled()) 载入编辑();
       if (cfg.enableQuoteInsert) 注册追记引用串号();
-      if (cfg.enableDraft) 注册自动保存编辑();
+      if (cfg.enablePreview || isDraftEnabled()) 注册自动保存编辑();
       if (cfg.enablePasteImage) 注册粘贴图片();
       绑定清除图片按钮();
       if (cfg.enableAutoTitle) 自动标题();
-      if (cfg.enableRelativeTime) setInterval(formatDateStrOnPage, 2500);
+      ensureRelativeTimeScheduler();
     }
 
     function 串只看po() {
       if (cfg.enableAutoTitle) 自动标题();
+      ensureRelativeTimeScheduler();
     }
 
     function 版块() {
       if (cfg.enablePreview) initPreviewBox();
-      if (cfg.enableDraft) 注册自动保存编辑();
+      if (cfg.enablePreview || isDraftEnabled()) 注册自动保存编辑();
       //if (cfg.enableQuoteInsert) 注册追记引用串号();
       if (cfg.enablePasteImage) 注册粘贴图片();
       绑定清除图片按钮();
-      if (cfg.enableRelativeTime) setInterval(formatDateStrOnPage, 2500);
+      ensureRelativeTimeScheduler();
     }
 
     function 时间线() {
       if (cfg.enablePreview) initPreviewBox();
-      if (cfg.enableDraft) 注册自动保存编辑();
+      if (cfg.enablePreview || isDraftEnabled()) 注册自动保存编辑();
       //if (cfg.enableQuoteInsert) 注册追记引用串号();
       if (cfg.enablePasteImage) 注册粘贴图片();
       绑定清除图片按钮();
-      if (cfg.enableRelativeTime) setInterval(formatDateStrOnPage, 2500);
+      ensureRelativeTimeScheduler();
     }
 
     function 回复成功() {
-      if (cfg.enableDraft) 清空编辑();
+      if (isDraftEnabled()) 清空编辑();
       if (cfg.enablePasteImage) 注册粘贴图片();
     }
     document.addEventListener('replySuccess', e => {
@@ -10290,6 +11171,7 @@ $('#sp_apply').off('click').on('click', ()=>{
     if (cfg.enableHDImageAndLayoutFix)   enableHDImageAndLayoutFix(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
+    if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
     if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
     if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
     replaceRightSidebar();                                           //扩展坞增强
