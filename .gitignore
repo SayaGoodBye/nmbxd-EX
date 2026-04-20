@@ -1,3 +1,5 @@
 .alma-snapshots
 .opencode
 .temp
+# hunkwise
+.vscode/hunkwise/

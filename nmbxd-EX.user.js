@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.4
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题/无名氏/版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』/『屏蔽饼干』/『屏蔽关键词』 /『只看饼干』/ 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别。
+// @version      2.1.5
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @grant        GM_getValue
@@ -46,6 +46,7 @@
     }
     isShowing = true;
     const { msg, duration } = toastQueue.shift();
+    console.log('[toast]', msg);
   
     // ✅ 每次创建一个新的 toast 节点
     const $t = $(`<div class="ae-toast" style="
@@ -389,11 +390,11 @@
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
+      threadCookieWhitelistGroups: [],
       replyModeDefault: '回复',   // 板块页默认模式：发串/回复
       replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
       markedGroups: [],
       blockedCookies: [],
-      threadCookieWhitelistGroups: [],
       blockedKeywords: ''
     },
     state: {},
@@ -1012,28 +1013,28 @@ init() {
       });
 
       // 应用更改：保存开关、屏蔽(组)、标记(组)
-$('#sp_apply').off('click').on('click', ()=>{
-  [
-    'enableCookieSwitch',
-    'disableWatermark',
-    'enablePaginationDuplication',
-    'updatePreviewCookie',
-    'hideEmptyTitleEmail',
-    'enableExternalImagePreview',
-    'enableAutoCookieRefresh',
-    'enableAutoCookieRefreshToast',
-    'interceptReplyFormUnvcode',
-    'interceptReplyFormU200B',
-    'interceptReplyFormAutoCompress',
-    'enableSeamlessPaging',
-    'enableAutoSeamlessPaging',
-    'enableHDImageAndLayoutFix',
-    'enableLinkBlank',
-    'enableAutoUrlLinkify',
-    'enableQuotePreview',
-    'extendQuote',
-    'toggleSidebar'
-  ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
+      $('#sp_apply').off('click').on('click', ()=>{
+        [
+          'enableCookieSwitch',
+          'disableWatermark',
+          'enablePaginationDuplication',
+          'updatePreviewCookie',
+          'hideEmptyTitleEmail',
+          'enableExternalImagePreview',
+          'enableAutoCookieRefresh',
+          'enableAutoCookieRefreshToast',
+          'interceptReplyFormUnvcode',
+          'interceptReplyFormU200B',
+          'interceptReplyFormAutoCompress',
+          'enableSeamlessPaging',
+          'enableAutoSeamlessPaging',
+          'enableHDImageAndLayoutFix',
+          'enableLinkBlank',
+          'enableAutoUrlLinkify',
+          'enableQuotePreview',
+          'extendQuote',
+          'toggleSidebar'
+        ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
 
         // 固定启用：不受面板勾选状态影响
         this.state.enableImageHideMode = true;
@@ -1076,31 +1077,33 @@ $('#sp_apply').off('click').on('click', ()=>{
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
         this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
 
-        // 标记分组
+        // 标记分组（双字段结构）
         const mk = [];
         let valid = true;
-        $('#marked-inputs-container .marked-input').each((_,el)=>{
-          const v = $(el).val().trim();
-          if (!v) return;
-          const { desc, list } = parseDescAndListByLastColon(v);
-          if (!list.length) { toast(`“${v}” 未指定饼干`); valid=false; return false; }
-          if (!isValidDesc(desc)) { toast(`“${v}” 分组说明过长`); valid=false; return false; }
-          if (list.some(id=>!Utils.cookieLegal(id))) { toast(`“${v}” 存在不合法饼干`); valid=false; return false; }
-          mk.push({ desc, cookies: list });
+        $('#marked-inputs-container .marked-row').each((idx, el)=>{
+          const $row = $(el);
+          const desc = ($row.find('.marked-desc-input').val() || '').trim();
+          const cookies = Utils.strToList(($row.find('.marked-cookies-input').val() || '').trim());
+          if (!desc && !cookies.length) return;
+          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
+          if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
+          mk.push({ desc, cookies });
         });
         if (!valid) return;
         this.state.markedGroups = mk;
 
-        // 屏蔽分组
+        // 屏蔽分组（双字段结构）
         const bk = [];
-        $('#blocked-inputs-container .blocked-input').each((_,el)=>{
-          const v = $(el).val().trim();
-          if (!v) return;
-          const { desc, list } = parseDescAndListByLastColon(v);
-          if (!list.length) { toast(`“${v}” 未指定饼干`); valid=false; return false; }
-          if (!isValidDesc(desc)) { toast(`“${v}” 备注过长`); valid=false; return false; }
-          if (list.some(id=>!Utils.cookieLegal(id))) { toast(`“${v}” 存在不合法饼干`); valid=false; return false; }
-          bk.push({ desc, cookies: list });
+        $('#blocked-inputs-container .blocked-row').each((idx, el)=>{
+          const $row = $(el);
+          const desc = ($row.find('.blocked-desc-input').val() || '').trim();
+          const cookies = Utils.strToList(($row.find('.blocked-cookies-input').val() || '').trim());
+          if (!desc && !cookies.length) return;
+          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
+          if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
+          bk.push({ desc, cookies });
         });
         if (!valid) return;
         this.state.blockedCookies = bk;
@@ -1195,8 +1198,8 @@ $('#sp_apply').off('click').on('click', ()=>{
       // ====== 1. 定义功能描述映射表 ======
 
       const spDescriptions = {
-
-        sp_updateLog: '2.1.4\n新增：\n1.新增自动识别网址，点击新标签页打开，可与“拓展引用格式”共同生效\n2.新增“只看饼干”分组规则，可按串号限定只显示指定饼干回复，在指定串号内优先级高于“屏蔽饼干/屏蔽关键词”，只看饼干作用到的回复不会被这二者的规则折叠\n3.新增“增强X岛匿名版”的“自动保存编辑”功能的“开启/关闭草稿”开关，注意关闭草稿时会清空全局所有草稿\n\n优化：\n1.优化UI，回复浮窗、引用浮窗与设置面板更改为岛配色，并且新增 Dark Reader 兼容配色，可在Dark Reader切换开关时随之变化\n2.优化标记饼干/屏蔽饼干/只看饼干输入框，现在将备注、（串号）、饼干分为对应的输入框，无需使用冒号连接\n3.优化“增强X岛匿名版”的“人类友好时间显示”功能，现在只有当前在看页面实时刷新（5s一次），尽量降低脚本负载\n',
+        //更新日志updatelog
+        sp_updateLog: '2.1.5\n新增：\n1.新增GIF自动压缩，处理时间可能较长，请耐心等待提交\n\n修复：\n1.修复“图片控件-布局调整”功能收起图片大图后回退为缩略图的问题\n2.修复unvcode与零宽空格模式导致防剧透失效的问题\n3.修复设置面板点击“应用更改”后“标记/屏蔽/只看饼干”设置被清空的问题',
 
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
 
@@ -1221,7 +1224,7 @@ $('#sp_apply').off('click').on('click', ()=>{
         sp_interceptReplyFormUnvcode: '不可明说的功能，请参照https://words-away.typeboom.com/说明',
         sp_interceptReplyFormU200B: '优先使用插入零宽空格模式而非unvcode替换模式',
         sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片。',
-        sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
+        sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
         sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面',
         sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则',
@@ -3977,6 +3980,7 @@ $('#sp_apply').off('click').on('click', ()=>{
           //   msgMain.style.width = msgMain.__originalWidth; // 恢复原始宽度
           //   delete msgMain.__originalWidth;
           // }
+          const msgMain = imgBox.closest('.h-threads-item-reply-main') || imgBox.closest('.h-threads-item-main');
           if (msgMain && msgMain.__originalWidth !== undefined) {
             const baseWidth = parseInt(msgMain.__originalWidth, 10) || msgMain.offsetWidth;
             msgMain.style.width = (baseWidth + 50) + 'px';  // 恢复为原始宽度 + 50
@@ -4197,16 +4201,29 @@ $('#sp_apply').off('click').on('click', ()=>{
           anchor.addEventListener('click', (e) => {
             e.preventDefault();
 
-            const box = anchor.closest('.h-threads-img-box');
-            if (!box) return;
+          const box = anchor.closest('.h-threads-img-box');
+          if (!box) return;
 
-            const img = box.querySelector('.h-threads-img');
-            if (!img) return;
+          const img = box.querySelector('.h-threads-img');
+          if (!img) return;
 
-            // 计数切换展开/收起
-            if (this.lastClickedAnchor !== anchor) {
-              this.lastClickedAnchor = anchor;
-              this.clickCountMap.set(anchor, 0);
+          if (!box.__initialDisplayState) {
+            box.__initialDisplayState = {
+              src: img.currentSrc || img.src || '',
+              href: anchor.href || '',
+              aWidth: anchor.style.width || '',
+              aHeight: anchor.style.height || '',
+              imgWidth: img.style.width || '',
+              imgHeight: img.style.height || '',
+              imgNaturalWidth: img.width || 0,
+              imgNaturalHeight: img.height || 0
+            };
+          }
+
+          // 计数切换展开/收起
+          if (this.lastClickedAnchor !== anchor) {
+            this.lastClickedAnchor = anchor;
+            this.clickCountMap.set(anchor, 0);
             }
             let count = (this.clickCountMap.get(anchor) || 0) + 1;
             this.clickCountMap.set(anchor, count);
@@ -4233,14 +4250,20 @@ $('#sp_apply').off('click').on('click', ()=>{
               box.classList.remove('h-active');
               img.style.transform = '';
               img.dataset.rotateIndex = '0';
-              // const ds = img.getAttribute('data-src');
-              // if (ds) img.src = ds;
-              // ★ 确保 data-src 存在，否则回退到缩略图
-              const ds = img.getAttribute('data-src');
-              if (ds) {
-                img.src = ds;
-              } else {
-                img.src = anchor.href.replace('/image/', '/thumb/');
+              const initial = box.__initialDisplayState;
+              if (initial) {
+                if (initial.src) img.src = initial.src;
+                if (initial.href) anchor.href = initial.href;
+                anchor.style.width = initial.aWidth || '';
+                anchor.style.height = initial.aHeight || '';
+                img.style.width = initial.imgWidth || '';
+                img.style.height = initial.imgHeight || '';
+                if (!initial.imgWidth && initial.imgNaturalWidth) {
+                  img.width = initial.imgNaturalWidth;
+                }
+                if (!initial.imgHeight && initial.imgNaturalHeight) {
+                  img.height = initial.imgNaturalHeight;
+                }
               }
               // 触发布局恢复
               handleImageLayout.handleActiveImageBox(box);
@@ -6700,6 +6723,230 @@ $('#sp_apply').off('click').on('click', ()=>{
         });
       }
 
+      const GIF_MAX_SIZE_KB = 2048;
+      const GIF_TARGET_LOWER_KB = 1900;
+      const GIF_ACCEPTABLE_LOWER_KB = 1850;
+      const GIF_MAX_ORIGINAL_KB = 30 * 1024;//目前限制30MB以内
+      const GIF_MAX_LONG_EDGE = 1600;
+      const GIF_MAX_ATTEMPTS = 3;//目前最多重试3次
+      let gifsicleApiPromise = null;
+
+      function clampNumber(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function formatKB(sizeBytes) {
+        return `${(sizeBytes / 1024).toFixed(1)}KB`;
+      }
+
+      function getGifDimensions(file) {
+        return new Promise((resolve) => {
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => {
+            const result = {
+              width: img.naturalWidth || img.width || 0,
+              height: img.naturalHeight || img.height || 0
+            };
+            URL.revokeObjectURL(url);
+            resolve(result);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve({ width: 0, height: 0 });
+          };
+          img.src = url;
+        });
+      }
+
+      async function ensureGifsicleLoaded() {
+        if (window.__xdexGifsicleModule) {
+          return window.__xdexGifsicleModule;
+        }
+
+        if (!gifsicleApiPromise) {
+          gifsicleApiPromise = import('https://cdn.jsdelivr.net/npm/gifsicle-wasm-browser/dist/gifsicle.min.js')
+            .then((mod) => {
+              const api = (mod && (mod.default || mod.gifsicle || mod)) || null;
+              if (!api) {
+                throw new Error('GIF压缩库未返回可用模块');
+              }
+              window.__xdexGifsicleModule = api;
+              return api;
+            })
+            .catch((err) => {
+              gifsicleApiPromise = null;
+              throw err;
+            });
+        }
+
+        return gifsicleApiPromise;
+      }
+
+      async function runGifsicleAttempt(api, inputFile, args) {
+        const fileName = '/tem/input.gif';
+        const outName = '/out/out.gif';
+        const commandText = [...args, fileName, '-o', outName].join(' ');
+
+        if (typeof api.run === 'function') {
+          const result = await api.run({
+            input: [{ file: inputFile, name: fileName }],
+            command: [commandText]
+          });
+          const output = (result && (result.output || result.files || result)) || [];
+          const outFile = Array.isArray(output)
+            ? output.find((item) => item && (((item.name || '') === outName) || /out\.gif$/i.test(item.name || '')))
+            : null;
+          const data = outFile && (outFile.data || outFile.buffer || outFile.content || outFile.file || outFile.blob);
+          if (data instanceof Blob) return data;
+          if (data instanceof Uint8Array) return new Blob([data], { type: 'image/gif' });
+          if (data instanceof ArrayBuffer) return new Blob([new Uint8Array(data)], { type: 'image/gif' });
+          if (outFile instanceof Blob) return outFile;
+          throw new Error('gifsicle.run 未返回可用输出');
+        }
+
+        if (api.default && typeof api.default.run === 'function') {
+          return runGifsicleAttempt(api.default, inputFile, args);
+        }
+
+        throw new Error('未识别的 gifsicle-wasm-browser API 形态');
+      }
+
+      async function compressGifToSize(file, options = {}) {
+        const maxSizeKB = options.maxSizeKB || GIF_MAX_SIZE_KB;
+        const targetLowerKB = options.targetLowerKB || GIF_TARGET_LOWER_KB;
+        const acceptableLowerKB = options.acceptableLowerKB || GIF_ACCEPTABLE_LOWER_KB;
+        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+        const maxBytes = maxSizeKB * 1024;
+        const lowerBytes = targetLowerKB * 1024;
+        const acceptableLowerBytes = acceptableLowerKB * 1024;
+        const originalKB = file.size / 1024;
+
+        if (file.size <= maxBytes) {
+          return {
+            file,
+            summary: '原始 GIF 已在目标大小内，无需压缩',
+            attempts: []
+          };
+        }
+
+        if (originalKB > GIF_MAX_ORIGINAL_KB) {
+          throw new Error(`GIF 原始体积过大（${formatKB(file.size)}），限制为 <= ${GIF_MAX_ORIGINAL_KB}KB`);
+        }
+
+        const { width, height } = await getGifDimensions(file);
+        if (width > 0 && height > 0) {
+          const longEdge = Math.max(width, height);
+          if (longEdge > GIF_MAX_LONG_EDGE) {
+            throw new Error(`GIF 尺寸过大（${width}x${height}），限制长边 <= ${GIF_MAX_LONG_EDGE}`);
+          }
+        }
+
+        const api = await ensureGifsicleLoaded();
+        const attempts = [];
+        let bestBlob = null;
+        let bestArgs = null;
+
+        const oversizeRatio = file.size / maxBytes;
+        let scale = clampNumber(Math.sqrt(maxBytes / file.size) * (oversizeRatio > 2.5 ? 1.32 : (oversizeRatio > 1.6 ? 1.18 : 1.06)), 0.22, 0.98);
+        let lossy = oversizeRatio > 2.5 ? 40 : (oversizeRatio > 1.6 ? 30 : 20);
+        let colors = oversizeRatio > 2.5 ? 128 : 160;
+        const seenConfigs = new Set();
+
+        console.log(`[compressGif] 开始压缩: ${formatKB(file.size)} -> 目标区间 ${targetLowerKB}-${maxSizeKB}KB, 倍率=${oversizeRatio.toFixed(2)}`);
+
+        for (let i = 0; i < GIF_MAX_ATTEMPTS; i++) {
+          const args = ['-O3', `--lossy=${Math.round(lossy)}`, '--colors', String(Math.round(colors))];
+          if (scale < 0.995) {
+            args.push('--scale', scale.toFixed(3));
+          }
+
+          const configKey = `${Math.round(lossy)}|${Math.round(colors)}|${scale < 0.995 ? scale.toFixed(3) : '1.000'}`;
+          if (seenConfigs.has(configKey)) {
+            scale = clampNumber(scale * 0.97, 0.16, 0.98);
+            lossy = clampNumber(Math.round(lossy) + 8, 0, 200);
+            colors = clampNumber(Math.round(colors) - 16, 48, 256);
+            continue;
+          }
+          seenConfigs.add(configKey);
+
+          try {
+            const blob = await runGifsicleAttempt(api, file, args);
+            const sizeKB = blob.size / 1024;
+            const hitTarget = blob.size <= maxBytes;
+            const inRange = blob.size >= lowerBytes && blob.size <= maxBytes;
+            const attemptLog = {
+              index: i + 1,
+              args: args.join(' '),
+              sizeKB: Number(sizeKB.toFixed(1)),
+              hitTarget,
+              inRange
+            };
+            attempts.push(attemptLog);
+            console.log(`[compressGif] 尝试#${attemptLog.index}: ${attemptLog.args} -> ${attemptLog.sizeKB}KB${inRange ? '（命中目标区间）' : (hitTarget ? '（低于上限）' : '')}`);
+            if (onProgress) {
+              onProgress({
+                index: attemptLog.index,
+                total: GIF_MAX_ATTEMPTS,
+                originalKB: Number(originalKB.toFixed(1)),
+                currentKB: attemptLog.sizeKB,
+                args: attemptLog.args,
+                hitTarget,
+                inRange
+              });
+            }
+
+            if (hitTarget) {
+              if (!bestBlob || blob.size > bestBlob.size) {
+                bestBlob = blob;
+                bestArgs = args;
+              }
+              if (inRange || blob.size >= acceptableLowerBytes) {
+                break;
+              }
+
+              scale = clampNumber(scale * 1.08, 0.16, 0.98);
+              lossy = clampNumber(Math.round(lossy) - 12, 0, 200);
+              colors = clampNumber(Math.round(colors) + 32, 48, 256);
+            } else {
+              scale = clampNumber(scale * 0.90, 0.16, 0.98);
+              lossy = clampNumber(Math.round(lossy) + 18, 0, 200);
+              colors = clampNumber(Math.round(colors) - 24, 48, 256);
+            }
+          } catch (error) {
+            const message = error && error.message ? error.message : String(error);
+            attempts.push({ index: i + 1, args: args.join(' '), error: message });
+            console.error(`[compressGif] 尝试#${i + 1} 失败: ${args.join(' ')} -> ${message}`);
+            if (onProgress) {
+              onProgress({
+                index: i + 1,
+                total: GIF_MAX_ATTEMPTS,
+                originalKB: Number(originalKB.toFixed(1)),
+                currentKB: null,
+                args: args.join(' '),
+                error: message,
+                hitTarget: false,
+                inRange: false
+              });
+            }
+            scale = clampNumber(scale * 0.90, 0.16, 0.98);
+            lossy = clampNumber(Math.round(lossy) + 18, 0, 200);
+            colors = clampNumber(Math.round(colors) - 24, 48, 256);
+          }
+        }
+
+        if (!bestBlob) {
+          throw new Error('GIF 压缩后仍无法降到 2048KB 以下');
+        }
+
+        const compressedFile = new File([bestBlob], file.name.replace(/\.gif$/i, '') + '-compressed.gif', {
+          type: 'image/gif',
+          lastModified: Date.now()
+        });
+        const summary = `最佳命令: ${bestArgs.join(' ')}；原始 ${formatKB(file.size)} -> 压缩后 ${formatKB(compressedFile.size)}`;
+        return { file: compressedFile, summary, attempts };
+      }
+
       // 检查错误信息是否与图片大小有关
       function isImageSizeError(msg) {
         if (!msg) return false;
@@ -6731,6 +6978,14 @@ $('#sp_apply').off('click').on('click', ()=>{
         if (clearOriginalContent) {
           form.__originalContent = null;
         }
+      }
+
+      function processTextPreservingHiddenTags(input, processor) {
+        if (!input || typeof processor !== 'function') return input || '';
+        return input
+          .split(/(\[h\]|\[\/h\])/gi)
+          .map(part => (/^\[h\]$|^\[\/h\]$/i.test(part) ? part : processor(part)))
+          .join('');
       }
 
       async function doSubmit(fd, isRetry = false) {
@@ -6814,7 +7069,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                           <div class="h-threads-info">
                             <span class="h-threads-info-title"></span>
                             <span class="h-threads-info-email"></span>
-                            <span class="h-threads-info-createdat">2077-01-01(四)00:00:01</span>
+                            <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
                             <span class="h-threads-info-uid">ID:${cookieText}</span>
                             <span class="h-threads-info-report-btn">
                               [<a href="/f/值班室" target="_blank">举报</a>]
@@ -6896,17 +7151,31 @@ $('#sp_apply').off('click').on('click', ()=>{
 
               if (file && !isRetry) {
                 const isGif = (file.type || '').toLowerCase() === 'image/gif' || /\.gif$/i.test(file.name || '');
-                if (isGif) {
-                  toast('暂不支持GIF自动压缩', 3000);
-                  return;
-                }
 
-                toast('正在尝试自动压缩', 3000);
+                toast('图片大小>2048KB，正在尝试自动压缩', 3000);
                 console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩...`);
 
                 try {
-                  const compressedFile = await compressImageToSize(file, 2048);
-                  console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+                  let compressedFile;
+                  if (isGif) {
+                    const gifResult = await compressGifToSize(file, {
+                      maxSizeKB: 2048,
+                      targetLowerKB: 1850,
+                      acceptableLowerKB: 1780,
+                      onProgress: (progress) => {
+                        if (progress.error) {
+                          toast(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试...`, 1800);
+                          return;
+                        }
+                        toast(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
+                      }
+                    });
+                    compressedFile = gifResult.file;
+                    console.log(`[interceptReplyForm] GIF压缩完成: ${gifResult.summary}`);
+                  } else {
+                    compressedFile = await compressImageToSize(file, 2048);
+                    console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+                  }
 
                   resetIllegalRetryState({ clearOriginalContent: false });
                   const newFD = cloneFormData(fd);
@@ -6917,7 +7186,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                   return;
                 } catch (compressErr) {
                   console.error('[interceptReplyForm] 图片压缩失败:', compressErr);
-                  toast('图片压缩失败，请手动压缩后再试', 3000);
+                  toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000);
                   return;
                 }
               } else if (isRetry) {
@@ -6964,7 +7233,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                   const hanRegex = /[\u4E00-\u9FFF]/;
                   const engRegex = /[A-Za-z]/;
             
-                  const safeText = currentInput
+                  const safeText = processTextPreservingHiddenTags(currentInput, (segment) => segment
                     .split(/((?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
                     .map(part => {
                       if (!part) return '';
@@ -6982,7 +7251,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                       }
                       return out;
                     })
-                    .join('');
+                    .join(''));
             
                   const newFD = new FormData(form);
                   newFD.set('content', safeText);
@@ -7023,9 +7292,9 @@ $('#sp_apply').off('click').on('click', ()=>{
             
                   let safeText;
                   if (form.__illegalRetryCount < normalRetries) {
-                    safeText = unvcodeSelective(currentInput);
+                    safeText = processTextPreservingHiddenTags(currentInput, (segment) => unvcodeSelective(segment));
                   } else {
-                    safeText = fallbackInsertZWSP(currentInput);
+                    safeText = processTextPreservingHiddenTags(currentInput, (segment) => fallbackInsertZWSP(segment));
                   }
             
                   const shouldRetry =
@@ -8378,7 +8647,7 @@ $('#sp_apply').off('click').on('click', ()=>{
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","_(:зゝ∠)_","(　ﾟ 灬ﾟ)",
+              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人","_(:зゝ∠)_","(　ﾟ 灬ﾟ)",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
@@ -8774,7 +9043,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                 <div class="h-threads-info">
                   <span class="h-threads-info-title"></span>
                   <span class="h-threads-info-email"></span>
-                  <span class="h-threads-info-createdat">2077-01-01(四)00:00:01</span>
+                  <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
                   <span class="h-threads-info-uid">ID:${cookieText}</span>
                   <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
@@ -9900,7 +10169,7 @@ $('#sp_apply').off('click').on('click', ()=>{
                           <div class="h-threads-info">
                             <span class="h-threads-info-title"></span>
                             <span class="h-threads-info-email"></span>
-                            <span class="h-threads-info-createdat">2077-01-01(四)00:00:01</span>
+                            <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
                             <span class="h-threads-info-uid">ID:${cookieText}</span>
                             <span class="h-threads-info-report-btn">
                               [<a href="/f/值班室" target="_blank">举报</a>]
@@ -11171,7 +11440,7 @@ $('#sp_apply').off('click').on('click', ()=>{
     if (cfg.enableHDImageAndLayoutFix)   enableHDImageAndLayoutFix(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
-    if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
+    if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();
     if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
     if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
     replaceRightSidebar();                                           //扩展坞增强
