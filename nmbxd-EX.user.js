@@ -4601,7 +4601,7 @@ init() {
     const bareDomainCandidateRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?$/i;
     const trailingPunctuationRegex = /[),.!?\]}'"，。！？；：、】【）》」』、]+$/;
     const skipTags = new Set(['A', 'CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'BUTTON']);
-    const tightBoundaryRegex = /[0-9A-Za-z_\-\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/u;
+    
 
     const shouldSkipTextNode = (node) => {
       const parent = node.parentElement;
@@ -4615,7 +4615,7 @@ init() {
       return `https://${value}`;
     };
 
-    const hasTightBoundary = (char) => !!char && tightBoundaryRegex.test(char);
+    const hasTightBoundary = (char) => !!char && /[0-9A-Za-z]/.test(char);
 
     const extractCandidate = (text, match, type) => {
       let matchedText = match[0];
@@ -5025,6 +5025,7 @@ init() {
       $overlay.fadeIn(160);
 
       enableHDImageAndLayoutFix($quote[0]);
+      runAutoUrlLinkify($quote[0]);
       runLinkBlank($quote[0]);
       enableHDImageAndLayoutFix();
       initExtendedContent($quote[0]);
