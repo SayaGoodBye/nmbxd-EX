@@ -4591,187 +4591,6 @@ init() {
     });
   }
 
-  function runAutoUrlLinkify(root = document) {
-    const scope = root && root.querySelectorAll ? root : document;
-    const processedAttr = 'data-xdex-linkified';
-    const containerSelector = '.h-threads-content, .h-preview-box';
-    const protocolUrlRegex = /https?:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
-    const wwwUrlRegex = /www\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
-    const bareDomainScanRegex = /(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
-    const bareDomainCandidateRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?$/i;
-    const trailingPunctuationRegex = /[),.!?\]}'"，。！？；：、】【）》」』、]+$/;
-    const skipTags = new Set(['A', 'CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'BUTTON']);
-    
-
-    const shouldSkipTextNode = (node) => {
-      const parent = node.parentElement;
-      if (!parent) return true;
-      if (parent.closest('a, code, pre, script, style, textarea, input, select, button')) return true;
-      return skipTags.has(parent.tagName);
-    };
-
-    const normalizeHref = (value) => {
-      if (/^https?:\/\//i.test(value)) return value;
-      return `https://${value}`;
-    };
-
-    const hasTightBoundary = (char) => !!char && /[0-9A-Za-z]/.test(char);
-
-    const extractCandidate = (text, match, type) => {
-      let matchedText = match[0];
-      while (trailingPunctuationRegex.test(matchedText)) {
-        matchedText = matchedText.replace(trailingPunctuationRegex, '');
-      }
-      if (!matchedText) return null;
-
-      const startIndex = match.index;
-      const endIndex = startIndex + matchedText.length;
-      const prevChar = text[startIndex - 1] || '';
-      const nextChar = text[endIndex] || '';
-      const isBareDomain = type === 'bare';
-
-      if (type === 'www' && hasTightBoundary(prevChar)) {
-        return null;
-      }
-      if (type === 'bare' && hasTightBoundary(prevChar)) {
-        return null;
-      }
-      if (hasTightBoundary(nextChar)) {
-        return null;
-      }
-
-      if (isBareDomain) {
-        if (!bareDomainCandidateRegex.test(matchedText)) return null;
-      }
-
-      return {
-        text: matchedText,
-        href: normalizeHref(matchedText),
-        startIndex,
-        endIndex
-      };
-    };
-
-    const linkifyTextNode = (textNode) => {
-      const text = textNode.nodeValue || '';
-      if (!text.trim()) return;
-
-      protocolUrlRegex.lastIndex = 0;
-      wwwUrlRegex.lastIndex = 0;
-      bareDomainScanRegex.lastIndex = 0;
-      const matches = [
-        ...Array.from(text.matchAll(protocolUrlRegex)).map(match => ({ match, type: 'protocol' })),
-        ...Array.from(text.matchAll(wwwUrlRegex)).map(match => ({ match, type: 'www' })),
-        ...Array.from(text.matchAll(bareDomainScanRegex)).map(match => ({ match, type: 'bare' }))
-      ].sort((a, b) => a.match.index - b.match.index || b.match[0].length - a.match[0].length);
-      if (matches.length === 0) return;
-
-      const fragment = document.createDocumentFragment();
-      let cursor = 0;
-      let changed = false;
-
-      matches.forEach(({ match, type }) => {
-        const candidate = extractCandidate(text, match, type);
-        if (!candidate) return;
-        if (candidate.startIndex < cursor) return;
-
-        if (candidate.startIndex > cursor) {
-          fragment.appendChild(document.createTextNode(text.slice(cursor, candidate.startIndex)));
-        }
-
-        const anchor = document.createElement('a');
-        anchor.href = candidate.href;
-        anchor.target = '_blank';
-        anchor.rel = 'noopener noreferrer';
-        anchor.textContent = candidate.text;
-        anchor.style.color = '#007bff';
-        anchor.style.textDecoration = 'none';
-        anchor.addEventListener('mouseenter', () => {
-          anchor.style.textDecoration = 'underline';
-          anchor.style.textDecorationColor = '#007bff';
-        });
-        anchor.addEventListener('mouseleave', () => {
-          anchor.style.textDecoration = 'none';
-        });
-        fragment.appendChild(anchor);
-
-        cursor = candidate.endIndex;
-        changed = true;
-      });
-
-      if (!changed) return;
-      if (cursor < text.length) {
-        fragment.appendChild(document.createTextNode(text.slice(cursor)));
-      }
-      textNode.parentNode.replaceChild(fragment, textNode);
-    };
-
-    const processContainer = (container) => {
-      if (!container) return;
-
-      const pendingWalker = document.createTreeWalker(
-        container,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode(node) {
-            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
-            protocolUrlRegex.lastIndex = 0;
-            if (protocolUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
-            wwwUrlRegex.lastIndex = 0;
-            if (wwwUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
-            const bareMatches = Array.from(node.nodeValue.matchAll(bareDomainScanRegex));
-            return bareMatches.some(({ 0: value, index }) => extractCandidate(node.nodeValue, { 0: value, index }, 'bare'))
-              ? NodeFilter.FILTER_ACCEPT
-              : NodeFilter.FILTER_REJECT;
-          }
-        }
-      );
-      const hasPendingText = !!pendingWalker.nextNode();
-      if (container.getAttribute(processedAttr) === '1' && !hasPendingText) return;
-
-      const walker = document.createTreeWalker(
-        container,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode(node) {
-            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
-            protocolUrlRegex.lastIndex = 0;
-            if (protocolUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
-            wwwUrlRegex.lastIndex = 0;
-            if (wwwUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
-            const bareMatches = Array.from(node.nodeValue.matchAll(bareDomainScanRegex));
-            return bareMatches.some(({ 0: value, index }) => extractCandidate(node.nodeValue, { 0: value, index }, 'bare'))
-              ? NodeFilter.FILTER_ACCEPT
-              : NodeFilter.FILTER_REJECT;
-          }
-        }
-      );
-
-      const nodes = [];
-      let currentNode;
-      while ((currentNode = walker.nextNode())) {
-        nodes.push(currentNode);
-      }
-      nodes.forEach(linkifyTextNode);
-      container.setAttribute(processedAttr, '1');
-    };
-
-    const containers = new Set();
-    if (scope.matches && scope.matches(containerSelector)) {
-      containers.add(scope);
-    }
-    if (scope.closest) {
-      const closestContainer = scope.closest(containerSelector);
-      if (closestContainer) containers.add(closestContainer);
-    }
-    if (scope.querySelectorAll) {
-      scope.querySelectorAll(containerSelector).forEach(node => containers.add(node));
-    }
-    containers.forEach(processContainer);
-  }
-
   /* --------------------------------------------------
    * tag 9. 引用浮窗/鼠标离开后自动隐藏原生引用
    * -------------------------------------------------- */
@@ -11418,6 +11237,190 @@ init() {
   window.applyImageHideMode = applyImageHideMode;
 
   /* --------------------------------------------------
+   * tag 21. 自动识别链接
+   * -------------------------------------------------- */
+  function runAutoUrlLinkify(root = document) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const processedAttr = 'data-xdex-linkified';
+    const containerSelector = '.h-threads-content, .h-preview-box';
+    const protocolUrlRegex = /https?:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
+    const wwwUrlRegex = /www\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
+    const bareDomainScanRegex = /(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?/gi;
+    const bareDomainCandidateRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{2,5})?(?:\/[^\s<，。！？；：、】【）》」』、?#]*)*(?:\?[^\s<，。！？；：、】【）》」』、#]*)?(?:#[^\s<，。！？；：、】【）》」』、]*)?$/i;
+    const trailingPunctuationRegex = /[),.!?\]}'"，。！？；：、】【）》」』、]+$/;
+    const skipTags = new Set(['A', 'CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'BUTTON']);
+    
+
+    const shouldSkipTextNode = (node) => {
+      const parent = node.parentElement;
+      if (!parent) return true;
+      if (parent.closest('a, code, pre, script, style, textarea, input, select, button')) return true;
+      return skipTags.has(parent.tagName);
+    };
+
+    const normalizeHref = (value) => {
+      if (/^https?:\/\//i.test(value)) return value;
+      return `https://${value}`;
+    };
+
+    const hasTightBoundary = (char) => !!char && /[0-9A-Za-z]/.test(char);
+
+    const extractCandidate = (text, match, type) => {
+      let matchedText = match[0];
+      while (trailingPunctuationRegex.test(matchedText)) {
+        matchedText = matchedText.replace(trailingPunctuationRegex, '');
+      }
+      if (!matchedText) return null;
+
+      const startIndex = match.index;
+      const endIndex = startIndex + matchedText.length;
+      const prevChar = text[startIndex - 1] || '';
+      const nextChar = text[endIndex] || '';
+      const isBareDomain = type === 'bare';
+
+      if (type === 'www' && hasTightBoundary(prevChar)) {
+        return null;
+      }
+      if (type === 'bare' && hasTightBoundary(prevChar)) {
+        return null;
+      }
+      if (hasTightBoundary(nextChar)) {
+        return null;
+      }
+
+      if (isBareDomain) {
+        if (!bareDomainCandidateRegex.test(matchedText)) return null;
+      }
+
+      return {
+        text: matchedText,
+        href: normalizeHref(matchedText),
+        startIndex,
+        endIndex
+      };
+    };
+
+    const linkifyTextNode = (textNode) => {
+      const text = textNode.nodeValue || '';
+      if (!text.trim()) return;
+
+      protocolUrlRegex.lastIndex = 0;
+      wwwUrlRegex.lastIndex = 0;
+      bareDomainScanRegex.lastIndex = 0;
+      const matches = [
+        ...Array.from(text.matchAll(protocolUrlRegex)).map(match => ({ match, type: 'protocol' })),
+        ...Array.from(text.matchAll(wwwUrlRegex)).map(match => ({ match, type: 'www' })),
+        ...Array.from(text.matchAll(bareDomainScanRegex)).map(match => ({ match, type: 'bare' }))
+      ].sort((a, b) => a.match.index - b.match.index || b.match[0].length - a.match[0].length);
+      if (matches.length === 0) return;
+
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      let changed = false;
+
+      matches.forEach(({ match, type }) => {
+        const candidate = extractCandidate(text, match, type);
+        if (!candidate) return;
+        if (candidate.startIndex < cursor) return;
+
+        if (candidate.startIndex > cursor) {
+          fragment.appendChild(document.createTextNode(text.slice(cursor, candidate.startIndex)));
+        }
+
+        const anchor = document.createElement('a');
+        anchor.href = candidate.href;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        anchor.textContent = candidate.text;
+        anchor.style.color = '#007bff';
+        anchor.style.textDecoration = 'none';
+        anchor.addEventListener('mouseenter', () => {
+          anchor.style.textDecoration = 'underline';
+          anchor.style.textDecorationColor = '#007bff';
+        });
+        anchor.addEventListener('mouseleave', () => {
+          anchor.style.textDecoration = 'none';
+        });
+        fragment.appendChild(anchor);
+
+        cursor = candidate.endIndex;
+        changed = true;
+      });
+
+      if (!changed) return;
+      if (cursor < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(cursor)));
+      }
+      textNode.parentNode.replaceChild(fragment, textNode);
+    };
+
+    const processContainer = (container) => {
+      if (!container) return;
+
+      const pendingWalker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
+            protocolUrlRegex.lastIndex = 0;
+            if (protocolUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            wwwUrlRegex.lastIndex = 0;
+            if (wwwUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            const bareMatches = Array.from(node.nodeValue.matchAll(bareDomainScanRegex));
+            return bareMatches.some(({ 0: value, index }) => extractCandidate(node.nodeValue, { 0: value, index }, 'bare'))
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          }
+        }
+      );
+      const hasPendingText = !!pendingWalker.nextNode();
+      if (container.getAttribute(processedAttr) === '1' && !hasPendingText) return;
+
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
+            protocolUrlRegex.lastIndex = 0;
+            if (protocolUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            wwwUrlRegex.lastIndex = 0;
+            if (wwwUrlRegex.test(node.nodeValue)) return NodeFilter.FILTER_ACCEPT;
+            const bareMatches = Array.from(node.nodeValue.matchAll(bareDomainScanRegex));
+            return bareMatches.some(({ 0: value, index }) => extractCandidate(node.nodeValue, { 0: value, index }, 'bare'))
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          }
+        }
+      );
+
+      const nodes = [];
+      let currentNode;
+      while ((currentNode = walker.nextNode())) {
+        nodes.push(currentNode);
+      }
+      nodes.forEach(linkifyTextNode);
+      container.setAttribute(processedAttr, '1');
+    };
+
+    const containers = new Set();
+    if (scope.matches && scope.matches(containerSelector)) {
+      containers.add(scope);
+    }
+    if (scope.closest) {
+      const closestContainer = scope.closest(containerSelector);
+      if (closestContainer) containers.add(closestContainer);
+    }
+    if (scope.querySelectorAll) {
+      scope.querySelectorAll(containerSelector).forEach(node => containers.add(node));
+    }
+    containers.forEach(processContainer);
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => enableHDImageAndLayoutFix(document));
@@ -11441,7 +11444,7 @@ init() {
     if (cfg.enableHDImageAndLayoutFix)   enableHDImageAndLayoutFix(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
-    if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();
+    if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
     if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
     if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
     replaceRightSidebar();                                           //扩展坞增强
