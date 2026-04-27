@@ -31,6 +31,8 @@
   /* --------------------------------------------------
    * tag 0. 通用与工具函数
    * -------------------------------------------------- */
+  const VERSION = "2.1.5";
+  const CHANGELOG = "新增：\n1.新增GIF自动压缩，处理时间可能较长，请耐心等待提交\n\n修复：\n1.修复引用浮窗URL识别\n2.修复unvcode与零宽空格模式导致防剧透失效\n3.修复设置面板点击应用更改后标记/屏蔽/只看饼干设置被清空";
   const toastQueue = [];
   let isShowing = false;
   
@@ -706,6 +708,7 @@ init() {
                 <a href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
                 <a href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">油猴</a>
                 <a href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
+                <a href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
               </div>
               <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
                 <button id="sp_apply" style="padding:6px 10px;">应用更改</button>
@@ -1198,8 +1201,6 @@ init() {
       // ====== 1. 定义功能描述映射表 ======
 
       const spDescriptions = {
-        //更新日志updatelog
-        sp_updateLog: '2.1.5\n新增：\n1.新增GIF自动压缩，处理时间可能较长，请耐心等待提交\n\n修复：\n1.修复“图片控件-布局调整”功能收起图片大图后回退为缩略图的问题\n2.修复unvcode与零宽空格模式导致防剧透失效的问题\n3.修复设置面板点击“应用更改”后“标记/屏蔽/只看饼干”设置被清空的问题',
 
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
 
@@ -1246,7 +1247,7 @@ init() {
                 '<span id=\"sp_update_log_close\" style=\"cursor:pointer;\">✕</span>' +
               '</div>' +
               '<div style=\"padding:12px;font-size:12px;white-space:pre-line;\">' +
-                (spDescriptions.sp_updateLog || '') +
+                (CHANGELOG || '暂无更新说明') +
               '</div>' +
             '</div>' +
           '</div>'
