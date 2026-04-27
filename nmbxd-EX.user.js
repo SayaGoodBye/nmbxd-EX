@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.5
+// @version      2.1.6
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -19,7 +19,7 @@
 // @note         致谢：完整移植[增强x岛匿名版](https://greasyfork.org/zh-CN/scripts/513156-%E5%A2%9E%E5%BC%BAx%E5%B2%9B%E5%8C%BF%E5%90%8D%E7%89%88)
 // @note         致谢：部分功能移植自[X岛-揭示板的增强型体验](https://greasyfork.org/zh-CN/scripts/497875-x%E5%B2%9B-%E6%8F%AD%E7%A4%BA%E6%9D%BF%E7%9A%84%E5%A2%9E%E5%BC%BA%E5%9E%8B%E4%BD%93%E9%AA%8C#%E8%BF%9E%E6%8E%A5%E7%9B%B4%E6%8E%A5%E8%B7%B3%E8%BD%AC)
 // @note         致谢：来自4sYbzEX的搜索服务[野生搜索酱](https://www.nmbxd.com/t/64792841)
-// @note         致谢：来自acVMxuv的[侧边栏优化]((https://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88))
+// @note         致谢：来自acVMxuv的[侧边栏优化](https://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88)
 // @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
 // @updateURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
 // ==/UserScript==
@@ -31,8 +31,8 @@
   /* --------------------------------------------------
    * tag 0. 通用与工具函数
    * -------------------------------------------------- */
-  const VERSION = "2.1.5";
-  const CHANGELOG = "新增：\n1.新增GIF自动压缩，处理时间可能较长，请耐心等待提交\n\n修复：\n1.修复引用浮窗URL识别\n2.修复unvcode与零宽空格模式导致防剧透失效\n3.修复设置面板点击应用更改后标记/屏蔽/只看饼干设置被清空";
+  const VERSION = "2.1.6";
+  const CHANGELOG = "新增：\n1.设置面板新增百度网盘下载链接\n\n修复：\n1.修复引用浮窗URL识别，完善部分链接识别场景\n";
   const toastQueue = [];
   let isShowing = false;
   
