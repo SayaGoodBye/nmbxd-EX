@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.6
+// @version      2.1.7
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -13,6 +13,8 @@
 // @grant        GM_listValues
 // @grant        GM_addStyle
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
+// @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
+// @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
 // @license      WTFPL
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -31,8 +33,13 @@
   /* --------------------------------------------------
    * tag 0. 通用与工具函数
    * -------------------------------------------------- */
-  const VERSION = "2.1.6";
-  const CHANGELOG = "新增：\n1.设置面板新增百度网盘下载链接\n\n修复：\n1.修复引用浮窗URL识别，完善部分链接识别场景\n";
+  const VERSION = GM_info.script.version;
+  function cat_version(){
+      console.log('[version]:', VERSION);
+  }
+  cat_version();
+
+  const CHANGELOG = "优化：\n1.优化对图片压缩的识别，根据文件头识别真实文件后缀并选择静态/动态压缩路径，避免动画丢失。目前支持的动态图片类型包括GIF/APNG，由于岛并不支持Webp格式，暂未提供对应格式的压缩。\n";
   const toastQueue = [];
   let isShowing = false;
   
@@ -6299,10 +6306,15 @@ init() {
         }
       }
 
-      async function compressImageToSize(file, maxSizeKB = 2048, minQuality = 0.6) {
-        const maxSizeBytes = maxSizeKB * 1024;
+      const STATIC_MAX_SIZE_KB = 2048;
+      const STATIC_TARGET_LOWER_KB = 1900;
+      const STATIC_ACCEPTABLE_LOWER_KB = 1850;
+      const STATIC_MAX_ATTEMPTS = 5;
+
+      async function compressImageToSize(file, maxSizeKB = STATIC_MAX_SIZE_KB, minQuality = 0.6) {
+        const maxSizeBytes = STATIC_MAX_SIZE_KB * 1024;
         const targetUpperBytes = maxSizeBytes;
-        const targetLowerBytes = Math.max(0, (maxSizeKB - 68) * 1024);
+        const targetLowerBytes = STATIC_TARGET_LOWER_KB * 1024;
 
         if (file.size <= maxSizeBytes) {
           return file;
@@ -6380,7 +6392,7 @@ init() {
               let localBest = null;
               let localBestScore = Infinity;
 
-              for (let i = 0; i < 7; i++) {
+              for (let i = 0; i < STATIC_MAX_ATTEMPTS; i++) {
                 const quality = (low + high) / 2;
                 totalAttempts++;
                 const blob = await canvasToBlob(canvas, quality);
@@ -6397,6 +6409,34 @@ init() {
                   low = quality;
                 } else {
                   high = quality;
+                }
+              }
+
+                // ✨ 精细搜索：从 high(≈0.95) 逐步提升到 1.0，寻找最接近限制的质量
+                if (localBest && localBest.size < targetLowerBytes) {
+                  console.log(`[compressImage] 精细搜索：当前最佳 ${(localBest.size / 1024).toFixed(1)}KB < ${(STATIC_TARGET_LOWER_KB)}KB，尝试提高质量...`);
+                  for (let q = 0.96; q <= 0.998; q = Math.min(0.998, q + 0.005)) {
+                  totalAttempts++;
+                  const blob = await canvasToBlob(canvas, q);
+                  const sizeKB = blob.size / 1024;
+                  console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${q.toFixed(4)}(精细) -> ${sizeKB.toFixed(1)}KB`);
+                  considerBlob(blob);
+                  if (blob.size <= targetUpperBytes) {
+                    const score = targetUpperBytes - blob.size;
+                    if (score < localBestScore) {
+                      localBestScore = score;
+                      localBest = blob;
+                    }
+                    if (blob.size >= targetLowerBytes) {
+                      return {
+                        blob: localBest,
+                        exceeded: false,
+                        hitRange: true
+                      };
+                    }
+                  } else {
+                    break;
+                  }
                 }
               }
 
@@ -6768,6 +6808,348 @@ init() {
         return { file: compressedFile, summary, attempts };
       }
 
+      // ✅ APNG 压缩（apng-js Player 合成 + UPNG 重编码）
+      // 支持增量帧（blend/dispose），不再降级为静态压缩
+      async function compressApngToSize(file, maxSizeKB = 2048, options = {}) {
+        const maxBytes = maxSizeKB * 1024;
+        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+        if (file.size <= maxBytes) return file;
+
+        const arrayBuffer = await file.arrayBuffer();
+
+        // 用 apng-js 解析（它能正确处理所有 APNG 结构）
+        // apng-js UMD 导出名为 "apng-js"，需要从全局获取
+        const _apngRaw = window['apng-js'] || window['apngJs'];
+        const apngJsLib = typeof _apngRaw === 'function' ? _apngRaw
+                        : (_apngRaw && typeof _apngRaw.default === 'function') ? _apngRaw.default
+                        : null;
+        if (!apngJsLib) {
+          console.warn('[compressApngToSize] apng-js 库未加载 (window["apng-js"]=' + typeof _apngRaw + ')，降级到静态压缩');
+          toast('APNG 解析库未加载，将转为静态图片压缩（动画会丢失）', 3000);
+          return compressImageToSize(file, maxSizeKB);
+        }
+        let apng;
+        try {
+          apng = apngJsLib(arrayBuffer);
+        } catch (e) {
+          console.warn('[compressApngToSize] parseAPNG 失败，降级到静态压缩:', e.message);
+          toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+          return compressImageToSize(file, maxSizeKB);
+        }
+        if (apng instanceof Error) {
+          console.warn('[compressApngToSize] parseAPNG 返回错误:', apng.message);
+          toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+          return compressImageToSize(file, maxSizeKB);
+        }
+
+        const { width, height } = apng;
+        if (!apng.frames || apng.frames.length <= 1) {
+          return compressImageToSize(file, maxSizeKB);
+        }
+
+        console.log(`[compressApngToSize] APNG: ${width}x${height}, ${apng.frames.length}帧, 总时长=${apng.playTime}ms`);
+
+        // ---- 第一步：用 apng-js Player 逐帧合成，拿到每帧的完整 RGBA 像素 ----
+        await apng.createImages();
+
+        const renderCanvas = document.createElement('canvas');
+        renderCanvas.width = width;
+        renderCanvas.height = height;
+        const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
+
+        const player = await apng.getPlayer(renderCtx, false);
+
+        const compositedFrames = [];  // { data: Uint8ClampedArray, delay: number }
+        for (let i = 0; i < apng.frames.length; i++) {
+          await player.renderNextFrame();
+          const imgData = renderCtx.getImageData(0, 0, width, height);
+          compositedFrames.push({
+            data: new Uint8Array(imgData.data),
+            delay: apng.frames[i].delay || 100
+          });
+        }
+
+        console.log(`[compressApngToSize] 合成完成: ${compositedFrames.length}帧`);
+
+        // 验证合成帧数据完整性
+        const expectedFrameBytes = width * height * 4;
+        for (let i = 0; i < compositedFrames.length; i++) {
+          if (compositedFrames[i].data.length !== expectedFrameBytes) {
+            throw new Error(`合成帧${i}数据异常: 期望${expectedFrameBytes}字节, 实际${compositedFrames[i].data.length}字节`);
+          }
+        }
+        console.log(`[compressApngToSize] 帧数据验证通过: ${compositedFrames.length}帧 × ${(expectedFrameBytes/1024).toFixed(0)}KB/帧`);
+
+        // ---- 第二步：可选抽帧（帧数 > 15 且压缩压力大时启用）----
+        let workFrames = compositedFrames;
+        let workDelays = compositedFrames.map(f => f.delay);
+        const originalFrameCount = compositedFrames.length;
+
+        const oversizeRatio = file.size / maxBytes;
+        if (oversizeRatio > 1.8 && compositedFrames.length > 15) {
+          const step = oversizeRatio > 3 ? 3 : 2;
+          const decimated = [];
+          const decimatedDelays = [];
+          for (let i = 0; i < compositedFrames.length; i += step) {
+            decimated.push(compositedFrames[i]);
+            let accumulatedDelay = 0;
+            for (let j = i; j < Math.min(i + step, compositedFrames.length); j++) {
+              accumulatedDelay += compositedFrames[j].delay;
+            }
+            decimatedDelays.push(accumulatedDelay);
+          }
+          workFrames = decimated;
+          workDelays = decimatedDelays;
+          console.log(`[compressApngToSize] 抽帧: ${originalFrameCount} → ${workFrames.length}帧 (step=${step})`);
+        }
+
+        // ---- 第三步：逐帧 canvas.toBlob + 手动组装 APNG ----
+        // 完全绕过 UPNG.encode 的多帧模式，避免大数据量内存爆炸
+
+        // PNG chunk 读取辅助
+        const readPngChunks = (u8) => {
+          const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+          let pos = 8; // 跳过 PNG signature
+          const chunks = [];
+          while (pos + 8 <= u8.length) {
+            const len = dv.getUint32(pos); pos += 4;
+            const type = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2], u8[pos+3]); pos += 4;
+            if (pos + len + 4 > u8.length) break;
+            chunks.push({ type, data: u8.slice(pos, pos + len) });
+            pos += len + 4; // data + crc
+          }
+          return chunks;
+        };
+
+        // 手动组装 APNG
+        const buildApng = (ihdrData, frameChunks, delays, numPlays) => {
+          // 计算总大小
+          // 第 1 帧: fcTL(38) + IDAT(12+len)*
+          // 后续帧: fcTL(38) + fdAT(12+4+len)* （fdAT 多 4 字节 seqNum）
+          let totalSize = 8 + (12 + 13) + (12 + 8); // sig + IHDR + acTL
+          for (let i = 0; i < frameChunks.length; i++) {
+            totalSize += 12 + 26; // fcTL
+            for (const idat of frameChunks[i]) {
+              totalSize += (i === 0 ? 12 : 12 + 4) + idat.length; // IDAT vs fdAT
+            }
+          }
+          totalSize += 12; // IEND
+
+          const buf = new ArrayBuffer(totalSize);
+          const u8 = new Uint8Array(buf);
+          const dv = new DataView(buf);
+          let o = 0;
+
+          // PNG signature
+          u8.set([137, 80, 78, 71, 13, 10, 26, 10], 0); o = 8;
+
+          // IHDR
+          const ihdrLen = 13;
+          dv.setUint32(o, ihdrLen); o += 4;
+          u8.set([73, 72, 68, 82], o); o += 4; // "IHDR"
+          u8.set(ihdrData, o); o += ihdrLen;
+          // CRC32 of type+data
+          const ihdrCrc = crc32(u8.slice(o - 4 - ihdrLen, o));
+          dv.setUint32(o, ihdrCrc); o += 4;
+
+          // acTL (animation control)
+          dv.setUint32(o, 8); o += 4; // length
+          u8.set([97, 99, 84, 76], o); o += 4; // "acTL"
+          dv.setUint32(o, frameChunks.length); o += 4; // num_frames
+          dv.setUint32(o, numPlays); o += 4; // num_plays (0 = infinite)
+          const acTlCrc = crc32(u8.slice(o - 4 - 8, o));
+          dv.setUint32(o, acTlCrc); o += 4;
+
+          // Frames — APNG 规范：第 1 帧用 IDAT，后续帧用 fdAT
+          let seqNum = 0;
+          for (let i = 0; i < frameChunks.length; i++) {
+            const w = dv.getUint32(16); // from IHDR
+            const h = dv.getUint32(20);
+            const delay = delays[i] || 100;
+
+            // fcTL (frame control) — 26 bytes data
+            dv.setUint32(o, 26); o += 4;
+            u8.set([102, 99, 84, 76], o); o += 4; // "fcTL"
+            dv.setUint32(o, seqNum++); o += 4; // sequence_number
+            dv.setUint32(o, w); o += 4;
+            dv.setUint32(o, h); o += 4;
+            dv.setUint32(o, 0); o += 4; // x_offset
+            dv.setUint32(o, 0); o += 4; // y_offset
+            dv.setUint16(o, delay); o += 2; // delay_num
+            dv.setUint16(o, 1000); o += 2; // delay_den (毫秒)
+            u8[o++] = 0; // dispose_op: NONE
+            u8[o++] = i === 0 ? 0 : 1; // blend_op: SOURCE for first, OVER for rest
+            dv.setUint32(o, crc32(u8.slice(o - 4 - 26, o))); o += 4;
+
+            if (i === 0) {
+              // 第 1 帧：IDAT（标准 PNG 图像数据块，无额外 seqNum）
+              for (const idatData of frameChunks[i]) {
+                dv.setUint32(o, idatData.length); o += 4;
+                u8.set([73, 68, 65, 84], o); o += 4; // "IDAT"
+                u8.set(idatData, o); o += idatData.length;
+                dv.setUint32(o, crc32(u8.slice(o - 4 - idatData.length, o))); o += 4;
+              }
+            } else {
+              // 后续帧：fdAT（frame data，比 IDAT 多 4 字节 seqNum）
+              for (const idatData of frameChunks[i]) {
+                const fdatPayloadLen = 4 + idatData.length; // seqNum + 压缩数据
+                dv.setUint32(o, fdatPayloadLen); o += 4;
+                u8.set([102, 100, 65, 84], o); o += 4; // "fdAT"
+                dv.setUint32(o, seqNum++); o += 4; // sequence_number
+                u8.set(idatData, o); o += idatData.length;
+                // CRC 覆盖 type("fdAT") + payload(seqNum + data)
+                dv.setUint32(o, crc32(u8.slice(o - 4 - idatData.length - 4, o))); o += 4;
+              }
+            }
+          }
+
+          // IEND
+          dv.setUint32(o, 0); o += 4;
+          u8.set([73, 69, 78, 68], o); o += 4;
+          dv.setUint32(o, crc32(u8.slice(o - 4, o))); o += 4;
+
+          return buf;
+        };
+
+        // CRC32 查找表
+        const crcTable = (() => {
+          const table = new Uint32Array(256);
+          for (let n = 0; n < 256; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) {
+              c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            }
+            table[n] = c;
+          }
+          return table;
+        })();
+
+        const crc32 = (data) => {
+          let crc = 0xFFFFFFFF;
+          for (let i = 0; i < data.length; i++) {
+            crc = crcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+          }
+          return (crc ^ 0xFFFFFFFF) >>> 0;
+        };
+
+        // 逐帧渲染到 canvas + toBlob
+        const renderFrameToBlob = (srcData, srcW, srcH, scale) => {
+          return new Promise((resolve, reject) => {
+            const newW = Math.max(1, Math.floor(srcW * scale));
+            const newH = Math.max(1, Math.floor(srcH * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = newW;
+            canvas.height = newH;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            // 通过 Image → canvas 方式绘制（避免 OffscreenCanvas + putImageData 的内存问题）
+            const img = new Image();
+            const blob = new Blob([srcData], { type: 'image/bmp' });
+            const url = URL.createObjectURL(blob);
+            img.onload = () => {
+              ctx.drawImage(img, 0, 0, newW, newH);
+              URL.revokeObjectURL(url);
+              canvas.toBlob((pngBlob) => {
+                if (!pngBlob) { reject(new Error('toBlob 返回 null')); return; }
+                pngBlob.arrayBuffer().then(ab => resolve(new Uint8Array(ab))).catch(reject);
+              }, 'image/png');
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image 加载失败')); };
+            img.src = url;
+          });
+        };
+
+        // 单帧编码：canvas 缩放 → toBlob('image/png')
+        // 在右下角放一个几乎透明的像素，强制浏览器输出 RGBA（type=6），避免偷换成 RGB
+        const renderFrameToPng = (rgbaData, srcW, srcH, scale) => {
+          return new Promise((resolve, reject) => {
+            const newW = Math.max(1, Math.floor(srcW * scale));
+            const newH = Math.max(1, Math.floor(srcH * scale));
+            const srcCanvas = document.createElement('canvas');
+            srcCanvas.width = srcW;
+            srcCanvas.height = srcH;
+            const srcCtx = srcCanvas.getContext('2d');
+            srcCtx.putImageData(new ImageData(new Uint8ClampedArray(rgbaData), srcW, srcH), 0, 0);
+            const dstCanvas = document.createElement('canvas');
+            dstCanvas.width = newW;
+            dstCanvas.height = newH;
+            const dstCtx = dstCanvas.getContext('2d');
+            dstCtx.imageSmoothingEnabled = true;
+            dstCtx.imageSmoothingQuality = 'high';
+            dstCtx.drawImage(srcCanvas, 0, 0, newW, newH);
+            // 强制 RGBA：在不可见角落放一个几乎全透明的像素
+            dstCtx.fillStyle = 'rgba(0,0,0,0.004)';
+            dstCtx.fillRect(newW - 1, newH - 1, 1, 1);
+            dstCanvas.toBlob((pngBlob) => {
+              if (!pngBlob) { reject(new Error('toBlob 返回 null')); return; }
+              pngBlob.arrayBuffer().then(ab => resolve(new Uint8Array(ab))).catch(reject);
+            }, 'image/png');
+          });
+        };
+
+        const targetLowerBytes = Math.floor((maxSizeKB - 68) * 1024);
+        const startTime = performance.now();
+
+        // 缩放梯度：从大到小（直接枚举，避免浮点死循环）
+        const scaleSteps = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15];
+
+        for (const scale of scaleSteps) {
+          const newW = Math.max(1, Math.floor(width * scale));
+          const newH = Math.max(1, Math.floor(height * scale));
+          console.log(`[compressApngToSize] 尝试 scale=${scale.toFixed(2)}: ${newW}x${newH}, ${workFrames.length}帧`);
+
+          try {
+            // 逐帧渲染为 PNG
+            const framePngs = [];
+            for (let i = 0; i < workFrames.length; i++) {
+              const pngU8 = await renderFrameToPng(workFrames[i].data, width, height, scale);
+              framePngs.push(pngU8);
+            }
+
+            // 解析第一帧的 IHDR
+            const firstChunks = readPngChunks(framePngs[0]);
+            const ihdrChunk = firstChunks.find(c => c.type === 'IHDR');
+            if (!ihdrChunk) throw new Error('第一帧 PNG 缺少 IHDR');
+
+            // 提取每帧的 IDAT 数据
+            const allFrameIdats = framePngs.map(png => {
+              const chunks = readPngChunks(png);
+              return chunks.filter(c => c.type === 'IDAT').map(c => c.data);
+            });
+
+            // 组装 APNG
+            const apngBuf = buildApng(ihdrChunk.data, allFrameIdats, workDelays, 0);
+            const blob = new Blob([apngBuf], { type: 'image/apng' });
+            const sizeKB = blob.size / 1024;
+            console.log(`[compressApngToSize] scale=${scale.toFixed(2)} → ${sizeKB.toFixed(1)}KB`);
+            if (onProgress) {
+              onProgress({ scale, sizeKB, originalKB: file.size / 1024, frameCount: workFrames.length, newW: Math.floor(width * scale), newH: Math.floor(height * scale) });
+            }
+
+            if (blob.size >= targetLowerBytes && blob.size <= maxBytes) {
+              const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+              console.log(`[compressApngToSize] ✓ 命中目标: ${sizeKB.toFixed(1)}KB, ${elapsed}秒`);
+              return new File([blob], file.name.replace(/\.\w+$/i, '') + '-compressed.png', { type: 'image/png' });
+            }
+
+            if (blob.size <= maxBytes) {
+              // 低于上限但未命中下限——也接受
+              const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+              console.log(`[compressApngToSize] ✓ 完成: ${(file.size/1024).toFixed(1)}KB → ${sizeKB.toFixed(1)}KB, ${elapsed}秒`);
+              return new File([blob], file.name.replace(/\.\w+$/i, '') + '-compressed.png', { type: 'image/png' });
+            }
+          } catch (e) {
+            console.error(`[compressApngToSize] scale=${scale.toFixed(2)} 失败:`, e.message);
+            if (onProgress) {
+              onProgress({ scale, error: e.message, originalKB: file.size / 1024 });
+            }
+          }
+        }
+
+        throw new Error('APNG 压缩失败：所有缩放比例均无法降到限制以内，请手动处理');
+      }
+
       // 检查错误信息是否与图片大小有关
       function isImageSizeError(msg) {
         if (!msg) return false;
@@ -6799,6 +7181,72 @@ init() {
         if (clearOriginalContent) {
           form.__originalContent = null;
         }
+      }
+
+      // 通过文件头部魔数检测真实图片格式（静态 / 动画）
+      function detectImageFormat(file) {
+        const ext = (file.name || '').split('.').pop().toLowerCase();
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const arr = new Uint8Array(reader.result);
+            const hex4 = Array.from(arr.subarray(0, 4), b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
+
+            // GIF: 47 49 46 38
+            if (hex4 === '47494638') return resolve('gif');
+            // JPEG: ff d8 ff
+            if (hex4.startsWith('ffd8ff')) return resolve('jpeg');
+            // PNG / APNG: 89 50 4e 47
+            if (hex4 === '89504e47') {
+              const fullReader = new FileReader();
+              fullReader.onload = () => {
+                const fullArr = new Uint8Array(fullReader.result);
+                let foundAcTl = false;
+                for (let i = 8; i + 12 <= fullArr.length; ) {
+                  const len = (fullArr[i] << 24) | (fullArr[i+1] << 16) | (fullArr[i+2] << 8) | fullArr[i+3];
+                  const type = String.fromCharCode(fullArr[i+4], fullArr[i+5], fullArr[i+6], fullArr[i+7]);
+                  if (type === 'acTL') { foundAcTl = true; break; }
+                  if (type === 'IDAT') break;
+                  i += 12 + len;
+                }
+                resolve(foundAcTl ? 'apng' : 'png');
+              };
+              fullReader.onerror = () => resolve('png');
+              fullReader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 256 * 1024)));
+              return;
+            }
+            // WebP: 52 49 46 46
+            if (hex4 === '52494646') {
+              const fullReader = new FileReader();
+              fullReader.onload = () => {
+                const fullArr = new Uint8Array(fullReader.result);
+                const str = String.fromCharCode.apply(null, Array.from(fullArr.subarray(0, Math.min(4096, fullArr.length))));
+                resolve(str.indexOf('ANIM') !== -1 ? 'animated-webp' : 'webp');
+              };
+              fullReader.onerror = () => resolve('webp');
+              fullReader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 4096)));
+              return;
+            }
+            // BMP: 42 4d
+            if (hex4 === '424d') return resolve('bmp');
+
+            if (ext === 'gif') return resolve('gif');
+            if (ext === 'apng') return resolve('apng');
+            if (ext === 'webp') return resolve('webp');
+            if (ext === 'png') return resolve('png');
+            if (ext === 'jpg' || ext === 'jpeg') return resolve('jpeg');
+            return resolve('unknown');
+          };
+          reader.onerror = () => {
+            if (ext === 'gif') return resolve('gif');
+            if (ext === 'apng') return resolve('apng');
+            if (ext === 'webp') return resolve('webp');
+            if (ext === 'png') return resolve('png');
+            if (ext === 'jpg' || ext === 'jpeg') return resolve('jpeg');
+            return resolve('unknown');
+          };
+          reader.readAsArrayBuffer(file.slice(0, 8));
+        });
       }
 
       function processTextPreservingHiddenTags(input, processor) {
@@ -6971,15 +7419,20 @@ init() {
               const file = fileInput && fileInput.files && fileInput.files[0];
 
               if (file && !isRetry) {
-                const isGif = (file.type || '').toLowerCase() === 'image/gif' || /\.gif$/i.test(file.name || '');
-
+                const actualFormat = await detectImageFormat(file);
+                console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
                 toast('图片大小>2048KB，正在尝试自动压缩', 3000);
                 console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩...`);
-
                 try {
                   let compressedFile;
-                  if (isGif) {
-                    const gifResult = await compressGifToSize(file, {
+                  if (actualFormat === 'gif') {
+                    let gifFile = file;
+                    if (!/\.gif$/i.test(file.name)) {
+                      const fixedName = file.name.replace(/\.\w+$/i, '.gif');
+                      gifFile = new File([file], fixedName, { type: 'image/gif', lastModified: file.lastModified });
+                      console.log(`[interceptReplyForm] 后缀已修正: ${file.name} → ${fixedName}`);
+                    }
+                    const gifResult = await compressGifToSize(gifFile, {
                       maxSizeKB: 2048,
                       targetLowerKB: 1850,
                       acceptableLowerKB: 1780,
@@ -6993,15 +7446,29 @@ init() {
                     });
                     compressedFile = gifResult.file;
                     console.log(`[interceptReplyForm] GIF压缩完成: ${gifResult.summary}`);
+                  } else if (actualFormat === 'apng') {
+                    compressedFile = await compressApngToSize(file, 2048, {
+                      onProgress: (progress) => {
+                        if (progress.error) {
+                          toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试...`, 1800);
+                          return;
+                        }
+                        toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
+                      }
+                    });
+                    console.log(`[interceptReplyForm] APNG压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+                  } else if (actualFormat === 'animated-webp') {
+                    toast('检测到动画 WebP，将按静态图片压缩，动图可能丢失', 2000);
+                    compressedFile = await compressImageToSize(file, 2048);
+                    console.log(`[interceptReplyForm] 动画WebP压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
                   } else {
                     compressedFile = await compressImageToSize(file, 2048);
                     console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+                    console.log(`[interceptReplyForm] 静态图片压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
                   }
-
                   resetIllegalRetryState({ clearOriginalContent: false });
                   const newFD = cloneFormData(fd);
                   newFD.set('image', compressedFile);
-
                   toast(`图片已压缩至 ${(compressedFile.size / 1024).toFixed(1)}KB，正在重新提交...`, 2000);
                   await doSubmit(newFD, true);
                   return;
@@ -8506,6 +8973,7 @@ init() {
               "望po石":"　┏━┓\n　┃望┃\nᕕ┃po┃ᕗ\n　┃石┃\n　┗━┛\n嗨呀我又来望po了\n我天天都来这望po",
               "望po石2": "　　　　┏━┓\n　　　　┃望┃\n　　　　┃po┃\n　　　　┃石┃\n　　　　┗━┛　　　　\n　　　┏━━━┓\n　　┏┛　望　┗┓\n　┏┛　　po　　┗┓\n┏┛　　　山　　　┗┓\n┗━━━━━━━━━┛",
               "撞墙": "┃電柱┃　( ´ー`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　( ´д`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　(;´Д`)\n┃電柱┃π。) =͟͟͞͞ =͟͟͞͞",
+              "冰箱先生":"　　\/\n_____\n| ﾟ∀ﾟ|\n———\n| 　|　|\n￣￣",
               "全角空格": "　",
           };
           const ORDERED_RICH = [
@@ -8516,7 +8984,7 @@ init() {
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙",
+              "望po石","望po石2","撞墙","冰箱先生",
               "全角空格",
               // 页面中“防剧透/骰子/高级骰子”不动其原位
           ];
@@ -8527,7 +8995,7 @@ init() {
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙",
+              "望po石","望po石2","撞墙","冰箱先生",
           ]);
 
           // 一次性补齐（选择器就绪且已有至少一个选项时调用）
