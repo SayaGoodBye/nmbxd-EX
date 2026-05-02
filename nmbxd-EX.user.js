@@ -2,7 +2,7 @@
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
 // @version      2.1.8
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别 。
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @grant        GM_getValue
@@ -39,7 +39,7 @@
   }
   cat_version();
 
-  const CHANGELOG = "优化：\n1.图片隐藏模式同样在原生/拓展引用浮窗中生效\n2.自动识别链接同样在原生引用浮窗中生效\n";
+  const CHANGELOG = "新增：\n1.新增设置项目导入导出，支持剪切板/文件两种方式\n\n优化：\n1.图片隐藏模式同样在原生/拓展引用浮窗中生效\n2.自动识别链接同样在原生引用浮窗中生效\n";
   const toastQueue = [];
   let isShowing = false;
   
@@ -408,6 +408,125 @@
     },
     state: {},
 
+    // JSONC 解析（支持 // 注释和尾随逗号）
+    parseJSONC(str) {
+      const cleaned = str
+        .replace(/\/\/.*$/gm, '')
+        .replace(/,(\s*[}\]])/g, '$1');
+      return JSON.parse(cleaned);
+    },
+
+    // 导出为 JSONC 字符串
+    buildJSONC(state) {
+      const lines = [
+        '// X岛-EX 配置文件',
+        '// 支持 // 注释和尾随逗号',
+        '{',
+        '  "_meta": {',
+        `    "version": "${typeof VERSION !== 'undefined' ? VERSION : 'unknown'}",`,
+        `    "exportedAt": "${new Date().toISOString()}",`,
+        '    "source": "nmbxd-EX"',
+        '  },',
+        '  "settings": {',
+      ];
+      const entries = Object.entries(state);
+      entries.forEach(([key, val], i) => {
+        const json = JSON.stringify(val, null, 2);
+        if (json.includes('\n')) {
+          const indented = json.split('\n').map((line, li) => li === 0 ? line : '    ' + line).join('\n');
+          lines.push(`    ${JSON.stringify(key)}: ${indented}${i < entries.length - 1 ? ',' : ''}`);
+        } else {
+          lines.push(`    ${JSON.stringify(key)}: ${json}${i < entries.length - 1 ? ',' : ''}`);
+        }
+      });
+      lines.push('  },');
+      lines.push('}');
+      return lines.join('\n');
+    },
+
+    // 校验导入的配置
+    validateImport(incoming) {
+      if (typeof incoming !== 'object' || incoming === null) return { valid: false, error: '配置内容无效' };
+      const defaults = this.defaults;
+      const validated = {};
+      let skipped = 0;
+      for (const [key, val] of Object.entries(incoming)) {
+        if (!(key in defaults)) continue;
+        if (typeof val !== typeof defaults[key]) { skipped++; continue; }
+        if (Array.isArray(defaults[key]) && !Array.isArray(val)) { skipped++; continue; }
+        validated[key] = val;
+      }
+      return { valid: true, merged: Object.assign({}, defaults, validated), skipped };
+    },
+
+    // 从文本导入（校验 + 暂存）
+    importFromText(text) {
+      let parsed;
+      try {
+        parsed = this.parseJSONC(text);
+      } catch (e) {
+        toast('配置文件格式错误'); return;
+      }
+      const incoming = parsed.settings || parsed;
+      const result = this.validateImport(incoming);
+      if (!result.valid) { toast(result.error); return; }
+      this.__pendingImport = result.merged;
+      const msg = result.skipped > 0
+        ? `格式正确（${result.skipped} 个字段已跳过），请点击[保存]应用`
+        : '格式正确，请点击[保存]应用';
+      toast(msg);
+      const btn = document.getElementById('btn_xdex_import_export');
+      if (btn) btn.classList.remove('xdex-inv');
+    },
+
+    // 导出到剪贴板
+    async exportToClipboard() {
+      try {
+        const jsonc = this.buildJSONC(this.state);
+        await navigator.clipboard.writeText(jsonc);
+        toast('配置已复制到剪贴板');
+      } catch (e) {
+        toast('复制失败，请重试');
+      }
+    },
+
+    // 导出为文件
+    exportToFile() {
+      const jsonc = this.buildJSONC(this.state);
+      const blob = new Blob([jsonc], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `x岛-ex-settings-v${typeof VERSION !== 'undefined' ? VERSION : 'unknown'}.jsonc`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('配置已导出');
+    },
+
+    // 从剪贴板导入
+    async importFromClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) { toast('剪贴板为空'); return; }
+        this.importFromText(text);
+      } catch (e) {
+        toast('无法读取剪贴板，请先点击页面后再试');
+      }
+    },
+
+    // 从文件导入
+    importFromFile() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json,.jsonc,.txt';
+      input.onchange = () => {
+        if (!input.files || !input.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = () => this.importFromText(reader.result);
+        reader.readAsText(input.files[0]);
+      };
+      input.click();
+    },
+
     syncAuxiliaryControls() {
       const draftBtn = document.getElementById('sp_toggleDraftCache');
       if (draftBtn) {
@@ -707,6 +826,28 @@ init() {
 
                 <!-- 屏蔽关键词（单输入） -->
                 ${fold('sp_blockedKeywords','屏蔽关键词','关键词请用逗号隔开，词中包含逗号请加\\\转义')}
+
+                <!-- 导入/导出配置 -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_importExport"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>导入/导出配置</span>
+                    <button id="btn_sp_importExport" class="sp_save xdex-inv" data-id="sp_importExport"
+
+                            style="margin-left:auto;padding:2px 8px;">应用</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div style="display:flex;gap:8px;margin-bottom:8px;">
+                      <button id="sp_importClipboard" style="flex:1;padding:4px 8px;font-size:13px;cursor:pointer;">从剪贴板导入</button>
+                      <button id="sp_exportClipboard" style="flex:1;padding:4px 8px;font-size:13px;cursor:pointer;">导出到剪贴板</button>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-bottom:8px;">
+                      <button id="sp_importFile" style="flex:1;padding:4px 8px;font-size:13px;cursor:pointer;">从文件导入</button>
+                      <button id="sp_exportFile" style="flex:1;padding:4px 8px;font-size:13px;cursor:pointer;">导出为文件</button>
+                    </div>
+                    <div style="font-size:12px;color:#888;text-align:center;">导入将覆盖当前全部配置，建议先导出备份</div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1021,6 +1162,258 @@ init() {
         e.stopPropagation();
         saveThreadCookieWhitelistGroups();
       });
+
+      // ========== 导入/导出配置 ==========
+      function parseJSONC(str) {
+
+        // 先清理零宽/不可见控制字符（保留换行和普通空格）
+
+        str = str.replace(/[\u200B\u200C\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g, '');
+
+
+
+        // 逐字符解析：只在字符串外部去掉 // 注释和尾随逗号
+
+        let out = '', inStr = false, esc = false;
+
+        for (let i = 0; i < str.length; i++) {
+
+          const ch = str[i];
+
+          if (inStr) {
+
+            out += ch;
+
+            if (esc) { esc = false; }
+
+            else if (ch === '\\') { esc = true; }
+
+            else if (ch === '"') { inStr = false; }
+
+          } else {
+
+            if (ch === '"') { inStr = true; out += ch; }
+
+            else if (ch === '/' && str[i + 1] === '/') {
+
+              // 跳过行注释
+
+              while (i < str.length && str[i] !== '\n') i++;
+
+              out += '\n';
+
+            }
+
+            else if (ch === ',' && /^\s*[}\]]/.test(str.slice(i + 1))) {
+
+              // 尾随逗号：后面紧跟 } 或 ]（允许空白），跳过逗号
+
+              continue;
+
+            }
+
+            else { out += ch; }
+
+          }
+
+        }
+
+        return JSON.parse(out);
+
+      }
+
+      // 固定开启项：UI 中为 disabled + checked，无需导入/导出
+
+      const FIXED_KEYS = new Set([
+
+        'enableImageHideMode',   // 固定启用（applyImageHideMode 仍可导出）
+
+        'interceptReplyForm',    // 拦截回复中间页
+
+        'updateReplyNumbers',    // 当页回复编号
+
+        'replaceRightSidebar',   // 扩展坞增强
+
+        'kaomojiEnhancer',       // 颜文字拓展（kaomojiSort 仍可导出）
+
+        'highlightPO',           // 标记Po主
+
+        'enhancePostFormLayout', // 发串UI调整
+
+        'applyFilters',          // 标记/屏蔽-饼干/关键词
+
+        'enhanceIsland',         // 增强X岛匿名版
+
+        'enablePostExpand',      // 展开板块页长串
+
+        'searchServiceBy4sY',    // 野生搜索酱
+
+      ]);
+
+
+
+      function buildJSONC(state) {
+
+        const filtered = {};
+
+        for (const [k, v] of Object.entries(state)) {
+
+          if (!FIXED_KEYS.has(k)) filtered[k] = v;
+
+        }
+
+        const meta = {
+
+          _meta: {
+
+            version: (typeof VERSION !== 'undefined' ? VERSION : GM_info.script.version),
+
+            exportedAt: new Date().toISOString(),
+
+            source: 'nmbxd-EX'
+
+          },
+
+          settings: filtered
+
+        };
+        const lines = JSON.stringify(meta, null, 2).split('\n');
+        // 在 _meta 前加注释，在 settings 闭合括号前加尾随逗号
+        let result = lines.map((line, i) => {
+          if (i === 0) return line; // 开头 {
+          if (/"_meta"/.test(line)) return '  // X岛-EX 配置文件\n' + line;
+          if (/^}$/.test(line.trim())) return line; // 最外层 }
+          return line;
+        }).join('\n');
+        // 给 settings 对象的最后一个字段后加尾随逗号
+        result = result.replace(/("settings":\s*\{[\s\S]*?)(\n\s*\}\s*\n\s*\})/, (m, inner, close) => {
+          const trimmed = inner.replace(/,\s*$/, '');
+          return trimmed + ',\n' + close.replace(/^\n/, '');
+        });
+        return result;
+      }
+
+      function validateImport(incoming) {
+
+        const defaults = SettingPanel.defaults;
+
+        if (typeof incoming !== 'object' || incoming === null) {
+
+          toast('配置内容无效'); return null;
+
+        }
+
+        const validated = {};
+
+        let skipped = 0;
+
+        for (const [key, val] of Object.entries(incoming)) {
+
+          if (FIXED_KEYS.has(key)) continue;         // 固定项直接跳过
+
+          if (!(key in defaults)) continue;           // 未知字段跳过
+
+          if (Array.isArray(defaults[key]) && !Array.isArray(val)) { skipped++; continue; }
+
+          if (typeof val !== typeof defaults[key]) { skipped++; continue; }
+
+          validated[key] = val;
+
+        }
+
+        return Object.assign({}, defaults, validated);
+
+      }
+
+      function handleImportText(text) {
+        if (!text || !text.trim()) { toast('内容为空'); return; }
+        let parsed;
+        try {
+          parsed = parseJSONC(text);
+        } catch (e) {
+          toast('配置文件格式错误'); return;
+        }
+        const incoming = parsed.settings || parsed;
+        const merged = validateImport(incoming);
+        if (!merged) return;
+
+        SettingPanel.__pendingImport = merged;
+        // 显示保存按钮
+        $('#btn_sp_importExport').removeClass('xdex-inv');
+        toast('格式正确，请点击[保存]应用');
+      }
+
+      // 从剪贴板导入
+      $('#sp_importClipboard').off('click').on('click', async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          handleImportText(text);
+        } catch (e) {
+          toast('无法读取剪贴板，请先点击页面后再试');
+        }
+      });
+
+      // 导出到剪贴板
+      $('#sp_exportClipboard').off('click').on('click', async () => {
+        try {
+          const jsonc = buildJSONC(SettingPanel.state);
+          await navigator.clipboard.writeText(jsonc);
+          toast('已复制到剪贴板');
+        } catch (e) {
+          toast('复制失败');
+        }
+      });
+
+      // 从文件导入
+      $('#sp_importFile').off('click').on('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,.jsonc,.txt';
+        input.onchange = () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => handleImportText(reader.result);
+          reader.onerror = () => toast('文件读取失败');
+          reader.readAsText(file);
+        };
+        input.click();
+      });
+
+      // 导出为文件
+      $('#sp_exportFile').off('click').on('click', () => {
+        try {
+          const jsonc = buildJSONC(SettingPanel.state);
+          const blob = new Blob([jsonc], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'x岛-ex-settings-v' + (typeof VERSION !== 'undefined' ? VERSION : GM_info.script.version) + '.jsonc';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          toast('配置已导出');
+        } catch (e) {
+          toast('导出失败');
+        }
+      });
+
+      // 导入/导出折叠块的"保存"按钮
+      $('#btn_sp_importExport').off('click').on('click', e => {
+        e.stopPropagation();
+        if (SettingPanel.__pendingImport) {
+          GM_setValue(SettingPanel.key, SettingPanel.__pendingImport);
+          SettingPanel.state = SettingPanel.__pendingImport;
+          delete SettingPanel.__pendingImport;
+          $('#btn_sp_importExport').addClass('xdex-inv');
+          toast('配置已导入，即将刷新');
+          setTimeout(() => location.reload(), 800);
+        } else {
+          toast('没有待导入的配置');
+        }
+      });
+
+      // 关闭面板时清除暂存
+      const _origClose = $('#sp_close,#sp_cover').off.bind($('#sp_close,#sp_cover'), 'click');
+      delete SettingPanel.__pendingImport;
 
       // 应用更改：保存开关、屏蔽(组)、标记(组)
       $('#sp_apply').off('click').on('click', ()=>{
