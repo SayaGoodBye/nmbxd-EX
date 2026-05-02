@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.7
+// @version      2.1.8
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -39,7 +39,7 @@
   }
   cat_version();
 
-  const CHANGELOG = "优化：\n1.优化对图片压缩的识别，根据文件头识别真实文件后缀并选择静态/动态压缩路径，避免动画丢失。目前支持的动态图片类型包括GIF/APNG，由于岛并不支持Webp格式，暂未提供对应格式的压缩。\n";
+  const CHANGELOG = "优化：\n1.图片隐藏模式同样在原生/拓展引用浮窗中生效\n2.自动识别链接同样在原生引用浮窗中生效\n";
   const toastQueue = [];
   let isShowing = false;
   
@@ -4858,6 +4858,10 @@ init() {
       initExtendedContent($quote[0]);
       hideEmptyTitleAndEmail($quote[0]);
       initContent();
+      try {
+        const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', $quote[0]);
+      } catch (e) {}
       //autoHideRefView();
     }
 
@@ -5028,24 +5032,17 @@ init() {
     if (refView.dataset.exMonitorBound === '1') return;
     refView.dataset.exMonitorBound = '1';
 
-    let rafLock = 0;
-
-    const observer = new MutationObserver(mutations => {
+    const observer = new MutationObserver(() => {
       if (refView.style.display !== 'block') return;
-      if (rafLock) return;
-      rafLock = requestAnimationFrame(() => {
-        rafLock = 0;
-        // 仅处理引用窗内部，避免全局反复写样式触发观察器风暴
+      observer.disconnect();
+      try {
         hideEmptyTitleAndEmail(refView);
-      });
+        const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refView);
+      } catch (e) {}
     });
 
-    observer.observe(refView, {
-      attributes: true,
-      attributeFilter: ['style'],
-      childList: true,
-      subtree: true
-    });
+    observer.observe(refView, { childList: true, subtree: true });
   }
 
 
@@ -5225,6 +5222,14 @@ init() {
             }).fadeIn(100).one('mouseleave', function () {
               $(this).fadeOut(100);
             });
+            // 内容注入后直接增强
+            try {
+              const refEl = document.getElementById('h-ref-view');
+              hideEmptyTitleAndEmail(refEl);
+              const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+              if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
+              if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
+            } catch (e) {}
           });
       });
 
@@ -9556,6 +9561,10 @@ init() {
           enhanceNode(previewContent[0]);
         }
       }
+      // 自动识别链接
+      if (typeof runAutoUrlLinkify === 'function') {
+        runAutoUrlLinkify(previewContent[0]);
+      }
     }
 
   // 草稿：发帖成功清空（拦截模式优先）
@@ -11347,22 +11356,35 @@ init() {
       const style = document.createElement('style');
       style.id = 'xdex-image-hide-style';
       style.textContent = `
-        /* 模式1：模糊遮罩（不替换容器/不替换图片） */
-        .h-threads-img-box.xdex-hide-blur:not(.h-active) .h-threads-img,
-        img.xdex-hide-blur-img {
+        /* 模式1：模糊遮罩
+           clip-path: inset(0) 裁剪 filter 产生的合成层溢出（overflow:hidden 做不到） */
+        .h-threads-img-box.xdex-hide-blur:not(.h-active) .h-threads-img {
           filter: blur(14px) brightness(0.5);
+          clip-path: inset(0);
           transition: filter .15s ease;
         }
 
         /* 悬浮时取消遮罩 */
-        .h-threads-img-box.xdex-hide-blur:not(.h-active):hover .h-threads-img,
-        img.xdex-hide-blur-img:hover {
+        .h-threads-img-box.xdex-hide-blur:not(.h-active):hover .h-threads-img {
           filter: none;
+          clip-path: none;
         }
 
-        /* 放大（h-active）时始终不遮罩；缩小时自动恢复 */
+        /* 放大（h-active）时始终不遮罩 */
         .h-threads-img-box.xdex-hide-blur.h-active .h-threads-img {
           filter: none !important;
+          clip-path: none !important;
+        }
+
+        /* 独立 img（无容器时） */
+        img.xdex-hide-blur-img {
+          filter: blur(14px) brightness(0.5);
+          clip-path: inset(0);
+          transition: filter .15s ease;
+        }
+        img.xdex-hide-blur-img:hover {
+          filter: none;
+          clip-path: none;
         }
 
         /* 模式2：无图（隐藏，不删除 DOM） */
