@@ -146,7 +146,6 @@
       }
   };
 
-
   // 多分组标记时依次使用的背景色（可扩充）
   const markColors = [
     '#66CCFF','#00FFCC','#EE0000','#006666','#0080FF','#FFFF00',
@@ -676,7 +675,6 @@ init() {
         );
     }
 
-
       const fold = (id,title,ph) => `
         <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
           <div class="sp_fold_head" data-btn="#btn_${id}"
@@ -1165,117 +1163,76 @@ init() {
 
       // ========== 导入/导出配置 ==========
       function parseJSONC(str) {
-
         // 先清理零宽/不可见控制字符（保留换行和普通空格）
-
         str = str.replace(/[\u200B\u200C\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g, '');
-
-
-
         // 逐字符解析：只在字符串外部去掉 // 注释和尾随逗号
-
         let out = '', inStr = false, esc = false;
-
         for (let i = 0; i < str.length; i++) {
-
           const ch = str[i];
-
           if (inStr) {
-
             out += ch;
-
             if (esc) { esc = false; }
-
             else if (ch === '\\') { esc = true; }
-
             else if (ch === '"') { inStr = false; }
-
           } else {
-
             if (ch === '"') { inStr = true; out += ch; }
-
             else if (ch === '/' && str[i + 1] === '/') {
-
               // 跳过行注释
-
               while (i < str.length && str[i] !== '\n') i++;
-
               out += '\n';
-
             }
-
             else if (ch === ',' && /^\s*[}\]]/.test(str.slice(i + 1))) {
-
               // 尾随逗号：后面紧跟 } 或 ]（允许空白），跳过逗号
-
               continue;
-
             }
-
             else { out += ch; }
-
           }
-
         }
-
         return JSON.parse(out);
-
       }
 
       // 固定开启项：UI 中为 disabled + checked，无需导入/导出
-
       const FIXED_KEYS = new Set([
-
         'enableImageHideMode',   // 固定启用（applyImageHideMode 仍可导出）
-
         'interceptReplyForm',    // 拦截回复中间页
-
         'updateReplyNumbers',    // 当页回复编号
-
         'replaceRightSidebar',   // 扩展坞增强
-
         'kaomojiEnhancer',       // 颜文字拓展（kaomojiSort 仍可导出）
-
         'highlightPO',           // 标记Po主
-
         'enhancePostFormLayout', // 发串UI调整
-
         'applyFilters',          // 标记/屏蔽-饼干/关键词
-
         'enhanceIsland',         // 增强X岛匿名版
-
         'enablePostExpand',      // 展开板块页长串
-
         'searchServiceBy4sY',    // 野生搜索酱
-
       ]);
 
-
+      // 清理字符串值中的零宽/不可见控制字符
+      function sanitizeValue(val) {
+        if (typeof val === 'string') {
+          return val.replace(/[\u200B\u200C\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g, '');
+        }
+        if (Array.isArray(val)) return val.map(sanitizeValue);
+        if (val && typeof val === 'object') {
+          const o = {};
+          for (const [k2, v2] of Object.entries(val)) o[k2] = sanitizeValue(v2);
+          return o;
+        }
+        return val;
+      }
 
       function buildJSONC(state) {
-
         const filtered = {};
-
         for (const [k, v] of Object.entries(state)) {
-
-          if (!FIXED_KEYS.has(k)) filtered[k] = v;
-
+          if (!FIXED_KEYS.has(k)) filtered[k] = sanitizeValue(v);
         }
 
         const meta = {
-
           _meta: {
-
             version: (typeof VERSION !== 'undefined' ? VERSION : GM_info.script.version),
-
             exportedAt: new Date().toISOString(),
-
             source: 'nmbxd-EX'
-
           },
-
           settings: filtered
-
         };
         const lines = JSON.stringify(meta, null, 2).split('\n');
         // 在 _meta 前加注释，在 settings 闭合括号前加尾随逗号
@@ -1294,39 +1251,29 @@ init() {
       }
 
       function validateImport(incoming) {
-
         const defaults = SettingPanel.defaults;
-
         if (typeof incoming !== 'object' || incoming === null) {
-
           toast('配置内容无效'); return null;
-
         }
-
         const validated = {};
-
         let skipped = 0;
-
         for (const [key, val] of Object.entries(incoming)) {
-
           if (FIXED_KEYS.has(key)) continue;         // 固定项直接跳过
-
           if (!(key in defaults)) continue;           // 未知字段跳过
-
           if (Array.isArray(defaults[key]) && !Array.isArray(val)) { skipped++; continue; }
-
           if (typeof val !== typeof defaults[key]) { skipped++; continue; }
-
           validated[key] = val;
-
         }
-
         return Object.assign({}, defaults, validated);
-
       }
 
       function handleImportText(text) {
+
         if (!text || !text.trim()) { toast('内容为空'); return; }
+
+        // 清理 BOM 和其他零宽字符
+
+        text = text.replace(/^[\uFEFF\u200B\u200C\u200D\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]+/, '');
         let parsed;
         try {
           parsed = parseJSONC(text);
@@ -1595,8 +1542,6 @@ init() {
 
       });
 
-
-
       //鼠标悬浮在具体功能上显示提示
       // ====== 1. 定义功能描述映射表 ======
 
@@ -1800,7 +1745,6 @@ init() {
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
-
 
       // 初始折叠与按钮隐藏
       $('.sp_fold_body').hide();
@@ -2337,7 +2281,6 @@ init() {
       injectContainer(div, uniqueImageUrls);
     }
 
-
     function findAndProcessDivs() {
       const divs = document.querySelectorAll(
         'div.h-threads-content:not([' + PROCESSED_ATTRIBUTE + ']), ' +
@@ -2422,7 +2365,6 @@ init() {
     }
     removeDateString();
   }
-
 
   function updateDropdownUI(list){
     const $dd = $('#cookie-dropdown'); $dd.empty();
@@ -2604,7 +2546,6 @@ init() {
       </div>
     `);
 
-
     $('body').append($m);
 
     $('#login-open').on('click', () => {
@@ -2628,7 +2569,6 @@ init() {
       }
     });
   }
-
 
   function createCookieSwitcherUI(){
     const $title = $('.h-post-form-title:contains("回应模式")').first();
@@ -2674,7 +2614,6 @@ init() {
     ) {
       showLoginPrompt();
     }
-
 
     // 单击下拉项即切换饼干
     $('#cookie-dropdown').on('change', function(){
@@ -2837,7 +2776,6 @@ init() {
   //duplicatePagination();
   observePagination();
 
-
   /* --------------------------------------------------
    * tag 7. 自动+手动无缝翻页
    * -------------------------------------------------- */
@@ -2937,7 +2875,6 @@ init() {
         };
       })();
 
-
       // let lastLoadedPage = originInfo.page || 1;
       lastLoadedPage = originInfo.page || 1;
       loadedPages.add(lastLoadedPage);
@@ -2947,7 +2884,6 @@ init() {
 
       // let observer = null;           // 新增：让 observer 可被其他函数控制
       // let observerFrozen = false;    // 新增：哨兵冻结标记（大图激活时用）
-
 
       // 交互状态检测
       // let hasUserInteracted = false;
@@ -3061,14 +2997,11 @@ init() {
         }
       }
 
-
       function removeIdsFromNode(node) {
         if (!node || node.querySelectorAll === undefined) return;
         node.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
         if (node.hasAttribute && node.hasAttribute('id')) node.removeAttribute('id');
       }
-
-
 
       function parseLastPageFromPagination(pagUl) {
         if (!pagUl) return null;
@@ -3208,7 +3141,6 @@ init() {
           });
         } catch (e) {}
 
-
         // newReplies 已从返回的页面 doc 中得到
         const newReplies = newList.querySelector('.h-threads-item-replies');
         if (!newReplies) {
@@ -3290,8 +3222,6 @@ init() {
         reinitForNewContent(targetReplies);
         applyPageEnhancements(targetReplies, cfg);
 
-
-
         // 统计“用户回复”数量（排除系统回复 No.9999999）
         const allReplies = Array.from(targetReplies.querySelectorAll('.h-threads-item-reply'));
         const userReplies = allReplies.filter(el => el.getAttribute('data-threads-id') !== '9999999');
@@ -3330,7 +3260,6 @@ init() {
           if (typeof done === 'function') done({ status: 'error' });
         }
       }
-
 
       function extractFromHTML(htmlText) {
         const doc = new DOMParser().parseFromString(htmlText, 'text/html');
@@ -3513,7 +3442,6 @@ init() {
           return { status: 'ok', stop: false };
         }
 
-
         // 调用新鲜判定
         const state = checkPaginationState(lastLoadedPage);
         if (state.stop) {
@@ -3547,7 +3475,6 @@ init() {
 
           return;
         }
-
 
         // if (loading) return;
         // const nextPageNum = lastLoadedPage + 1;
@@ -3624,8 +3551,6 @@ init() {
           lastLoadedPage = nextPageNum;
 
           try { history.pushState(null, '', nextUrl); } catch (e) {}
-
-
 
           ensureSentinelPlaced();
 
@@ -3724,7 +3649,6 @@ init() {
 
               // ============================================
 
-
               // 更新底部分页条
               const allPaginations = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
               if (allPaginations.length > 0) {
@@ -3795,7 +3719,6 @@ init() {
         }
       }
 
-
       // 新增：绑定点击检查（覆盖查看大图/收起等交互）
       document.addEventListener('click', (e) => {
         const t = e.target;
@@ -3830,7 +3753,6 @@ init() {
               activeInView = (r.bottom > 0 && r.top < window.innerHeight);
             }
 
-
             // 在末页时：如果激活大图且未接近底部 → 冻结观察器避免误触发
             if (atLastPage && activeInView && !nearBottom) {
               try { observer.disconnect(); } catch (e) {}
@@ -3855,7 +3777,6 @@ init() {
         observer.observe(sentinel);
       }
 
-
       function initManualButton() {
         const btn = document.createElement('div');
         btn.className = 'xdex-placeholder';
@@ -3875,7 +3796,6 @@ init() {
           // 允许点击时触发 loadNext，由 loadNext 负责末页提示（避免寂默返回）
           loadNext();
         });
-
 
         ensureSentinelPlaced();
         if (sentinel && sentinel.parentNode) {
@@ -4236,7 +4156,6 @@ init() {
         else if (normalized === 270) targetRotation = 270;
         else targetRotation = 0;
 
-
         // 归一化到 0, 90, 180, 270
         // let targetRotation;
         // if (rotation === 0) {
@@ -4267,14 +4186,11 @@ init() {
         img.style.maxWidth = 'none';
         img.style.maxHeight = 'none';
 
-
-
         // 图片只需要旋转，不需要translate偏移（因为容器已经是正确尺寸）
         img.style.transform = `rotate(${rotation}deg) scale(1.02)`;
         setTimeout(() => {
           img.style.transform = `rotate(${rotation}deg) scale(1)`;
         }, 50);
-
 
         // 使用margin居中图片
         if (isRotated90or270) {
@@ -4467,7 +4383,6 @@ init() {
           // 无容器时，兜底用视口宽度
           maxWidth = Math.min(window.innerWidth - 240, 1200);
         }
-
 
           // 如果最大宽度变化或首次计算，重新预计算所有旋转角度的尺寸
           if (!imgBox.__sizeCache || forceRecalculate || imgBox.__maxWidth !== maxWidth) {
@@ -5084,7 +4999,6 @@ init() {
         /* 标题栏作为拖拽手柄时的指针反馈 */
         .qp-header { cursor: move; }
 
-
       `;
       document.head.appendChild(style);
     }
@@ -5129,7 +5043,6 @@ init() {
     });
     
     observer.observe(document.body, { childList: true, subtree: true });
-
 
     const $overlay = $('<div class="qp-overlay-quote"></div>').appendTo('body');
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
@@ -5237,7 +5150,6 @@ init() {
       );
       $quote.append($edges);
 
-
       // 仅在标题栏 + 四边手柄上触发拖拽
       enableDragForTop($quote, $quote.find('.qp-header, .qp-drag-edge'));
 
@@ -5342,7 +5254,6 @@ init() {
       });
     }
 
-
     $(document).off('click.qp').on('click.qp', 'font[color="#789922"]', function(e){
 
       $('#h-ref-view').hide().css('opacity', '');   // 点击时关闭原生引用框并重置透明度
@@ -5355,8 +5266,6 @@ init() {
 
       if (!tid) return;
 
-
-
       const now = Date.now();
 
       if (lastQuoteTid === tid && now - lastQuoteAt <= QUOTE_DOUBLE_CLICK_WINDOW) {
@@ -5368,8 +5277,6 @@ init() {
       lastQuoteTid = tid;
 
       lastQuoteAt = now;
-
-
 
       fetchData(tid).then(showQuote);
 
@@ -5437,7 +5344,6 @@ init() {
 
     observer.observe(refView, { childList: true, subtree: true });
   }
-
 
   // function autoHideRefView() {
   //     setInterval(() => {
@@ -5650,7 +5556,6 @@ init() {
 
   }
 
-
   /* --------------------------------------------------
    * tag 10. 创建拓展坞+reply按钮呼出回复悬浮窗
    * -------------------------------------------------- */
@@ -5790,7 +5695,6 @@ init() {
             background: var(--xdex-qp-form-bg);
           }
 
-
           /* textarea 可以双向调整 */
           .qp-body .qp-content-wrap textarea[name="content"] {
             resize: both;
@@ -5801,7 +5705,6 @@ init() {
             box-sizing: border-box;
             background: var(--xdex-qp-textarea-bg);
           }
-
 
           .qp-body .qp-content-wrap .h-preview-box {
             width: 100% !important;   /* 始终和容器一致 */
@@ -8273,7 +8176,6 @@ init() {
         });
     }
 
-
     function safeGetConfig() {
       try {
         if (typeof SettingPanel !== 'undefined' && typeof GM_getValue === 'function') {
@@ -8539,7 +8441,6 @@ init() {
         }
       }
     }
-
 
   /* --------------------------------------------------
    * tag 13. 颜文字增强-光标处插入/选择框优化/额外颜文字拓展
@@ -9749,7 +9650,6 @@ init() {
     const previewHtml = buildPreviewHtml();
     //previewBox.outerHTML = previewHtml;
 
-
     // 引用插入函数（与原脚本一致）
     function enhanceNode(root) {
       if (typeof extendQuote === 'function') extendQuote(root);
@@ -9805,7 +9705,6 @@ init() {
               }
             }
 
-
             // 初始化时执行一次
             applyBoxStyle();
 
@@ -9819,7 +9718,6 @@ init() {
               childList: true,
               subtree: true
             });
-
 
             // 初始化时同步饼干 ID
             const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
@@ -10025,7 +9923,6 @@ init() {
       $(保存编辑);
     }
 
-
     function 保存编辑() {
       if (!正文框.length) return;
       if (isDraftEnabled()) {
@@ -10206,7 +10103,6 @@ init() {
       return document.title;
     }
 
-
     const 原始标题 = document.title;
 
     function 自动标题() {
@@ -10233,7 +10129,6 @@ init() {
         titleEl.textContent = `${标题} - ${原始标题} - page ${页码}`;
       }
     }
-
 
     // 相对时间格式化（与原逻辑等价，目标 span.h-threads-info-createdat）
     function getFriendlyTime(machineReadableTime) {
@@ -10364,7 +10259,6 @@ init() {
         回复成功(e.detail?.key);
     });
 
-
     function 未知() {
       if (cfg.enablePasteImage) 注册粘贴图片();
     }
@@ -10405,7 +10299,6 @@ init() {
       default:
         未知();
     }
-
 
     // 首次渲染预览（若需要）
     if (cfg.enablePreview) {
@@ -10695,7 +10588,6 @@ init() {
       ensureCollapsed($formPost, '『回复』');
     }
 
-
     if (!$formPost || !$formPost.length) return;
 
     // 如果表单中已经存在“回应模式”行（例如我们插入的时间线表单），则复用；否则按原逻辑插入 $row
@@ -10834,7 +10726,6 @@ init() {
             $formPost.find('input[name="name"]').val('');
             $formPost.find('input[name="email"]').val('');
 
-
             // 重置预览框
             const previewBox = document.querySelector('.h-preview-box');
             if (previewBox) {
@@ -10879,7 +10770,6 @@ init() {
             toast('已重置');
           });
 
-
           // “临时/连续”按钮
           const $btnExtra = $('<button type="button" class="js-extra" data-extra="临时" style="display:inline-flex; flex:0 0 auto; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">临时</button>');
           $btnExtra.on('click', function(){
@@ -10901,7 +10791,6 @@ init() {
           $extra.append($wrapper);
         }
         $extra.show();
-
 
         window.replyModeState = { mode: '回复', extra: '临时' };
 
@@ -10956,7 +10845,6 @@ init() {
           : (boardBaseName || '板块');
 
         $('.js-reply-mode-row .js-reply-mode-text').text(`${displayName}-快速回复`);
-
 
         // 广播“临时回复发送成功”
         document.dispatchEvent(new CustomEvent('tempReplySuccess', {
@@ -11196,7 +11084,6 @@ init() {
               // 保守地记录错误（不抛出），以免阻断页面其它增强逻辑
               console.warn('applyFilters reapply failed:', e);
             }
-
 
           // 临时模式下刷新完成后清空持久变量
           if (e.type === 'tempReplySuccess') {
@@ -12357,7 +12244,6 @@ init() {
       // 可传入你的 jQuery 实例（若页面没有全局 $）
       // $: window.myJQ
     });
-
 
     // 保存原始函数
     const _initContent = window.initContent;
