@@ -5257,27 +5257,17 @@ init() {
     $(document).off('click.qp').on('click.qp', 'font[color="#789922"]', function(e){
 
       $('#h-ref-view').hide().css('opacity', '');   // 点击时关闭原生引用框并重置透明度
-
       e.preventDefault();
-
       e.stopPropagation();
-
       const tid = (this.textContent.match(/\d+/) || [])[0];
-
       if (!tid) return;
-
       const now = Date.now();
-
       if (lastQuoteTid === tid && now - lastQuoteAt <= QUOTE_DOUBLE_CLICK_WINDOW) {
-
         return; // 同一引用号短时间内重复点击，忽略
-
       }
 
       lastQuoteTid = tid;
-
       lastQuoteAt = now;
-
       fetchData(tid).then(showQuote);
 
     });
@@ -5328,21 +5318,24 @@ init() {
   function monitorRefView(){
     const refView = document.getElementById('h-ref-view');
     if (!refView) return;
-
     if (refView.dataset.exMonitorBound === '1') return;
     refView.dataset.exMonitorBound = '1';
-
+    let rafLock = 0;
     const observer = new MutationObserver(() => {
       if (refView.style.display !== 'block') return;
-      observer.disconnect();
-      try {
+      if (rafLock) return;
+      rafLock = requestAnimationFrame(() => {
+        rafLock = 0;
         hideEmptyTitleAndEmail(refView);
-        const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
-        if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refView);
-      } catch (e) {}
+      });
     });
 
-    observer.observe(refView, { childList: true, subtree: true });
+    observer.observe(refView, {
+      attributes: true,
+      attributeFilter: ['style'],
+      childList: true,
+      subtree: true
+    });
   }
 
   // function autoHideRefView() {
@@ -5515,20 +5508,25 @@ init() {
             if (data.indexOf('<!DOCTYPE html><html><head>') >= 0) {
               return false;
             }
-            $("#h-ref-view").off().html(data).css({
+            // 先隐藏容器，避免内容渲染后闪烁（无标题/无名氏）
+            const $rv = $("#h-ref-view").off().css('visibility', 'hidden').html(data).css({
               top: $(self).offset().top,
               left: $(self).offset().left
-            }).fadeIn(100).one('mouseleave', function () {
-              $(this).fadeOut(100);
             });
+
             // 内容注入后直接增强
             try {
-              const refEl = document.getElementById('h-ref-view');
+              const refEl = $rv[0];
               hideEmptyTitleAndEmail(refEl);
               const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
               if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
               if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
             } catch (e) {}
+
+            // 增强完成后再显示
+            $rv.css('visibility', '').fadeIn(100).one('mouseleave', function () {
+              $(this).fadeOut(100);
+            });
           });
       });
 
@@ -9273,6 +9271,7 @@ init() {
               "望po石2": "　　　　┏━┓\n　　　　┃望┃\n　　　　┃po┃\n　　　　┃石┃\n　　　　┗━┛　　　　\n　　　┏━━━┓\n　　┏┛　望　┗┓\n　┏┛　　po　　┗┓\n┏┛　　　山　　　┗┓\n┗━━━━━━━━━┛",
               "撞墙": "┃電柱┃　( ´ー`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　( ´д`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　(;´Д`)\n┃電柱┃π。) =͟͟͞͞ =͟͟͞͞",
               "冰箱先生":"　　\/\n_____\n| ﾟ∀ﾟ|\n———\n| 　|　|\n￣￣",
+              "冰箱先生3D":"　　/\n▁▁▁▁\n╲　　　╲\n▏┌───┐\n▏│　ﾟ∀ﾟ │\n▏├─┬─┤\n╲│　│　│\n　└─┴─┘",
               "全角空格": "　",
           };
           const ORDERED_RICH = [
@@ -9283,7 +9282,7 @@ init() {
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙","冰箱先生",
+              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D",
               "全角空格",
               // 页面中“防剧透/骰子/高级骰子”不动其原位
           ];
@@ -9294,7 +9293,7 @@ init() {
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙","冰箱先生",
+              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D",
           ]);
 
           // 一次性补齐（选择器就绪且已有至少一个选项时调用）
