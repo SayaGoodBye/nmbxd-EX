@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.8
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
+// @version      2.1.9
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @grant        GM_getValue
@@ -39,7 +39,7 @@
   }
   cat_version();
 
-  const CHANGELOG = "新增：\n1.新增设置项目导入导出，支持剪切板/文件两种方式\n\n优化：\n1.图片隐藏模式同样在原生/拓展引用浮窗中生效\n2.自动识别链接同样在原生引用浮窗中生效\n";
+  const CHANGELOG = "新增：\n1.新增对被服务器认定为“非法图像格式”（无GCT）的GIF的重编码流程\n\n优化：\n1.优化发送回复时的toast提示，在发送后弹出提示，并在消息尚在提交过程中时阻止重复提交";
   const toastQueue = [];
   let isShowing = false;
   
@@ -6972,6 +6972,13 @@ init() {
         throw new Error('未识别的 gifsicle-wasm-browser API 形态');
       }
 
+      // GIF 结构修复：用 gifsicle 重新编码（不压缩，只修复 GCT 等结构问题）
+      async function reencodeGifWithGifsicle(file) {
+        const api = await ensureGifsicleLoaded();
+        const blob = await runGifsicleAttempt(api, file, ['--no-warnings']);
+        return new File([blob], file.name.replace(/\.gif$/i, '.gif'), { type: 'image/gif', lastModified: Date.now() });
+      }
+
       async function compressGifToSize(file, options = {}) {
         const maxSizeKB = options.maxSizeKB || GIF_MAX_SIZE_KB;
         const targetLowerKB = options.targetLowerKB || GIF_TARGET_LOWER_KB;
@@ -7557,7 +7564,7 @@ init() {
       }
 
       async function doSubmit(fd, isRetry = false) {
-        fetch(form.action, {
+        return fetch(form.action, {
           method: form.method,
           body: fd,
           credentials: 'include'
@@ -7572,16 +7579,33 @@ init() {
           // 打印解析到的 success / error 节点，便于调试未触发 toast 的情况
           console.log('[interceptReplyForm] parsed successMsg:', successMsg, 'errorMsg:', errorMsg);
 
-          // 新增：如果既没有 successMsg 也没有 errorMsg，检查是否包含 500 错误页面
+          // 如果既没有 successMsg 也没有 errorMsg，检查其他错误格式
           if (!successMsg && !errorMsg) {
             try {
+              // 格式1：500 Internal Server Error
               if (/500\s+Internal\s+Server\s+Error/i.test(html) || html.indexOf('<title>500 Internal Server Error</title>') !== -1) {
                 toast('500 Internal Server Error,可能是图床故障');
-                console.warn('[interceptReplyForm] detected 500 Internal Server Error in response');
-                return; // 不继续后续处理
+                return;
+              }
+
+              // 格式2：系统错误页面（错误信息在 <div class="error"> 的 <h1> 中）
+              const errorDiv = doc.querySelector('div.error');
+              if (errorDiv) {
+                const h1 = errorDiv.querySelector('h1');
+                if (h1 && h1.textContent.trim()) {
+                  toast(h1.textContent.trim());
+                  return;
+                }
+              }
+
+              // 格式3：title 含"系统发生错误"
+              const titleEl = doc.querySelector('title');
+              if (titleEl && /系统发生错误|系统错误/i.test(titleEl.textContent)) {
+                toast('系统发生错误');
+                return;
               }
             } catch (e) {
-              console.warn('[interceptReplyForm] error while checking 500 page:', e);
+              console.warn('[interceptReplyForm] error while checking fallback formats:', e);
             }
           }
 
@@ -7782,6 +7806,27 @@ init() {
               }
             }
 
+            // 非法图像文件 + GIF：可能是无 GCT 等结构问题，尝试用 gifsicle 重新编码后重试
+            if (/非法图像/.test(msg) && !isRetry) {
+              const fileInput = form.querySelector('input[type="file"][name="image"]');
+              const file = fileInput && fileInput.files && fileInput.files[0];
+              if (file && /\.gif$/i.test(file.name)) {
+                console.log('[interceptReplyForm] 检测到非法GIF，尝试用gifsicle重新编码...');
+                try {
+                  const reencodedFile = await reencodeGifWithGifsicle(file);
+                  const newFD = cloneFormData(fd);
+                  newFD.set('image', reencodedFile);
+                  toast('GIF结构已修复，正在重新提交...', 2000);
+                  await doSubmit(newFD, true);
+                  return;
+                } catch (reencodeErr) {
+                  console.error('[interceptReplyForm] GIF重编码失败:', reencodeErr);
+                  toast('GIF重编码失败，请手动处理');
+                  return;
+                }
+              }
+            }
+
             // 如果不是"含有非法词语"的特殊情况，直接提示并返回，避免被后续分支忽略
             if (!/含有非法词语/.test(msg)) {
               try {
@@ -7896,25 +7941,32 @@ init() {
                     doSubmit(newFD, false);
                     return;
                   }
-            
                   toast(msg);
                 }
               } else {
                 toast(msg);
               }
-            }            
+            }
           }
 
         })
         .catch((err) => { console.error('[interceptReplyForm] fetch error:', err); toast('未知错误'); });
       }
+      // 防重复提交
+      if (form.__submitting) {
+        toast('发送中，请勿重复提交……');
+        return;
+      }
+      form.__submitting = true;
+
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
       resetIllegalRetryState({ clearOriginalContent: false });
       const textarea = form.querySelector('textarea[name="content"]');
       form.__originalContent = textarea
         ? textarea.value
         : (formData.get('content') || '').toString();
-      doSubmit(formData, false);
+      toast('正在发送……');
+      doSubmit(formData, false).finally(() => { form.__submitting = false; });
     }, true);
 
     // ————— helpers —————
@@ -8194,12 +8246,6 @@ init() {
 
     ta.__ctrlEnterBound = true;
 
-    // 提交锁
-    form.addEventListener('submit', function () {
-      if (form.__submitting) return;
-      form.__submitting = true;
-      setTimeout(() => { form.__submitting = false; }, 2000);
-    });
 
     // 焦点在 textarea 内时：Ctrl+Enter 提交，Ctrl+\ 打开 cookie 下拉框
     ta.addEventListener('keydown', function (e) {
@@ -8210,10 +8256,7 @@ init() {
         if (typeof e.stopImmediatePropagation === 'function') {
           e.stopImmediatePropagation();
         }
-        if (form.__submitting) return;
-        form.__submitting = true;
         try { form.requestSubmit(); } catch (_) { form.submit(); }
-        setTimeout(() => { form.__submitting = false; }, 5000);
       }
 
       // Ctrl+\ 打开 cookie 下拉框
