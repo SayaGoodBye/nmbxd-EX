@@ -9978,6 +9978,9 @@ init() {
       // 原有正文框监听
       $('form').on('input', 保存编辑);
 
+      // 颜文字选择变更时也更新预览（原生代码修改textarea值但不派发input事件）
+      $('form').on('change', '#h-emot-select', 保存编辑);
+
       // 改为事件委托：监听 name 和 title 输入框
       $(document).on('input', 'form input[name="name"], form input[name="title"]', 保存编辑);
 
