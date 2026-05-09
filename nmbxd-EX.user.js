@@ -8573,6 +8573,14 @@ init() {
                 e.stopPropagation();
             }, true);
 
+            // 移除原生 jQuery change handler，防止双重插入
+            try {
+                const jqEvents = $._data(select, 'events');
+                if (jqEvents && jqEvents.change) {
+                    delete jqEvents.change;
+                }
+            } catch (e) {}
+
             function insertAtCaret(textarea, text, selStart, selEnd) {
                 // 记录插入前的滚动位置
                 const prevScrollTop = textarea.scrollTop;
