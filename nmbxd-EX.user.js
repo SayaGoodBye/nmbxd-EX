@@ -1959,7 +1959,8 @@ init() {
       const kw = Utils.firstHit(txt, blkK);
       if (kw) {
         const $ph = Utils.collapse($el, `关键词屏蔽『${kw}』`);
-        if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '1 1 auto');
+
+        if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '0 0 auto');
       }
     };
 
@@ -3465,7 +3466,7 @@ init() {
               return;
             }
             if (result.status === 'hasNext' && result.nextPage) {
-              toast(`正在加载第 ${result.nextPage} 页...`);
+              toast(`正在加载第 ${result.nextPage} 页……`);
 
               // ★ 关键：重置状态，避免 loadNext() 被拦截
               loadedPages.delete(result.nextPage);   // 确保不会误判已加载
@@ -3503,7 +3504,7 @@ init() {
         const nextUrl = computeNextUrl();
         if (!nextUrl) { return; }
 
-        toast(`正在加载第 ${nextPageNum} 页...`);
+        toast(`正在加载第 ${nextPageNum} 页……`);
 
         loading = true;
         try {
@@ -3631,7 +3632,7 @@ init() {
             return;
           }
 
-          toast(`正在加载第 ${nextPageNum} 页...`);
+          toast(`正在加载第 ${nextPageNum} 页……`);
           if (!list) { done = true; return; }
 
           const listClone = list.cloneNode(true);
@@ -6718,7 +6719,7 @@ init() {
 
                 // ✨ 精细搜索：从 high(≈0.95) 逐步提升到 1.0，寻找最接近限制的质量
                 if (localBest && localBest.size < targetLowerBytes) {
-                  console.log(`[compressImage] 精细搜索：当前最佳 ${(localBest.size / 1024).toFixed(1)}KB < ${(STATIC_TARGET_LOWER_KB)}KB，尝试提高质量...`);
+                  console.log(`[compressImage] 精细搜索：当前最佳 ${(localBest.size / 1024).toFixed(1)}KB < ${(STATIC_TARGET_LOWER_KB)}KB，尝试提高质量……`);
                   for (let q = 0.96; q <= 0.998; q = Math.min(0.998, q + 0.005)) {
                   totalAttempts++;
                   const blob = await canvasToBlob(canvas, q);
@@ -7750,7 +7751,7 @@ init() {
                 const actualFormat = await detectImageFormat(file);
                 console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
                 toast('图片大小>2048KB，正在尝试自动压缩', 3000);
-                console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩...`);
+                console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩……`);
                 try {
                   let compressedFile;
                   if (actualFormat === 'gif') {
@@ -7766,7 +7767,7 @@ init() {
                       acceptableLowerKB: 1780,
                       onProgress: (progress) => {
                         if (progress.error) {
-                          toast(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试...`, 1800);
+                          toast(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试……`, 1800);
                           return;
                         }
                         toast(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
@@ -7778,7 +7779,7 @@ init() {
                     compressedFile = await compressApngToSize(file, 2048, {
                       onProgress: (progress) => {
                         if (progress.error) {
-                          toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试...`, 1800);
+                          toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
                           return;
                         }
                         toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
@@ -7797,7 +7798,7 @@ init() {
                   resetIllegalRetryState({ clearOriginalContent: false });
                   const newFD = cloneFormData(fd);
                   newFD.set('image', compressedFile);
-                  toast(`图片已压缩至 ${(compressedFile.size / 1024).toFixed(1)}KB，正在重新提交...`, 2000);
+                  toast(`图片已压缩至 ${(compressedFile.size / 1024).toFixed(1)}KB，正在重新提交……`, 2000);
                   await doSubmit(newFD, true);
                   return;
                 } catch (compressErr) {
@@ -7816,12 +7817,12 @@ init() {
               const fileInput = form.querySelector('input[type="file"][name="image"]');
               const file = fileInput && fileInput.files && fileInput.files[0];
               if (file && /\.gif$/i.test(file.name)) {
-                console.log('[interceptReplyForm] 检测到非法GIF，尝试用gifsicle重新编码...');
+                console.log('[interceptReplyForm] 检测到非法GIF，尝试用gifsicle重新编码……');
                 try {
                   const reencodedFile = await reencodeGifWithGifsicle(file);
                   const newFD = cloneFormData(fd);
                   newFD.set('image', reencodedFile);
-                  toast('GIF结构已修复，正在重新提交...', 2000);
+                  toast('GIF结构已修复，正在重新提交……', 2000);
                   await doSubmit(newFD, true);
                   return;
                 } catch (reencodeErr) {
@@ -8210,7 +8211,7 @@ init() {
                 const nextPageNum = nextPageMatch ? parseInt(nextPageMatch[1], 10) : null;
 
                 if (nextPageNum) {
-                  toast(`发现${nextPageNum}页，正在加载...`);
+                  toast(`发现${nextPageNum}页，正在加载……`);
 
                   // 触发无缝翻页
                   if (window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
