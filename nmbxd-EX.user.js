@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.1.9
+// @version      2.2.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -39,7 +39,7 @@
   }
   cat_version();
 
-  const CHANGELOG = "新增：\n1.新增对被服务器认定为“非法图像格式”（无GCT）的GIF的重编码流程\n\n优化：\n1.优化发送回复时的toast提示，在发送后弹出提示，并在消息尚在提交过程中时阻止重复提交";
+  const CHANGELOG = "优化：\n1.标记饼干：切换饼干时预览框饼干（如果在标记中）实时显示/清除标记色；删除标记饼干分组时实时更新分组标记色\n\n修复：\n1.修复设置导入导出后设置项目中可能存在的的特殊字符被清除的问题";
   const toastQueue = [];
   let isShowing = false;
   
@@ -471,8 +471,8 @@
       if (!result.valid) { toast(result.error); return; }
       this.__pendingImport = result.merged;
       const msg = result.skipped > 0
-        ? `格式正确（${result.skipped} 个字段已跳过），请点击[保存]应用`
-        : '格式正确，请点击[保存]应用';
+        ? `格式正确（${result.skipped} 个字段已跳过），请点击[应用]`
+        : '格式正确，请点击[应用]';
       toast(msg);
       const btn = document.getElementById('btn_xdex_import_export');
       if (btn) btn.classList.remove('xdex-inv');
@@ -1163,9 +1163,7 @@ init() {
 
       // ========== 导入/导出配置 ==========
       function parseJSONC(str) {
-        // 先清理零宽/不可见控制字符（保留换行和普通空格）
-        str = str.replace(/[\u200B\u200C\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g, '');
-        // 逐字符解析：只在字符串外部去掉 // 注释和尾随逗号
+        // 逐字符解析：只在字符串外部去掉 // 注释和尾随逗号（不清理零宽字符，保留用户数据完整性）
         let out = '', inStr = false, esc = false;
         for (let i = 0; i < str.length; i++) {
           const ch = str[i];
@@ -1223,7 +1221,7 @@ init() {
       function buildJSONC(state) {
         const filtered = {};
         for (const [k, v] of Object.entries(state)) {
-          if (!FIXED_KEYS.has(k)) filtered[k] = sanitizeValue(v);
+          if (!FIXED_KEYS.has(k)) filtered[k] = v; // 不清理零宽字符，保留用户原始数据
         }
 
         const meta = {
@@ -1271,9 +1269,8 @@ init() {
 
         if (!text || !text.trim()) { toast('内容为空'); return; }
 
-        // 清理 BOM 和其他零宽字符
-
-        text = text.replace(/^[\uFEFF\u200B\u200C\u200D\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]+/, '');
+        // 只清理文本开头的 BOM，不清理内容中的零宽字符（用户数据可能包含零宽空格）
+        text = text.replace(/^\uFEFF/, '');
         let parsed;
         try {
           parsed = parseJSONC(text);
@@ -1287,7 +1284,7 @@ init() {
         SettingPanel.__pendingImport = merged;
         // 显示保存按钮
         $('#btn_sp_importExport').removeClass('xdex-inv');
-        toast('格式正确，请点击[保存]应用');
+        toast('格式正确，请点击[应用]');
       }
 
       // 从剪贴板导入
@@ -1786,15 +1783,16 @@ init() {
    * tag 3. 饼干标记 / 屏蔽 逻辑
    * -------------------------------------------------- */
   // 标记：支持同一饼干命中多个分组时，title 展示多行备注，颜色取首匹配组
-  function markAllCookies(groups) {
-    $('span.h-threads-info-uid').each(function(){
+  function markAllCookies(groups, root) {
+    const $scope = root ? $(root).find('span.h-threads-info-uid').add($(root).filter('span.h-threads-info-uid')) : $('span.h-threads-info-uid');
+    $scope.each(function(){
       const $el = $(this);
       const cid = ($el.text().split(':')[1]||'').trim();
-      
+      // 先清除旧的标记样式
+      $el.css({ background: '', padding: '', borderRadius: '' }).removeAttr('title');
       // 收集所有匹配的分组索引和备注
       let firstMatchIdx = -1;
       const hits = [];
-      
       for (let i=0; i<groups.length; i++){
         const g = groups[i];
         if (g.cookies.some(p=>Utils.cookieMatch(cid,p))) {
@@ -1802,19 +1800,14 @@ init() {
           if (g.desc) hits.push(g.desc); // 只有有备注时才加入 hits
         }
       }
-      
-      // 如果没有匹配到任何分组，跳过
+      // 如果没有匹配到任何分组，保持清除状态
       if (firstMatchIdx === -1) return;
-      
       // 根据第一个匹配的分组索引选择颜色
       const color = markColors[firstMatchIdx % markColors.length];
       $el.css({ background: color, padding:'0 3px', borderRadius:'2px' });
-      
       // 只有当有备注时才设置 title
       if (hits.length > 0) {
         $el.attr('title', hits.join('\n'));
-      } else {
-        $el.removeAttr('title'); // 没有备注时移除 title 属性
       }
     });
   }
@@ -2706,7 +2699,15 @@ init() {
     if(!$('.h-preview-box').length) return;
     const cur=getCurrentCookie();
     const name=cur&&cur.name?abbreviateName(cur.name):'无饼干';
-    $('.h-preview-box .h-threads-info-uid').text('ID:'+name);
+    const $uid = $('.h-preview-box .h-threads-info-uid');
+    $uid.text('ID:'+name);
+    // 切换饼干后更新标记背景色
+    if (typeof markAllCookies === 'function') {
+      try {
+        const cfg = getFilterConfig();
+        markAllCookies(cfg.markedGroups || [], $('.h-preview-box')[0]);
+      } catch (e) {}
+    }
   }
   function hideEmptyTitleAndEmail(root){
     const $root = root ? $(root) : null;
@@ -3075,7 +3076,8 @@ init() {
 
           const list = getRealThreadsList(document);
           if (!list) {
-            toast("调试：未找到真实的 .h-threads-list");
+            console.warn('[refreshReplies] 未找到 .h-threads-list');
+            toast('刷新回复失败，该串可能已被删除');
             return done && done({ status: "error" });
           }
 
@@ -3098,9 +3100,10 @@ init() {
               targetReplies.setAttribute('data-cloned-page', String(maxCloned));
             }
             threadItem.appendChild(targetReplies);
-            console.log('调试：已创建空的回复区容器');
+            console.log('[refreshReplies] 已创建空的回复区容器');
           } else {
-            toast("调试：未找到串容器，无法创建回复区");
+            console.warn('[refreshReplies] 未找到 .h-threads-item，无法创建回复区');
+            toast('刷新回复失败，未找到串容器');
             return done && done({ status: "error" });
           }
         }
@@ -3125,7 +3128,8 @@ init() {
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const newList = getRealThreadsList(doc);
             if (!newList) {
-              toast("调试：抓取页面中未找到 .h-threads-list");
+              console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-list');
+              toast('刷新回复失败，该串可能已被删除');
               return done && done({ status: "error" });
             }
 
@@ -3144,7 +3148,8 @@ init() {
         // newReplies 已从返回的页面 doc 中得到
         const newReplies = newList.querySelector('.h-threads-item-replies');
         if (!newReplies) {
-          toast("调试：抓取页面中未找到 .h-threads-item-replies");
+          console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-item-replies');
+          toast('刷新回复失败，页面无回复内容');
           return done && done({ status: "error" });
         }
 
@@ -9275,7 +9280,7 @@ init() {
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人","_(:зゝ∠)_","(　ﾟ 灬ﾟ)",
+              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)ゞ",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
@@ -9313,9 +9318,10 @@ init() {
               "望po石":"　┏━┓\n　┃望┃\nᕕ┃po┃ᕗ\n　┃石┃\n　┗━┛\n嗨呀我又来望po了\n我天天都来这望po",
               "望po石2": "　　　　┏━┓\n　　　　┃望┃\n　　　　┃po┃\n　　　　┃石┃\n　　　　┗━┛　　　　\n　　　┏━━━┓\n　　┏┛　望　┗┓\n　┏┛　　po　　┗┓\n┏┛　　　山　　　┗┓\n┗━━━━━━━━━┛",
               "撞墙": "┃電柱┃　( ´ー`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　( ´д`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　(;´Д`)\n┃電柱┃π。) =͟͟͞͞ =͟͟͞͞",
-              "冰箱先生":"　　\/\n_____\n| ﾟ∀ﾟ|\n———\n| 　|　|\n￣￣",
+              "冰箱先生":"　　/\n┌───┐\n│　ﾟ∀ﾟ│\n├─┬─┤\n│　│　│\n└─┴─┘",
               "冰箱先生3D":"　　/\n▁▁▁▁\n╲　　　╲\n▏┌───┐\n▏│　ﾟ∀ﾟ │\n▏├─┬─┤\n╲│　│　│\n　└─┴─┘",
               "全角空格": "　",
+              "零宽空格": "​",
           };
           const ORDERED_RICH = [
               "҉( ﾟ∀。)","齐齐蛤尔","呼伦悲尔","愕尔多厮","智利","阴山山脉",
@@ -9326,7 +9332,7 @@ init() {
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
               "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D",
-              "全角空格",
+              "全角空格","零宽空格",
               // 页面中“防剧透/骰子/高级骰子”不动其原位
           ];
           const NEED_LF = new Set([
@@ -9897,6 +9903,13 @@ init() {
       // 自动识别链接
       if (typeof runAutoUrlLinkify === 'function') {
         runAutoUrlLinkify(previewContent[0]);
+      }
+      // 标记饼干背景色
+      if (typeof markAllCookies === 'function') {
+        try {
+          const cfg = getFilterConfig();
+          markAllCookies(cfg.markedGroups || [], previewContent[0]);
+        } catch (e) {}
       }
     }
 
@@ -12266,7 +12279,6 @@ init() {
     kaomojiEnhancer();                                               //颜文字拓展
     highlightPO();                                                   //高亮Po主
     enhancePostFormLayout();                                         //发帖UI调整
-    applyFilters(cfg);                                               //标记/屏蔽/过滤-饼干/关键词
     initExtendedContent();                                           //扩展引用
     //autoHideRefView();                                               //原生引用弹窗自动隐藏
     enablePostExpand();                                              //添加串展开-折叠按钮
@@ -12286,6 +12298,7 @@ init() {
       // 可传入你的 jQuery 实例（若页面没有全局 $）
       // $: window.myJQ
     });
+    applyFilters(cfg);                                               //标记/屏蔽/过滤-饼干/关键词
 
     // 保存原始函数
     const _initContent = window.initContent;
