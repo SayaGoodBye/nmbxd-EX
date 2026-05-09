@@ -7955,7 +7955,14 @@ init() {
           }
 
         })
-        .catch((err) => { console.error('[interceptReplyForm] fetch error:', err); toast('未知错误'); });
+        .catch((err) => {
+          console.error('[interceptReplyForm] fetch error:', err);
+          if (err.name === 'TypeError' && /fetch|network/i.test(err.message)) {
+            toast('发送超时，请检查网络后重试');
+          } else {
+            toast('发送失败：' + (err.message || '未知错误'));
+          }
+        });
       }
       // 防重复提交
       if (form.__submitting) {
