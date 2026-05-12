@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.2.0
+// @version      2.2.1
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页 自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -39,7 +39,7 @@
   }
   cat_version();
 
-  const CHANGELOG = "优化：\n1.标记饼干：切换饼干时预览框饼干（如果在标记中）实时显示/清除标记色；删除标记饼干分组时实时更新分组标记色\n\n修复：\n1.修复设置导入导出后设置项目中可能存在的的特殊字符被清除的问题";
+  const CHANGELOG = "优化：\n1.屏蔽饼干/关键词：添加折叠/隐藏模式，折叠模式下被匹配项可以点击展开，隐藏模式则直接去除被匹配串/回复\n\n";
   const toastQueue = [];
   let isShowing = false;
   
@@ -73,7 +73,6 @@
     });
   }
   
-
   const Utils = {
       // 逗号(中英)分隔，支持转义 \, \， \\
       strToList(s) {
@@ -403,7 +402,11 @@
       replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
       markedGroups: [],
       blockedCookies: [],
-      blockedKeywords: ''
+
+      blockedKeywords: '',
+
+      blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
+
     },
     state: {},
 
@@ -743,7 +746,7 @@ init() {
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_kaomojiEnhancer" class="fixed-on" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><input type="hidden" name="sp_applyFilters" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><select id="sp_blockDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option></select><input type="hidden" name="sp_applyFilters" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><button id="sp_toggleDraftCache" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;" aria-pressed="true">关闭草稿</button><input type="hidden" name="sp_enhanceIsland" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><button id="sp_enablePostExpandAll" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">全部展开</button><input type="hidden" name="sp_enablePostExpand" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
@@ -894,6 +897,17 @@ init() {
 
       $('#sp_enableImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       $('#sp_applyImageHideMode').off('change').on('change', applyImageHideModeImmediately);
+
+      // 屏蔽显示模式：即时切换并即时生效（折叠/隐藏）
+      const applyBlockDisplayModeImmediately = () => {
+        const mode = $('#sp_blockDisplayMode').val() || 'fold';
+        this.state.blockDisplayMode = mode;
+        try { GM_setValue(this.key, this.state); } catch (e) {}
+        if (typeof applyFilters === 'function') {
+          applyFilters(this.state);
+        }
+      };
+      $('#sp_blockDisplayMode').off('change').on('change', applyBlockDisplayModeImmediately);
 
       // 颜文字排序：即时切换并即时生效（无需点“应用更改”）
       const applyKaomojiSortImmediately = () => {
@@ -1570,7 +1584,7 @@ init() {
         sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
         sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面',
-        sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则',
+        sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则\n折叠：匹配到的串/回复显示为可展开的按钮\n隐藏：匹配到的串/回复完全隐藏',
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
         sp_replyQuicklyOnBoardPage: '为板块页添加快速回复模式，在板块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“板块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
@@ -1578,7 +1592,6 @@ init() {
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
       };
 
-      
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
       if (!document.getElementById('sp_update_log')) {
         const $log = $(
@@ -1715,6 +1728,9 @@ init() {
       $('#sp_enableImageHideMode').prop('checked', true);
 
       $('#sp_applyImageHideMode').val(this.state.applyImageHideMode || 'default');
+
+      $('#sp_blockDisplayMode').val(this.state.blockDisplayMode || 'fold');
+
       $('#sp_kaomojiSort').val(this.state.kaomojiSort || 'default');
 
       // 标记分组
@@ -1840,15 +1856,35 @@ init() {
   }
 
   function resetTag3FilterState(root) {
+
     const $root = asFilterRoot(root);
+
+    // 恢复折叠状态
+
     withSelf($root, '[data-xdex-filter-target="1"]').each((_, el) => {
+
       $(el)
+
         .show()
+
         .removeData('xdex-collapsed')
+
         .removeAttr('data-xdex-filter-target')
+
         .removeClass('xdex-generic-collapsed');
+
     });
+
+    // 恢复隐藏状态
+
+    withSelf($root, '[data-xdex-filter-hidden="1"]').each((_, el) => {
+
+      $(el).show().removeAttr('data-xdex-filter-hidden');
+
+    });
+
     withSelf($root, '[data-xdex-filter-placeholder="1"]').remove();
+
   }
 
   function decorateFilterPlaceholder($ph, $el, placeholderClass, expandedFlex = '0 0 auto') {
@@ -1926,6 +1962,9 @@ init() {
     const root = arguments.length > 1 ? arguments[1] : undefined;
     const $root = asFilterRoot(root);
     cfg = getFilterConfig(cfg);
+    if (applyFilters._running) return; // 防重入
+    applyFilters._running = true;
+    try {
     resetTag3FilterState($root);
     // 标记
     markAllCookies(cfg.markedGroups||[]);
@@ -1935,12 +1974,13 @@ init() {
     const blkK = Utils.strToList(cfg.blockedKeywords);
     const whitelistGroups = normalizeThreadCookieWhitelistGroups(cfg.threadCookieWhitelistGroups || []);
 
+    const displayMode = cfg.blockDisplayMode || 'fold';
+
     const checkBlocked = $el => {
       if ($el.closest('.h-preview-box').length) return;
       if (isSystemReplyElement($el)) return;
       const cid = ($el.find('.h-threads-info-uid').first().text().split(':')[1]||'').trim();
       const txt = $el.find('.h-threads-content').first().text();
-
       if (cid && blkG.length) {
         let matchedCookie = null, matchedDesc = '';
         for (let i=0; i<blkG.length && !matchedCookie; i++){
@@ -1948,19 +1988,42 @@ init() {
           const hit = g.cookies.find(p=>Utils.cookieMatch(cid,p));
           if (hit) { matchedCookie = hit; matchedDesc = g.desc || ''; }
         }
+
         if (matchedCookie) {
-          const label = matchedDesc ? `${matchedCookie}：${matchedDesc}` : matchedCookie;
-          const $ph = Utils.collapse($el, `饼干屏蔽『${label}』`);
-          if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '0 0 auto');
+          if (displayMode === 'hide') {
+            const _c = $el.closest('.h-threads-item-reply'); const $target = _c.length ? _c : $el;
+
+            // 板块页主串：隐藏下方的 <hr> 分隔线
+            if ($target.hasClass('h-threads-item-index')) {
+              const $hr = $target.next('hr');
+              if ($hr.length) $hr.hide().attr('data-xdex-filter-hidden', '1');
+            }
+            $target.hide().attr('data-xdex-filter-hidden', '1');
+          } else {
+            const label = matchedDesc ? `${matchedCookie}：${matchedDesc}` : matchedCookie;
+            const $ph = Utils.collapse($el, `饼干屏蔽『${label}』`);
+            if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '0 0 auto');
+          }
           return;
         }
       }
 
       const kw = Utils.firstHit(txt, blkK);
-      if (kw) {
-        const $ph = Utils.collapse($el, `关键词屏蔽『${kw}』`);
 
-        if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '0 0 auto');
+      if (kw) {
+        if (displayMode === 'hide') {
+          const _c = $el.closest('.h-threads-item-reply'); const $target = _c.length ? _c : $el;
+
+            // 板块页主串：隐藏下方的 <hr> 分隔线
+            if ($target.hasClass('h-threads-item-index')) {
+              const $hr = $target.next('hr');
+              if ($hr.length) $hr.hide().attr('data-xdex-filter-hidden', '1');
+            }
+          $target.hide().attr('data-xdex-filter-hidden', '1');
+        } else {
+          const $ph = Utils.collapse($el, `关键词屏蔽『${kw}』`);
+          if ($ph) decorateFilterPlaceholder($ph, $el, 'xdex-placeholder-blocked', '0 0 auto');
+        }
       }
     };
 
@@ -1973,9 +2036,12 @@ init() {
       if (whitelistCookies.some((pattern) => Utils.cookieMatch(cid, pattern))) {
         return;
       }
+
+      // 只看饼干始终保持折叠，不受 displayMode 影响
       const prefix = whitelistGroup && whitelistGroup.desc ? `『${whitelistGroup.desc}』` : '';
       const $ph = Utils.collapse($reply, `${prefix}只看饼干『${whitelistCookies.join('，')}』`);
       if ($ph) decorateFilterPlaceholder($ph, $reply, 'xdex-placeholder-whitelist', '0 0 auto');
+
     };
 
     if(/\/t\/\d{8,}/.test(location.pathname)){
@@ -2021,9 +2087,11 @@ init() {
         });
       }
     }
+    } finally { applyFilters._running = false; }
   }
 
   /* --------------------------------------------------
+
    * tag 4. 外部图床显示
    * -------------------------------------------------- */
   const ExternalImagePreview = (function(){
@@ -3397,7 +3465,6 @@ init() {
         globalObserver.observe(document.body, { childList: true, subtree: true });
     }
     
-
       // 串内页加载
       async function loadNext() {
         console.log('[loadNext] 函数被调用');
@@ -8259,7 +8326,6 @@ init() {
 
     ta.__ctrlEnterBound = true;
 
-
     // 焦点在 textarea 内时：Ctrl+Enter 提交，Ctrl+\ 打开 cookie 下拉框
     ta.addEventListener('keydown', function (e) {
       // Ctrl+Enter 提交表单
@@ -11109,7 +11175,6 @@ init() {
             }
           });
           
-
           // 立即执行视觉相关过滤，避免闪烁
           try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(); } catch (e) {}
           try { if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2); } catch (e) {}
@@ -12095,7 +12160,6 @@ init() {
     const trailingPunctuationRegex = /[),.!?\]}'"，。！？；：、】【）》」』、]+$/;
     const skipTags = new Set(['A', 'CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'BUTTON']);
     
-
     const shouldSkipTextNode = (node) => {
       const parent = node.parentElement;
       if (!parent) return true;
