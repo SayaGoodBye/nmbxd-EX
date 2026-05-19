@@ -203,6 +203,10 @@
   function updateSettingsButtonBadge(state = getUpdateCheckState()) {
     const $btn = $('#sp_btn');
     if (!$btn.length) return;
+    if (typeof isUpdateCheckEnabled === 'function' && !isUpdateCheckEnabled()) {
+      $btn.removeClass('xdex-has-update');
+      return;
+    }
     $btn.toggleClass('xdex-has-update', shouldShowPendingUpdateReminder(state));
   }
 
@@ -291,6 +295,12 @@
   }
 
   function maybeShowPendingUpdateDialogOnPanelOpen() {
+    if (!isUpdateCheckEnabled()) {
+      const state = getDefaultUpdateCheckState();
+      updateSettingsButtonBadge(state);
+      clearFooterUpdateHighlight();
+      return;
+    }
     const state = getUpdateCheckState();
     updateSettingsButtonBadge(state);
     if (shouldShowPendingUpdateReminder(state)) {
@@ -299,6 +309,12 @@
   }
 
   async function checkForDailyScriptUpdate(force = false) {
+    if (!isUpdateCheckEnabled()) {
+      const state = getUpdateCheckState();
+      updateSettingsButtonBadge(state);
+      clearFooterUpdateHighlight();
+      return state;
+    }
     const now = Date.now();
     const today = formatLocalDateKey(now);
     const state = getUpdateCheckState();
@@ -728,6 +744,8 @@
       enableLinkBlank: true, // 串页新标签打开
       enableAutoUrlLinkify: true,
       enableQuotePreview: true, // 优化引用弹窗
+      enableUpdateCheck: true,
+      enableImageContextMenu: true,
       enableImageHideMode: true, // 图片隐藏/无图模式
       applyImageHideMode: 'default', // default | blur | noimage | tips
       enableDraft: true,
@@ -1125,6 +1143,8 @@ init() {
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableQuotePreview"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote"><label for="sp_extendQuote"> 拓展引用格式</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
                 <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
                 <!-- 以下是默认勾选项不可更改 -->
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
@@ -1752,6 +1772,7 @@ init() {
           'updatePreviewCookie',
           'hideEmptyTitleEmail',
           'enableExternalImagePreview',
+          'enableUpdateCheck',
           'enableAutoCookieRefresh',
           'enableAutoCookieRefreshToast',
           'interceptReplyFormUnvcode',
@@ -1760,6 +1781,7 @@ init() {
           'enableSeamlessPaging',
           'enableAutoSeamlessPaging',
           'enableHDImageAndLayoutFix',
+          'enableImageContextMenu',
           'enableLinkBlank',
           'enableAutoUrlLinkify',
           'enableQuotePreview',
@@ -1907,11 +1929,13 @@ init() {
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
         sp_hideEmptyTitleEmail: '隐藏帖内无标题、无名氏和版规提示，优化显示效果，减少版面占用',
         sp_enableExternalImagePreview: '直接显示外部图床的图片',
+        sp_enableUpdateCheck: '控制是否自动检查脚本更新；关闭后不会发起远程更新请求，也不会继续安排后续检查。',
         sp_enableAutoCookieRefresh: '回到X岛页面后自动刷新饼干，以防错饼',
         sp_enableAutoCookieRefreshToast: '自动刷新时显示toast提示，触发频率较高，建议关闭',
         sp_enableSeamlessPaging: '阅读到页面底部时无缝加载下一页并为新页首添加页码提示',
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
+        sp_enableImageContextMenu: '为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单。',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
@@ -2078,6 +2102,7 @@ init() {
         'updatePreviewCookie',
         'hideEmptyTitleEmail',
         'enableExternalImagePreview',
+        'enableUpdateCheck',
         'enableAutoCookieRefresh',
         'enableAutoCookieRefreshToast',
         'interceptReplyFormUnvcode',
@@ -2086,6 +2111,7 @@ init() {
         'enableSeamlessPaging',
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
+        'enableImageContextMenu',
         'enableLinkBlank',
         'enableAutoUrlLinkify',
         'enableQuotePreview',
@@ -2213,6 +2239,15 @@ init() {
       return next;
     } catch (e) {
       return Object.assign({}, SettingPanel.defaults);
+    }
+  }
+
+  function isUpdateCheckEnabled() {
+    try {
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      return !!cfg.enableUpdateCheck;
+    } catch (e) {
+      return !!SettingPanel.defaults.enableUpdateCheck;
     }
   }
 
@@ -4904,7 +4939,6 @@ init() {
 
       // 预计算图片在所有旋转角度下的尺寸
       precalculateImageSizes(naturalWidth, naturalHeight, maxWidth) {
-        console.log('[precalculateImageSizes]', {naturalWidth, naturalHeight, maxWidth}); // 添加这行
         const sizes = {};
 
         // 0° 和 180°（宽高不变）
@@ -5082,20 +5116,12 @@ init() {
         // img.style.maxWidth = 'none';
         // img.style.maxHeight = 'none';
 
-        console.log('[applyImageSize]', {
-          rotation,
-          targetRotation,
-          containerSize: `${size.containerWidth}x${size.containerHeight}`,
-          imgSize: `${size.imgWidth}x${size.imgHeight}`,
-          transform: img.style.transform
-        });
       },
 
       // 处理激活状态的图片盒子
       handleActiveImageBox(imgBox, forceRecalculate = false) {
         // ===== 新增：预览框内的图片不做布局处理 =====
         if (imgBox.closest('.h-preview-box')) return;
-        console.trace('[handleActiveImageBox 调用]', '图片:', imgBox.querySelector('img')?.src);
 
         const imgA = imgBox.querySelector('.h-threads-img-a');
         const img = imgBox.querySelector('.h-threads-img');
@@ -5105,6 +5131,10 @@ init() {
         const isActive = imgBox.classList.contains('h-active');
 
         if (!isActive) {
+          if (imgBox.__activeLayoutFrame) {
+            cancelAnimationFrame(imgBox.__activeLayoutFrame);
+            imgBox.__activeLayoutFrame = 0;
+          }
           // 取消激活：恢复原始状态并清除缓存
           if (imgBox.__originalStyles) {
             imgA.style.width = imgBox.__originalStyles.aWidth || '';
@@ -5164,8 +5194,13 @@ init() {
           };
         }
 
-        // 延迟执行，确保图片已加载
-        setTimeout(() => {
+        if (imgBox.__activeLayoutFrame) cancelAnimationFrame(imgBox.__activeLayoutFrame);
+        imgBox.__activeLayoutForceRecalculate = !!(imgBox.__activeLayoutForceRecalculate || forceRecalculate);
+
+        imgBox.__activeLayoutFrame = requestAnimationFrame(() => {
+          const shouldForceRecalculate = !!imgBox.__activeLayoutForceRecalculate;
+          imgBox.__activeLayoutFrame = 0;
+          imgBox.__activeLayoutForceRecalculate = false;
           if (!imgBox.classList.contains('h-active')) return;
 
           const naturalWidth = img.naturalWidth;
@@ -5225,19 +5260,13 @@ init() {
             maxWidth = Math.min(msgWidth - 40, window.innerWidth - 240);
           }
 
-          console.log('[maxWidth计算]', {
-            isPreview, isOverlay, msgWidth,
-            windowWidth: window.innerWidth,
-            maxWidth
-          });
-
         } else {
           // 无容器时，兜底用视口宽度
           maxWidth = Math.min(window.innerWidth - 240, 1200);
         }
 
           // 如果最大宽度变化或首次计算，重新预计算所有旋转角度的尺寸
-          if (!imgBox.__sizeCache || forceRecalculate || imgBox.__maxWidth !== maxWidth) {
+          if (!imgBox.__sizeCache || shouldForceRecalculate || imgBox.__maxWidth !== maxWidth) {
             imgBox.__maxWidth = maxWidth;
             imgBox.__sizeCache = this.precalculateImageSizes(naturalWidth, naturalHeight, maxWidth);
           }
@@ -5272,20 +5301,19 @@ init() {
               imgBox.__sizeCache = handleImageLayout.precalculateImageSizes(naturalWidth, naturalHeight, maxWidth);
 
               // 延迟应用尺寸，确保重排完成
-              setTimeout(() => {
+              requestAnimationFrame(() => {
                 if (!imgBox.classList.contains('h-active')) return;
                 handleImageLayout.applyImageSize(imgBox, rotateIndex);
-              }, 0);
+              });
               return;
             }
 
           }
 
           // 应用对应旋转角度的尺寸
-          console.log('[准备应用尺寸] rotateIndex:', rotateIndex, 'sizeCache:', imgBox.__sizeCache, 'maxWidth:', imgBox.__maxWidth);
           this.applyImageSize(imgBox, rotateIndex);
 
-        }, 50);
+        });
       },
 
       // 处理普通元素溢出
@@ -5440,7 +5468,7 @@ init() {
               // 触发布局恢复
               handleImageLayout.handleActiveImageBox(box);
             }
-          });
+          }, true);
         });
       },
 
@@ -5529,7 +5557,11 @@ init() {
 
               // 如果容器尺寸异常（太小或为0），强制重新计算
               if (currentWidth < 50 || currentHeight < 50) {
-                setTimeout(() => handleImageLayout.handleActiveImageBox(imgBox, true), 100);
+                requestAnimationFrame(() => {
+                  if (imgBox.classList.contains('h-active')) {
+                    handleImageLayout.handleActiveImageBox(imgBox, true);
+                  }
+                });
               }
             }
           }
@@ -13189,6 +13221,10 @@ init() {
   updateDebugTarget.__xdexPatchUpdateCheckState = window.__xdexPatchUpdateCheckState;
 
   function scheduleDailyUpdateCheck() {
+    if (!isUpdateCheckEnabled()) {
+      scheduleNextUpdateCheckTimer(getUpdateCheckState());
+      return;
+    }
     checkForDailyScriptUpdate(false)
       .then((state) => {
         scheduleNextUpdateCheckTimer(state);
@@ -13206,6 +13242,7 @@ init() {
       clearTimeout(window.__xdexUpdateCheckTimer);
       window.__xdexUpdateCheckTimer = 0;
     }
+    if (!isUpdateCheckEnabled()) return;
     const nextCheckAt = Number(state && state.nextCheckAt || 0);
     if (!nextCheckAt) return;
     const delay = Math.max(0, nextCheckAt - Date.now());
@@ -13875,6 +13912,8 @@ init() {
   }
 
   function enableImageContextMenu(root = document) {
+    const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+    if (!cfg.enableImageContextMenu) return;
     ensureImageContextMenuStyle();
     getImageContextMenu();
     const imageAnchors = root && root.querySelectorAll ? root.querySelectorAll('.h-threads-img-a') : [];
@@ -13911,8 +13950,17 @@ init() {
     if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
     if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
-    initializeUpdateReminderUI();                                     //检查更新UI状态初始化
-    scheduleDailyUpdateCheck();                                       //每日检查更新
+    if (cfg.enableUpdateCheck) {
+      initializeUpdateReminderUI();                                   //检查更新UI状态初始化
+      scheduleDailyUpdateCheck();                                     //每日检查更新
+    } else {
+      updateSettingsButtonBadge(getDefaultUpdateCheckState());
+      clearFooterUpdateHighlight();
+      if (window.__xdexUpdateCheckTimer) {
+        clearTimeout(window.__xdexUpdateCheckTimer);
+        window.__xdexUpdateCheckTimer = 0;
+      }
+    }
     if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
     if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
     replaceRightSidebar();                                           //扩展坞增强
