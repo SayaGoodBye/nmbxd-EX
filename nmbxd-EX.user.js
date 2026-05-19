@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.2.1
+// @version      2.2.5
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -12,10 +12,13 @@
 // @grant        GM_deleteValue
 // @grant        GM_listValues
 // @grant        GM_addStyle
+// @grant        unsafeWindow
+// @connect      image.nmb.best
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
 // @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
 // @license      WTFPL
+// @changelog    新增：\n1.新增ScriptCat更新渠道：新增 ScriptCat（脚本猫）作为备选更新源(https://scriptcat.org/api/v2/scripts/6289)，无法访问GreasyFork的肥哥可通过此渠道下载更新\n2.更新提示：启动时自动检查 GreasyFork 与 ScriptCat 的最新版本，展示更新日志，支持「立即更新 / 忽略此版本 / 今日关闭」三种操作\n3.只看饼干·批注模式：开启后，若Po主与只看饼干设置中填写的其他饼干回复 ≥ 2 条，则重点回复置于主栏，其余回复展示在侧栏；不足 2 条时按网页默认顺序排列。侧栏支持「展开 / 收起」切换，收起时侧栏高度与对应主栏回复平齐\n4.屏蔽饼干/关键词·隐藏模式：开启后完全隐藏被关键词/饼干匹配的回复\n5.图片右键菜单：右键图片弹出自定义菜单，支持复制图片、下载图片、复制图片链接、复制串链接。GIF / APNG 通过 Chromium Web Custom Format 写入剪贴板，粘贴时保留动态效果（注意：不会显示在 Windows 剪贴板历史中，复制后请及时粘贴）\n\n优化：\n1.饼干切换快捷键：使用 `Ctrl + \` 切换饼干时，若选中已激活的饼干，焦点将回到输入框而非停留在选择栏中，避免误操作\n2.设置项交互统一：「增强 X 岛匿名版」（关闭草稿 / 开启草稿）与「展开板块页长串」（全部展开 / 全部收起）由按钮改为选择框，交互风格与其他设置项保持一致
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
 // @note         致谢：完整移植[增强x岛匿名版](https://greasyfork.org/zh-CN/scripts/513156-%E5%A2%9E%E5%BC%BAx%E5%B2%9B%E5%8C%BF%E5%90%8D%E7%89%88)
@@ -28,6 +31,11 @@
 /* global $, jQuery */
 // @run-at document-end
 
+// @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
+// @updateURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
+// @downloadURL https://scriptcat.org/scripts/code/6289/X%E5%B2%9B-EX.user.js
+// @updateURL https://scriptcat.org/scripts/code/6289/X%E5%B2%9B-EX.meta.js
+
 (function($){
   'use strict';
   /* --------------------------------------------------
@@ -39,7 +47,336 @@
   }
   cat_version();
 
-  const CHANGELOG = "优化：\n1.屏蔽饼干/关键词：添加折叠/隐藏模式，折叠模式下被匹配项可以点击展开，隐藏模式则直接去除被匹配串/回复\n\n";
+  const UPDATE_CHECK_KEY = 'xdex_update_check_state';
+  const UPDATE_GREASYFORK_META_URL = 'https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js';
+  const UPDATE_SCRIPTCAT_API_URL = 'https://scriptcat.org/api/v2/scripts/6289';
+  const UPDATE_CHECK_HOUR = 10;
+
+  function normalizeMetaChangelog(text) {
+    return String(text || '')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\n')
+      .trim();
+  }
+
+  function parseVersionAndChangelogFromMeta(metaText) {
+    const text = String(metaText || '');
+    const versionMatch = text.match(/^\/\/\s*@version\s+(.+)$/m);
+    const changelogMatches = [...text.matchAll(/^\/\/\s*@changelog\s+(.+)$/gm)];
+    const changelog = normalizeMetaChangelog(changelogMatches
+      .map(m => String(m[1] || '').trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim());
+    return {
+      version: versionMatch ? String(versionMatch[1] || '').trim() : '',
+      changelog
+    };
+  }
+
+  const CHANGELOG = parseVersionAndChangelogFromMeta(GM_info.scriptMetaStr || '').changelog || '';
+  function getDefaultUpdateCheckState() {
+    return {
+      lastCheckDate: '',
+      nextCheckAt: 0,
+      pendingUpdateVersion: '',
+      pendingUpdateChangelog: '',
+      pendingUpdateSource: '',
+      pendingUpdateDetectedAt: 0,
+      latestRemoteVersion: '',
+      ignoredVersion: '',
+      lastDismissDate: '',
+      dismissedUntil: 0
+    };
+  }
+
+  function getUpdateCheckState() {
+    try {
+      const saved = GM_getValue(UPDATE_CHECK_KEY, null);
+      const merged = Object.assign(getDefaultUpdateCheckState(), saved || {});
+      console.log('[update-check] get state:', merged);
+      return merged;
+    } catch (e) {
+      console.warn('[update-check] get state failed, fallback to default:', e);
+      return getDefaultUpdateCheckState();
+    }
+  }
+
+  function setUpdateCheckState(nextState) {
+    const merged = Object.assign(getDefaultUpdateCheckState(), nextState || {});
+    GM_setValue(UPDATE_CHECK_KEY, merged);
+    console.log('[update-check] set state:', merged);
+    return merged;
+  }
+
+  function formatLocalDateKey(ts = Date.now()) {
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function getNextNaturalCheckAt(nowTs = Date.now(), hour = UPDATE_CHECK_HOUR) {
+    const d = new Date(nowTs);
+    d.setDate(d.getDate() + 1);
+    d.setHours(hour, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function compareVersionStrings(a, b) {
+    const pa = String(a || '').split('.').map(v => parseInt(v, 10) || 0);
+    const pb = String(b || '').split('.').map(v => parseInt(v, 10) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+      const av = pa[i] || 0;
+      const bv = pb[i] || 0;
+      if (av > bv) return 1;
+      if (av < bv) return -1;
+    }
+    return 0;
+  }
+
+  function gmRequest(url, responseType = 'text') {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        responseType,
+        onload: (resp) => {
+          if (resp.status >= 200 && resp.status < 300) {
+            resolve(resp);
+          } else {
+            reject(new Error(`HTTP ${resp.status} ${url}`));
+          }
+        },
+        onerror: () => reject(new Error(`Request failed: ${url}`)),
+        ontimeout: () => reject(new Error(`Request timeout: ${url}`))
+      });
+    });
+  }
+
+  async function fetchMetaVersionAndChangelog(url, source) {
+    const resp = await gmRequest(url, 'text');
+    const parsed = parseVersionAndChangelogFromMeta(resp.responseText || '');
+    return {
+      source,
+      url,
+      version: parsed.version,
+      changelog: parsed.changelog
+    };
+  }
+
+  async function fetchScriptCatVersionAndChangelog(url, source = 'scriptcat') {
+    const resp = await gmRequest(url, 'text');
+    const json = JSON.parse(resp.responseText || '{}');
+    const script = (json && json.data && json.data.script) || {};
+    return {
+      source,
+      url,
+      version: String(script.version || '').trim(),
+      changelog: String(script.changelog || '').trim()
+    };
+  }
+
+  function choosePreferredRemoteMeta(results) {
+    const valid = (results || []).filter(item => item && item.version);
+    if (!valid.length) return null;
+    valid.sort((a, b) => compareVersionStrings(b.version, a.version));
+    const topVersion = valid[0].version;
+    const topCandidates = valid.filter(item => compareVersionStrings(item.version, topVersion) === 0);
+    const preferred = topCandidates.find(item => item.source === 'greasyfork') || topCandidates[0];
+    return preferred;
+  }
+
+  function shouldShowPendingUpdateReminder(state, currentVersion = VERSION) {
+    if (!state || !state.pendingUpdateVersion) return false;
+    if (compareVersionStrings(state.pendingUpdateVersion, currentVersion) <= 0) return false;
+    if (state.ignoredVersion && state.ignoredVersion === state.pendingUpdateVersion) return false;
+    if (state.lastDismissDate && state.lastDismissDate === formatLocalDateKey()) return false;
+    if (state.dismissedUntil && Date.now() < state.dismissedUntil) return false;
+    return true;
+  }
+
+  function updateSettingsButtonBadge(state = getUpdateCheckState()) {
+    const $btn = $('#sp_btn');
+    if (!$btn.length) return;
+    $btn.toggleClass('xdex-has-update', shouldShowPendingUpdateReminder(state));
+  }
+
+  function clearFooterUpdateHighlight() {
+    const $links = $('#sp_panel_footer .sp_panel_links');
+    $links.removeClass('xdex-update-highlight xdex-update-source-greasyfork xdex-update-source-scriptcat');
+    $links.find('[data-update-channel]').removeClass('xdex-update-link-primary xdex-update-link-secondary');
+  }
+
+  function flashFooterUpdateHighlight(source = '') {
+    const $links = $('#sp_panel_footer .sp_panel_links');
+    if (!$links.length) return;
+    clearFooterUpdateHighlight();
+    $links.addClass('xdex-update-highlight');
+    const sourceKey = String(source || '').trim().toLowerCase();
+    const channelMap = {
+      greasyfork: {
+        containerClass: 'xdex-update-source-greasyfork',
+        primary: 'greasyfork',
+        secondary: ['github']
+      },
+      scriptcat: {
+        containerClass: 'xdex-update-source-scriptcat',
+        primary: 'scriptcat',
+        secondary: ['baidupan']
+      }
+    };
+    const config = channelMap[sourceKey];
+    if (config) {
+      $links.addClass(config.containerClass);
+      $links.find(`[data-update-channel="${config.primary}"]`).addClass('xdex-update-link-primary');
+      (config.secondary || []).forEach((channel) => {
+        $links.find(`[data-update-channel="${channel}"]`).addClass('xdex-update-link-secondary');
+      });
+    }
+    setTimeout(() => {
+      clearFooterUpdateHighlight();
+    }, 5000);
+  }
+
+  function renderUpdateLogDialog(mode = 'local', state = getUpdateCheckState()) {
+    const $dlg = $('#sp_update_log');
+    if (!$dlg.length) return;
+    const isRemote = mode === 'remote' && state && state.pendingUpdateVersion && compareVersionStrings(state.pendingUpdateVersion, VERSION) > 0;
+    const title = isRemote ? `发现新版本 v${state.pendingUpdateVersion}` : '更新日志';
+    const bodyText = isRemote
+      ? (state.pendingUpdateChangelog || `发现新版本 v${state.pendingUpdateVersion}，但未提取到更新说明。`)
+      : (CHANGELOG || '暂无更新说明');
+    $dlg.attr('data-update-mode', isRemote ? 'remote' : 'local');
+    $dlg.find('.xdex-update-log-title').text(title);
+    $dlg.find('.xdex-update-log-body').text(bodyText);
+    $dlg.find('.xdex-update-log-actions').css('display', isRemote ? 'flex' : 'none');
+  }
+
+  function openUpdateLogDialog(mode = 'local') {
+    const state = getUpdateCheckState();
+    renderUpdateLogDialog(mode, state);
+    $('#sp_update_log').fadeIn(120);
+  }
+
+  function closeUpdateLogDialog(options = {}) {
+    const { treatAsDismiss = false, reason = 'unknown' } = options || {};
+    const mode = $('#sp_update_log').attr('data-update-mode') || '';
+    if (treatAsDismiss) {
+      const state = getUpdateCheckState();
+      state.lastDismissDate = formatLocalDateKey();
+      state.dismissedUntil = state.nextCheckAt || getNextNaturalCheckAt();
+      setUpdateCheckState(state);
+      updateSettingsButtonBadge(state);
+      console.log('[update-check] dismiss dialog:', {
+        reason,
+        mode,
+        treatAsDismiss: true,
+        lastDismissDate: state.lastDismissDate,
+        dismissedUntil: state.dismissedUntil,
+        dismissedUntilISO: state.dismissedUntil ? new Date(state.dismissedUntil).toISOString() : ''
+      });
+    } else {
+      console.log('[update-check] close dialog:', {
+        reason,
+        mode,
+        treatAsDismiss: false
+      });
+    }
+    $('#sp_update_log').fadeOut(120);
+  }
+
+  function maybeShowPendingUpdateDialogOnPanelOpen() {
+    const state = getUpdateCheckState();
+    updateSettingsButtonBadge(state);
+    if (shouldShowPendingUpdateReminder(state)) {
+      openUpdateLogDialog('remote');
+    }
+  }
+
+  async function checkForDailyScriptUpdate(force = false) {
+    const now = Date.now();
+    const today = formatLocalDateKey(now);
+    const state = getUpdateCheckState();
+    const alreadyChecked = !force && state.nextCheckAt && now < state.nextCheckAt;
+    console.log('[update-check] start:', {
+      force,
+      now,
+      today,
+      currentVersion: VERSION,
+      state: Object.assign({}, state),
+      alreadyChecked,
+      nextCheckAtISO: state.nextCheckAt ? new Date(state.nextCheckAt).toISOString() : ''
+    });
+    if (alreadyChecked) {
+      console.log('[update-check] skip: already checked for current window', {
+        force,
+        now,
+        nextCheckAt: state.nextCheckAt,
+        nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
+      });
+      updateSettingsButtonBadge(state);
+      return state;
+    }
+    state.lastCheckDate = today;
+    state.nextCheckAt = getNextNaturalCheckAt(now);
+    console.log('[update-check] scheduled next check:', {
+      lastCheckDate: state.lastCheckDate,
+      nextCheckAt: state.nextCheckAt,
+      nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
+    });
+    try {
+      const settled = await Promise.allSettled([
+        fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork'),
+        fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')
+      ]);
+      const sourceResults = settled.map((item, index) => {
+        const source = index === 0 ? 'greasyfork' : 'scriptcat';
+        if (item.status === 'fulfilled') {
+          console.log('[update-check] remote meta success:', item.value);
+          return item.value;
+        }
+        console.warn(`[update-check] remote meta failed: ${source}`, item.reason);
+        return null;
+      });
+      const preferredRemote = choosePreferredRemoteMeta(sourceResults);
+      console.log('[update-check] remote meta choice:', {
+        localVersion: VERSION,
+        candidates: sourceResults,
+        preferred: preferredRemote
+      });
+      const remoteVersion = preferredRemote ? String(preferredRemote.version || '').trim() : '';
+      const remoteChangelog = preferredRemote ? String(preferredRemote.changelog || '').trim() : '';
+      state.latestRemoteVersion = remoteVersion;
+      if (remoteVersion && compareVersionStrings(remoteVersion, VERSION) > 0) {
+        state.pendingUpdateVersion = remoteVersion;
+        state.pendingUpdateDetectedAt = now;
+        state.pendingUpdateChangelog = remoteChangelog || `发现新版本 v${remoteVersion}，但未提取到更新说明。`;
+        state.pendingUpdateSource = preferredRemote ? String(preferredRemote.source || '').trim() : '';
+        if (state.dismissedUntil && now >= state.dismissedUntil) {
+          state.dismissedUntil = 0;
+          state.lastDismissDate = '';
+        }
+        if (state.ignoredVersion && compareVersionStrings(state.ignoredVersion, remoteVersion) < 0) {
+          state.ignoredVersion = '';
+        }
+      } else {
+        state.pendingUpdateVersion = '';
+        state.pendingUpdateChangelog = '';
+        state.pendingUpdateSource = '';
+        state.pendingUpdateDetectedAt = 0;
+      }
+    } catch (e) {
+      console.warn('[update-check] daily update check failed:', e);
+    }
+    console.log('[update-check] final state before save:', state);
+    setUpdateCheckState(state);
+    updateSettingsButtonBadge(state);
+    return state;
+  }
   const toastQueue = [];
   let isShowing = false;
   
@@ -398,6 +735,8 @@
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
       threadCookieWhitelistGroups: [],
+      threadCookieWhitelistDisplayMode: 'fold', // 只看饼干：fold | hide | column
+      poAnnotationSideDisplayMode: 'collapse', // 分栏侧栏：collapse | expand
       replyModeDefault: '回复',   // 板块页默认模式：发串/回复
       replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
       markedGroups: [],
@@ -530,17 +869,23 @@
     },
 
     syncAuxiliaryControls() {
-      const draftBtn = document.getElementById('sp_toggleDraftCache');
-      if (draftBtn) {
-        const enabled = !!(this.state && this.state.enableDraft);
-        draftBtn.textContent = enabled ? '关闭草稿' : '开启草稿';
-        draftBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      const whitelistModeSelect = document.getElementById('sp_threadCookieWhitelistDisplayMode');
+      if (whitelistModeSelect) {
+        whitelistModeSelect.value = (this.state && this.state.threadCookieWhitelistDisplayMode) || 'fold';
       }
-      const expandBtn = document.getElementById('sp_enablePostExpandAll');
-      if (expandBtn) {
+      const poSideModeSelect = document.getElementById('sp_poAnnotationSideDisplayMode');
+      if (poSideModeSelect) {
+        poSideModeSelect.value = (this.state && this.state.poAnnotationSideDisplayMode) || 'collapse';
+      }
+      const draftSelect = document.getElementById('sp_enableDraftMode');
+      if (draftSelect) {
+        const enabled = !!(this.state && this.state.enableDraft);
+        draftSelect.value = enabled ? 'off' : 'on';
+      }
+      const expandSelect = document.getElementById('sp_postExpandAllMode');
+      if (expandSelect) {
         const enabled = !!(this.state && this.state.enablePostExpandAll);
-        expandBtn.textContent = enabled ? '全部收起' : '全部展开';
-        expandBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        expandSelect.value = enabled ? 'expand' : 'collapse';
       }
     },
 
@@ -586,6 +931,7 @@ init() {
       this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
       this.syncInputs();
       this.syncAuxiliaryControls();
+      try { refreshFilterDisplay(this.state); } catch (e) {}
     }
   });
 },
@@ -642,7 +988,7 @@ init() {
                       color:#fff;
                       border-radius:20px;
                       white-space:nowrap;
-                      overflow:hidden;
+                      overflow:visible;
                       max-width: 34px; /* 容纳"EX" */
                       transition: all 0.3s ease;
                       cursor:pointer;
@@ -663,7 +1009,44 @@ init() {
                   }
                   #sp_btn:hover span {
                       opacity:1;
-                 }
+                  }
+                  #sp_btn.xdex-has-update::after {
+                       content:'!';
+                       position:absolute;
+                       right:-6px;
+                      top:-6px;
+                      width:18px;
+                      height:18px;
+                      border-radius:50%;
+                      background:#e53935;
+                      color:#fff;
+                      font-size:12px;
+                      line-height:18px;
+                      text-align:center;
+                      font-weight:bold;
+                      box-shadow:0 1px 4px rgba(0,0,0,.25);
+                  }
+                  #sp_panel_footer .sp_panel_links.xdex-update-highlight {
+                       box-shadow: inset 0 0 0 2px #ff4d4f, 0 0 0 2px rgba(255,77,79,.18);
+                       background: linear-gradient(90deg, rgba(255,77,79,.08), rgba(255,193,7,.08)) !important;
+                       transition: box-shadow 0.2s ease, background 0.2s ease, filter 0.2s ease;
+                  }
+                  #sp_panel_footer .sp_panel_links.xdex-update-source-greasyfork {
+                       box-shadow: inset 0 0 0 2px rgba(255,152,0,.68), 0 0 0 2px rgba(255,152,0,.16);
+                  }
+                  #sp_panel_footer .sp_panel_links.xdex-update-source-scriptcat {
+                       box-shadow: inset 0 0 0 2px rgba(18,150,219,.68), 0 0 0 2px rgba(18,150,219,.16);
+                  }
+                  #sp_panel_footer .sp_panel_links a.xdex-update-link-primary {
+                       color:#c62828 !important;
+                       font-weight:700;
+                       text-decoration:underline;
+                       text-underline-offset:2px;
+                  }
+                  #sp_panel_footer .sp_panel_links a.xdex-update-link-secondary {
+                       color:#8a1f1f !important;
+                       font-weight:600;
+                  }
               </style>
           `);
       }
@@ -672,10 +1055,14 @@ init() {
         $('body').append(
             $('<button id="sp_btn">EX<span>设置</span></button>')
                 .on('click',()=>{
+                  this.syncInputs();
+                  this.syncAuxiliaryControls();
                   if (typeof window.__xdexSyncDarkReaderTheme === 'function') window.__xdexSyncDarkReaderTheme();
                   $('#sp_cover').fadeIn();
+                  maybeShowPendingUpdateDialogOnPanelOpen();
                 })
         );
+        updateSettingsButtonBadge(getUpdateCheckState());
     }
 
       const fold = (id,title,ph) => `
@@ -745,10 +1132,11 @@ init() {
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="fixed-on" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_kaomojiEnhancer" class="fixed-on" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><select id="sp_blockDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option></select><input type="hidden" name="sp_applyFilters" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><button id="sp_toggleDraftCache" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;" aria-pressed="true">关闭草稿</button><input type="hidden" name="sp_enhanceIsland" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><button id="sp_enablePostExpandAll" type="button" style="display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">全部展开</button><input type="hidden" name="sp_enablePostExpand" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_threadCookieWhitelistModeEnabled" class="fixed-on" checked disabled><label for="sp_threadCookieWhitelistModeEnabled"> 只看饼干</label><select id="sp_threadCookieWhitelistDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option><option value="column">分栏</option></select><select id="sp_poAnnotationSideDisplayMode" style="height:24px;"><option value="collapse">收起</option><option value="expand">展开</option></select></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><select id="sp_enableDraftMode" style="height:24px;"><option value="on">关闭草稿</option><option value="off">开启草稿</option></select><input type="hidden" name="sp_enhanceIsland" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><select id="sp_postExpandAllMode" style="height:24px;"><option value="collapse">全部收起</option><option value="expand">全部展开</option></select><input type="hidden" name="sp_enablePostExpand" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
                 <div style="${checkboxRowStyle}">
                   <input type="checkbox" id="sp_enableImageHideMode" class="fixed-on" checked disabled><label for="sp_enableImageHideMode"> 模糊/无图/Tips模式</label>
@@ -854,10 +1242,11 @@ init() {
 
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
-                <a href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
-                <a href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">油猴</a>
-                <a href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
-                <a href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
+                <a data-update-channel="thread" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
+                <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">GreasyFork</a>
+                <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
+                <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener">ScriptCat</a>
+                <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
               </div>
               <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
                 <button id="sp_apply" style="padding:6px 10px;">应用更改</button>
@@ -903,11 +1292,18 @@ init() {
         const mode = $('#sp_blockDisplayMode').val() || 'fold';
         this.state.blockDisplayMode = mode;
         try { GM_setValue(this.key, this.state); } catch (e) {}
-        if (typeof applyFilters === 'function') {
-          applyFilters(this.state);
-        }
+        refreshFilterDisplay(this.state);
       };
       $('#sp_blockDisplayMode').off('change').on('change', applyBlockDisplayModeImmediately);
+
+      const applyThreadCookieWhitelistDisplayModeImmediately = () => {
+        this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
+        this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
+        try { GM_setValue(this.key, this.state); } catch (e) {}
+        refreshFilterDisplay(this.state);
+      };
+      $('#sp_threadCookieWhitelistDisplayMode').off('change').on('change', applyThreadCookieWhitelistDisplayModeImmediately);
+      $('#sp_poAnnotationSideDisplayMode').off('change').on('change', applyThreadCookieWhitelistDisplayModeImmediately);
 
       // 颜文字排序：即时切换并即时生效（无需点“应用更改”）
       const applyKaomojiSortImmediately = () => {
@@ -931,83 +1327,56 @@ init() {
       };
       $('#sp_kaomojiSort').off('change').on('change', applyKaomojiSortImmediately);
 
-      // --- 初始化“全部展开/全部收起”按钮 (id = sp_enablePostExpandAll) ---
-      (function initExpandAllButton() {
-          const btn = document.getElementById('sp_enablePostExpandAll');
-          if (!btn) return;
-
-          const updateButton = (state) => {
-          btn.textContent = state ? '全部收起' : '全部展开';
-          btn.setAttribute('aria-pressed', state ? 'true' : 'false');
-          };
-
-          // 初次渲染时根据 state 设置按钮文字
-          const initialState = !!(SettingPanel.state && SettingPanel.state.enablePostExpandAll);
-          updateButton(initialState);
-
-          btn.addEventListener('click', (e) => {
+      (function initPostExpandModeSelect() {
+          const sel = document.getElementById('sp_postExpandAllMode');
+          if (!sel) return;
+          sel.value = (SettingPanel.state && SettingPanel.state.enablePostExpandAll) ? 'expand' : 'collapse';
+          sel.addEventListener('change', (e) => {
               e.stopPropagation();
-              const newState = !SettingPanel.state.enablePostExpandAll;
-              SettingPanel.state.enablePostExpandAll = newState;
+              const nextState = (sel.value || 'expand') === 'expand';
+              SettingPanel.state.enablePostExpandAll = nextState;
 
-              // 更新按钮文字
-              btn.textContent = newState ? '全部收起' : '全部展开';
-
-              // 找到“当前在看的串” = 视窗中第一个顶部进入视窗的串
               const items = document.querySelectorAll('.h-threads-item-index');
               let anchor = null;
               for (const item of items) {
-              const rect = item.getBoundingClientRect();
-              if (rect.top >= 0) { anchor = item; break; }
+                const rect = item.getBoundingClientRect();
+                if (rect.top >= 0) { anchor = item; break; }
               }
               if (!anchor && items.length) anchor = items[items.length - 1];
               const anchorTopBefore = anchor ? anchor.getBoundingClientRect().top : null;
 
-              // 执行展开/收起
               items.forEach(item => {
-              const toggleBtn = item.querySelector('.h-threads-info .js-toggle-mode');
-              if (!toggleBtn) return;
-              const expanded = item.classList.contains('expanded');
-              if (newState && !expanded) {
-                  toggleBtn.click(); // 全部展开
-              } else if (!newState && expanded) {
-                  toggleBtn.click(); // 全部收起
-              }
+                const toggleBtn = item.querySelector('.h-threads-info .js-toggle-mode');
+                if (!toggleBtn) return;
+                const expanded = item.classList.contains('expanded');
+                if (nextState && !expanded) {
+                  toggleBtn.click();
+                } else if (!nextState && expanded) {
+                  toggleBtn.click();
+                }
               });
 
-              // 统一补偿滚动，保证锚点位置不变
-              if (!newState && anchor && anchorTopBefore !== null) {
-              requestAnimationFrame(() => {
+              if (!nextState && anchor && anchorTopBefore !== null) {
+                requestAnimationFrame(() => {
                   const anchorTopAfter = anchor.getBoundingClientRect().top;
                   const delta = anchorTopAfter - anchorTopBefore;
                   window.scrollBy({ top: delta, behavior: 'instant' });
-              });
+                });
               }
 
-              // 保存状态
               try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
-
-              toast(newState ? '已展开长串' : '已折叠长串');
+              toast(nextState ? '已展开长串' : '已折叠长串');
           });
-
       })();
 
-      (function initDraftToggleButton() {
-          const btn = document.getElementById('sp_toggleDraftCache');
-          if (!btn) return;
-
-          const updateButton = (enabled) => {
-            btn.textContent = enabled ? '关闭草稿' : '开启草稿';
-            btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-          };
-
-          updateButton(!!(SettingPanel.state && SettingPanel.state.enableDraft));
-
-          btn.addEventListener('click', (e) => {
+      (function initDraftModeSelect() {
+          const sel = document.getElementById('sp_enableDraftMode');
+          if (!sel) return;
+          sel.value = (SettingPanel.state && SettingPanel.state.enableDraft) ? 'off' : 'on';
+          sel.addEventListener('change', (e) => {
             e.stopPropagation();
-            const enabled = !SettingPanel.state.enableDraft;
+            const enabled = (sel.value || 'off') === 'off';
             SettingPanel.state.enableDraft = enabled;
-            updateButton(enabled);
 
             try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
 
@@ -1064,7 +1433,7 @@ init() {
         GM_setValue(this.key, this.state);
         this.syncInputs();
         toast(fromDelete ? '已删除标记分组' : '标记分组已保存');
-        applyFilters(this.state);
+        refreshFilterDisplay(this.state);
         return true;
       };
 
@@ -1086,7 +1455,7 @@ init() {
         GM_setValue(this.key, this.state);
         this.syncInputs();
         toast(fromDelete ? '已删除屏蔽分组' : '屏蔽分组已保存');
-        applyFilters(this.state);
+        refreshFilterDisplay(this.state);
         return true;
       };
 
@@ -1119,7 +1488,7 @@ init() {
         });
         this.syncInputs();
         toast(fromDelete ? '已删除只看饼干分组' : '只看饼干分组已保存');
-        applyFilters(this.state);
+        refreshFilterDisplay(this.state);
         return true;
       };
 
@@ -1167,7 +1536,7 @@ init() {
         this.state.blockedKeywords = v;
         GM_setValue(this.key, this.state);
         toast('屏蔽关键词已保存');
-        applyFilters(this.state);
+        refreshFilterDisplay(this.state);
       });
 
       $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
@@ -1399,36 +1768,6 @@ init() {
 
         // 固定启用：不受面板勾选状态影响
         this.state.enableImageHideMode = true;
-      // ====== 新增：sp_enablePostExpandAll 按钮（即时生效 & 持久化） ======
-      $('#sp_enablePostExpandAll').off('click').on('click', (e)=>{
-          e.stopPropagation();
-          // toggle 状态
-          this.state.enablePostExpandAll = !this.state.enablePostExpandAll;
-
-          // 更新按钮文字（立即反馈）
-          $('#sp_enablePostExpandAll').text(this.state.enablePostExpandAll ? '全部收起' : '全部展开');
-
-          // 立即持久化（无论是否点“应用更改”都生效）
-          try {
-            GM_setValue(this.key, this.state);
-          } catch (err) {
-            console.warn('保存 enablePostExpandAll 失败：', err);
-          }
-
-          // 立即应用到页面上（如果 enablePostExpand 已经存在则调用 applyPostExpandAllMode）
-          try {
-            if (typeof applyPostExpandAllMode === 'function') {
-              applyPostExpandAllMode(this.state.enablePostExpandAll);
-            } else if (typeof enablePostExpand === 'function') {
-              // 如果 enablePostExpand 尚未初始化，先初始化（enablePostExpand 内也会读取 SettingPanel.state）
-              try { enablePostExpand(); } catch(e){ /* 忽略 */ }
-              // 尝试延迟调用全局应用函数（容错）
-              setTimeout(()=>{ if (typeof applyPostExpandAllMode === 'function') applyPostExpandAllMode(this.state.enablePostExpandAll); }, 80);
-            }
-          } catch (err) {
-            console.warn('applyPostExpandAllMode 调用异常：', err);
-          }
-        });
 
         // 屏蔽关键词
         this.state.blockedKeywords = $('#sp_blockedKeywords').val().trim();
@@ -1437,6 +1776,8 @@ init() {
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
         this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
+        this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
+        this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
 
         // 标记分组（双字段结构）
         const mk = [];
@@ -1574,6 +1915,8 @@ init() {
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
+        sp_threadCookieWhitelistModeEnabled: '只看饼干模式。折叠：保持原版只看饼干折叠逻辑；隐藏：未命中的回复直接隐藏；分栏：重点回复保留在主阅读流，观众回复进入侧栏批注。',
+        sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动。',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
         sp_updateReplyNumbers: '添加当页内回复编号显示',
         sp_replaceRightSidebar: '增强右侧扩展坞功能，点击REPLY按钮打开回复弹窗，点击非回复弹窗区域或ESC键可关闭回复弹窗，另外支持使用CTRL+ENTER发送消息',
@@ -1598,20 +1941,47 @@ init() {
           '<div id=\"sp_update_log\" style=\"display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10001;\">' +
             '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;background:var(--xdex-sp-panel-bg);border:1px solid var(--xdex-sp-border);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow);\">' +
               '<div style=\"padding:10px 12px;border-bottom:1px solid var(--xdex-sp-border);display:flex;align-items:center;justify-content:space-between;\">' +
-                '<span style=\"font-weight:bold;\">更新日志</span>' +
+                '<span class=\"xdex-update-log-title\" style=\"font-weight:bold;\">更新日志</span>' +
                 '<span id=\"sp_update_log_close\" style=\"cursor:pointer;\">✕</span>' +
               '</div>' +
-              '<div style=\"padding:12px;font-size:12px;white-space:pre-line;\">' +
+              '<div class=\"xdex-update-log-body\" style=\"padding:12px;font-size:12px;white-space:pre-line;\">' +
                 (CHANGELOG || '暂无更新说明') +
+              '</div>' +
+              '<div class=\"xdex-update-log-actions\" style=\"display:none;padding:0 12px 12px;gap:8px;justify-content:flex-end;\">' +
+                '<button id=\"sp_update_log_update_now\" style=\"padding:4px 10px;\">立即更新</button>' +
+                '<button id=\"sp_update_log_ignore_version\" style=\"padding:4px 10px;\">忽略此版本</button>' +
+                '<button id=\"sp_update_log_dismiss_today\" style=\"padding:4px 10px;\">今日关闭</button>' +
               '</div>' +
             '</div>' +
           '</div>'
         );
         $('body').append($log);
         $('#sp_update_log_close,#sp_update_log').on('click', (e) => {
-          if (e.target.id === 'sp_update_log' || e.target.id === 'sp_update_log_close') {
-            $('#sp_update_log').fadeOut(120);
+          if (e.target.id === 'sp_update_log') {
+            closeUpdateLogDialog({ treatAsDismiss: false, reason: 'overlay' });
+            return;
           }
+          if (e.target.id === 'sp_update_log_close') {
+            const isRemoteMode = $('#sp_update_log').attr('data-update-mode') === 'remote';
+            closeUpdateLogDialog({ treatAsDismiss: isRemoteMode, reason: 'close-button' });
+          }
+        });
+        $('#sp_update_log_update_now').on('click', () => {
+          const state = getUpdateCheckState();
+          closeUpdateLogDialog({ reason: 'update-now' });
+          flashFooterUpdateHighlight(state.pendingUpdateSource || '');
+        });
+        $('#sp_update_log_ignore_version').on('click', () => {
+          const state = getUpdateCheckState();
+          if (state.pendingUpdateVersion) {
+            state.ignoredVersion = state.pendingUpdateVersion;
+            setUpdateCheckState(state);
+            updateSettingsButtonBadge(state);
+          }
+          closeUpdateLogDialog({ reason: 'ignore-version' });
+        });
+        $('#sp_update_log_dismiss_today').on('click', () => {
+          closeUpdateLogDialog({ treatAsDismiss: true, reason: 'dismiss-today' });
         });
       }
 
@@ -1623,7 +1993,7 @@ init() {
 
       $('#sp_version_link').off('click').on('click', (e) => {
         e.preventDefault();
-        $('#sp_update_log').fadeIn(120);
+        openUpdateLogDialog('local');
       });
 
 // ====== 2. 创建 tooltip 元素并添加样式 ======
@@ -1726,11 +2096,10 @@ init() {
 
       // 固定启用项：始终显示为开启
       $('#sp_enableImageHideMode').prop('checked', true);
-
       $('#sp_applyImageHideMode').val(this.state.applyImageHideMode || 'default');
-
       $('#sp_blockDisplayMode').val(this.state.blockDisplayMode || 'fold');
-
+      $('#sp_threadCookieWhitelistDisplayMode').val(this.state.threadCookieWhitelistDisplayMode || 'fold');
+      $('#sp_poAnnotationSideDisplayMode').val(this.state.poAnnotationSideDisplayMode || 'collapse');
       $('#sp_kaomojiSort').val(this.state.kaomojiSort || 'default');
 
       // 标记分组
@@ -1958,6 +2327,86 @@ init() {
     return replyIdText === 'No.9999999';
   }
 
+  function isThreadPageForPOAnnotation() {
+    return /\/t\/\d{8,}/.test(location.pathname);
+  }
+
+  function isLiveDocumentRoot(root) {
+    if (!root || root === document) return true;
+    try {
+      return !!(root.ownerDocument === document && document.documentElement && document.documentElement.contains(root));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function refreshFilterDisplay(cfg, root) {
+    if (!isLiveDocumentRoot(root)) {
+      applyFilters(cfg, root || document);
+      return;
+    }
+    if (typeof refreshPOAnnotationMode === 'function') {
+      refreshPOAnnotationMode(root || document, cfg);
+    } else if (typeof applyFilters === 'function') {
+      applyFilters(cfg, root || document);
+    }
+  }
+
+  function getThreadCookieWhitelistDisplayMode(cfg) {
+    return (cfg && cfg.threadCookieWhitelistDisplayMode) || 'fold';
+  }
+
+  function getPOAnnotationSideDisplayMode(cfg) {
+    return (cfg && cfg.poAnnotationSideDisplayMode) || 'collapse';
+  }
+
+  function isPOAnnotationActive(cfg) {
+    return getThreadCookieWhitelistDisplayMode(cfg) === 'column' && isThreadPageForPOAnnotation();
+  }
+
+  function getCookieIdFromReplyMain($reply) {
+    return ($reply.find('.h-threads-info-uid').first().text().split(':')[1] || '').trim();
+  }
+
+  function detectRuntimePOGroups(root, cfg) {
+    const baseCfg = getFilterConfig(cfg);
+    if (!isPOAnnotationActive(baseCfg)) return null;
+    const threadId = getThreadIdForElement(asFilterRoot(root || document));
+    if (!threadId) return null;
+    const cookies = [];
+    withSelf(asFilterRoot(root || document), '.h-threads-item-reply-main').each((_, el) => {
+      const $reply = $(el);
+      if (!$reply.find('span.uk-text-primary.uk-text-small').length) return;
+      const cid = getCookieIdFromReplyMain($reply);
+      if (Utils.cookieLegal(cid) && !cookies.includes(cid)) cookies.push(cid);
+    });
+    return cookies.length ? { desc: 'PO', threads: [String(threadId).slice(0, 8)], cookies, isAuto: true } : null;
+  }
+
+  function buildEffectiveWhitelistGroups(manualGroups, autoPOGroup) {
+    const groups = normalizeThreadCookieWhitelistGroups(manualGroups || []).map(g => ({
+      desc: g.desc || '',
+      threads: [...(g.threads || [])],
+      cookies: [...(g.cookies || [])]
+    }));
+    if (autoPOGroup && autoPOGroup.threads?.length && autoPOGroup.cookies?.length) {
+      groups.push({
+        desc: autoPOGroup.desc || 'PO',
+        threads: [...autoPOGroup.threads],
+        cookies: [...autoPOGroup.cookies]
+      });
+    }
+    return mergeThreadCookieWhitelistGroups(groups).groups;
+  }
+
+  function buildPOAnnotationLiveConfig(cfg, root) {
+    const liveCfg = getFilterConfig(cfg);
+    if (!isPOAnnotationActive(liveCfg)) return liveCfg;
+    const autoPOGroup = detectRuntimePOGroups(root, liveCfg);
+    liveCfg.threadCookieWhitelistGroups = buildEffectiveWhitelistGroups(liveCfg.threadCookieWhitelistGroups || [], autoPOGroup);
+    return liveCfg;
+  }
+
   function applyFilters(cfg) {
     const root = arguments.length > 1 ? arguments[1] : undefined;
     const $root = asFilterRoot(root);
@@ -1967,12 +2416,14 @@ init() {
     try {
     resetTag3FilterState($root);
     // 标记
-    markAllCookies(cfg.markedGroups||[]);
+    markAllCookies(cfg.markedGroups||[], $root);
 
     // 屏蔽（按组，匹配到则折叠，文案含备注）
     const blkG = (cfg.blockedCookies||[]);
     const blkK = Utils.strToList(cfg.blockedKeywords);
     const whitelistGroups = normalizeThreadCookieWhitelistGroups(cfg.threadCookieWhitelistGroups || []);
+    const whitelistDisplayMode = getThreadCookieWhitelistDisplayMode(cfg);
+    const poAnnotationMode = isPOAnnotationActive(cfg);
 
     const displayMode = cfg.blockDisplayMode || 'fold';
 
@@ -2037,6 +2488,15 @@ init() {
         return;
       }
 
+      if (poAnnotationMode) return;
+
+      if (whitelistDisplayMode === 'hide') {
+        const _c = $reply.closest('.h-threads-item-reply');
+        const $target = _c.length ? _c : $reply;
+        $target.hide().attr('data-xdex-filter-hidden', '1');
+        return;
+      }
+
       // 只看饼干始终保持折叠，不受 displayMode 影响
       const prefix = whitelistGroup && whitelistGroup.desc ? `『${whitelistGroup.desc}』` : '';
       const $ph = Utils.collapse($reply, `${prefix}只看饼干『${whitelistCookies.join('，')}』`);
@@ -2088,6 +2548,281 @@ init() {
       }
     }
     } finally { applyFilters._running = false; }
+  }
+
+  function resetPOAnnotationLayout(root) {
+    const scope = root || document;
+    const anchors = Array.from(scope.querySelectorAll ? scope.querySelectorAll('[data-xdex-po-annotation-anchor="1"]') : []);
+    anchors.forEach(anchor => {
+      const key = anchor.getAttribute('data-xdex-po-annotation-key');
+      const repliesRoot = anchor.closest('.h-threads-item-replies') || document;
+      const moved = key ? repliesRoot.querySelector(`.h-threads-item-reply[data-xdex-po-annotation-moved="${key}"]`) : null;
+      if (moved && anchor.parentNode) {
+        anchor.parentNode.insertBefore(moved, anchor);
+        moved.removeAttribute('data-xdex-po-annotation-moved');
+        moved.removeAttribute('data-xdex-po-annotation-role');
+      }
+      anchor.remove();
+    });
+    const wrappers = Array.from(scope.querySelectorAll ? scope.querySelectorAll('[data-xdex-po-annotation-wrapper="1"]') : []);
+    wrappers.forEach(wrapper => {
+      const repliesRoot = wrapper.closest('.h-threads-item-replies');
+      const mainReplies = Array.from(wrapper.querySelectorAll('.xdex-po-annotation-main > .h-threads-item-reply'));
+      mainReplies.forEach(reply => {
+        if (repliesRoot) {
+          reply.removeAttribute('data-xdex-po-annotation-highlight');
+          reply.removeAttribute('data-xdex-po-annotation-role');
+          repliesRoot.insertBefore(reply, wrapper);
+        }
+      });
+      const sideReplies = Array.from(wrapper.querySelectorAll('.h-threads-item-reply[data-xdex-po-annotation-moved]'));
+      sideReplies.forEach(reply => {
+        if (repliesRoot) {
+          reply.removeAttribute('data-xdex-po-annotation-moved');
+          reply.removeAttribute('data-xdex-po-annotation-role');
+          repliesRoot.insertBefore(reply, wrapper);
+        }
+      });
+      wrapper.remove();
+    });
+    Array.from(scope.querySelectorAll ? scope.querySelectorAll('.h-threads-item-reply[data-xdex-po-annotation-moved]') : []).forEach(reply => {
+      const repliesRoot = reply.closest('.h-threads-item-replies');
+      if (repliesRoot && reply.parentNode !== repliesRoot) {
+        const fallbackWrapper = repliesRoot.querySelector('[data-xdex-po-annotation-wrapper="1"]');
+        if (fallbackWrapper && fallbackWrapper.parentNode === repliesRoot) {
+          repliesRoot.insertBefore(reply, fallbackWrapper);
+        } else {
+          repliesRoot.appendChild(reply);
+        }
+      }
+      reply.removeAttribute('data-xdex-po-annotation-moved');
+      reply.removeAttribute('data-xdex-po-annotation-role');
+    });
+    Array.from(scope.querySelectorAll ? scope.querySelectorAll('[data-xdex-po-annotation-anchor="1"], [data-xdex-po-annotation-wrapper="1"]') : []).forEach(el => el.remove());
+    Array.from(scope.querySelectorAll ? scope.querySelectorAll('[data-xdex-po-annotation-audience], [data-xdex-po-annotation-highlight]') : []).forEach(el => {
+      el.removeAttribute('data-xdex-po-annotation-audience');
+      el.removeAttribute('data-xdex-po-annotation-highlight');
+      el.removeAttribute('data-xdex-po-annotation-role');
+    });
+  }
+
+  function ensurePOAnnotationStyle() {
+    if (document.getElementById('xdex-po-annotation-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-po-annotation-style';
+    style.textContent = `
+      .xdex-po-annotation-group{display:grid;grid-template-columns:minmax(0,1fr) clamp(220px,31vw,380px);gap:10px;align-items:start;margin:6px 0;overflow:visible;}
+      .xdex-po-annotation-main{min-width:0;position:relative;z-index:2;overflow:visible;}
+      .xdex-po-annotation-side{min-width:0;border-left:2px solid #d2b59e;padding-left:8px;opacity:.92;position:relative;z-index:1;overflow:visible;}
+      .xdex-po-annotation-side-title{font-size:12px;color:#886b58;margin:0 0 4px;cursor:pointer;user-select:none;}
+      .xdex-po-annotation-side-body{min-width:0;overflow:visible;}
+      .xdex-po-annotation-side[data-side-display-mode="collapse"] .xdex-po-annotation-side-body{overflow:auto;}
+      .xdex-po-annotation-side .h-threads-item-reply{font-size:12px;margin-bottom:6px;}
+      .xdex-po-annotation-main .h-threads-item-reply{position:relative;z-index:2;overflow:visible;}
+      .xdex-po-annotation-main .h-threads-img-box.h-active{position:relative;z-index:20;overflow:visible !important;}
+      .xdex-po-annotation-main .h-threads-img-box.h-active .h-threads-img-a{position:relative;z-index:21;overflow:visible !important;}
+      .xdex-po-annotation-main .h-threads-img-box.h-active .h-threads-img{position:relative;z-index:22;}
+      .xdex-po-annotation-side .h-threads-item-reply-main,.xdex-po-annotation-side .h-threads-content,.xdex-po-annotation-side .h-threads-img-box,.xdex-po-annotation-side .h-threads-img-a,.xdex-po-annotation-side .h-threads-img,.xdex-po-annotation-side img{max-width:100% !important;height:auto !important;box-sizing:border-box;}
+      .xdex-po-annotation-side .h-threads-item-reply-main{width:100% !important;}
+      .xdex-po-annotation-side .h-threads-img-box{width:100% !important;max-width:100% !important;}
+      .xdex-po-annotation-side .h-threads-img-a{display:block;max-width:100% !important;overflow:hidden;}
+      .xdex-po-annotation-side .h-threads-img{max-width:100% !important;height:auto !important;}
+      .xdex-po-annotation-side .h-threads-img-box.h-active{max-width:100% !important;overflow:hidden !important;}
+      .xdex-po-annotation-side .h-threads-img-box .h-threads-img-tool-btn{font-size:11px;white-space:nowrap;}
+      @media (max-width: 860px){.xdex-po-annotation-group{display:block}.xdex-po-annotation-side{border-left:0;border-top:1px dashed #d2b59e;margin-top:6px;padding:6px 0 0;}}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function openPOAnnotationReplyQuote(replyEl) {
+    if (!replyEl) return false;
+    const tid = (replyEl.getAttribute('data-threads-id') || '').trim();
+    if (!/^\d{1,}$/.test(tid) || tid === '9999999') return false;
+    try {
+      if (typeof window.__xdexOpenQuoteByTid !== 'function' && typeof enableQuotePreview === 'function') {
+        enableQuotePreview();
+      }
+      if (typeof window.__xdexOpenQuoteByTid !== 'function') return false;
+      const ret = window.__xdexOpenQuoteByTid(tid, { fromPOImage: true });
+      if (ret && typeof ret.then === 'function') {
+        ret.catch(() => {});
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function bindPOAnnotationSideImageQuotePreview() {
+    if (document.documentElement.dataset.xdexPoImageQuoteBound === '1') return;
+    document.documentElement.dataset.xdexPoImageQuoteBound = '1';
+    document.addEventListener('click', (e) => {
+      if (e.defaultPrevented) return;
+      if (typeof e.button === 'number' && e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const trigger = e.target.closest('.xdex-po-annotation-side .h-threads-img-a');
+      if (!trigger) return;
+      const replyEl = trigger.closest('.h-threads-item-reply');
+      if (!replyEl) return;
+      const opened = openPOAnnotationReplyQuote(replyEl);
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    }, true);
+  }
+
+  function updatePOAnnotationSideState(group, expanded) {
+    if (!group) return;
+    const side = group.querySelector('.xdex-po-annotation-side');
+    const title = group.querySelector('.xdex-po-annotation-side-title');
+    const body = group.querySelector('.xdex-po-annotation-side-body');
+    const main = group.querySelector('.xdex-po-annotation-main');
+    if (!side || !title || !body || !main) return;
+    side.setAttribute('data-side-expanded', expanded ? '1' : '0');
+    const displayMode = expanded ? 'expand' : 'collapse';
+    side.setAttribute('data-side-display-mode', displayMode);
+    title.setAttribute('data-side-expanded', expanded ? '1' : '0');
+    if (expanded) {
+      body.style.maxHeight = 'none';
+      body.style.overflowY = 'visible';
+    } else {
+      const mainHeight = Math.max(main.offsetHeight || 0, 88);
+      body.style.maxHeight = `${mainHeight}px`;
+      body.style.overflowY = body.scrollHeight > mainHeight ? 'auto' : 'visible';
+    }
+  }
+
+  function bindPOAnnotationSideToggle(group, defaultMode) {
+    if (!group || group.getAttribute('data-xdex-po-side-toggle-bound') === '1') return;
+    group.setAttribute('data-xdex-po-side-toggle-bound', '1');
+    const title = group.querySelector('.xdex-po-annotation-side-title');
+    if (!title) return;
+    title.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const side = group.querySelector('.xdex-po-annotation-side');
+      const expanded = !(side && side.getAttribute('data-side-expanded') === '1');
+      updatePOAnnotationSideState(group, expanded);
+    });
+    updatePOAnnotationSideState(group, defaultMode === 'expand');
+  }
+
+  function isPOAnnotationHighlightReply(reply, whitelistGroup) {
+    if (!reply || !whitelistGroup) return false;
+    if (reply.getAttribute('data-threads-id') === '9999999') return false;
+    const main = reply.querySelector('.h-threads-item-reply-main');
+    if (!main) return false;
+    const cid = ($(main).find('.h-threads-info-uid').first().text().split(':')[1] || '').trim();
+    return !!cid && (whitelistGroup.cookies || []).some(pattern => Utils.cookieMatch(cid, pattern));
+  }
+
+  function applyPOAnnotationLayout(root, liveCfg) {
+    if (!isPOAnnotationActive(liveCfg)) return;
+    if (window.innerWidth && window.innerWidth < 860) return;
+    const rootNode = root || document;
+    const threadId = getThreadIdForElement(asFilterRoot(rootNode));
+    const whitelistGroup = getThreadWhitelistGroup(threadId, normalizeThreadCookieWhitelistGroups(liveCfg.threadCookieWhitelistGroups || []));
+    if (!whitelistGroup) return;
+    ensurePOAnnotationStyle();
+    bindPOAnnotationSideImageQuotePreview();
+    const sideDisplayMode = getPOAnnotationSideDisplayMode(liveCfg);
+
+    const containers = [];
+    if (rootNode.matches && rootNode.matches('.h-threads-item-replies')) containers.push(rootNode);
+    if (rootNode.querySelectorAll) rootNode.querySelectorAll('.h-threads-item-replies').forEach(el => containers.push(el));
+    const uniqueContainers = [...new Set(containers)];
+
+    uniqueContainers.forEach(repliesRoot => {
+      const replies = Array.from(repliesRoot.children).filter(el => el.classList && el.classList.contains('h-threads-item-reply'));
+      const highlights = replies.filter(reply => isPOAnnotationHighlightReply(reply, whitelistGroup));
+      if (highlights.length < 2) return;
+      let currentGroup = null;
+      let movedCount = 0;
+      let continuationGroup = null;
+
+      const createGroup = (reply, sideTitle, continuationText = '') => {
+        const group = document.createElement('div');
+        group.className = 'xdex-po-annotation-group';
+        group.setAttribute('data-xdex-po-annotation-wrapper', '1');
+        const main = document.createElement('div');
+        main.className = 'xdex-po-annotation-main';
+        const side = document.createElement('div');
+        side.className = 'xdex-po-annotation-side';
+        side.setAttribute('data-xdex-po-annotation-side', '1');
+        side.setAttribute('data-side-display-mode', sideDisplayMode);
+        const title = document.createElement('div');
+        title.className = 'xdex-po-annotation-side-title';
+        title.textContent = sideTitle;
+        side.appendChild(title);
+        const sideBody = document.createElement('div');
+        sideBody.className = 'xdex-po-annotation-side-body';
+        side.appendChild(sideBody);
+        if (continuationText) {
+          const continuation = document.createElement('div');
+          continuation.className = 'xdex-po-annotation-side-title';
+          continuation.textContent = continuationText;
+          main.appendChild(continuation);
+        }
+        repliesRoot.insertBefore(group, reply);
+        group.appendChild(main);
+        group.appendChild(side);
+        bindPOAnnotationSideToggle(group, sideDisplayMode);
+        return { wrapper: group, main, side };
+      };
+
+      replies.forEach(reply => {
+        if (isPOAnnotationHighlightReply(reply, whitelistGroup)) {
+          reply.setAttribute('data-xdex-po-annotation-highlight', '1');
+          const group = createGroup(reply, '批注');
+          group.main.appendChild(reply);
+          currentGroup = group;
+          return;
+        }
+        if (reply.getAttribute('data-threads-id') === '9999999') return;
+        if (reply.querySelector('.h-threads-item-reply-main[data-xdex-filter-hidden="1"]')) return;
+        if (!currentGroup) {
+          continuationGroup = continuationGroup || createGroup(reply, '批注（续）', '上页续');
+        }
+        const targetGroup = currentGroup || continuationGroup;
+        if (!targetGroup) return;
+        const key = `po-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const anchor = document.createElement('span');
+        anchor.setAttribute('data-xdex-po-annotation-anchor', '1');
+        anchor.setAttribute('data-xdex-po-annotation-key', key);
+        anchor.style.display = 'none';
+        repliesRoot.insertBefore(anchor, reply);
+        reply.setAttribute('data-xdex-po-annotation-moved', key);
+        reply.setAttribute('data-xdex-po-annotation-role', 'side');
+        const sideBody = targetGroup.side.querySelector('.xdex-po-annotation-side-body') || targetGroup.side;
+        sideBody.appendChild(reply);
+        movedCount++;
+        updatePOAnnotationSideState(targetGroup.wrapper, sideDisplayMode === 'expand');
+      });
+      Array.from(repliesRoot.querySelectorAll('[data-xdex-po-annotation-wrapper="1"]')).forEach(wrapper => {
+        const hasSideReply = !!wrapper.querySelector('.xdex-po-annotation-side .h-threads-item-reply');
+        if (!hasSideReply) {
+          const mainReplies = Array.from(wrapper.querySelectorAll('.xdex-po-annotation-main > .h-threads-item-reply'));
+          mainReplies.forEach(reply => repliesRoot.insertBefore(reply, wrapper));
+          wrapper.remove();
+        } else {
+          updatePOAnnotationSideState(wrapper, sideDisplayMode === 'expand');
+        }
+      });
+    });
+  }
+
+  function refreshPOAnnotationMode(root, cfg) {
+    const targetRoot = root || document;
+    resetPOAnnotationLayout(targetRoot);
+    const liveCfg = buildPOAnnotationLiveConfig(cfg, targetRoot);
+    applyFilters(liveCfg, targetRoot);
+    try {
+      applyPOAnnotationLayout(targetRoot, liveCfg);
+    } catch (e) {
+      try { resetPOAnnotationLayout(targetRoot); } catch (_) {}
+      console.warn('PO annotation layout failed, fallback to filters-only', e);
+    }
   }
 
   /* --------------------------------------------------
@@ -2444,6 +3179,23 @@ init() {
     }
     removeDateString();
   }
+
+  function scheduleCookieDropdownFocusRestore(dropdown, delay = 120) {
+    if (!dropdown) return;
+    const target = dropdown.__focusBackTarget;
+    if (!target) return;
+    if (dropdown.__focusBackTimer) {
+      clearTimeout(dropdown.__focusBackTimer);
+    }
+    dropdown.__focusBackTimer = setTimeout(() => {
+      dropdown.__focusBackTimer = null;
+      if (document.activeElement === dropdown && target.isConnected) {
+        try { target.focus(); } catch (e) {}
+      }
+      delete dropdown.__focusBackTarget;
+      delete dropdown.__openedValue;
+    }, delay);
+  }
   function switch_cookie(cookie, opts = {}){
     const silent = !!opts.silent;
     const onDone = typeof opts.onDone === 'function' ? opts.onDone : null;
@@ -2684,6 +3436,26 @@ init() {
       if(!Object.keys(l).length) return showLoginPrompt();
       if(!sel) return toast('请选择饼干');
       l[sel] ? switch_cookie(l[sel]) : toast('饼干信息无效');
+      scheduleCookieDropdownFocusRestore(this, 120);
+      if (!this.__focusBackTarget) delete this.__openedValue;
+    });
+
+    $('#cookie-dropdown').on('click', function(){
+      if (!this.__focusBackTarget) return;
+      const openedValue = this.__openedValue;
+      if (openedValue == null) return;
+      if (String(this.value) === String(openedValue)) {
+        scheduleCookieDropdownFocusRestore(this, 120);
+      }
+    });
+
+    $('#cookie-dropdown').on('blur', function(){
+      if (this.__focusBackTimer) {
+        clearTimeout(this.__focusBackTimer);
+        this.__focusBackTimer = null;
+      }
+      delete this.__focusBackTarget;
+      delete this.__openedValue;
     });
 
     // 刷新按钮
@@ -2865,7 +3637,7 @@ init() {
     let liveCfg = getLatestCfg();
 
     try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
-    try { if (liveCfg && typeof applyFilters === 'function') applyFilters(liveCfg, root); } catch (e) {}
+    try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
     try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
     try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
 
@@ -2891,7 +3663,7 @@ init() {
       try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
       try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
-      try { if (typeof applyFilters === 'function') applyFilters(liveCfg); } catch (e) {}
+      try { refreshFilterDisplay(liveCfg, document); } catch (e) {}
       try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
       try { if (typeof initContent === 'function') initContent(); } catch (e) {}
       try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
@@ -4265,15 +5037,17 @@ init() {
           img.style.transform = `rotate(${rotation}deg) scale(1)`;
         }, 50);
 
-        // 使用margin居中图片
         if (isRotated90or270) {
           const marginTop = (size.containerHeight - size.imgHeight) / 2;
           const marginLeft = (size.containerWidth - size.imgWidth) / 2;
           img.style.marginTop = marginTop + 'px';
           img.style.marginLeft = marginLeft + 'px';
         } else {
+          img.style.display = '';
           img.style.marginTop = '0px';
           img.style.marginLeft = '0px';
+          img.style.marginRight = '0px';
+          img.style.marginBottom = '0px';
         }
         // 使用margin居中图片
         // if (isRotated90or270) {
@@ -4780,6 +5554,7 @@ init() {
     // 2. 绑定图片点击和控件
     handleImageInteraction.bindImageClickLogic(root);
     handleImageInteraction.bindImageControls(root);
+    if (typeof enableImageContextMenu === 'function') enableImageContextMenu(root);
 
     // 3. 处理普通元素溢出
     handleImageLayout.handleGeneralElements(root);
@@ -4804,6 +5579,7 @@ init() {
               handleImageInteraction.replaceHDLinks(node);
               handleImageInteraction.bindImageClickLogic(node);
               handleImageInteraction.bindImageControls(node);
+              if (typeof enableImageContextMenu === 'function') enableImageContextMenu(node);
               handleImageLayout.handleGeneralElements(node);
               handleImageInteraction.observeImageBoxes(node);
             }
@@ -4986,13 +5762,9 @@ init() {
   function enableQuotePreview() {
 
     const cache = Object.create(null);
-
     // 防止短时间内重复点击同一引用号导致多重弹窗
-
     let lastQuoteTid = null;
-
     let lastQuoteAt = 0;
-
     const QUOTE_DOUBLE_CLICK_WINDOW = 250;
 
     // 注入样式（只注入一次）
@@ -5190,7 +5962,7 @@ init() {
       });
     }
 
-    function showQuote(html) {
+    function showQuote(html, options = {}) {
       const depth = $stack.children('.qp-quote').length;
 
       const $quote = $('<div class="qp-quote"></div>').css({
@@ -5240,8 +6012,31 @@ init() {
         const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
         if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', $quote[0]);
       } catch (e) {}
+
+      if (options && options.fromPOImage) {
+        setTimeout(() => {
+          try {
+            const imgAnchor = $quote[0].querySelector('.h-threads-img-box .h-threads-img-a');
+            if (!imgAnchor) return;
+            const imgBox = imgAnchor.closest('.h-threads-img-box');
+            if (!imgBox || imgBox.classList.contains('h-active')) return;
+            imgAnchor.click();
+          } catch (e) {}
+        }, 0);
+      }
       //autoHideRefView();
     }
+
+    window.__xdexOpenQuoteByTid = function(tid, options = {}) {
+      if (!tid) return Promise.resolve(false);
+      return fetchData(String(tid)).then(html => {
+        showQuote(html, options || {});
+        return true;
+      }).catch(err => {
+        console.warn('open quote by tid failed', tid, err);
+        return false;
+      });
+    };
 
     function enableDragForTop($quote, $handles) {
       // 不要清除所有 qpdrag 事件，只清除当前 $quote 的
@@ -8294,7 +9089,7 @@ init() {
           // 4) 如果某些 filter 只能作用于 document（没有 root 参数），此处再做一次全局调用（尽量放到最后）
           try {
             if (cfg2 && typeof applyFilters === 'function') {
-              try { applyFilters(cfg2); } catch (e) { /* 忽略 */ }
+              try { refreshFilterDisplay(cfg2); } catch (e) { /* 忽略 */ }
             }
           } catch (e) {}
 
@@ -8344,6 +9139,8 @@ init() {
         e.stopPropagation();
         const dropdown = document.getElementById('cookie-dropdown');
         if (dropdown) {
+          dropdown.__focusBackTarget = ta;
+          dropdown.__openedValue = dropdown.value;
           dropdown.focus();
           // 使用 showPicker() 方法打开下拉框
           if (typeof dropdown.showPicker === 'function') {
@@ -9402,7 +10199,7 @@ init() {
               "撞墙": "┃電柱┃　( ´ー`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　( ´д`)\n┃電柱┃дﾟ ) =͟͟͞͞ =͟͟͞͞\n┃電柱┃　(;´Д`)\n┃電柱┃π。) =͟͟͞͞ =͟͟͞͞",
               "冰箱先生":"　　/\n┌───┐\n│　ﾟ∀ﾟ│\n├─┬─┤\n│　│　│\n└─┴─┘",
               "冰箱先生3D":"　　/\n▁▁▁▁\n╲　　　╲\n▏┌───┐\n▏│　ﾟ∀ﾟ │\n▏├─┬─┤\n╲│　│　│\n　└─┴─┘",
-              "血压↑":"　他妈的／＞__フ\n　　　　|  　^ω^)　血压↗↗\n　 　　／`　　 丨",
+              "血压↑":"　他妈的／＞__フ\n　　　　| ＝ ^ω^)＝　血压↗↗\n　 　　／`　　 丨",
               "血压0↓":"　算逑喽／＞__フ\n　　　　| ＝ ˇωˇ)＝　血压0↓\n　 　　／`　　 丨",
               "全角空格": "　",
               "零宽空格": "​",
@@ -10133,7 +10930,11 @@ init() {
         const files = (e.clipboardData || e.originalEvent?.clipboardData)?.files || [];
         if (files.length) {
           const fileInput = document.querySelector('input[type="file"][name="image"]');
-          if (fileInput) fileInput.files = files;
+          if (fileInput) {
+            fileInput.files = files;
+            fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+          }
         }
       });
     }
@@ -11179,7 +11980,7 @@ init() {
           
           // 立即执行视觉相关过滤，避免闪烁
           try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(); } catch (e) {}
-          try { if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2); } catch (e) {}
+          try { if (cfg2) refreshFilterDisplay(cfg2); } catch (e) {}
           try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
 
           // 延迟执行其他增强
@@ -11198,7 +11999,7 @@ init() {
             enableHDImageAndLayoutFix(document);
             enableHDImage(document);
             try { if (cfg2 && cfg2.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
-            try { if (typeof applyFilters === 'function') applyFilters(cfg2); } catch (e) {}
+            try { if (cfg2) refreshFilterDisplay(cfg2); } catch (e) {}
             try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
           }, 50);
 
@@ -11215,10 +12016,10 @@ init() {
 
                 if (_cfg) {
                   // 正常调用（大多数情况会走到这里）
-                  applyFilters(_cfg);
+                  refreshFilterDisplay(_cfg);
                 } else {
                   // 没有可用配置对象时，仍尝试一次无参调用以兼容极少数实现（但捕获其可能抛出的异常）
-                  try { applyFilters(); } catch (e) { /* 忽略 */ }
+                  try { refreshFilterDisplay(); } catch (e) { /* 忽略 */ }
                 }
               }
             } catch (e) {
@@ -12332,6 +13133,751 @@ init() {
   }
 
   /* --------------------------------------------------
+   * tag 22. 检查更新
+   * -------------------------------------------------- */
+  function initializeUpdateReminderUI() {
+    updateSettingsButtonBadge(getUpdateCheckState());
+    clearFooterUpdateHighlight();
+  }
+
+  window.__xdexGetUpdateCheckState = function() {
+    return getUpdateCheckState();
+  };
+
+  window.__xdexCheckUpdateNow = function() {
+    return checkForDailyScriptUpdate(true).then((state) => {
+      scheduleNextUpdateCheckTimer(state);
+      return state;
+    });
+  };
+
+  window.__xdexClearUpdateCheckState = function() {
+    GM_deleteValue(UPDATE_CHECK_KEY);
+    const state = getDefaultUpdateCheckState();
+    updateSettingsButtonBadge(state);
+    clearFooterUpdateHighlight();
+    console.log('[update-check] cleared state');
+    return state;
+  };
+
+  window.__xdexSetUpdateCheckState = function(nextState) {
+    const state = setUpdateCheckState(nextState || {});
+    updateSettingsButtonBadge(state);
+    scheduleNextUpdateCheckTimer(state);
+    return state;
+  };
+
+  window.__xdexPatchUpdateCheckState = function(patch) {
+    const state = Object.assign(getUpdateCheckState(), patch || {});
+    return window.__xdexSetUpdateCheckState(state);
+  };
+
+  const updateDebugTarget = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  updateDebugTarget.__xdexGetUpdateCheckState = window.__xdexGetUpdateCheckState;
+  updateDebugTarget.__xdexCheckUpdateNow = window.__xdexCheckUpdateNow;
+  updateDebugTarget.__xdexClearUpdateCheckState = window.__xdexClearUpdateCheckState;
+  updateDebugTarget.__xdexSetUpdateCheckState = window.__xdexSetUpdateCheckState;
+  updateDebugTarget.__xdexPatchUpdateCheckState = window.__xdexPatchUpdateCheckState;
+
+  function scheduleDailyUpdateCheck() {
+    checkForDailyScriptUpdate(false)
+      .then((state) => {
+        scheduleNextUpdateCheckTimer(state);
+        if (shouldShowPendingUpdateReminder(state) && $('#sp_cover').is(':visible')) {
+          openUpdateLogDialog('remote');
+        }
+      })
+      .catch((e) => {
+        console.warn('[update-check] schedule failed:', e);
+      });
+  }
+
+  function scheduleNextUpdateCheckTimer(state = getUpdateCheckState()) {
+    if (window.__xdexUpdateCheckTimer) {
+      clearTimeout(window.__xdexUpdateCheckTimer);
+      window.__xdexUpdateCheckTimer = 0;
+    }
+    const nextCheckAt = Number(state && state.nextCheckAt || 0);
+    if (!nextCheckAt) return;
+    const delay = Math.max(0, nextCheckAt - Date.now());
+    window.__xdexUpdateCheckTimer = setTimeout(() => {
+      window.__xdexUpdateCheckTimer = 0;
+      scheduleDailyUpdateCheck();
+    }, Math.min(delay, 2147483647));
+    console.log('[update-check] timer scheduled:', {
+      nextCheckAt,
+      nextCheckAtISO: new Date(nextCheckAt).toISOString(),
+      delay
+    });
+  }
+
+  /* --------------------------------------------------
+   * tag 23. 图片/GIF 右键菜单增强
+   * -------------------------------------------------- */
+  function ensureImageContextMenuStyle() {
+    if (document.getElementById('xdex-image-context-menu-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-image-context-menu-style';
+    style.textContent = `
+      #xdex-image-context-menu {
+        position: fixed;
+        z-index: 10050;
+        min-width: 156px;
+        max-width: 220px;
+        padding: 6px 0;
+        background: #FFFFEE;
+        border: 1px solid #d6c7ba;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        font-size: 13px;
+        color: #333;
+        user-select: none;
+      }
+      :root.xdex-darkreader-active #xdex-image-context-menu {
+        background: #2b2c2d;
+        border-color: #4b4d50;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+        color: #e6e6e6;
+      }
+      #xdex-image-context-menu.xdex-hidden {
+        display: none;
+      }
+      #xdex-image-context-menu .xdex-image-context-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 8px 12px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+        line-height: 1.35;
+        box-sizing: border-box;
+      }
+      #xdex-image-context-menu .xdex-image-context-item:hover,
+      #xdex-image-context-menu .xdex-image-context-item:focus {
+        background: rgba(102, 204, 255, 0.14);
+        outline: none;
+      }
+      :root.xdex-darkreader-active #xdex-image-context-menu .xdex-image-context-item:hover,
+      :root.xdex-darkreader-active #xdex-image-context-menu .xdex-image-context-item:focus {
+        background: rgba(102, 204, 255, 0.18);
+      }
+      #xdex-image-context-menu .xdex-image-context-sep {
+        height: 1px;
+        margin: 4px 0;
+        background: rgba(0,0,0,0.08);
+      }
+      :root.xdex-darkreader-active #xdex-image-context-menu .xdex-image-context-sep {
+        background: rgba(255,255,255,0.08);
+      }
+      #xdex-image-context-menu .xdex-image-context-hint {
+        display: block;
+        margin-top: 2px;
+        font-size: 11px;
+        opacity: 0.72;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function gmRequestBlob(url) {
+    return new Promise((resolve, reject) => {
+      if (!url || typeof GM_xmlhttpRequest !== 'function') {
+        reject(new Error('GM_xmlhttpRequest 不可用'));
+        return;
+      }
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        responseType: 'blob',
+        onload: (res) => {
+          if (res.status >= 200 && res.status < 300 && res.response) {
+            resolve(res.response);
+          } else {
+            reject(new Error(`请求失败: ${res.status} ${url}`));
+          }
+        },
+        onerror: (err) => {
+          const reason = err && (err.error || err.statusText || err.status || err.message);
+          reject(new Error(`请求失败: ${reason || '未知错误'} ${url}`));
+        },
+        ontimeout: () => reject(new Error('请求超时'))
+      });
+    });
+  }
+
+  async function fetchImageBlobByBrowser(url) {
+    const resp = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+    if (!resp.ok) throw new Error(`fetch 请求失败: ${resp.status} ${url}`);
+    return await resp.blob();
+  }
+
+  function getImageContextMenu() {
+    ensureImageContextMenuStyle();
+    let menu = document.getElementById('xdex-image-context-menu');
+    if (menu) {
+      console.debug('【右键菜单｜复用】', { 已存在: true });
+      return menu;
+    }
+    console.debug('【右键菜单｜创建】', { 已存在: false });
+    menu = document.createElement('div');
+    menu.id = 'xdex-image-context-menu';
+    menu.className = 'xdex-hidden';
+    menu.innerHTML = [
+      // '<button type="button" class="xdex-image-context-item" data-action="copy-image">复制图片<span class="xdex-image-context-hint">GIF 先尝试原样复制，失败时自动降级</span></button>',
+      '<button type="button" class="xdex-image-context-item" data-action="copy-image">复制图片</button>',
+      '<button type="button" class="xdex-image-context-item" data-action="download-image">下载图片</button>',
+      '<button type="button" class="xdex-image-context-item" data-action="copy-image-url">复制图片链接</button>',
+      // '<div class="xdex-image-context-sep"></div>',
+      '<button type="button" class="xdex-image-context-item" data-action="copy-thread-link">复制串链接</button>'
+    ].join('');
+    menu.__context = null;
+    menu.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.xdex-image-context-item[data-action]');
+      if (!btn) return;
+      e.preventDefault();
+      const ctx = menu.__context;
+      closeImageContextMenu();
+      if (!ctx) return;
+      const action = btn.getAttribute('data-action');
+      try {
+        if (action === 'copy-image') {
+          await copyImageBinary(ctx);
+        } else if (action === 'download-image') {
+          await downloadImageBlob(ctx);
+        } else if (action === 'copy-image-url') {
+          await copyImageUrl(ctx);
+        } else if (action === 'copy-thread-link') {
+          await copyThreadLink(ctx);
+        }
+      } catch (err) {
+        console.warn('[tag23] action failed:', action, err);
+        toast('操作失败，请重试');
+      }
+    });
+    document.body.appendChild(menu);
+    console.info('【右键菜单｜挂载】', { 位置: 'body', 菜单项数: menu.querySelectorAll('.xdex-image-context-item').length });
+
+    if (!getImageContextMenu.__globalBound) {
+      console.info('【右键菜单｜注册】', { 类型: 'contextmenu/click/blur/scroll/keydown', 阶段: 'capture' });
+      window.addEventListener('mousedown', (e) => {
+        if (e.button !== 2) return;
+        console.info('【右键菜单｜窗口按下】', {
+          标签: e.target && e.target.tagName,
+          类名: e.target && e.target.className ? String(e.target.className).slice(0, 120) : '',
+          坐标: `${e.clientX},${e.clientY}`,
+          按键: e.button
+        });
+      }, true);
+      window.addEventListener('contextmenu', (e) => {
+        console.info('【右键菜单｜窗口收到右键】', {
+          标签: e.target && e.target.tagName,
+          类名: e.target && e.target.className ? String(e.target.className).slice(0, 120) : '',
+          坐标: `${e.clientX},${e.clientY}`
+        });
+        const anchor = e.target.closest && e.target.closest('.h-threads-img-a');
+        if (!anchor) {
+          console.info('【右键菜单｜跳过】', { 原因: '未命中图片链接' });
+          return;
+        }
+        if (anchor.closest('.h-preview-box')) {
+          console.info('【右键菜单｜跳过】', { 原因: '命中预览框图片' });
+          return;
+        }
+        console.info('【右键菜单｜命中】', {
+          链接: (anchor.href || '').slice(0, 200),
+          层级: 'window'
+        });
+        const ctx = resolveImageContextData(anchor);
+        if (!ctx) {
+          console.warn('【右键菜单｜解析失败】', { 原因: '图片上下文为空', 层级: 'window' });
+          return;
+        }
+        console.info('【右键菜单｜解析成功】', {
+          图片地址: String(ctx.imageUrl || '').slice(0, 200),
+          串链接: String(ctx.threadUrl || '').slice(0, 160),
+          文件名: ctx.fileName,
+          GIF: !!ctx.isGif,
+          层级: 'window'
+        });
+        e.preventDefault();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
+        e.stopPropagation();
+        e.cancelBubble = true;
+        e.returnValue = false;
+        console.info('【右键菜单｜阻止原生】', { 成功: true, 层级: 'window' });
+        openImageContextMenu(ctx, e.clientX, e.clientY);
+        return false;
+      }, true);
+      document.addEventListener('contextmenu', (e) => {
+        console.info('【右键菜单｜收到右键】', {
+          标签: e.target && e.target.tagName,
+          类名: e.target && e.target.className ? String(e.target.className).slice(0, 120) : '',
+          坐标: `${e.clientX},${e.clientY}`
+        });
+        if (e.defaultPrevented) {
+          console.info('【右键菜单｜跳过】', { 原因: '事件已在更上层处理', 层级: 'document' });
+          return;
+        }
+        const anchor = e.target.closest && e.target.closest('.h-threads-img-a');
+        if (!anchor) {
+          console.info('【右键菜单｜跳过】', { 原因: '未命中图片链接', 层级: 'document' });
+          return;
+        }
+        if (anchor.closest('.h-preview-box')) {
+          console.info('【右键菜单｜跳过】', { 原因: '命中预览框图片', 层级: 'document' });
+          return;
+        }
+        console.info('【右键菜单｜命中】', {
+          链接: (anchor.href || '').slice(0, 200),
+          层级: 'document'
+        });
+        const ctx = resolveImageContextData(anchor);
+        if (!ctx) {
+          console.warn('【右键菜单｜解析失败】', { 原因: '图片上下文为空', 层级: 'document' });
+          return;
+        }
+        console.info('【右键菜单｜解析成功】', {
+          图片地址: String(ctx.imageUrl || '').slice(0, 200),
+          串链接: String(ctx.threadUrl || '').slice(0, 160),
+          文件名: ctx.fileName,
+          GIF: !!ctx.isGif,
+          层级: 'document'
+        });
+                e.preventDefault();
+                if (typeof e.stopImmediatePropagation === 'function') {
+                    e.stopImmediatePropagation();
+                }
+                e.stopPropagation();
+                e.cancelBubble = true;
+                e.returnValue = false;
+                console.info('【右键菜单｜阻止原生】', { 成功: true, 层级: 'document' });
+                openImageContextMenu(ctx, e.clientX, e.clientY);
+                return false;
+            }, true);
+      document.addEventListener('click', (e) => {
+        const cur = document.getElementById('xdex-image-context-menu');
+        if (!cur || cur.classList.contains('xdex-hidden')) return;
+        if (cur.contains(e.target)) return;
+        closeImageContextMenu();
+      }, true);
+      window.addEventListener('blur', () => closeImageContextMenu());
+      window.addEventListener('scroll', () => closeImageContextMenu(), true);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeImageContextMenu();
+      });
+      getImageContextMenu.__globalBound = true;
+    }
+    return menu;
+  }
+
+  function closeImageContextMenu() {
+    const menu = document.getElementById('xdex-image-context-menu');
+    if (!menu) return;
+    menu.classList.add('xdex-hidden');
+    menu.style.left = '-9999px';
+    menu.style.top = '-9999px';
+    menu.__context = null;
+    console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
+  }
+
+  function openImageContextMenu(context, x, y) {
+    const menu = getImageContextMenu();
+    menu.__context = context;
+    menu.classList.remove('xdex-hidden');
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(x, window.innerWidth - rect.width - 8);
+    const top = Math.min(y, window.innerHeight - rect.height - 8);
+    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.top = Math.max(8, top) + 'px';
+    console.info('【右键菜单｜显示】', {
+      位置: `${menu.style.left},${menu.style.top}`,
+      图片地址: String(context && context.imageUrl || '').slice(0, 200),
+      GIF: !!(context && context.isGif)
+    });
+  }
+
+  function resolveThreadLinkFromImageTarget(target) {
+    const $target = $(target);
+    const tid = getThreadIdForElement($target);
+    if (tid) return `${location.origin}/t/${tid}`;
+    return location.href;
+  }
+
+  function sanitizeImageFileName(name) {
+    return String(name || 'image')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim() || 'image';
+  }
+
+  function resolveImageContextData(anchorOrBox) {
+    const anchor = anchorOrBox && anchorOrBox.matches && anchorOrBox.matches('.h-threads-img-a')
+      ? anchorOrBox
+      : anchorOrBox && anchorOrBox.querySelector
+        ? anchorOrBox.querySelector('.h-threads-img-a')
+        : null;
+    if (!anchor) {
+      console.debug('【右键菜单｜解析跳过】', { 原因: '未找到图片链接节点' });
+      return null;
+    }
+    const imgBox = anchor.closest('.h-threads-img-box');
+    const img = imgBox ? imgBox.querySelector('.h-threads-img') : null;
+    const rawUrl = (anchor.href || (img && (img.currentSrc || img.src)) || '').trim();
+    if (!rawUrl) {
+      console.warn('【右键菜单｜解析跳过】', { 原因: '图片地址为空' });
+      return null;
+    }
+    const cleanUrl = rawUrl.replace('/thumb/', '/image/');
+    let fileName = '';
+    try {
+      const u = new URL(cleanUrl, location.href);
+      const leaf = decodeURIComponent((u.pathname.split('/').pop() || '').trim());
+      fileName = sanitizeImageFileName(leaf || `image-${Date.now()}`);
+    } catch (e) {
+      fileName = sanitizeImageFileName(`image-${Date.now()}`);
+    }
+    return {
+      anchor,
+      imgBox,
+      img,
+      imageUrl: cleanUrl,
+      imageUrlRaw: rawUrl,
+      threadUrl: resolveThreadLinkFromImageTarget(anchor),
+      fileName,
+      isGif: /\.gif(?:$|[?#])/i.test(cleanUrl)
+    };
+  }
+
+  async function writeClipboardText(text, successToast) {
+    await navigator.clipboard.writeText(String(text || ''));
+    if (successToast) toast(successToast);
+  }
+
+  function blobToObjectUrlDownload(blob, fileName) {
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = sanitizeImageFileName(fileName);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 3000);
+  }
+
+  function resolveImageMimeType(ctx, blob) {
+    let type = String(blob && blob.type || '').split(';')[0].trim().toLowerCase();
+    if (type === 'image/jpg') type = 'image/jpeg';
+    if (type) return type;
+
+    const source = `${ctx && ctx.imageUrl || ''} ${ctx && ctx.fileName || ''}`;
+    if (/\.gif(?:$|[?#\s])/i.test(source)) return 'image/gif';
+    if (/\.jpe?g(?:$|[?#\s])/i.test(source)) return 'image/jpeg';
+    if (/\.png(?:$|[?#\s])/i.test(source)) return 'image/png';
+    if (/\.webp(?:$|[?#\s])/i.test(source)) return 'image/webp';
+    if (/\.bmp(?:$|[?#\s])/i.test(source)) return 'image/bmp';
+    if (/\.avif(?:$|[?#\s])/i.test(source)) return 'image/avif';
+    return '';
+  }
+
+  async function detectImageMimeTypeFromMagic(blob) {
+    if (!blob || blob.size < 4) return '';
+    const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return 'image/png';
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+    if (bytes[0] === 0x42 && bytes[1] === 0x4d) return 'image/bmp';
+    return '';
+  }
+
+  async function fetchImageBlobForContext(ctx) {
+    let blob;
+    try {
+      blob = await gmRequestBlob(ctx.imageUrl);
+    } catch (err) {
+      console.warn('【右键菜单｜失败】', { 动作: '抓取图片', 阶段: 'GM_xmlhttpRequest', 原因: err && err.message ? err.message : String(err) });
+      blob = await fetchImageBlobByBrowser(ctx.imageUrl);
+      console.info('【右键菜单｜抓取图片】', { 阶段: 'fetch备用成功', 地址: String(ctx && ctx.imageUrl || '').slice(0, 200), MIME: String(blob && blob.type || ''), 大小: blob && blob.size });
+    }
+    const type = resolveImageMimeType(ctx, blob);
+    if (!blob || !type.startsWith('image/')) {
+      throw new Error(`Not an image content type. Got: ${blob && blob.type}`);
+    }
+    return blob;
+  }
+
+  async function convertBlobToPng(blob) {
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) resolve(pngBlob);
+        else reject(new Error('Canvas toBlob failed'));
+      }, 'image/png');
+    });
+  }
+
+  function createClipboardBlob(data, type) {
+    return new Blob([data], { type });
+  }
+
+  function escapeHtmlAttr(value) {
+    return String(value || '').replace(/[&<>"]/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;'
+    })[ch]);
+  }
+
+  async function isAnimatedPngBlob(blob) {
+    if (!blob || blob.size < 33) return false;
+    const header = new Uint8Array(await blob.slice(0, Math.min(blob.size, 1024 * 1024)).arrayBuffer());
+    const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+    for (let i = 0; i < pngSignature.length; i++) {
+      if (header[i] !== pngSignature[i]) return false;
+    }
+    for (let offset = 8; offset + 12 <= header.length;) {
+      const length = ((header[offset] << 24) | (header[offset + 1] << 16) | (header[offset + 2] << 8) | header[offset + 3]) >>> 0;
+      const type = String.fromCharCode(header[offset + 4], header[offset + 5], header[offset + 6], header[offset + 7]);
+      if (type === 'acTL') return true;
+      if (type === 'IDAT' || type === 'IEND') return false;
+      offset += 12 + length;
+      if (offset > header.length) return false;
+    }
+    return false;
+  }
+
+  async function copyAnimatedPngBinary(ctx, blob) {
+    const imageUrl = String(ctx && ctx.imageUrl || '');
+    const pngBlob = blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' });
+    const webPngSupports = typeof ClipboardItem.supports === 'function' ? ClipboardItem.supports('web image/png') : undefined;
+    console.info('【右键菜单｜APNG复制】', {
+      阶段: '开始',
+      大小: pngBlob.size,
+      原始MIME: String(blob.type || ''),
+      webImagePngSupports: webPngSupports,
+      地址: imageUrl.slice(0, 200)
+    });
+
+    try {
+      const html = `<img src="${escapeHtmlAttr(imageUrl)}">`;
+      await navigator.clipboard.write([new ClipboardItem({
+        'web image/png': pngBlob,
+        'text/html': createClipboardBlob(html, 'text/html'),
+        'text/plain': createClipboardBlob(imageUrl, 'text/plain')
+      })]);
+      toast('APNG 已复制到剪贴板');
+      console.info('【右键菜单｜APNG复制】', { 阶段: 'web image/png成功', 附带: 'text/html,text/plain' });
+      return true;
+    } catch (err) {
+      console.warn('【右键菜单｜失败】', { 动作: '复制APNG', 阶段: 'web image/png写入', 原因: err && err.message ? err.message : String(err) });
+    }
+
+    try {
+      const html = `<img src="${escapeHtmlAttr(imageUrl)}">`;
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': createClipboardBlob(html, 'text/html'),
+        'text/plain': createClipboardBlob(imageUrl, 'text/plain')
+      })]);
+      toast('APNG 已按富文本图片复制到剪贴板');
+      console.info('【右键菜单｜APNG复制】', { 阶段: 'text/html成功' });
+      return true;
+    } catch (err) {
+      console.warn('【右键菜单｜失败】', { 动作: '复制APNG', 阶段: 'text/html写入', 原因: err && err.message ? err.message : String(err) });
+    }
+
+    await copyImageUrl(ctx);
+    toast('当前环境无法保留 APNG 动画，已复制图片地址');
+    console.info('【右键菜单｜APNG复制】', { 阶段: 'URL兜底' });
+    return false;
+  }
+
+  async function copyGifBinary(ctx, blob) {
+    const gifUrl = String(ctx && ctx.imageUrl || '');
+    const gifBlob = blob.type === 'image/gif' ? blob : new Blob([blob], { type: 'image/gif' });
+    const gifSupports = typeof ClipboardItem.supports === 'function' ? ClipboardItem.supports('image/gif') : undefined;
+    const webGifSupports = typeof ClipboardItem.supports === 'function' ? ClipboardItem.supports('web image/gif') : undefined;
+    console.info('【右键菜单｜GIF复制】', {
+      阶段: '开始',
+      大小: gifBlob.size,
+      原始MIME: String(blob.type || ''),
+      imageGifSupports: gifSupports,
+      webImageGifSupports: webGifSupports,
+      地址: gifUrl.slice(0, 200)
+    });
+
+    if (gifSupports === true) {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/gif': gifBlob })]);
+        toast('GIF 已原样复制到剪贴板');
+        console.info('【右键菜单｜GIF复制】', { 阶段: 'image/gif成功' });
+        return true;
+      } catch (err) {
+        console.warn('【右键菜单｜失败】', { 动作: '复制GIF', 阶段: 'image/gif写入', 原因: err && err.message ? err.message : String(err) });
+      }
+    } else {
+      console.info('【右键菜单｜GIF复制】', { 阶段: 'image/gif跳过', 原因: 'ClipboardItem.supports 未确认支持' });
+    }
+
+    try {
+      const html = `<img src="${escapeHtmlAttr(gifUrl)}">`;
+      const data = {
+        'web image/gif': gifBlob,
+        'text/html': createClipboardBlob(html, 'text/html'),
+        'text/plain': createClipboardBlob(gifUrl, 'text/plain')
+      };
+      await navigator.clipboard.write([new ClipboardItem(data)]);
+      toast('GIF 已复制到剪贴板');
+      console.info('【右键菜单｜GIF复制】', { 阶段: 'web image/gif成功', 附带: 'text/html,text/plain' });
+      return true;
+    } catch (err) {
+      console.warn('【右键菜单｜失败】', { 动作: '复制GIF', 阶段: 'web image/gif写入', 原因: err && err.message ? err.message : String(err) });
+    }
+
+    try {
+      const html = `<img src="${escapeHtmlAttr(gifUrl)}">`;
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': createClipboardBlob(html, 'text/html'),
+        'text/plain': createClipboardBlob(gifUrl, 'text/plain')
+      })]);
+      toast('GIF 已按富文本图片复制到剪贴板');
+      console.info('【右键菜单｜GIF复制】', { 阶段: 'text/html成功' });
+      return true;
+    } catch (err) {
+      console.warn('【右键菜单｜失败】', { 动作: '复制GIF', 阶段: 'text/html写入', 原因: err && err.message ? err.message : String(err) });
+    }
+
+    await copyImageUrl(ctx);
+    toast('当前环境无法复制 GIF 二进制，已复制图片地址');
+    console.info('【右键菜单｜GIF复制】', { 阶段: 'URL兜底' });
+    return false;
+  }
+
+  async function copyImageBinary(ctx) {
+    console.info('【右键菜单｜执行】', { 动作: '复制图片', GIF: !!(ctx && ctx.isGif), 地址: String(ctx && ctx.imageUrl || '').slice(0, 200) });
+    if (!navigator.clipboard || typeof navigator.clipboard.write !== 'function' || typeof ClipboardItem === 'undefined') {
+      await copyImageUrl(ctx);
+      toast('当前环境不支持复制图片，已复制图片地址');
+      return;
+    }
+
+    const blob = await fetchImageBlobForContext(ctx);
+    const declaredType = resolveImageMimeType(ctx, blob);
+    const magicType = await detectImageMimeTypeFromMagic(blob);
+    const type = magicType || declaredType;
+    const supportsOriginal = type === 'image/png'
+      || (type === 'image/svg+xml' && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports(type));
+    console.info('【右键菜单｜复制诊断】', {
+      MIME: type,
+      原始MIME: String(blob.type || ''),
+      魔数MIME: magicType,
+      大小: blob.size,
+      ClipboardItemSupports: supportsOriginal,
+      GIF: !!(ctx && ctx.isGif)
+    });
+
+    if (type === 'image/gif') {
+      await copyGifBinary(ctx, blob);
+      return;
+    }
+
+    if (type === 'image/png' && await isAnimatedPngBlob(blob)) {
+      await copyAnimatedPngBinary(ctx, blob);
+      return;
+    }
+
+    try {
+      if (supportsOriginal) {
+        await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+        toast('图片已复制到剪贴板');
+        return;
+      }
+      console.info('【右键菜单｜复制诊断】', { 阶段: '原始格式跳过', MIME: type, 原因: '仅 PNG/SVG 作为可靠原格式写入' });
+    } catch (err) {
+      console.warn('[tag23] native clipboard write failed:', type, err);
+      console.warn('【右键菜单｜失败】', { 动作: '复制图片', 阶段: '原始格式写入', 原因: err && err.message ? err.message : String(err) });
+    }
+
+    if (type !== 'image/gif') {
+      try {
+        const pngBlob = await convertBlobToPng(blob);
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+        toast('已复制为 PNG ');
+        return;
+      } catch (err) {
+        console.warn('[tag23] png fallback failed:', err);
+        console.warn('【右键菜单｜失败】', { 动作: '复制图片', 阶段: 'PNG降级', 原因: err && err.message ? err.message : String(err) });
+      }
+    }
+
+    await copyImageUrl(ctx);
+    toast(type === 'image/gif' ? '当前环境无法直接复制 GIF，已复制图片地址' : '当前环境无法直接复制图片，已复制图片地址');
+  }
+
+  async function copyImageUrl(ctx) {
+    console.info('【右键菜单｜执行】', { 动作: '复制图片地址', 地址: String(ctx && ctx.imageUrl || '').slice(0, 200) });
+    await writeClipboardText(ctx.imageUrl, '图片地址已复制');
+  }
+
+  async function downloadImageBlob(ctx) {
+    console.info('【右键菜单｜执行】', { 动作: '下载图片', 地址: String(ctx && ctx.imageUrl || '').slice(0, 200), 文件名: ctx && ctx.fileName });
+    try {
+      const blob = await fetchImageBlobForContext(ctx);
+      let fileName = ctx.fileName;
+      if (!/\.[a-z0-9]+$/i.test(fileName)) {
+        const ext = (blob.type || '').split('/')[1] || 'img';
+        fileName = `${fileName}.${ext}`;
+      }
+      blobToObjectUrlDownload(blob, fileName);
+      toast('图片开始下载');
+    } catch (err) {
+      console.warn('[tag23] download image failed:', err);
+      console.warn('【右键菜单｜失败】', { 动作: '下载图片', 原因: err && err.message ? err.message : String(err) });
+      await copyImageUrl(ctx);
+      toast('下载失败，已复制图片地址');
+    }
+  }
+
+  async function copyThreadLink(ctx) {
+    console.info('【右键菜单｜执行】', { 动作: '复制串链接', 串链接: String(ctx && ctx.threadUrl || '').slice(0, 200) });
+    await writeClipboardText(ctx.threadUrl, '串链接已复制');
+  }
+
+  function bindImageContextMenu(container) {
+    if (!container || !container.querySelectorAll) return;
+    container.querySelectorAll('.h-threads-img-a').forEach((anchor) => {
+      if (anchor.closest('.h-preview-box')) return;
+      if (anchor.dataset.xdexContextMenuBound === '1') return;
+      anchor.dataset.xdexContextMenuBound = '1';
+    });
+  }
+
+  function enableImageContextMenu(root = document) {
+    ensureImageContextMenuStyle();
+    getImageContextMenu();
+    const imageAnchors = root && root.querySelectorAll ? root.querySelectorAll('.h-threads-img-a') : [];
+    if (!imageAnchors || !imageAnchors.length) return;
+    bindImageContextMenu(root);
+    console.info('【右键菜单｜初始化】', {
+      根节点: root === document ? 'document' : (root && root.nodeName) || 'unknown',
+      图片链接数: imageAnchors.length
+    });
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => enableHDImageAndLayoutFix(document));
@@ -12356,6 +13902,8 @@ init() {
     if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
     if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
     if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
+    initializeUpdateReminderUI();                                     //检查更新UI状态初始化
+    scheduleDailyUpdateCheck();                                       //每日检查更新
     if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
     if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
     replaceRightSidebar();                                           //扩展坞增强
@@ -12383,7 +13931,7 @@ init() {
       // 可传入你的 jQuery 实例（若页面没有全局 $）
       // $: window.myJQ
     });
-    applyFilters(cfg);                                               //标记/屏蔽/过滤-饼干/关键词
+    refreshFilterDisplay(cfg);                                       //标记/屏蔽/过滤-饼干/关键词 + PO批注侧栏
 
     // 保存原始函数
     const _initContent = window.initContent;
