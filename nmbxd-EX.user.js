@@ -31,6 +31,7 @@
 /* global $, jQuery */
 // @run-at document-end
 
+// 更新渠道
 // @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
 // @updateURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
 // @downloadURL https://scriptcat.org/scripts/code/6289/X%E5%B2%9B-EX.user.js
@@ -5165,12 +5166,16 @@ init() {
 
         // 延迟执行，确保图片已加载
         setTimeout(() => {
+          if (!imgBox.classList.contains('h-active')) return;
+
           const naturalWidth = img.naturalWidth;
           const naturalHeight = img.naturalHeight;
 
           if (!naturalWidth || !naturalHeight) {
             if (img.complete) return;
-            img.onload = () => this.handleActiveImageBox(imgBox);
+            img.onload = () => {
+              if (imgBox.classList.contains('h-active')) this.handleActiveImageBox(imgBox);
+            };
             return;
           }
 
@@ -5268,6 +5273,7 @@ init() {
 
               // 延迟应用尺寸，确保重排完成
               setTimeout(() => {
+                if (!imgBox.classList.contains('h-active')) return;
                 handleImageLayout.applyImageSize(imgBox, rotateIndex);
               }, 0);
               return;
@@ -5363,6 +5369,8 @@ init() {
 
           anchor.addEventListener('click', (e) => {
             e.preventDefault();
+            e.stopImmediatePropagation();
+            e.stopPropagation();
 
           const box = anchor.closest('.h-threads-img-box');
           if (!box) return;
@@ -5383,19 +5391,20 @@ init() {
             };
           }
 
-          // 计数切换展开/收起
+          const shouldOpen = !box.classList.contains('h-active');
+
+          // 同步保留旧计数状态，但展开/收起以真实 DOM 状态为准。
           if (this.lastClickedAnchor !== anchor) {
             this.lastClickedAnchor = anchor;
             this.clickCountMap.set(anchor, 0);
             }
-            let count = (this.clickCountMap.get(anchor) || 0) + 1;
-            this.clickCountMap.set(anchor, count);
+            this.clickCountMap.set(anchor, shouldOpen ? 1 : 0);
 
             if (img.src.includes('/thumb/')) {
               img.src = img.src.replace('/thumb/', '/image/');
             }
 
-            if (count % 2 === 1) {
+            if (shouldOpen) {
               // 展开
               box.classList.add('h-active');
               img.src = anchor.href.replace('/thumb/', '/image/');
