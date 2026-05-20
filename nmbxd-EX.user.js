@@ -3674,8 +3674,8 @@ init() {
 
     try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
     try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
-    try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
-    try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
+      try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
+      try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
 
     setTimeout(() => {
       liveCfg = getLatestCfg();
@@ -3704,7 +3704,7 @@ init() {
       try { if (typeof initContent === 'function') initContent(); } catch (e) {}
       try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
-      try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
+      try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
       // if (typeof preventContentOverflow === 'function') {
       //   try { preventContentOverflow(document); } catch (e) {}
       // }
@@ -9052,7 +9052,7 @@ init() {
               appendedNodes.forEach(n => { try { applyFilters(cfg2, n); } catch (_) {} });
             }
             if (typeof enablePostExpand === 'function') {
-              appendedNodes.forEach(n => { try { enablePostExpand(); } catch (_) {} }); // 若该函数无 root 参数，则保持原用法
+              appendedNodes.forEach(n => { try { enablePostExpand(n); } catch (_) {} });
             }
           } catch (e) {
             // 局部处理不影响整体流程
@@ -10197,7 +10197,7 @@ init() {
           const EXTRA_EMOTS = [
               "( ´_ゝ`)旦","(<ゝω・) ☆","(`ε´ (つ*⊂)","=͟͟͞͞( 'ヮ' 三 'ヮ' =͟͟͞͞)","↙(`ヮ´ )↗ 开摆！",
               "(っ˘Д˘)ノ<","(ﾉ#)`д´)σ","₍₍(ง`ᝫ´ )ว⁾","( `ᵂ´)","( *・ω・)✄╰ひ╯","U•ェ•*U","⊂( ﾟωﾟ)つ",
-              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
+              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
               "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)ゞ",
@@ -12022,7 +12022,7 @@ init() {
           // 立即执行视觉相关过滤，避免闪烁
           try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(); } catch (e) {}
           try { if (cfg2) refreshFilterDisplay(cfg2); } catch (e) {}
-          try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
+      try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
 
           // 延迟执行其他增强
           setTimeout(() => {
@@ -12041,7 +12041,7 @@ init() {
             enableHDImage(document);
             try { if (cfg2 && cfg2.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
             try { if (cfg2) refreshFilterDisplay(cfg2); } catch (e) {}
-            try { if (typeof enablePostExpand === 'function') enablePostExpand(); } catch (e) {}
+            try { if (typeof enablePostExpand === 'function') enablePostExpand(targetNode); } catch (e) {}
           }, 50);
 
             // --------- 确保重新应用标记与屏蔽 ---------
@@ -12090,10 +12090,178 @@ init() {
     Utils.collapse($elem, hint);
   }
 
+  const postExpandDocScroller = document.scrollingElement || document.documentElement;
+
+  function getScrollContainer(startEl) {
+    let el = startEl || document.body;
+    while (el && el !== document.body) {
+      const style = getComputedStyle(el);
+      const canScroll = /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight;
+      if (canScroll) return el;
+      el = el.parentElement;
+    }
+    return postExpandDocScroller;
+  }
+
+  function getViewportRect(scroller) {
+    if (scroller === postExpandDocScroller || scroller === document.body || scroller === document.documentElement) {
+      return { top: 0, bottom: window.innerHeight };
+    }
+    const r = scroller.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom };
+  }
+
+  function isPartiallyInViewport(el, scroller) {
+    if (!el) return false;
+    const er = el.getBoundingClientRect();
+    const vr = getViewportRect(scroller);
+    const visibleTop = Math.max(er.top, vr.top);
+    const visibleBottom = Math.min(er.bottom, vr.bottom);
+    return Math.max(0, visibleBottom - visibleTop) > 0;
+  }
+
+  function getElementAbsTop(el, scroller) {
+    const er = el.getBoundingClientRect();
+    if (scroller === postExpandDocScroller || scroller === document.body || scroller === document.documentElement) {
+      return er.top + window.scrollY;
+    }
+    const sr = scroller.getBoundingClientRect();
+    return er.top - sr.top + scroller.scrollTop;
+  }
+
+  function scrollByCompensation(scroller, dy) {
+    if (!dy) return;
+    if (scroller === postExpandDocScroller || scroller === document.body || scroller === document.documentElement) {
+      window.scrollBy({ top: dy, left: 0, behavior: 'auto' });
+    } else {
+      scroller.scrollTop += dy;
+    }
+  }
+
+  function findNextThread(item) {
+    let el = item.nextElementSibling;
+    while (el) {
+      if (el.classList && el.classList.contains('h-threads-item-index')) return el;
+      el = el.nextElementSibling;
+    }
+    return null;
+  }
+
+  function collapseWithoutShift(item) {
+    const postForm = document.getElementById('h-post-form');
+    if (postForm && isPartiallyInViewport(postForm, postExpandDocScroller)) {
+      item.classList.remove('expanded');
+      return;
+    }
+    if (item.classList.contains('qp-reply-form') ||
+        item.classList.contains('xdex-generic-collapsed') ||
+        item.closest('.xdex-generic-toggle')) {
+      item.classList.remove('expanded');
+      return;
+    }
+
+    const scroller = getScrollContainer(item);
+    const scrollerIsDoc = (scroller === postExpandDocScroller || scroller === document.body || scroller === document.documentElement);
+    const next = findNextThread(item);
+    const nextVisible = isPartiallyInViewport(next, scroller);
+
+    const threadContainer = scrollerIsDoc ? document : scroller;
+    const allThreadsInScroller = Array.from(threadContainer.querySelectorAll('.h-threads-item-index'));
+    const visibleThreads = allThreadsInScroller.filter(t => isPartiallyInViewport(t, scroller));
+
+    if (visibleThreads.length === 1 && visibleThreads[0] === item && next) {
+      item.classList.remove('expanded');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            const vr = getViewportRect(scroller);
+            const vHeight = Math.max(1, vr.bottom - vr.top);
+            const currentScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
+            const nextAbsTop = getElementAbsTop(next, scroller);
+            const desiredAbsTop = currentScroll + Math.floor(vHeight / 3);
+            const delta = nextAbsTop - desiredAbsTop;
+            if (delta !== 0) scrollByCompensation(scroller, delta);
+          } catch (err) {
+            try {
+              const preScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
+              const preHeight = scroller.scrollHeight;
+              requestAnimationFrame(() => {
+                const postHeight = scroller.scrollHeight;
+                const d = preHeight - postHeight;
+                if (d > 0) {
+                  const target = Math.max(0, preScroll - d);
+                  if (scrollerIsDoc) window.scrollTo({ top: target, left: 0, behavior: 'auto' });
+                  else scroller.scrollTop = target;
+                }
+              });
+            } catch (e2) {
+              console.warn('collapseWithoutShift special-case fallback 异常：', e2);
+            }
+          }
+        });
+      });
+      return;
+    }
+
+    if (nextVisible) {
+      const preScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
+      const preHeight = scroller.scrollHeight;
+      item.classList.remove('expanded');
+      requestAnimationFrame(() => {
+        const postHeight = scroller.scrollHeight;
+        const delta = preHeight - postHeight;
+        if (delta > 0) {
+          const target = Math.max(0, preScroll - delta);
+          if (scrollerIsDoc) window.scrollTo({ top: target, left: 0, behavior: 'auto' });
+          else scroller.scrollTop = target;
+        }
+      });
+      return;
+    }
+
+    const anchor = item;
+    const preAbsTop = getElementAbsTop(anchor, scroller);
+    item.classList.remove('expanded');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const postAbsTop = getElementAbsTop(anchor, scroller);
+        const delta = preAbsTop - postAbsTop;
+        if (delta !== 0) {
+          scrollByCompensation(scroller, delta);
+        } else {
+          try {
+            const preScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
+            const preHeight = scroller.scrollHeight;
+            requestAnimationFrame(() => {
+              const postHeight = scroller.scrollHeight;
+              const d = preHeight - postHeight;
+              if (d > 0) {
+                const target = Math.max(0, preScroll - d);
+                if (scrollerIsDoc) window.scrollTo({ top: target, left: 0, behavior: 'auto' });
+                else scroller.scrollTop = target;
+              }
+            });
+          } catch (err) {
+            console.warn('collapseWithoutShift fallback 异常：', err);
+          }
+        }
+      });
+    });
+  }
+
   /* --------------------------------------------------
    * tag 16. 允许展开/收起被板块页折叠的长串
    * -------------------------------------------------- */
-  function enablePostExpand() {
+  function enablePostExpand(root = document) {
+    const scanRoot = root && typeof root.querySelectorAll === 'function' ? root : document;
+    const scanTargets = [];
+    if (scanRoot.classList && scanRoot.classList.contains('h-threads-item-index')) {
+      scanTargets.push(scanRoot);
+    }
+    scanRoot.querySelectorAll('.h-threads-item-index').forEach(item => {
+      if (!scanTargets.includes(item)) scanTargets.push(item);
+    });
+
     // 注入样式（同前，保留 overflow-anchor: none）
     (function ensureExpandedStyle() {
       const id = 'h-expanded-style';
@@ -12117,201 +12285,6 @@ init() {
     // 根据 SettingPanel.state 读取是否开启“全部展开”模式
     const expandAllMode = !!(typeof SettingPanel !== 'undefined' && SettingPanel.state && SettingPanel.state.enablePostExpandAll);
 
-    const docScroller = document.scrollingElement || document.documentElement;
-
-    // 获取可滚动容器（从 startEl 本身开始向上查找）
-    function getScrollContainer(startEl) {
-      let el = startEl || document.body;
-      while (el && el !== document.body) {
-        const style = getComputedStyle(el);
-        const canScroll = /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight;
-        if (canScroll) return el;
-        el = el.parentElement;
-      }
-      return docScroller;
-    }
-
-    // 获取 scroller 的可视区域（相对 window 的坐标）
-    function getViewportRect(scroller) {
-      if (scroller === docScroller || scroller === document.body || scroller === document.documentElement) {
-        return { top: 0, bottom: window.innerHeight };
-      }
-      const r = scroller.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom };
-    }
-
-    // 判断元素在 scroller 可视区域内是否“可见”（任何像素可见视为可见）
-    function isPartiallyInViewport(el, scroller) {
-      if (!el) return false;
-      const er = el.getBoundingClientRect();
-      const vr = getViewportRect(scroller);
-      const visibleTop = Math.max(er.top, vr.top);
-      const visibleBottom = Math.min(er.bottom, vr.bottom);
-      const visible = Math.max(0, visibleBottom - visibleTop);
-      return visible > 0;
-    }
-
-    // 元素相对于 scroller 内容起点的绝对 top（用于锚点测量）
-    function getElementAbsTop(el, scroller) {
-      const er = el.getBoundingClientRect();
-      if (scroller === docScroller || scroller === document.body || scroller === document.documentElement) {
-        return er.top + window.scrollY;
-      } else {
-        const sr = scroller.getBoundingClientRect();
-        return er.top - sr.top + scroller.scrollTop;
-      }
-    }
-
-    // 根据 scroller 类型执行滚动补偿
-    function scrollByCompensation(scroller, dy) {
-      if (!dy) return;
-      if (scroller === docScroller || scroller === document.body || scroller === document.documentElement) {
-        window.scrollBy({ top: dy, left: 0, behavior: 'auto' });
-      } else {
-        scroller.scrollTop += dy;
-      }
-    }
-
-    // 找到下一个 sibling thread
-    function findNextThread(item) {
-      let el = item.nextElementSibling;
-      while (el) {
-        if (el.classList && el.classList.contains('h-threads-item-index')) return el;
-        el = el.nextElementSibling;
-      }
-      return null;
-    }
-
-    // 关键：收起时智能补偿
-    function collapseWithoutShift(item) {
-      // === 新增：顶部保护逻辑 ===
-      const postForm = document.getElementById('h-post-form');
-      if (postForm && isPartiallyInViewport(postForm, docScroller)) {
-        // 在顶部时，只移除 expanded，不做任何滚动补偿
-        item.classList.remove('expanded');
-        return;
-      }
-      // === 排除公用折叠目标（如回复表单）===
-      if (item.classList.contains('qp-reply-form') ||
-          item.classList.contains('xdex-generic-collapsed') ||
-          item.closest('.xdex-generic-toggle')) {
-        item.classList.remove('expanded'); // 仅移除 expanded，不做滚动补偿
-        return;
-      }
-
-      const scroller = getScrollContainer(item);
-      const scrollerIsDoc = (scroller === docScroller || scroller === document.body || scroller === document.documentElement);
-      const next = findNextThread(item);
-      const nextVisible = isPartiallyInViewport(next, scroller);
-
-      // --- 新增：判断当前 scroller 中可见的串数量（部分可见即算可见）
-      const threadContainer = scrollerIsDoc ? document : scroller;
-      const allThreadsInScroller = Array.from(threadContainer.querySelectorAll('.h-threads-item-index'));
-      const visibleThreads = allThreadsInScroller.filter(t => isPartiallyInViewport(t, scroller));
-
-      // Special case:
-      // 如果视窗中**仅有**当前这个被展开的串（即 visibleThreads.length === 1 且该唯一可见项就是 item），
-      // 并且存在下一个串 next，则收起后把 next 的顶部滚动到视窗顶部的 1/3 处。
-      if (visibleThreads.length === 1 && visibleThreads[0] === item && next) {
-        // 先收起
-        item.classList.remove('expanded');
-
-        // 等两帧，保证布局稳定后测量并滚动：目标是让 next 的顶部到达当前滚动位置 + viewportHeight/3
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            try {
-              const vr = getViewportRect(scroller);
-              const vHeight = Math.max(1, vr.bottom - vr.top); // 视口高度（相对于 window 的 rect）
-              const currentScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
-
-              // next 的“绝对 top（相对于 scroller 内容起点）”
-              const nextAbsTop = getElementAbsTop(next, scroller);
-
-              // 希望 next 的 absTop = currentScroll + vHeight/3
-              const desiredAbsTop = currentScroll + Math.floor(vHeight / 3);
-              const delta = nextAbsTop - desiredAbsTop;
-
-              if (delta !== 0) {
-                scrollByCompensation(scroller, delta);
-              }
-            } catch (err) {
-              // 回退到原有的高度差补偿（保险）
-              try {
-                const preScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
-                const preHeight = scroller.scrollHeight;
-                requestAnimationFrame(() => {
-                  const postHeight = scroller.scrollHeight;
-                  const d = preHeight - postHeight;
-                  if (d > 0) {
-                    const target = Math.max(0, preScroll - d);
-                    if (scrollerIsDoc) window.scrollTo({ top: target, left: 0, behavior: 'auto' });
-                    else scroller.scrollTop = target;
-                  }
-                });
-              } catch (e2) {
-                console.warn('collapseWithoutShift special-case fallback 异常：', e2);
-              }
-            }
-          });
-        });
-        return;
-      }
-
-      // --- 若下方串当前可见，优先使用 height-delta（与你现有第一版逻辑一致）
-      if (nextVisible) {
-        const preScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
-        const preHeight = scroller.scrollHeight;
-        item.classList.remove('expanded');
-        requestAnimationFrame(() => {
-          const postHeight = scroller.scrollHeight;
-          const delta = preHeight - postHeight;
-          if (delta > 0) {
-            const target = Math.max(0, preScroll - delta);
-            if (scrollerIsDoc) {
-              window.scrollTo({ top: target, left: 0, behavior: 'auto' });
-            } else {
-              scroller.scrollTop = target;
-            }
-          }
-        });
-        return;
-      }
-
-      // --- 否则使用锚点绝对 top 的测量（fallback）
-      const anchor = item; // 当下方不可见时，以当前 item 为锚
-      const preAbsTop = getElementAbsTop(anchor, scroller);
-
-      item.classList.remove('expanded');
-
-      // 等两帧，保证布局稳定后测量并补偿
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const postAbsTop = getElementAbsTop(anchor, scroller);
-          const delta = preAbsTop - postAbsTop;
-          if (delta !== 0) {
-            scrollByCompensation(scroller, delta);
-          } else {
-            // 保险回退（与第一版兼容）
-            try {
-              const preScroll = scrollerIsDoc ? window.scrollY : scroller.scrollTop;
-              const preHeight = scroller.scrollHeight;
-              requestAnimationFrame(() => {
-                const postHeight = scroller.scrollHeight;
-                const d = preHeight - postHeight;
-                if (d > 0) {
-                  const target = Math.max(0, preScroll - d);
-                  if (scrollerIsDoc) window.scrollTo({ top: target, left: 0, behavior: 'auto' });
-                  else scroller.scrollTop = target;
-                }
-              });
-            } catch (err) {
-              console.warn('collapseWithoutShift fallback 异常：', err);
-            }
-          }
-        });
-      });
-    }
-
     // 外部点击收起：兼容两种模式（常规 / 全部展开）
     function outsideHandler(e) {
       // 忽略公用折叠占位符点击
@@ -12323,25 +12296,27 @@ init() {
       if (!isAllMode) {
         // 必须在 #h-content 内
         const hContent = document.getElementById('h-content');
-        if (!hContent || !hContent.contains(e.target)) return;
+      if (!hContent || !hContent.contains(e.target)) return;
 
-        // 找到所有 .h-threads-list，判断点击是否在任一 list 的垂直范围内
-        const threadLists = document.querySelectorAll('#h-content .h-threads-list');
-        if (!threadLists.length) return;
+      // 找到所有 .h-threads-list，判断点击是否在任一 list 的垂直范围内
+      const threadLists = document.querySelectorAll('#h-content .h-threads-list');
+      if (!threadLists.length) return;
 
-        //const y = e.clientY;
-        let isInAnyList = false;
-        for (const list of threadLists) {
-          const listRect = list.getBoundingClientRect();
-          if (y >= listRect.top && y <= listRect.bottom) {
-            isInAnyList = true;
-            break;
-          }
+      const x = e.clientX;
+      const y = e.clientY;
+      let matchedListRect = null;
+      let isInAnyList = false;
+      for (const list of threadLists) {
+        const listRect = list.getBoundingClientRect();
+        if (y >= listRect.top && y <= listRect.bottom) {
+          isInAnyList = true;
+          matchedListRect = listRect;
+          break;
         }
-        if (!isInAnyList) return;
-        const x = e.clientX;
-        const y = e.clientY;
-        if (y < listRect.top || y > listRect.bottom) return;
+      }
+      if (!isInAnyList) return;
+      if (!matchedListRect) return;
+      if (y < matchedListRect.top || y > matchedListRect.bottom) return;
 
         // 点击在 uk-container 内部不处理（排除串内部及其包裹容器）
         if (e.target.closest('.uk-container')) return;
@@ -12431,7 +12406,7 @@ init() {
     }
 
     // 添加按钮
-    document.querySelectorAll('.h-threads-item-index').forEach(item => {
+    scanTargets.forEach(item => {
       // === 新增：跳过主串自身被折叠的情况（不包括串内回复被折叠） ===
       // 只检查 item 的直接子元素中是否有折叠占位符，不深入检查回复区域
       const directPlaceholder = Array.from(item.children).find(child =>
@@ -12476,12 +12451,11 @@ init() {
     try {
         const expandAll = !!(typeof SettingPanel !== 'undefined' && SettingPanel.state && SettingPanel.state.enablePostExpandAll);
         if (expandAll) {
-          setTimeout(() => {
-            document.querySelectorAll('.h-threads-item-index').forEach(item => {
-              const btn = item.querySelector('.h-threads-info .js-toggle-mode');
-              if (btn && !item.classList.contains('expanded')) btn.click();
-            });
-          }, 100);
+          scanTargets.forEach(item => {
+            if (!item.classList.contains('expanded')) item.classList.add('expanded');
+            const btn = item.querySelector('.h-threads-info .js-toggle-mode');
+            if (btn) btn.textContent = '收起';
+          });
         }
       } catch (err) {
         console.warn('自动全部展开失败：', err);
@@ -13971,7 +13945,7 @@ init() {
     enhancePostFormLayout();                                         //发帖UI调整
     initExtendedContent();                                           //扩展引用
     //autoHideRefView();                                               //原生引用弹窗自动隐藏
-    enablePostExpand();                                              //添加串展开-折叠按钮
+    enablePostExpand(document);                                     //添加串展开-折叠按钮
     searchServiceBy4sY();                                            //野生搜索酱
     monitorRefView();                                                //监视引用弹窗变化
     //preventContentOverflow();                                      //防止内容超出浏览器边缘-已合并入enableHDImageAndLayoutFix
