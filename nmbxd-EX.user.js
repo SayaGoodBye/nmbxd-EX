@@ -2199,8 +2199,11 @@ init() {
     const $scope = root ? $(root).find('span.h-threads-info-uid').add($(root).filter('span.h-threads-info-uid')) : $('span.h-threads-info-uid');
     $scope.each(function(){
       const $el = $(this);
-      const cid = ($el.text().split(':')[1]||'').trim();
+      const rawText = $el.text();
+      const parts = rawText.split(':');
+      const cid = (parts[1]||'').trim();
       // 先清除旧的标记样式
+      $el.find('.xdex-cookie-mark-target').contents().unwrap();
       $el.css({ background: '', padding: '', borderRadius: '' }).removeAttr('title');
       // 收集所有匹配的分组索引和备注
       let firstMatchIdx = -1;
@@ -2216,7 +2219,14 @@ init() {
       if (firstMatchIdx === -1) return;
       // 根据第一个匹配的分组索引选择颜色
       const color = markColors[firstMatchIdx % markColors.length];
-      $el.css({ background: color, padding:'0 3px', borderRadius:'2px' });
+      if (parts.length > 1 && cid) {
+        $el.empty();
+        $el.append(document.createTextNode(parts[0] + ':'));
+        const $target = $('<span class="xdex-cookie-mark-target"></span>').text(cid).css({ background: color, padding:'0 3px', borderRadius:'2px' });
+        $el.append($target);
+      } else {
+        $el.css({ background: color, padding:'0 3px', borderRadius:'2px' });
+      }
       // 只有当有备注时才设置 title
       if (hits.length > 0) {
         $el.attr('title', hits.join('\n'));
@@ -3177,6 +3187,9 @@ init() {
   const getCurrentCookie = () => GM_getValue('now-cookie', null);
   const LAST_USED_COOKIE_KEY = 'xdex-last-used-cookie';
   const getLastUsedCookie = () => GM_getValue(LAST_USED_COOKIE_KEY, null);
+  const isCookieListUnavailable = (list) => !list || Object.keys(list).length === 0;
+  const getLikelyActiveCookie = () => getCurrentCookie() || getLastUsedCookie();
+  let cookieListUnavailableState = false;
   const LOGIN_PROMPT_SUPPRESS_KEY = 'loginPromptSuppressAuto';
   const getLoginPromptSuppressAuto = () => !!GM_getValue(LOGIN_PROMPT_SUPPRESS_KEY, false);
   const setLoginPromptSuppressAuto = (v) => GM_setValue(LOGIN_PROMPT_SUPPRESS_KEY, !!v);
@@ -3191,7 +3204,9 @@ init() {
   function updateCurrentCookieDisplay(cur){
     const $d = $('#current-cookie-display');
     if(!$d.length) return;
-    if(cur){
+    if(cookieListUnavailableState){
+      $d.text('待确认').css('color','red');
+    } else if(cur){
       const nm = abbreviateName(cur.name);
       $d.text(nm + (cur.desc ? ' - ' + cur.desc : '')).css('color','#000');
     } else {
@@ -3321,12 +3336,16 @@ init() {
           }
         });
         GM_setValue('cookies',list);
+        cookieListUnavailableState = isCookieListUnavailable(list);
         updateDropdownUI(list);
         if (showToast) {
           toast('饼干列表已刷新！');
         }
         let cur=getCurrentCookie();
-        if(cur && !list[cur.id]) cur=null;
+        if (cookieListUnavailableState) {
+          cur = getLikelyActiveCookie();
+          if (!cur) cur = null;
+        } else if(cur && !list[cur.id]) cur=null;
 
         // 若已登录且有饼干列表，但当前未应用任何饼干，则优先自动应用最近使用的饼干，否则应用第一个
         if (!cur && Object.keys(list).length) {
@@ -3722,6 +3741,7 @@ init() {
     if(!$grid.length) return;
 
     const cur = getCurrentCookie(), list = getCookiesList();
+    cookieListUnavailableState = isCookieListUnavailable(list);
 
     const $ui = $(`
       <div class="uk-grid uk-grid-small h-post-form-grid" id="cookie-switcher-ui" style="display: flex; flex-wrap: nowrap; align-items: center; width: 100%;">
@@ -3868,9 +3888,17 @@ init() {
   function updatePreviewCookieId(){
     if(!$('.h-preview-box').length) return;
     const cur=getCurrentCookie();
-    const name=cur&&cur.name?abbreviateName(cur.name):'无饼干';
     const $uid = $('.h-preview-box .h-threads-info-uid');
-    $uid.text('ID:'+name);
+    const listUnavailable = isCookieListUnavailable(getCookiesList());
+    if (listUnavailable) {
+      const likely = getLikelyActiveCookie();
+      const name = likely && likely.name ? abbreviateName(likely.name) : '未知';
+      $uid.text(`已退出登录，无法获取饼干列表，当前饼干可能为:${name}`).css('color', 'red');
+    } else {
+      const name=cur&&cur.name?abbreviateName(cur.name):'无饼干';
+      $uid.text('ID:'+name).css('color', '');
+      cookieListUnavailableState = false;
+    }
     // 切换饼干后更新标记背景色
     if (typeof markAllCookies === 'function') {
       try {
@@ -11070,12 +11098,7 @@ init() {
               subtree: true
             });
 
-            // 初始化时同步饼干 ID
-            const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
-            if (cookieDisplay) {
-                const cookieText = cookieDisplay.textContent.trim();
-                $box.find('.h-threads-info-uid').text(`ID:${cookieText}`);
-            }
+            if (typeof updatePreviewCookieId === 'function') updatePreviewCookieId();
 
             // === 图片预览更新函数 ===
             function updatePreviewFromFile(file) {
