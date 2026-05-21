@@ -5558,16 +5558,20 @@ init() {
           if (imgBox.__originalStyles) {
             imgA.style.width = imgBox.__originalStyles.aWidth || '';
             imgA.style.height = imgBox.__originalStyles.aHeight || '';
+            imgA.style.maxWidth = imgBox.__originalStyles.aMaxWidth || '';
             img.style.width = imgBox.__originalStyles.imgWidth || '';
             img.style.height = imgBox.__originalStyles.imgHeight || '';
-            img.style.maxWidth = '';
-            img.style.maxHeight = '';
-            img.style.transform = '';
-            img.style.position = '';
-            img.style.top = '';
-            img.style.left = '';
-            img.style.marginTop = '';
-            img.style.marginLeft = '';
+            img.style.maxWidth = imgBox.__originalStyles.imgMaxWidth || '';
+            img.style.maxHeight = imgBox.__originalStyles.imgMaxHeight || '';
+            img.style.transform = imgBox.__originalStyles.imgTransform || '';
+            img.style.position = imgBox.__originalStyles.imgPosition || '';
+            img.style.top = imgBox.__originalStyles.imgTop || '';
+            img.style.left = imgBox.__originalStyles.imgLeft || '';
+            img.style.display = imgBox.__originalStyles.imgDisplay || '';
+            img.style.marginTop = imgBox.__originalStyles.imgMarginTop || '';
+            img.style.marginLeft = imgBox.__originalStyles.imgMarginLeft || '';
+            img.style.marginRight = imgBox.__originalStyles.imgMarginRight || '';
+            img.style.marginBottom = imgBox.__originalStyles.imgMarginBottom || '';
 
             // 恢复消息宽度
             const msgMain = imgBox.closest('.h-threads-item-reply-main');
@@ -5594,12 +5598,6 @@ init() {
           //   msgMain.style.width = msgMain.__originalWidth; // 恢复原始宽度
           //   delete msgMain.__originalWidth;
           // }
-          const msgMain = imgBox.closest('.h-threads-item-reply-main') || imgBox.closest('.h-threads-item-main');
-          if (msgMain && msgMain.__originalWidth !== undefined) {
-            const baseWidth = parseInt(msgMain.__originalWidth, 10) || msgMain.offsetWidth;
-            msgMain.style.width = (baseWidth + 50) + 'px';  // 恢复为原始宽度 + 50
-            delete msgMain.__originalWidth;
-          }
           return;
         }
 
@@ -5608,8 +5606,20 @@ init() {
           imgBox.__originalStyles = {
             aWidth: imgA.style.width,
             aHeight: imgA.style.height,
+            aMaxWidth: imgA.style.maxWidth,
             imgWidth: img.style.width,
-            imgHeight: img.style.height
+            imgHeight: img.style.height,
+            imgMaxWidth: img.style.maxWidth,
+            imgMaxHeight: img.style.maxHeight,
+            imgTransform: img.style.transform,
+            imgPosition: img.style.position,
+            imgTop: img.style.top,
+            imgLeft: img.style.left,
+            imgDisplay: img.style.display,
+            imgMarginTop: img.style.marginTop,
+            imgMarginLeft: img.style.marginLeft,
+            imgMarginRight: img.style.marginRight,
+            imgMarginBottom: img.style.marginBottom
           };
         }
 
