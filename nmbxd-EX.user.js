@@ -3950,12 +3950,10 @@ init() {
       hideEmptyTitleAndEmail(root);
       collapseEarlyStartupBlocks(root, cfg);
     }
-    if (typeof highlightPO === 'function') highlightPO();
-    if (typeof enablePostExpand === 'function') enablePostExpand(root || document);
   }
 
   function installEarlyStartupObserver() {
-    const relevantSelector = '.h-threads-info-title, .h-threads-info-email, .h-forum-header, form[action="/Home/Forum/doReplyThread.html"], form[action="/Home/Forum/doPostThread.html"], .h-threads-item-index, .h-threads-item-replies, .h-threads-item-reply-icon, .h-threads-item-reply';
+    const relevantSelector = '.h-threads-info-title, .h-threads-info-email, .h-forum-header, form[action="/Home/Forum/doReplyThread.html"], form[action="/Home/Forum/doPostThread.html"]';
     let observer = null;
     let rafId = 0;
     let passCount = 0;
@@ -4013,6 +4011,18 @@ init() {
         clearInterval(timer);
         stop();
       }, 1200);
+    }
+  }
+
+  function deferStartupTask(task, delay = 0) {
+    const run = () => {
+      try { task(); } catch (e) { console.warn('启动延迟任务失败', e); }
+    };
+    const schedule = () => setTimeout(run, delay);
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(schedule);
+    } else {
+      schedule();
     }
   }
 
@@ -14323,13 +14333,8 @@ init() {
       Utils.collapse($('form[action="/Home/Forum/doReplyThread.html"]'), '『回复』');
       Utils.collapse($('form[action="/Home/Forum/doPostThread.html"]'), '『发串』');
       }                                                              //折叠版规-发串-回复
-    if (cfg.enableExternalImagePreview)  ExternalImagePreview.init();//显示外部图床
     //if (cfg.updateReplyNumbers)          updateReplyNumbers();     //添加回复编号
     if (cfg.enableSeamlessPaging)        initSeamlessPaging();       //自动-手动无缝翻页
-    if (cfg.enableHDImageAndLayoutFix)   enableHDImageAndLayoutFix(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
-    if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
-    if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
-    if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
     if (cfg.enableUpdateCheck) {
       initializeUpdateReminderUI();                                   //检查更新UI状态初始化
       scheduleDailyUpdateCheck();                                     //每日检查更新
@@ -14341,34 +14346,9 @@ init() {
         window.__xdexUpdateCheckTimer = 0;
       }
     }
-    if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
-    if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
-    replaceRightSidebar();                                           //扩展坞增强
     interceptReplyForm();                                            //拦截回复中间页
-    if (cfg.extendQuote)                 extendQuote();              //扩展引用格式
-    kaomojiEnhancer();                                               //颜文字拓展
-    highlightPO();                                                   //高亮Po主
     enhancePostFormLayout();                                         //发帖UI调整
-    initExtendedContent();                                           //扩展引用
-    //autoHideRefView();                                               //原生引用弹窗自动隐藏
-    enablePostExpand(document);                                     //添加串展开-折叠按钮
-    searchServiceBy4sY();                                            //野生搜索酱
-    monitorRefView();                                                //监视引用弹窗变化
-    //preventContentOverflow();                                      //防止内容超出浏览器边缘-已合并入enableHDImageAndLayoutFix
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
-    overrideTopImageClick();                                         //替换顶栏图片点击事件
-    enhanceIsland({                                                  //增强X岛匿名版
-      // 这些都可选，默认全开
-      enablePreview: true,                                           //添加预览框
-      enableDraft: true,                                             //草稿保存/恢复
-      enableAutoTitle: true,                                         //自动设置网页标题
-      enableRelativeTime: true,                                      //人类友好时间显示
-      enableQuoteInsert: true,                                       //点击 No.xxxx 插入引用
-      enablePasteImage: true,                                        //粘贴剪贴板图片到文件输入
-      // 可传入你的 jQuery 实例（若页面没有全局 $）
-      // $: window.myJQ
-    });
-    refreshFilterDisplay(cfg);                                       //标记/屏蔽/过滤-饼干/关键词 + PO批注侧栏
 
     // 保存原始函数
     const _initContent = window.initContent;
@@ -14382,7 +14362,43 @@ init() {
         // 再执行扩展逻辑
         initExtendedContent(root || document);
     };
-    initContent(document);
+    deferStartupTask(() => {
+      if (cfg.enableHDImageAndLayoutFix)   enableHDImageAndLayoutFix(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
+      if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
+      if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
+      highlightPO();                                                   //高亮Po主
+      enablePostExpand(document);                                      //添加串展开-折叠按钮
+      refreshFilterDisplay(cfg);                                       //标记/屏蔽/过滤-饼干/关键词 + PO批注侧栏
+    });
+
+    deferStartupTask(() => {
+      if (cfg.enableExternalImagePreview)  ExternalImagePreview.init();//显示外部图床
+      if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
+      if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
+      if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
+      replaceRightSidebar();                                           //扩展坞增强
+      if (cfg.extendQuote)                 extendQuote();              //扩展引用格式
+      kaomojiEnhancer();                                               //颜文字拓展
+      initExtendedContent();                                           //扩展引用
+      //autoHideRefView();                                               //原生引用弹窗自动隐藏
+      searchServiceBy4sY();                                            //野生搜索酱
+      monitorRefView();                                                //监视引用弹窗变化
+      //preventContentOverflow();                                      //防止内容超出浏览器边缘-已合并入enableHDImageAndLayoutFix
+      overrideTopImageClick();                                         //替换顶栏图片点击事件
+      enhanceIsland({                                                  //增强X岛匿名版
+        // 这些都可选，默认全开
+        enablePreview: true,                                           //添加预览框
+        enableDraft: true,                                             //草稿保存/恢复
+        enableAutoTitle: true,                                         //自动设置网页标题
+        enableRelativeTime: true,                                      //人类友好时间显示
+        enableQuoteInsert: true,                                       //点击 No.xxxx 插入引用
+        enablePasteImage: true,                                        //粘贴剪贴板图片到文件输入
+        // 可传入你的 jQuery 实例（若页面没有全局 $）
+        // $: window.myJQ
+      });
+      initContent(document);
+      document.querySelectorAll('form textarea[name="content"]').forEach(bindCtrlEnter);
+    }, 50);
 
     // 屏蔽原站点的 initImageBox，改由 enableHDImageAndLayoutFix 负责初始化
     // window.initImageBox = function() {
@@ -14390,7 +14406,6 @@ init() {
     //   console.debug("initImageBox 已被屏蔽，由 enableHDImageAndLayoutFix 接管");
     // };
 
-    document.querySelectorAll('form textarea[name="content"]').forEach(bindCtrlEnter);
     // 自动刷新并提示当前饼干，我不知道为什么必须写在这里。
     function autoRefreshCookiesToast() {
       try {
