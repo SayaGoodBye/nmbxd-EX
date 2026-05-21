@@ -3175,6 +3175,8 @@ init() {
   const abbreviateName = n => n.replace(/\s*-\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/, '');
   const getCookiesList   = () => GM_getValue('cookies', {});
   const getCurrentCookie = () => GM_getValue('now-cookie', null);
+  const LAST_USED_COOKIE_KEY = 'xdex-last-used-cookie';
+  const getLastUsedCookie = () => GM_getValue(LAST_USED_COOKIE_KEY, null);
   const LOGIN_PROMPT_SUPPRESS_KEY = 'loginPromptSuppressAuto';
   const getLoginPromptSuppressAuto = () => !!GM_getValue(LOGIN_PROMPT_SUPPRESS_KEY, false);
   const setLoginPromptSuppressAuto = (v) => GM_setValue(LOGIN_PROMPT_SUPPRESS_KEY, !!v);
@@ -3246,6 +3248,7 @@ init() {
       .done(()=>{
         if (!silent) toast('切换成功! 当前饼干为 '+abbreviateName(cookie.name));
         GM_setValue('now-cookie',cookie);
+        GM_setValue(LAST_USED_COOKIE_KEY,cookie);
         updateCurrentCookieDisplay(cookie);
         updateDropdownUI(getCookiesList());
         removeDateString();
@@ -3268,35 +3271,38 @@ init() {
   }
 
   function autoApplyFirstCookieIfNeeded(list, opts = {}) {
-    const ids = Object.keys(list || {});
-    if (!ids.length) return false;
-
-    const cur = getCurrentCookie();
-    if (cur && list[cur.id]) return false;
-
-    const first = list[ids[0]];
-    if (!first || !first.id) return false;
-
-    if (window.__cookieAutoApplying) return true;
-    window.__cookieAutoApplying = true;
-
-    switch_cookie(first, {
-      silent: !!opts.silent,
-      onDone: (cookie) => {
-        window.__cookieAutoApplying = false;
-        if (opts.showDefaultToast) {
-          toast('已应用默认饼干：' + abbreviateName(cookie.name));
+      const ids = Object.keys(list || {});
+      if (!ids.length) return false;
+  
+      const cur = getCurrentCookie();
+      if (cur && list[cur.id]) return false;
+      const lastUsed = getLastUsedCookie();
+      const preferred = lastUsed && list[lastUsed.id] ? list[lastUsed.id] : null;
+      const first = list[ids[0]];
+      const target = preferred || first;
+      if (!target || !target.id) return false;
+  
+      if (window.__cookieAutoApplying) return true;
+      window.__cookieAutoApplying = true;
+  
+      switch_cookie(target, {
+        silent: !!opts.silent,
+        onDone: (cookie) => {
+          window.__cookieAutoApplying = false;
+          if (opts.showDefaultToast) {
+            toast(preferred ? '已应用最近饼干：' + abbreviateName(cookie.name) : '已应用默认饼干：' + abbreviateName(cookie.name));
+          }
+          if (typeof opts.onDone === 'function') opts.onDone(cookie);
+        },
+        onFail: () => {
+          window.__cookieAutoApplying = false;
+          if (typeof opts.onFail === 'function') opts.onFail();
         }
-        if (typeof opts.onDone === 'function') opts.onDone(cookie);
-      },
-      onFail: () => {
-        window.__cookieAutoApplying = false;
-        if (typeof opts.onFail === 'function') opts.onFail();
-      }
-    });
-
-    return true;
-  }
+      });
+  
+      return true;
+    }
+  
   function refreshCookies(cb, showToast = true, opts = {}){
     GM_xmlhttpRequest({
       method:'GET',
@@ -3322,7 +3328,7 @@ init() {
         let cur=getCurrentCookie();
         if(cur && !list[cur.id]) cur=null;
 
-        // 若已登录且有饼干列表，但当前未应用任何饼干，则自动应用第一个
+        // 若已登录且有饼干列表，但当前未应用任何饼干，则优先自动应用最近使用的饼干，否则应用第一个
         if (!cur && Object.keys(list).length) {
           const started = autoApplyFirstCookieIfNeeded(list, {
             silent: true,
@@ -3431,6 +3437,48 @@ init() {
         box-sizing: border-box;
       }
 
+      #login-modal-wrapper.xdex-login-embedded {
+        align-items: center;
+      }
+
+      #login-modal-wrapper.xdex-login-embedded .login-dialog {
+        top: 0;
+        width: min(920px, calc(100vw - 24px));
+        height: min(88vh, 860px);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      #login-modal-wrapper.xdex-login-embedded .login-dialog h2,
+      #login-modal-wrapper.xdex-login-embedded .login-dialog p {
+        flex: 0 0 auto;
+      }
+
+      #login-modal-wrapper.xdex-login-embedded .login-dialog-frame-wrap {
+        flex: 1 1 auto;
+        min-height: 0;
+        border: 1px solid var(--xdex-login-dialog-border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      #login-modal-wrapper.xdex-login-embedded .login-dialog-frame {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+      }
+
+      #login-modal-wrapper.xdex-login-embedded .login-dialog-status {
+        min-height: 1.2em;
+        margin: 0;
+        color: var(--xdex-login-dialog-muted);
+      }
+
       #login-modal-wrapper .login-dialog h2 {
         margin: 0 0 12px;
         color: inherit;
@@ -3444,6 +3492,10 @@ init() {
       #login-modal-wrapper .login-dialog-actions {
         margin-top: 16px;
         text-align: right;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
       #login-modal-wrapper .login-dialog-actions button {
@@ -3477,6 +3529,25 @@ init() {
     document.head.appendChild(style);
   }
 
+  function disableVerifyInputMemory(root = document) {
+    if (!root) return;
+    const targets = [];
+    if (root.nodeType === 1 && root.matches && (root.matches('#doc-ipt-verify-1') || root.matches('input[name="verify"]'))) {
+      targets.push(root);
+    }
+    if (root.querySelectorAll) {
+      root.querySelectorAll('#doc-ipt-verify-1, input[name="verify"]').forEach((el) => targets.push(el));
+    }
+    targets.forEach((el) => {
+      if (!el || el.dataset.xdexVerifyMemoryDisabled === '1') return;
+      el.setAttribute('autocomplete', 'off');
+      el.setAttribute('autocapitalize', 'off');
+      el.setAttribute('autocorrect', 'off');
+      el.setAttribute('spellcheck', 'false');
+      el.dataset.xdexVerifyMemoryDisabled = '1';
+    });
+  }
+
   //TODO : 弹出登录提示弹窗未修复
   function showLoginPrompt(force = false){
     const url = window.location.href;
@@ -3493,6 +3564,113 @@ init() {
     window.__loginPromptShown = true;
 
     ensureLoginPromptStyle();
+
+    let pollTimer = null;
+    let pollTimeout = null;
+    let isChecking = false;
+    let embeddedMode = false;
+
+    const cleanup = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (pollTimeout) {
+        clearTimeout(pollTimeout);
+        pollTimeout = null;
+      }
+      isChecking = false;
+    };
+
+    const closePrompt = () => {
+      cleanup();
+      $m.fadeOut(200, () => $m.remove());
+    };
+
+    const refreshStatus = (text) => {
+      $m.find('.login-dialog-status').text(text || '');
+    };
+
+    const checkLoginState = (onDone) => {
+      if (isChecking) return;
+      isChecking = true;
+      refreshCookies(() => {
+        isChecking = false;
+        const hasCookies = Object.keys(getCookiesList() || {}).length > 0;
+        if (hasCookies) {
+          cleanup();
+          toast('登录成功，饼干已刷新');
+          closePrompt();
+          return;
+        }
+        if (typeof onDone === 'function') onDone(false);
+      }, false, { manualPrompt: false });
+    };
+
+    const startPolling = () => {
+      cleanup();
+      refreshStatus('Tips:已进入嵌入登录模式，完成后会自动检测。');
+      checkLoginState();
+      pollTimer = setInterval(() => {
+        checkLoginState((ok) => {
+          if (!ok) refreshStatus('Tips:登陆未完成');
+        });
+      }, 2000);
+      pollTimeout = setTimeout(() => {
+        cleanup();
+        refreshStatus('Tips:自动检测已停止，请在完成登录后点击“我已完成登录，刷新饼干”。');
+      }, 120000);
+    };
+
+    const renderEmbeddedMode = () => {
+      if (embeddedMode) return;
+      embeddedMode = true;
+      $m.addClass('xdex-login-embedded');
+      const $dialog = $m.find('.login-dialog');
+      $dialog.html(`
+        <h2>登录</h2>
+        <div class="login-dialog-frame-wrap">
+          <iframe class="login-dialog-frame" src="https://www.nmbxd1.com/Member/User/Index/login.html" title="登录页面"></iframe>
+        </div>
+        <p class="login-dialog-status"></p>
+        <div class="login-dialog-actions">
+          <button id="login-refresh-after-login">我已完成登录，刷新饼干</button>
+          <button id="login-close-embedded">关闭</button>
+        </div>
+      `);
+
+      const applyVerifyMemoryDisabled = () => {
+        const iframe = $m.find('.login-dialog-frame').get(0);
+        if (!iframe) return;
+        try {
+          const doc = iframe.contentDocument;
+          if (doc) disableVerifyInputMemory(doc);
+        } catch (e) {}
+      };
+
+      const $iframe = $m.find('.login-dialog-frame');
+      $iframe.on('load', applyVerifyMemoryDisabled);
+      applyVerifyMemoryDisabled();
+
+      $('#login-close-embedded').on('click', () => {
+        closePrompt();
+      });
+
+      $('#login-refresh-after-login').on('click', () => {
+        refreshStatus('Tips:正在检查登录状态...');
+        checkLoginState((ok) => {
+          if (!ok) refreshStatus('Tips:仍未检测到饼干，请确认已完成登录。');
+        });
+      });
+
+      $m.off('click').on('click', (e) => {
+        if (e.target.classList && e.target.classList.contains('login-backdrop')) {
+          closePrompt();
+        }
+      });
+
+      startPolling();
+    };
 
     const $m = $(`
       <div id="login-modal-wrapper">
@@ -3515,23 +3693,22 @@ init() {
     $('body').append($m);
 
     $('#login-open').on('click', () => {
-      window.open('https://www.nmbxd1.com/Member/User/Index/login.html', '_blank');
-      $m.fadeOut(200, () => $m.remove());
+      renderEmbeddedMode();
     });
 
     $('#login-close').on('click', () => {
-      $m.fadeOut(200, () => $m.remove());
+      closePrompt();
     });
 
     $('#login-no-remind').on('click', () => {
       window.__loginPromptSuppressUntilRefresh = true;
       setLoginPromptSuppressAuto(true);
-      $m.fadeOut(200, () => $m.remove());
+      closePrompt();
     });
 
     $m.on('click', (e) => {
       if (e.target.classList && e.target.classList.contains('login-backdrop')) {
-        $m.fadeOut(200, () => $m.remove());
+        closePrompt();
       }
     });
   }
@@ -3568,7 +3745,7 @@ init() {
     updateCurrentCookieDisplay(cur);
     updateDropdownUI(list);
 
-    // 登录但未应用任何饼干时，自动应用第一个
+    // 登录但未应用任何饼干时，优先自动应用最近使用的饼干，否则应用第一个
     autoApplyFirstCookieIfNeeded(list, { silent: true, showDefaultToast: true });
 
     // === 新增：检测是否无饼干，立即弹出登录提示 ===
@@ -14112,6 +14289,7 @@ init() {
   $(document).ready(() => {
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+    disableVerifyInputMemory(document);
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     if (cfg.enablePaginationDuplication) enablePaginationDuplication();     //添加页首页码
