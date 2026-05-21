@@ -27,9 +27,9 @@
 // @note         致谢：来自acVMxuv的[侧边栏优化](https://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88)
 // @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
 // @updateURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
+// @run-at       document-start
 // ==/UserScript==
 /* global $, jQuery */
-// @run-at document-end
 
 // 更新渠道
 // @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
@@ -3363,6 +3363,120 @@ init() {
     });
   }
 
+  function ensureLoginPromptStyle() {
+    if (document.getElementById('xdex-login-prompt-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-login-prompt-style';
+    style.textContent = `
+      :root {
+        --xdex-login-backdrop-bg: rgba(0,0,0,.45);
+        --xdex-login-dialog-bg: #FFFFEE;
+        --xdex-login-dialog-border: #d6c7ba;
+        --xdex-login-dialog-text: #2f241d;
+        --xdex-login-dialog-muted: #6a5546;
+        --xdex-login-dialog-shadow: rgba(0,0,0,.28);
+        --xdex-login-btn-bg: #f0e0d6;
+        --xdex-login-btn-hover-bg: #e7d3c7;
+        --xdex-login-btn-border: #c7b5a8;
+        --xdex-login-btn-text: #4d392c;
+        --xdex-login-btn-primary-bg: #66CCFF;
+        --xdex-login-btn-primary-hover-bg: #54c2f7;
+        --xdex-login-btn-primary-border: #59b9e7;
+        --xdex-login-btn-primary-text: #fff;
+      }
+
+      :root.xdex-darkreader-active {
+        --xdex-login-backdrop-bg: rgba(8,8,9,.62);
+        --xdex-login-dialog-bg: #2F3233;
+        --xdex-login-dialog-border: #3a2a21;
+        --xdex-login-dialog-text: #f2dfc7;
+        --xdex-login-dialog-muted: #d2bda4;
+        --xdex-login-dialog-shadow: rgba(0,0,0,.6);
+        --xdex-login-btn-bg: #3a2a21;
+        --xdex-login-btn-hover-bg: #4a3429;
+        --xdex-login-btn-border: #5d4334;
+        --xdex-login-btn-text: #f2dfc7;
+        --xdex-login-btn-primary-bg: #8fb3ff;
+        --xdex-login-btn-primary-hover-bg: #a4c0ff;
+        --xdex-login-btn-primary-border: #7da4f6;
+        --xdex-login-btn-primary-text: #1a2232;
+      }
+
+      #login-modal-wrapper {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+      }
+
+      #login-modal-wrapper .login-backdrop {
+        position: absolute;
+        inset: 0;
+        background: var(--xdex-login-backdrop-bg);
+      }
+
+      #login-modal-wrapper .login-dialog {
+        position: relative;
+        top: 30%;
+        width: min(400px, calc(100vw - 32px));
+        padding: 20px;
+        background: var(--xdex-login-dialog-bg);
+        border: 1px solid var(--xdex-login-dialog-border);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px var(--xdex-login-dialog-shadow);
+        color: var(--xdex-login-dialog-text);
+        z-index: 10001;
+        box-sizing: border-box;
+      }
+
+      #login-modal-wrapper .login-dialog h2 {
+        margin: 0 0 12px;
+        color: inherit;
+      }
+
+      #login-modal-wrapper .login-dialog p {
+        margin: 0 0 8px;
+        color: var(--xdex-login-dialog-muted);
+      }
+
+      #login-modal-wrapper .login-dialog-actions {
+        margin-top: 16px;
+        text-align: right;
+      }
+
+      #login-modal-wrapper .login-dialog-actions button {
+        margin-left: 10px;
+        padding: 6px 12px;
+        background: var(--xdex-login-btn-bg);
+        border: 1px solid var(--xdex-login-btn-border);
+        border-radius: 6px;
+        color: var(--xdex-login-btn-text);
+        box-shadow: none;
+        cursor: pointer;
+      }
+
+      #login-modal-wrapper .login-dialog-actions button:hover,
+      #login-modal-wrapper .login-dialog-actions button:focus {
+        background: var(--xdex-login-btn-hover-bg);
+        outline: none;
+      }
+
+      #login-modal-wrapper #login-open {
+        background: var(--xdex-login-btn-primary-bg);
+        border-color: var(--xdex-login-btn-primary-border);
+        color: var(--xdex-login-btn-primary-text);
+      }
+
+      #login-modal-wrapper #login-open:hover,
+      #login-modal-wrapper #login-open:focus {
+        background: var(--xdex-login-btn-primary-hover-bg);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   //TODO : 弹出登录提示弹窗未修复
   function showLoginPrompt(force = false){
     const url = window.location.href;
@@ -3378,18 +3492,20 @@ init() {
     if ($('#login-modal-wrapper').length) return; // 避免重复插入
     window.__loginPromptShown = true;
 
+    ensureLoginPromptStyle();
+
     const $m = $(`
-      <div id="login-modal-wrapper" style="position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;">
+      <div id="login-modal-wrapper">
         <!-- 遮罩层 -->
-        <div class="login-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>
+        <div class="login-backdrop"></div>
         <!-- 弹窗内容 -->
-        <div class="login-dialog" style="position:relative;top:30%;width:400px;background:#FFFFEE;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.3);z-index:10001;">
+        <div class="login-dialog">
           <h2>提示</h2>
           <p>当前已退出登录，无法切换饼干。</p>
           <p>请注意：此时仍可作为最后一次应用的饼干回复。</p>
-          <div style="text-align:right;">
-            <button id="login-open" style="margin-right:10px;">去登录</button>
-            <button id="login-no-remind" style="margin-right:10px;">不再提醒</button>
+          <div class="login-dialog-actions">
+            <button id="login-open">去登录</button>
+            <button id="login-no-remind">不再提醒</button>
             <!-- <button id="login-close">关闭</button> -->
           </div>
         </div>
@@ -3605,6 +3721,94 @@ init() {
         this.style.display = 'none';
       }
     });
+  }
+
+  function getEarlyStartupConfig() {
+    try {
+      return Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+    } catch (e) {
+      return SettingPanel.defaults;
+    }
+  }
+
+  function collapseEarlyStartupBlocks(root, cfg) {
+    if (!cfg || !cfg.hideEmptyTitleEmail || typeof Utils === 'undefined' || typeof Utils.collapse !== 'function') return;
+    const $root = root ? $(root) : $(document);
+    Utils.collapse($root.find('.h-forum-header').addBack('.h-forum-header'), '『版规』');
+    Utils.collapse($root.find('form[action="/Home/Forum/doReplyThread.html"]').addBack('form[action="/Home/Forum/doReplyThread.html"]'), '『回复』');
+    Utils.collapse($root.find('form[action="/Home/Forum/doPostThread.html"]').addBack('form[action="/Home/Forum/doPostThread.html"]'), '『发串』');
+  }
+
+  function runEarlyStartupPass(root) {
+    const cfg = getEarlyStartupConfig();
+    if (cfg.hideEmptyTitleEmail) {
+      hideEmptyTitleAndEmail(root);
+      collapseEarlyStartupBlocks(root, cfg);
+    }
+    if (typeof highlightPO === 'function') highlightPO();
+    if (typeof enablePostExpand === 'function') enablePostExpand(root || document);
+  }
+
+  function installEarlyStartupObserver() {
+    const relevantSelector = '.h-threads-info-title, .h-threads-info-email, .h-forum-header, form[action="/Home/Forum/doReplyThread.html"], form[action="/Home/Forum/doPostThread.html"], .h-threads-item-index, .h-threads-item-replies, .h-threads-item-reply-icon, .h-threads-item-reply';
+    let observer = null;
+    let rafId = 0;
+    let passCount = 0;
+    let stopped = false;
+
+    const stop = () => {
+      stopped = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (observer) observer.disconnect();
+      observer = null;
+    };
+
+    const queuePass = () => {
+      if (stopped || rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        if (stopped) return;
+        runEarlyStartupPass(document);
+        passCount += 1;
+        if (passCount >= 4) stop();
+      });
+    };
+
+    const startObserve = () => {
+      if (stopped) return;
+      const target = document.body || document.documentElement;
+      if (!target || observer) return;
+      observer = new MutationObserver(mutations => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType !== 1) continue;
+            const el = node;
+            if (el.matches?.(relevantSelector) || el.querySelector?.(relevantSelector)) {
+              queuePass();
+              return;
+            }
+          }
+        }
+      });
+      observer.observe(target, { childList: true, subtree: true });
+      setTimeout(stop, 1200);
+    };
+
+    runEarlyStartupPass(document);
+    if (document.body || document.documentElement) {
+      startObserve();
+    } else {
+      const timer = setInterval(() => {
+        if (document.body || document.documentElement) {
+          clearInterval(timer);
+          startObserve();
+        }
+      }, 25);
+      setTimeout(() => {
+        clearInterval(timer);
+        stop();
+      }, 1200);
+    }
   }
 
   function addLastPageNumber(){
@@ -13903,6 +14107,7 @@ init() {
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => enableHDImageAndLayoutFix(document));
+  installEarlyStartupObserver();
 
   $(document).ready(() => {
     SettingPanel.init();
