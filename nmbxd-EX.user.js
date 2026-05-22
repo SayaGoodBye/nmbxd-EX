@@ -3464,10 +3464,14 @@ init() {
         top: 0;
         width: min(920px, calc(100vw - 24px));
         height: min(88vh, 860px);
-        padding: 16px;
+        padding: 12px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
+      }
+
+      #login-modal-wrapper.xdex-login-embedded .login-dialog.xdex-login-dialog-pending {
+        visibility: hidden;
       }
 
       #login-modal-wrapper.xdex-login-embedded .login-dialog h2,
@@ -3492,10 +3496,18 @@ init() {
         background: #fff;
       }
 
+      #login-modal-wrapper.xdex-login-embedded .login-dialog-frame.xdex-login-frame-pending {
+        visibility: hidden;
+      }
+
       #login-modal-wrapper.xdex-login-embedded .login-dialog-status {
-        min-height: 1.2em;
+        min-height: 0;
         margin: 0;
         color: var(--xdex-login-dialog-muted);
+      }
+
+      #login-modal-wrapper.xdex-login-embedded .login-dialog-actions {
+        margin-top: 4px;
       }
 
       #login-modal-wrapper .login-dialog h2 {
@@ -3646,10 +3658,11 @@ init() {
       embeddedMode = true;
       $m.addClass('xdex-login-embedded');
       const $dialog = $m.find('.login-dialog');
+      $dialog.addClass('xdex-login-dialog-pending');
       $dialog.html(`
         <h2>登录</h2>
         <div class="login-dialog-frame-wrap">
-          <iframe class="login-dialog-frame" src="https://www.nmbxd1.com/Member/User/Index/login.html" title="登录页面"></iframe>
+          <iframe class="login-dialog-frame xdex-login-frame-pending" src="https://www.nmbxd1.com/Member/User/Index/login.html" title="登录页面"></iframe>
         </div>
         <p class="login-dialog-status"></p>
         <div class="login-dialog-actions">
@@ -3658,18 +3671,87 @@ init() {
         </div>
       `);
 
-      const applyVerifyMemoryDisabled = () => {
+      const compactEmbeddedLoginPage = (doc) => {
+        if (!doc || !doc.head) return false;
+        if (!/\/Member\/User\/Index\/login\.html(?:$|[?#])/.test(doc.location.href)) return false;
+        if (doc.getElementById('xdex-compact-login-style')) return true;
+        const style = doc.createElement('style');
+        style.id = 'xdex-compact-login-style';
+        style.textContent = `
+          html, body {
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: auto !important;
+          }
+          body[data-type="login"] {
+            overflow: auto !important;
+          }
+          .myapp-login {
+            height: auto !important;
+            min-height: 0 !important;
+            padding: 8px 0 !important;
+          }
+          .myapp-login-logo-block {
+            padding: 0 !important;
+          }
+          .tpl-login-max {
+            max-width: 520px !important;
+            margin: 0 auto !important;
+          }
+          .myapp-login-logo-text {
+            display: none !important;
+          }
+          .login-font {
+            padding: 4px 0 8px !important;
+            font-size: 11px !important;
+            line-height: 1.2 !important;
+          }
+          .login-am-center {
+            width: auto !important;
+            max-width: 420px !important;
+            float: none !important;
+          }
+          .login-am-center .am-form-group {
+            margin-bottom: 8px !important;
+          }
+          .login-am-center .am-form input {
+            height: 34px !important;
+            line-height: 26px !important;
+            font-size: 12px !important;
+          }
+          img[src*="/Member/User/Index/verify.html"] {
+            margin-top: 4px !important;
+          }
+          .am-form p {
+            margin: 8px 0 0 !important;
+          }
+          .login-am-center .am-btn-default {
+            min-height: 34px !important;
+            line-height: 28px !important;
+          }
+        `;
+        doc.head.appendChild(style);
+        return true;
+      };
+
+      const applyEmbeddedLoginAdjustments = () => {
         const iframe = $m.find('.login-dialog-frame').get(0);
         if (!iframe) return;
         try {
           const doc = iframe.contentDocument;
-          if (doc) disableVerifyInputMemory(doc);
+          if (doc) {
+            disableVerifyInputMemory(doc);
+            if (compactEmbeddedLoginPage(doc)) {
+              iframe.classList.remove('xdex-login-frame-pending');
+              $dialog.removeClass('xdex-login-dialog-pending');
+            }
+          }
         } catch (e) {}
       };
 
       const $iframe = $m.find('.login-dialog-frame');
-      $iframe.on('load', applyVerifyMemoryDisabled);
-      applyVerifyMemoryDisabled();
+      $iframe.on('load', applyEmbeddedLoginAdjustments);
+      applyEmbeddedLoginAdjustments();
 
       $('#login-close-embedded').on('click', () => {
         closePrompt();
@@ -3712,6 +3794,7 @@ init() {
     $('body').append($m);
 
     $('#login-open').on('click', () => {
+      toast('正在打开登录面板……');
       renderEmbeddedMode();
     });
 
