@@ -3189,10 +3189,150 @@ init() {
   const getLastUsedCookie = () => GM_getValue(LAST_USED_COOKIE_KEY, null);
   const isCookieListUnavailable = (list) => !list || Object.keys(list).length === 0;
   const getLikelyActiveCookie = () => getCurrentCookie() || getLastUsedCookie();
+  const COOKIE_USERHASH_DIGEST_CACHE_KEY = 'xdex-cookie-userhash-digests';
+  const cookieDigestInflight = new Map();
   let cookieListUnavailableState = false;
   const LOGIN_PROMPT_SUPPRESS_KEY = 'loginPromptSuppressAuto';
   const getLoginPromptSuppressAuto = () => !!GM_getValue(LOGIN_PROMPT_SUPPRESS_KEY, false);
   const setLoginPromptSuppressAuto = (v) => GM_setValue(LOGIN_PROMPT_SUPPRESS_KEY, !!v);
+
+  function getCookieUserhashDigestCache() {
+    const cache = GM_getValue(COOKIE_USERHASH_DIGEST_CACHE_KEY, {});
+    return cache && typeof cache === 'object' ? cache : {};
+  }
+
+  function setCookieUserhashDigestCache(cache) {
+    GM_setValue(COOKIE_USERHASH_DIGEST_CACHE_KEY, cache && typeof cache === 'object' ? cache : {});
+  }
+
+  function getCurrentBrowserUserhash() {
+    const match = String(document.cookie || '').match(/(?:^|;\s*)userhash=([^;]+)/);
+    if (!match) return null;
+    try { return decodeURIComponent(match[1]); } catch (e) { return match[1]; }
+  }
+
+  async function digestUserhash(raw) {
+    if (!raw || !globalThis.crypto || !globalThis.crypto.subtle || typeof TextEncoder === 'undefined') return null;
+    try {
+      const data = new TextEncoder().encode(raw);
+      const hash = await globalThis.crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getQueryParamPreservePlus(search, name) {
+    const query = String(search || '').replace(/^\?/, '');
+    const pairs = query.split('&');
+    for (const pair of pairs) {
+      const idx = pair.indexOf('=');
+      const key = idx >= 0 ? pair.slice(0, idx) : pair;
+      let decodedKey;
+      try { decodedKey = decodeURIComponent(key); } catch (e) { decodedKey = key; }
+      if (decodedKey !== name) continue;
+      const value = idx >= 0 ? pair.slice(idx + 1) : '';
+      try { return decodeURIComponent(value); } catch (e) { return value; }
+    }
+    return null;
+  }
+
+  function decodeCookieExportText(text) {
+    if (!text || typeof atob !== 'function' || typeof TextDecoder === 'undefined') return null;
+    try {
+      const bin = atob(text);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const jsonText = new TextDecoder('utf-8').decode(bytes);
+      try { return JSON.parse(jsonText); }
+      catch (e) { return JSON.parse(jsonText.replace(/\+/g, '%20')); }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function parseCookieExportUserhash(html) {
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    const node = doc.querySelector('img[src*="text="]') || doc.querySelector('[src*="text="]');
+    const src = node && node.getAttribute('src');
+    if (!src) return null;
+    try {
+      const url = new URL(src, location.origin);
+      const text = getQueryParamPreservePlus(url.search, 'text') || url.searchParams.get('text');
+      const data = decodeCookieExportText(text);
+      return data && typeof data.cookie === 'string' ? data.cookie : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getCookieDigestCacheEntry(cookie) {
+    return {
+      id: cookie.id,
+      name: cookie.name,
+      desc: cookie.desc,
+      updatedAt: Date.now()
+    };
+  }
+
+  async function fetchCookieExportUserhashDigest(cookie) {
+    if (!cookie || !cookie.id) return null;
+    const id = String(cookie.id);
+    if (cookieDigestInflight.has(id)) return cookieDigestInflight.get(id);
+    const promise = (async () => {
+      try {
+        const resp = await gmRequest(`https://www.nmbxd1.com/Member/User/Cookie/export/id/${encodeURIComponent(id)}.html`, 'text');
+        const raw = parseCookieExportUserhash(resp.responseText || '');
+        const digest = await digestUserhash(raw);
+        return digest ? Object.assign(getCookieDigestCacheEntry(cookie), { digest }) : null;
+      } catch (e) {
+        return null;
+      }
+    })();
+    cookieDigestInflight.set(id, promise);
+    try { return await promise; }
+    finally { cookieDigestInflight.delete(id); }
+  }
+
+  async function syncCookieUserhashDigestCache(list) {
+    const ids = Object.keys(list || {});
+    if (!ids.length) return;
+    const cache = getCookieUserhashDigestCache();
+    const next = {};
+    const missing = [];
+    ids.forEach(id => {
+      const cookie = list[id];
+      if (!cookie) return;
+      if (cache[id] && cache[id].digest) {
+        next[id] = Object.assign({}, cache[id], getCookieDigestCacheEntry(cookie));
+      } else {
+        missing.push(cookie);
+      }
+    });
+    setCookieUserhashDigestCache(next);
+    if (!missing.length) return;
+    const results = await Promise.allSettled(missing.map(fetchCookieExportUserhashDigest));
+    results.forEach(result => {
+      if (result.status === 'fulfilled' && result.value && result.value.id && result.value.digest) {
+        next[String(result.value.id)] = result.value;
+      }
+    });
+    setCookieUserhashDigestCache(next);
+  }
+
+  async function getCookieMatchedByCurrentUserhash() {
+    const raw = getCurrentBrowserUserhash();
+    const digest = await digestUserhash(raw);
+    if (!digest) return null;
+    const cache = getCookieUserhashDigestCache();
+    const entry = Object.values(cache).find(item => item && item.digest === digest);
+    return entry ? { id: entry.id, name: entry.name, desc: entry.desc } : null;
+  }
+
+  async function getLikelyActiveCookieAsync() {
+    const matched = await getCookieMatchedByCurrentUserhash();
+    return matched || getLikelyActiveCookie();
+  }
 
   function removeDateString(){
     $('#cookie-switcher-ui').find('*').addBack().contents()
@@ -3322,7 +3462,7 @@ init() {
     GM_xmlhttpRequest({
       method:'GET',
       url:'https://www.nmbxd1.com/Member/User/Cookie/index.html',
-      onload:r=>{
+      onload: async r=>{
         if(r.status!==200){ toast('刷新失败 HTTP '+r.status); return cb&&cb(); }
         const doc=new DOMParser().parseFromString(r.responseText,'text/html');
         const rows=doc.querySelectorAll('tbody>tr'), list={};
@@ -3337,13 +3477,16 @@ init() {
         });
         GM_setValue('cookies',list);
         cookieListUnavailableState = isCookieListUnavailable(list);
+        if (!cookieListUnavailableState) {
+          try { await syncCookieUserhashDigestCache(list); } catch (e) {}
+        }
         updateDropdownUI(list);
         if (showToast) {
           toast('饼干列表已刷新！');
         }
         let cur=getCurrentCookie();
         if (cookieListUnavailableState) {
-          cur = getLikelyActiveCookie();
+          cur = await getLikelyActiveCookieAsync();
           if (!cur) cur = null;
         } else if(cur && !list[cur.id]) cur=null;
 
@@ -3976,7 +4119,17 @@ init() {
     if (listUnavailable) {
       const likely = getLikelyActiveCookie();
       const name = likely && likely.name ? abbreviateName(likely.name) : '未知';
-      $uid.text(`已退出登录，无法获取饼干列表，当前饼干可能为:${name}`).css('color', 'red');
+      $uid.text(`已退出登录，无法获取列表，当前饼干可能为:${name}`).css('color', 'red');
+      getCookieMatchedByCurrentUserhash().then(matched => {
+        if (!matched || !matched.name || !isCookieListUnavailable(getCookiesList())) return;
+        $uid.text(`已退出登录，无法切换饼干，当前实际作用饼干为:${abbreviateName(matched.name)}`).css('color', 'red');
+        if (typeof markAllCookies === 'function') {
+          try {
+            const cfg = getFilterConfig();
+            markAllCookies(cfg.markedGroups || [], $('.h-preview-box')[0]);
+          } catch (e) {}
+        }
+      });
     } else {
       const name=cur&&cur.name?abbreviateName(cur.name):'无饼干';
       $uid.text('ID:'+name).css('color', '');
