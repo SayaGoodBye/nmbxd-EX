@@ -3477,7 +3477,9 @@ init() {
         });
         GM_setValue('cookies',list);
         cookieListUnavailableState = isCookieListUnavailable(list);
+        let actualCookieBeforeSync = null;
         if (!cookieListUnavailableState) {
+          try { actualCookieBeforeSync = await getCookieMatchedByCurrentUserhash(); } catch (e) {}
           try { await syncCookieUserhashDigestCache(list); } catch (e) {}
         }
         updateDropdownUI(list);
@@ -3485,17 +3487,31 @@ init() {
           toast('饼干列表已刷新！');
         }
         let cur=getCurrentCookie();
+        let deletedActualCookie = null;
         if (cookieListUnavailableState) {
           cur = await getLikelyActiveCookieAsync();
           if (!cur) cur = null;
+        } else if (actualCookieBeforeSync && actualCookieBeforeSync.id) {
+          if (list[actualCookieBeforeSync.id]) {
+            cur = list[actualCookieBeforeSync.id];
+          } else {
+            deletedActualCookie = actualCookieBeforeSync;
+            cur = null;
+            GM_setValue('now-cookie', null);
+          }
         } else if(cur && !list[cur.id]) cur=null;
 
         // 若已登录且有饼干列表，但当前未应用任何饼干，则优先自动应用最近使用的饼干，否则应用第一个
         if (!cur && Object.keys(list).length) {
           const started = autoApplyFirstCookieIfNeeded(list, {
             silent: true,
-            showDefaultToast: true,
-            onDone: () => { cb&&cb(); },
+            showDefaultToast: !deletedActualCookie,
+            onDone: (cookie) => {
+              if (deletedActualCookie && cookie && cookie.name) {
+                toast('当前饼干 ' + abbreviateName(deletedActualCookie.name) + ' 已被删除，已切换到 ' + abbreviateName(cookie.name));
+              }
+              cb&&cb();
+            },
             onFail: () => {
               GM_setValue('now-cookie', null);
               updateCurrentCookieDisplay(null);
@@ -3739,6 +3755,39 @@ init() {
 
     ensureLoginPromptStyle();
 
+    function updateLoggedOutCookieHint($dialog) {
+      const $hint = $dialog.find('.login-cookie-hint');
+      if (!$hint.length) return;
+      const applyLoginCookieMark = () => {
+        if (typeof markAllCookies !== 'function') return;
+        try {
+          const cfg = getFilterConfig();
+          markAllCookies(cfg.markedGroups || [], $dialog[0]);
+        } catch (e) {}
+      };
+      const setHint = (prefix, cookieName, suffix) => {
+        $hint.empty();
+        if (!cookieName) {
+          $hint.text(prefix);
+          return;
+        }
+        $hint.append(document.createTextNode(prefix));
+        $hint.append($('<span class="h-threads-info-uid"></span>').text(`ID:${cookieName}`));
+        $hint.append(document.createTextNode(suffix));
+        applyLoginCookieMark();
+      };
+      const likely = getLikelyActiveCookie();
+      if (likely && likely.name) {
+        setHint('缓存中可用饼干可能为：', abbreviateName(likely.name), '。此时仍可作为该饼干回复。');
+      } else {
+        setHint('当前仍可能按最后一次应用的饼干回复，但暂时无法确认具体饼干。');
+      }
+      getCookieMatchedByCurrentUserhash().then(matched => {
+        if (!matched || !matched.name || !isCookieListUnavailable(getCookiesList())) return;
+        setHint('当前实际作用饼干为：', abbreviateName(matched.name), '。此时仍可作为该饼干回复。');
+      });
+    }
+
     let pollTimer = null;
     let pollTimeout = null;
     let isChecking = false;
@@ -3923,8 +3972,8 @@ init() {
         <!-- 弹窗内容 -->
         <div class="login-dialog">
           <h2>提示</h2>
-          <p>当前已退出登录，无法切换饼干。</p>
-          <p>请注意：此时仍可作为最后一次应用的饼干回复。</p>
+          <p class="login-cookie-warning">当前已退出登录，无法切换饼干。</p>
+          <p class="login-cookie-hint" style="color:red;">当前仍可能按最后一次应用的饼干回复，但暂时无法确认具体饼干。</p>
           <div class="login-dialog-actions">
             <button id="login-open">去登录</button>
             <button id="login-no-remind">不再提醒</button>
@@ -3935,6 +3984,7 @@ init() {
     `);
 
     $('body').append($m);
+    updateLoggedOutCookieHint($m);
 
     $('#login-open').on('click', () => {
       toast('正在打开登录面板……');
@@ -5809,16 +5859,9 @@ init() {
             img.style.marginRight = imgBox.__originalStyles.imgMarginRight || '';
             img.style.marginBottom = imgBox.__originalStyles.imgMarginBottom || '';
 
-            // 恢复消息宽度
-            const msgMain = imgBox.closest('.h-threads-item-reply-main');
-            if (msgMain && imgBox.__originalMsgWidth !== undefined) {
-              msgMain.style.width = imgBox.__originalMsgWidth || '';
-            }
-
             delete imgBox.__originalStyles;
             delete imgBox.__sizeCache;
             delete imgBox.__maxWidth;
-            delete imgBox.__originalMsgWidth;
           }
           // ★ 未激活但存在图片时，消息容器宽度扩大 100px，且不超过场景最大宽度
           // const msgMain = imgBox.closest('.h-threads-item-reply-main');
@@ -5922,7 +5965,8 @@ init() {
                 msgWidth = window.innerWidth - 240;
               }
             }
-            maxWidth = Math.min(msgWidth - 40, window.innerWidth - 240);
+            // maxWidth = Math.min(msgWidth - 40, handleImageLayout.getMaxMsgWidth(container));
+            maxWidth = Math.min(msgWidth, handleImageLayout.getMaxMsgWidth(container));
           }
 
         } else {
@@ -5938,42 +5982,6 @@ init() {
 
           // 获取当前旋转索引
           const rotateIndex = parseInt(img.dataset.rotateIndex || '0');
-
-          // 扩大消息宽度逻辑
-          if (container) {
-            const msgMain = container;
-
-            // 首次保存原始消息宽度
-            if (imgBox.__originalMsgWidth === undefined) {
-              imgBox.__originalMsgWidth = msgMain.style.width;
-            }
-
-            const currentMsgWidth = msgMain.offsetWidth;
-            // ★ 使用统一的场景上限（板块页受串右区域限制，串内页受 1200 限制）
-            const maxMsgWidth = handleImageLayout.getMaxMsgWidth(msgMain);
-
-            const longSide = Math.max(naturalWidth, naturalHeight);
-            if (longSide > currentMsgWidth && currentMsgWidth < maxMsgWidth) {
-              const targetWidth = Math.min(maxMsgWidth, longSide + 80);
-              msgMain.style.width = targetWidth + 'px';
-
-              // 强制触发重排，确保容器宽度真正生效
-              msgMain.offsetHeight;
-
-              // 重新计算 maxWidth（因为消息容器变大了）
-              let maxWidth = Math.min(targetWidth - 40, window.innerWidth - 240);
-              imgBox.__maxWidth = maxWidth;
-              imgBox.__sizeCache = handleImageLayout.precalculateImageSizes(naturalWidth, naturalHeight, maxWidth);
-
-              // 延迟应用尺寸，确保重排完成
-              requestAnimationFrame(() => {
-                if (!imgBox.classList.contains('h-active')) return;
-                handleImageLayout.applyImageSize(imgBox, rotateIndex);
-              });
-              return;
-            }
-
-          }
 
           // 应用对应旋转角度的尺寸
           this.applyImageSize(imgBox, rotateIndex);
@@ -6912,6 +6920,29 @@ init() {
     });
   }
 
+  function ensureRefViewLayoutStyle() {
+    if (document.getElementById('h-ref-view-layout-style')) return;
+    const style = document.createElement('style');
+    style.id = 'h-ref-view-layout-style';
+    style.textContent = `
+      #h-ref-view {
+        box-sizing: border-box !important;
+        max-width: calc(100vw - 2rem) !important;
+        overflow: auto !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+      }
+      #h-ref-view img {
+        max-width: min(100%, 30rem) !important;
+        max-height: 52vh !important;
+        width: auto !important;
+        height: auto !important;
+        object-fit: contain !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   // function autoHideRefView() {
   //     setInterval(() => {
   //         const refView = document.getElementById('h-ref-view');
@@ -7067,6 +7098,7 @@ init() {
 
   function initExtendedContent(root) {
     const $root = $(root || document);
+    ensureRefViewLayoutStyle();
 
     // —— 现有的引用扩展逻辑保持不变 ——
     $root.find("font[color='#789922']")
@@ -7083,7 +7115,7 @@ init() {
               return false;
             }
             // 先隐藏容器，避免内容渲染后闪烁（无标题/无名氏）
-            const $rv = $("#h-ref-view").off().css('visibility', 'hidden').html(data).css({
+            const $rv = $("#h-ref-view").off().stop(true, true).hide().css('visibility', 'hidden').html(data).css({
               top: $(self).offset().top,
               left: $(self).offset().left
             });
@@ -7096,11 +7128,8 @@ init() {
               if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
               if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
             } catch (e) {}
-
             // 增强完成后再显示
-            $rv.css('visibility', '').fadeIn(100).one('mouseleave', function () {
-              $(this).fadeOut(100);
-            });
+            $rv.css('visibility', '').show();
           });
       });
 
@@ -7312,11 +7341,15 @@ init() {
           }
 
           .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
-          .hld__docker:hover { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker:hover,
+          .hld__docker:has(.hld__docker-sidebar:hover),
+          .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
           .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
           .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
           .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
-          .hld__docker:hover .hld__docker-btns>div { opacity: 1; }
+          .hld__docker:hover .hld__docker-btns>div,
+          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div,
+          .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
           .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
           .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
         `;
@@ -7352,6 +7385,10 @@ init() {
         </div>
     `);
     $('body').append(dockerDom);
+
+    dockerDom.find('.hld__docker-sidebar')
+      .on('mouseenter', () => dockerDom.addClass('is-hover'))
+      .on('mouseleave', () => dockerDom.removeClass('is-hover'));
 
     // 顶部按钮
     dockerDom.find('[data-type="TOP"]').on('click', () => {
