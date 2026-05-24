@@ -5,6 +5,7 @@
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
+// @match        https://*.nmbxd.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
@@ -397,7 +398,11 @@
   const toastQueue = [];
   let isShowing = false;
   
-  function toast(msg, duration = 1800) {
+  function toast(msg, duration = 1800, options = {}) {
+    if (options.queue === false) {
+      showImmediateToast(msg, duration, options.key);
+      return;
+    }
     toastQueue.push({ msg, duration });
     if (!isShowing) showNextToast();
   }
@@ -425,6 +430,23 @@
       $t.remove();     // ✅ 动画结束后删除节点
       showNextToast(); // ✅ 显示下一个
     });
+  }
+
+  function showImmediateToast(msg, duration = 900, key = 'default') {
+    const safeKey = String(key || 'default').replace(/[^a-z0-9_-]/gi, '-');
+    let $t = $(`#xdex-immediate-toast-${safeKey}`);
+    if ($t.length) {
+      $t.stop(true, true).text(msg).show().delay(duration).fadeOut(160, () => $t.remove());
+      return $t;
+    }
+    $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
+      position:fixed;top:10px;left:50%;transform:translateX(-50%);
+      background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
+      border-radius:5px;z-index:9999;display:none;font-size:14px;"></div>`);
+    $t.text(msg);
+    $('body').append($t);
+    $t.fadeIn(120).delay(duration).fadeOut(160, () => $t.remove());
+    return $t;
   }
   
   const Utils = {
@@ -4325,6 +4347,13 @@ init() {
 
   // 自动监听 DOM 变化
   function observePagination(){
+    if (observePagination.__bound) return;
+    const observeTarget = document.body || document.documentElement;
+    if (!observeTarget) {
+      setTimeout(observePagination, 25);
+      return;
+    }
+    observePagination.__bound = true;
     const observer = new MutationObserver(mutations => {
       let foundPagination = false;
 
@@ -4349,7 +4378,7 @@ init() {
       }
     });
 
-    observer.observe(document.body, {
+    observer.observe(observeTarget, {
       childList: true,
       subtree: true
     });
@@ -4645,7 +4674,9 @@ init() {
 
       // 刷新目标回复区（主页面回复区 或 data-cloned-page = 最大的克隆页）并检查是否有下一页
       // done(result) 回调会收到 { status: 'last'|'hasNext'|'error', nextPage?: number }
-      function refreshRepliesAndCheckNext(done) {
+      function refreshRepliesAndCheckNext(done, options = {}) {
+        const showResultToast = options.showResultToast !== false;
+        const suppressResultToastOnHasNext = options.suppressResultToastOnHasNext !== false;
         try {
           const domMaxPage = getDomLastPageNum();
           const maxCloned = getMaxClonedPageInDOM();
@@ -4785,12 +4816,6 @@ init() {
                 targetReplies.appendChild(item.cloneNode(true));
             }
         }
-        if (hasUpdate) {
-          toast("已更新");
-        } else {
-          toast("无更新");
-        }
-
         // 同步替换底部分页条（取返回页的最后一个分页）
         const newPags = doc.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
         const newPag = newPags.length ? newPags[newPags.length - 1] : null;
@@ -4822,17 +4847,23 @@ init() {
 
         // 如果用户回复 < 19 => 肯定是最后一页
         if (userCount < 19) {
-          if (typeof done === 'function') done({ status: 'last' });
+          const result = { status: 'last', hasUpdate };
+          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新");
+          if (typeof done === 'function') done(result);
           addRefreshButtonIfNeeded();
           return;
         }
 
         // 用户回复满 19 条：若解析到的最新页码 > 当前已知 lastLoadedPage，则说明出现下一页
         if (parsedLastFromReturned && parsedLastFromReturned > lastLoadedPage) {
-          if (typeof done === 'function') done({ status: 'hasNext', nextPage: lastLoadedPage + 1 });
+          const result = { status: 'hasNext', nextPage: lastLoadedPage + 1, hasUpdate };
+          if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新");
+          if (typeof done === 'function') done(result);
           return;
         } else {
-          if (typeof done === 'function') done({ status: 'last' });
+          const result = { status: 'last', hasUpdate };
+          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新");
+          if (typeof done === 'function') done(result);
           addRefreshButtonIfNeeded();
           return;
         }
@@ -4887,16 +4918,20 @@ init() {
             // 点击触发“局部刷新 → 若有下一页则无缝翻页”
             btn.addEventListener('click', () => {
                 try {
-                    toast("正在刷新……",1500);
+                    toast("正在刷新……", 1500, { queue: false, key: 'refresh-status' });
                     refreshRepliesAndCheckNext(result => {
+                        if (!result || result.status === 'error') return;
                         if (result.status === 'hasNext' && result.nextPage) {
+                            toast(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700, { queue: false, key: 'refresh-status' });
                             loadedPages.delete(result.nextPage);
                             loading = false;
                             lastLoadedPage = result.nextPage - 1;
                             lastCheckAt = 0;
                             setTimeout(() => loadNext(), 50);
+                        } else if (result.status === 'last') {
+                            toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' });
                         }
-                    });
+                    }, { showResultToast: false });
                 } catch (e) {
                     console.warn('刷新按钮触发失败:', e);
                 }
@@ -5034,8 +5069,7 @@ init() {
           if (state.message) {
             const now2 = Date.now();
             if (now2 - lastFinalToastTs > 3000) {
-              toast(state.message);
-                toast("正在刷新……",1500);
+              toast('正在检查新回复……', 900, { queue: false, key: 'refresh-status' });
               lastFinalToastTs = now2;
             }
           }
@@ -5046,18 +5080,19 @@ init() {
               return;
             }
             if (result.status === 'hasNext' && result.nextPage) {
-              toast(`正在加载第 ${result.nextPage} 页……`);
-
+              toast(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700, { queue: false, key: 'refresh-status' });
               // ★ 关键：重置状态，避免 loadNext() 被拦截
               loadedPages.delete(result.nextPage);   // 确保不会误判已加载
               loading = false;                       // 确保不会被 loading 拦截
               lastLoadedPage = result.nextPage - 1;  // 回退一页，让 loadNext() 认为下一页还没加载
               lastCheckAt = 0;  // 重置防抖时间戳，允许立即加载
               setTimeout(() => loadNext(), 50);
+            } else if (result.status === 'last') {
+              toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' });
             }
 
-            // 如果还是 last，就静默（因为已经 toast 过了）
-          });
+            // last 分支已通过刷新状态 toast 原位更新
+          }, { showResultToast: false });
 
           return;
         }
@@ -12542,6 +12577,7 @@ init() {
     // ---------- 子函数2：处理带 r= 的串链接点击（复用并兼容时间线插入的表单） ----------
     function bindReplyQuoteLinks() {
       $('body').on('click', 'a[href*="/t/"][href*="r="]', function(e) {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
         const url = new URL(this.href, location.origin);
         const tid = url.pathname.split('/')[2];
         const rid = url.searchParams.get('r');
