@@ -7466,7 +7466,10 @@ init() {
     const QUOTE_COLOR = '#789922';
 
     // 在容器内遍历纯文本节点，避免破坏现有标签
-    root.querySelectorAll(ROOT_SELECTOR).forEach(root => {
+    const quoteRoots = root.matches?.(ROOT_SELECTOR)
+      ? [root]
+      : Array.from(root.querySelectorAll(ROOT_SELECTOR));
+    quoteRoots.forEach(root => {
         const walker = document.createTreeWalker(
             root,
             NodeFilter.SHOW_TEXT,
@@ -7567,7 +7570,7 @@ init() {
     ensureRefViewLayoutStyle();
 
     // —— 现有的引用扩展逻辑保持不变 ——
-    $root.find("font[color='#789922']")
+    $root.find("font[color='#789922']").add($root.filter("font[color='#789922']"))
       .filter(function () {
         return /(No\.\d{8}|\d{8})/.test($(this).text());
       })
@@ -7600,7 +7603,7 @@ init() {
       });
 
     // —— 新增：处理 [h]...[/h] 隐藏文本 ——
-    $root.find('.h-threads-content').each(function () {
+    $root.find('.h-threads-content').add($root.filter('.h-threads-content')).each(function () {
       if (this.dataset.xdexPreviewSpoilerRendered === '1') return;
       const $content = $(this);
       let html = $content.html();
