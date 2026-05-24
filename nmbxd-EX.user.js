@@ -6447,7 +6447,7 @@ init() {
               }
             }
             // maxWidth = Math.min(msgWidth - 40, handleImageLayout.getMaxMsgWidth(container));
-            maxWidth = Math.min(msgWidth, handleImageLayout.getMaxMsgWidth(container));
+            maxWidth = handleImageLayout.getMaxMsgWidth(container);
           }
 
         } else {
