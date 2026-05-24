@@ -5343,6 +5343,7 @@ init() {
             btn = document.createElement('div');
             btn.id = 'seamless-refresh-btn';
             btn.className = 'qp-reset-btn seamless-refresh-btn';
+            btn.title = '手动检查回复更新';
             btn.textContent = '🗘';
     
             // --- 固定位置样式 ---
@@ -7087,7 +7088,7 @@ init() {
 
     const $overlay = $('<div class="qp-overlay-quote"></div>').appendTo('body');
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
-    const $closeAll= $('<div class="qp-close-all">❌</div>').appendTo($overlay);
+    const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗">❌</div>').appendTo($overlay);
 
     $closeAll.on('click', () => {
       $stack.empty();
@@ -11385,7 +11386,7 @@ init() {
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)ゞ",
+              "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)ゞ",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
