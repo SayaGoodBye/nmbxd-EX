@@ -7417,6 +7417,28 @@ init() {
         overflow-wrap: break-word !important;
         word-break: break-word !important;
       }
+      #h-ref-view:has(img) {
+        min-width: min(52rem, calc(100vw - 2rem)) !important;
+      }
+      #h-ref-view:has(img) .h-threads-item-reply-main,
+      #h-ref-view:has(img) .h-threads-content {
+        min-width: 22rem !important;
+      }
+      #h-ref-view.xdex-ref-view-stack-image:has(img) {
+        min-width: 0 !important;
+      }
+      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-img-box {
+        float: none !important;
+        display: block !important;
+        max-width: 100% !important;
+      }
+      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-item-reply-main,
+      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-content {
+        clear: both !important;
+        display: block !important;
+        min-width: 0 !important;
+        width: auto !important;
+      }
       #h-ref-view img {
         max-width: min(100%, 30rem) !important;
         max-height: 52vh !important;
@@ -7426,6 +7448,29 @@ init() {
       }
     `;
     document.head.appendChild(style);
+  }
+
+  function updateRefViewImageLayout(refView, anchorEl) {
+    if (!refView || !anchorEl) return;
+    refView.classList.remove('xdex-ref-view-stack-image');
+    if (!refView.querySelector('img')) return;
+
+    const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const imageWidth = 30 * rootFontSize;
+    const readableTextWidth = 22 * rootFontSize;
+    const margin = 16;
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth || 0;
+    const viewportLeft = window.pageXOffset || document.documentElement.scrollLeft || 0;
+    const viewportRight = viewportLeft + viewportWidth - margin;
+    const anchorLeft = $(anchorEl).offset().left;
+    const fullInlineWidth = Math.min(imageWidth + readableTextWidth, Math.max(0, viewportWidth - margin * 2));
+    const availableRight = viewportRight - anchorLeft;
+    const shouldStack = availableRight < fullInlineWidth;
+    const expectedWidth = shouldStack ? Math.min(imageWidth, Math.max(0, viewportWidth - margin * 2)) : fullInlineWidth;
+    const left = Math.max(viewportLeft + margin, Math.min(anchorLeft, viewportRight - expectedWidth));
+
+    refView.classList.toggle('xdex-ref-view-stack-image', shouldStack);
+    refView.style.left = left + 'px';
   }
 
   // function autoHideRefView() {
@@ -7596,6 +7641,7 @@ init() {
               const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
               if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
               if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
+              updateRefViewImageLayout(refEl, self);
             } catch (e) {}
             // 增强完成后再显示
             $rv.css('visibility', '').show();
