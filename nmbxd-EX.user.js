@@ -550,6 +550,118 @@
   // 校验分组说明长度（<=20 字符；满足“10个汉字/20个英文字符”的近似约束）
   function isValidDesc(desc) { return !desc || desc.length <= 20; }
 
+  function isValidHexColor(color) {
+    return /^#[0-9A-Fa-f]{6}$/.test(color);
+  }
+
+  function normalizeHexColor(color) {
+    if (typeof color !== 'string') return '';
+    const trimmed = color.trim();
+    return isValidHexColor(trimmed) ? trimmed.toUpperCase() : '';
+  }
+
+  function clampColorChannel(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb) return '';
+    const r = clampColorChannel(Math.round(rgb.r || 0), 0, 255);
+    const g = clampColorChannel(Math.round(rgb.g || 0), 0, 255);
+    const b = clampColorChannel(Math.round(rgb.b || 0), 0, 255);
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+  }
+
+  function hexToRgb(color) {
+    const normalized = normalizeHexColor(color);
+    if (!normalized) return null;
+    return {
+      r: parseInt(normalized.slice(1, 3), 16),
+      g: parseInt(normalized.slice(3, 5), 16),
+      b: parseInt(normalized.slice(5, 7), 16),
+    };
+  }
+
+  function hsvToRgb(h, s, v) {
+    const hue = ((Number(h) % 360) + 360) % 360;
+    const sat = clampColorChannel(Number(s), 0, 1);
+    const val = clampColorChannel(Number(v), 0, 1);
+    const c = val * sat;
+    const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+    const m = val - c;
+    let r1 = 0;
+    let g1 = 0;
+    let b1 = 0;
+    if (hue < 60) {
+      r1 = c; g1 = x;
+    } else if (hue < 120) {
+      r1 = x; g1 = c;
+    } else if (hue < 180) {
+      g1 = c; b1 = x;
+    } else if (hue < 240) {
+      g1 = x; b1 = c;
+    } else if (hue < 300) {
+      r1 = x; b1 = c;
+    } else {
+      r1 = c; b1 = x;
+    }
+    return {
+      r: Math.round((r1 + m) * 255),
+      g: Math.round((g1 + m) * 255),
+      b: Math.round((b1 + m) * 255),
+    };
+  }
+
+  function rgbToHsv(r, g, b) {
+    const red = clampColorChannel(Number(r), 0, 255) / 255;
+    const green = clampColorChannel(Number(g), 0, 255) / 255;
+    const blue = clampColorChannel(Number(b), 0, 255) / 255;
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const delta = max - min;
+    let h = 0;
+    if (delta) {
+      if (max === red) h = 60 * (((green - blue) / delta) % 6);
+      else if (max === green) h = 60 * (((blue - red) / delta) + 2);
+      else h = 60 * (((red - green) / delta) + 4);
+    }
+    if (h < 0) h += 360;
+    return {
+      h,
+      s: max === 0 ? 0 : delta / max,
+      v: max,
+    };
+  }
+
+  function hexToHsv(color) {
+    const rgb = hexToRgb(color);
+    return rgb ? rgbToHsv(rgb.r, rgb.g, rgb.b) : { h: 0, s: 0, v: 1 };
+  }
+
+  function hsvToHex(h, s, v) {
+    return rgbToHex(hsvToRgb(h, s, v));
+  }
+
+  function parseRgbColorString(value) {
+    if (typeof value !== 'string') return null;
+    const match = value.trim().match(/^rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+    if (!match) return null;
+    const r = Number(match[1]);
+    const g = Number(match[2]);
+    const b = Number(match[3]);
+    if ([r, g, b].some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null;
+    return { r, g, b };
+  }
+
+  function formatRgbColor(rgb) {
+    if (!rgb) return '';
+    return `rgb(${clampColorChannel(Math.round(rgb.r || 0), 0, 255)}, ${clampColorChannel(Math.round(rgb.g || 0), 0, 255)}, ${clampColorChannel(Math.round(rgb.b || 0), 0, 255)})`;
+  }
+
+  function getMarkedGroupEffectiveColor(group, index) {
+    return normalizeHexColor(group && group.color) || markColors[index % markColors.length];
+  }
+
   function isValidThreadId(threadId) {
     return /^\d{8}$/.test(threadId);
   }
@@ -602,13 +714,54 @@
   function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
     const desc = group.desc || '';
     const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
+    const color = normalizeHexColor(group.color);
+    const effectiveColor = type === 'marked' ? getMarkedGroupEffectiveColor(group, index - 1) : '';
+    const gridTemplateColumns = type === 'marked'
+      ? 'minmax(0,2fr) minmax(0,3fr) 34px'
+      : 'minmax(0,2fr) minmax(0,3fr)';
+    const markedSwatchHtml = type === 'marked' ? `
+          <div class="marked-color-cell" style="position:relative;min-width:0;">
+            <input type="hidden" class="marked-color-value" value="${Utils.escapeHTML ? Utils.escapeHTML(color) : color}">
+            <button
+              type="button"
+              class="marked-color-swatch"
+              aria-label="设置标记颜色"
+              data-default-color="${effectiveColor}"
+              style="width:100%;height:31px;padding:0;border:1px solid #a98f7a;border-radius:8px;box-sizing:border-box;background:${effectiveColor};cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.42);"
+            ></button>
+            <div class="marked-color-popover" style="display:none;position:absolute;right:0;z-index:12;width:220px;padding:10px;border:1px solid #bfa58f;border-radius:10px;background:var(--xdex-sp-panel-bg);box-shadow:0 8px 18px var(--xdex-sp-shadow);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <div class="marked-color-preview" style="width:30px;height:30px;flex:0 0 30px;border:1px solid #a98f7a;border-radius:8px;background:${effectiveColor};box-shadow:inset 0 0 0 1px rgba(255,255,255,0.42);"></div>
+                <div style="min-width:0;flex:1;">
+                  <div class="marked-color-status" style="font-size:12px;line-height:1.25;color:#6f5d50;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">#RRGGBB，自定义为空时按默认序列</div>
+                  <div class="marked-color-default-hint" style="font-size:11px;line-height:1.25;color:#8a7768;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">默认 ${effectiveColor}</div>
+                </div>
+              </div>
+              <div class="marked-color-sv" style="position:relative;height:110px;border:1px solid #a98f7a;border-radius:8px;cursor:crosshair;overflow:hidden;background:linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, hsl(0,100%,50%) 100%);margin-bottom:8px;">
+                <div class="marked-color-sv-thumb" style="position:absolute;left:100%;top:0;width:12px;height:12px;margin-left:-6px;margin-top:-6px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,0.35);pointer-events:none;background:transparent;"></div>
+              </div>
+              <div class="marked-color-hue" style="position:relative;height:14px;border:1px solid #a98f7a;border-radius:999px;cursor:pointer;overflow:hidden;background:linear-gradient(to right, #FF0000 0%, #FFFF00 16.66%, #00FF00 33.33%, #00FFFF 50%, #0000FF 66.66%, #FF00FF 83.33%, #FF0000 100%);margin-bottom:8px;">
+                <div class="marked-color-hue-thumb" style="position:absolute;left:0;top:50%;width:12px;height:12px;margin-left:-6px;margin-top:-6px;border:2px solid #fff;border-radius:50%;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.35);pointer-events:none;background:transparent;"></div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <button type="button" class="marked-color-format" data-format="hex" style="flex:1;padding:4px 0;border:1px solid #7da6bf;border-radius:8px;background:#66CCFF;color:#fff;cursor:pointer;">HEX</button>
+                <button type="button" class="marked-color-format" data-format="rgb" style="flex:1;padding:4px 0;border:1px solid #a98f7a;border-radius:8px;background:#F0E0D6;color:#6f5d50;cursor:pointer;">RGB</button>
+              </div>
+              <input class="marked-color-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;margin-bottom:8px;" placeholder="#66CCFF" value="${Utils.escapeHTML ? Utils.escapeHTML(color) : color}">
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="marked-color-clear" style="flex:1;padding:4px 0;border:1px solid #a98f7a;border-radius:8px;background:#F0E0D6;cursor:pointer;">恢复默认</button>
+                <button type="button" class="marked-color-save" style="flex:1;padding:4px 0;border:1px solid #7da6bf;border-radius:8px;background:#66CCFF;color:#fff;cursor:pointer;">保存</button>
+              </div>
+            </div>
+          </div>` : '';
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
         <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
-        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-7位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+${markedSwatchHtml}
         </div>
       </div>`;
   }
@@ -705,19 +858,20 @@
     if (!val) return [];
     if (typeof val === 'string') {
       const tokens = Utils.strToList(val);
-      return tokens.map(t => {
-        const { desc, list } = parseDescAndListByLastColon(t);
-        const cookies = list.filter(Utils.cookieLegal);
-        return cookies.length ? { desc, cookies } : null;
-      }).filter(Boolean);
-    }
-    if (Array.isArray(val)) {
-      if (val.length && 'cookies' in val[0]) {
-        return val.map(g => ({
-          desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
-          cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : []
-        })).filter(g => g.cookies.length);
+        return tokens.map(t => {
+          const { desc, list } = parseDescAndListByLastColon(t);
+          const cookies = list.filter(Utils.cookieLegal);
+          return cookies.length ? { desc, color: '', cookies } : null;
+        }).filter(Boolean);
       }
+      if (Array.isArray(val)) {
+        if (val.length && 'cookies' in val[0]) {
+          return val.map(g => ({
+            desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
+            color: normalizeHexColor(g.color),
+            cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : []
+          })).filter(g => g.cookies.length);
+        }
       if (val.length && 'cookie' in val[0]) {
         const map = new Map();
         val.forEach(({ cookie, desc }) => {
@@ -726,7 +880,7 @@
           if (!map.has(key)) map.set(key, []);
           map.get(key).push(cookie);
         });
-        return [...map.entries()].map(([desc, cookies]) => ({ desc, cookies: [...new Set(cookies)] }));
+        return [...map.entries()].map(([desc, cookies]) => ({ desc, color: '', cookies: [...new Set(cookies)] }));
       }
     }
     return [];
@@ -1459,19 +1613,8 @@ init() {
       });
 
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
-        const parsed = [];
-        let valid = true;
-        $('#marked-inputs-container .marked-row').each((idx, el)=>{
-          const $row = $(el);
-          const desc = ($row.find('.marked-desc-input').val() || '').trim();
-          const cookies = Utils.strToList(($row.find('.marked-cookies-input').val() || '').trim());
-          if (!desc && !cookies.length) return;
-          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
-          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
-          if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
-          parsed.push({ desc, cookies });
-        });
-        if (!valid) return false;
+        const parsed = collectMarkedGroupsFromPanel();
+        if (!parsed) return false;
         this.state.markedGroups = parsed;
         GM_setValue(this.key, this.state);
         this.syncInputs();
@@ -1585,6 +1728,319 @@ init() {
       $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
         e.stopPropagation();
         saveThreadCookieWhitelistGroups();
+      });
+
+      const closeMarkedColorPopovers = () => {
+        $('#marked-inputs-container .marked-color-popover').hide();
+      };
+
+      const getMarkedRowDefaultColor = ($row) => {
+        const rowIndex = Math.max($row.index(), 0);
+        return markColors[rowIndex % markColors.length];
+      };
+
+      const updateMarkedRowSwatch = ($row, draftColor) => {
+        const color = normalizeHexColor(draftColor) || getMarkedRowDefaultColor($row);
+        $row.find('.marked-color-swatch').css('background', color).attr('data-default-color', color);
+        $row.find('.marked-color-preview').css('background', color);
+      };
+
+      const readMarkedColorInputValue = ($popover) => ($popover.find('.marked-color-input').val() || '').trim();
+
+      const readMarkedColorInputAsHex = ($popover) => {
+        const state = $popover.data('pickerState') || {};
+        const rawValue = readMarkedColorInputValue($popover);
+        if (!rawValue) return '';
+        if ((state.format || 'hex') === 'rgb') {
+          const rgb = parseRgbColorString(rawValue);
+          return rgb ? rgbToHex(rgb) : null;
+        }
+        const normalized = normalizeHexColor(rawValue);
+        return normalized || null;
+      };
+
+      const setMarkedColorInputFromState = ($popover) => {
+        const state = $popover.data('pickerState');
+        if (!state) return;
+        const inputValue = state.inputEmpty
+          ? ''
+          : (state.format === 'rgb' ? formatRgbColor(hexToRgb(state.hex)) : state.hex);
+        $popover.find('.marked-color-input').val(inputValue);
+      };
+
+      const updateMarkedColorFormatButtons = ($popover) => {
+        const state = $popover.data('pickerState') || {};
+        $popover.find('.marked-color-format').each((_, el) => {
+          const $btn = $(el);
+          const active = $btn.data('format') === (state.format || 'hex');
+          $btn.css({
+            border: active ? '1px solid #7da6bf' : '1px solid #a98f7a',
+            background: active ? '#66CCFF' : '#F0E0D6',
+            color: active ? '#fff' : '#6f5d50',
+          });
+        });
+      };
+
+      const renderMarkedColorPicker = ($row) => {
+        const $popover = $row.find('.marked-color-popover');
+        const state = $popover.data('pickerState');
+        if (!state) return;
+        const displayHex = normalizeHexColor(state.hex) || state.defaultHex;
+        const displayHsv = hexToHsv(displayHex);
+        const hueHex = hsvToHex(state.hsv.h, 1, 1);
+        const $sv = $popover.find('.marked-color-sv');
+        const $svThumb = $popover.find('.marked-color-sv-thumb');
+        const $hueThumb = $popover.find('.marked-color-hue-thumb');
+        $sv.css('background', `linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, ${hueHex} 100%)`);
+        $svThumb.css({ left: `${state.hsv.s * 100}%`, top: `${(1 - state.hsv.v) * 100}%` });
+        $hueThumb.css('left', `${(state.hsv.h / 360) * 100}%`);
+        $popover.find('.marked-color-preview').css('background', displayHex);
+        $popover.find('.marked-color-status').text(state.inputEmpty ? `默认色 ${state.defaultHex}` : displayHex);
+        $popover.find('.marked-color-default-hint').text(`默认 ${state.defaultHex}`);
+        setMarkedColorInputFromState($popover);
+        updateMarkedColorFormatButtons($popover);
+        updateMarkedRowSwatch($row, state.inputEmpty ? '' : displayHex);
+      };
+
+      const setMarkedColorPickerHex = ($row, nextHex, options = {}) => {
+        const $popover = $row.find('.marked-color-popover');
+        const state = $popover.data('pickerState');
+        if (!state) return;
+        const normalized = normalizeHexColor(nextHex);
+        const allowEmpty = !!options.allowEmpty;
+        if (!normalized && !allowEmpty) return;
+        state.inputEmpty = !normalized;
+        state.hex = normalized || state.defaultHex;
+        state.hsv = hexToHsv(state.hex);
+        $popover.data('pickerState', state);
+        renderMarkedColorPicker($row);
+      };
+
+      const setMarkedColorPickerFormat = ($row, format) => {
+        const $popover = $row.find('.marked-color-popover');
+        const state = $popover.data('pickerState');
+        if (!state) return;
+        state.format = format === 'rgb' ? 'rgb' : 'hex';
+        $popover.data('pickerState', state);
+        renderMarkedColorPicker($row);
+      };
+
+      const updateMarkedColorPickerFromPointer = ($row, areaType, clientX, clientY) => {
+        const $popover = $row.find('.marked-color-popover');
+        const state = $popover.data('pickerState');
+        if (!state) return;
+        if (areaType === 'sv') {
+          const rect = $popover.find('.marked-color-sv')[0].getBoundingClientRect();
+          const s = clampColorChannel((clientX - rect.left) / rect.width, 0, 1);
+          const v = clampColorChannel(1 - ((clientY - rect.top) / rect.height), 0, 1);
+          state.hsv.s = s;
+          state.hsv.v = v;
+        } else {
+          const rect = $popover.find('.marked-color-hue')[0].getBoundingClientRect();
+          state.hsv.h = clampColorChannel(((clientX - rect.left) / rect.width) * 360, 0, 360);
+          if (state.hsv.h === 360) state.hsv.h = 359.999;
+        }
+        state.inputEmpty = false;
+        state.hex = hsvToHex(state.hsv.h, state.hsv.s, state.hsv.v);
+        $popover.data('pickerState', state);
+        renderMarkedColorPicker($row);
+      };
+
+      const positionMarkedColorPopover = ($row) => {
+        const $cell = $row.find('.marked-color-cell');
+        const $popover = $row.find('.marked-color-popover');
+        if (!$cell.length || !$popover.length) return;
+        $popover.css({ top: '', bottom: '' });
+        const cellRect = $cell[0].getBoundingClientRect();
+        const popRect = $popover[0].getBoundingClientRect();
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const gap = 6;
+        const spaceBelow = viewportHeight - cellRect.bottom - gap;
+        const spaceAbove = cellRect.top - gap;
+        const openAbove = spaceBelow < popRect.height && spaceAbove > spaceBelow;
+        const popoverHeight = popRect.height;
+        if (openAbove) {
+          let offsetBottom = cellRect.height + gap;
+          const topIfOpened = cellRect.bottom - offsetBottom - popoverHeight;
+          if (topIfOpened < 4) {
+            offsetBottom = Math.max(cellRect.bottom - popoverHeight - 4, gap);
+          }
+          $popover.css({ top: 'auto', bottom: `${offsetBottom}px` });
+        } else {
+          let offsetTop = cellRect.height + gap;
+          const overflow = cellRect.top + offsetTop + popoverHeight - viewportHeight + 4;
+          if (overflow > 0) {
+            offsetTop = Math.max(offsetTop - overflow, -cellRect.top + 4);
+          }
+          $popover.css({ top: `${offsetTop}px`, bottom: 'auto' });
+        }
+      };
+
+      const openMarkedColorPopover = ($row) => {
+        const $popover = $row.find('.marked-color-popover');
+        const storedColor = ($row.find('.marked-color-value').val() || '').trim();
+        const defaultHex = getMarkedRowDefaultColor($row);
+        const displayHex = normalizeHexColor(storedColor) || defaultHex;
+        $popover.data('pickerState', {
+          format: 'hex',
+          defaultHex,
+          inputEmpty: !normalizeHexColor(storedColor),
+          hex: displayHex,
+          hsv: hexToHsv(displayHex),
+        });
+        renderMarkedColorPicker($row);
+        $popover.show();
+        positionMarkedColorPopover($row);
+        $popover.find('.marked-color-input').trigger('focus').trigger('select');
+      };
+
+      const beginMarkedColorDrag = ($row, areaType, startEvent) => {
+        const moveEvent = startEvent.type.indexOf('touch') === 0 ? 'touchmove.markedColorDrag' : 'mousemove.markedColorDrag';
+        const endEvent = startEvent.type.indexOf('touch') === 0 ? 'touchend.markedColorDrag touchcancel.markedColorDrag' : 'mouseup.markedColorDrag';
+        const getPoint = (evt) => {
+          const touch = evt.originalEvent && evt.originalEvent.touches && evt.originalEvent.touches[0];
+          const changedTouch = evt.originalEvent && evt.originalEvent.changedTouches && evt.originalEvent.changedTouches[0];
+          return touch || changedTouch || evt;
+        };
+        const applyPointer = (evt) => {
+          const point = getPoint(evt);
+          updateMarkedColorPickerFromPointer($row, areaType, point.clientX, point.clientY);
+        };
+        applyPointer(startEvent);
+        $(document).off('.markedColorDrag').on(moveEvent, (evt) => {
+          evt.preventDefault();
+          applyPointer(evt);
+        }).on(endEvent, () => {
+          $(document).off('.markedColorDrag');
+        });
+      };
+
+      const collectMarkedGroupsFromPanel = () => {
+        const parsed = [];
+        let valid = true;
+        $('#marked-inputs-container .marked-row').each((idx, el)=>{
+          const $row = $(el);
+          const desc = ($row.find('.marked-desc-input').val() || '').trim();
+          const cookies = Utils.strToList(($row.find('.marked-cookies-input').val() || '').trim());
+          const rawColor = ($row.find('.marked-color-value').val() || '').trim();
+          if (!desc && !cookies.length) return;
+          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
+          if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
+          if (rawColor && !isValidHexColor(rawColor)) { toast(`第${idx + 1}条颜色格式无效，应为 #RRGGBB`); valid=false; return false; }
+          parsed.push({ desc, color: normalizeHexColor(rawColor), cookies });
+        });
+        return valid ? parsed : null;
+      };
+
+      $(document).off('click.markedColorPopover').on('click.markedColorPopover', (e) => {
+        if ($(e.target).closest('#marked-inputs-container .marked-color-cell').length) return;
+        closeMarkedColorPopovers();
+      });
+
+      $('#marked-inputs-container').off('click', '.marked-color-swatch').on('click', '.marked-color-swatch', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const $row = $(e.currentTarget).closest('.marked-row');
+        const $popover = $row.find('.marked-color-popover');
+        const shouldOpen = !$popover.is(':visible');
+        closeMarkedColorPopovers();
+        if (!shouldOpen) return false;
+        openMarkedColorPopover($row);
+        return false;
+      });
+
+      $('#marked-inputs-container').off('input', '.marked-color-input').on('input', '.marked-color-input', (e) => {
+        const $row = $(e.currentTarget).closest('.marked-row');
+        const $popover = $row.find('.marked-color-popover');
+        const normalized = readMarkedColorInputAsHex($popover);
+        if (normalized === '') {
+          setMarkedColorPickerHex($row, '', { allowEmpty: true });
+          return;
+        }
+        if (normalized) setMarkedColorPickerHex($row, normalized);
+      });
+
+      $('#marked-inputs-container').off('blur', '.marked-color-input').on('blur', '.marked-color-input', (e) => {
+        const $row = $(e.currentTarget).closest('.marked-row');
+        const $popover = $row.find('.marked-color-popover');
+        const parsedHex = readMarkedColorInputAsHex($popover);
+        if (parsedHex === '') {
+          setMarkedColorPickerHex($row, '', { allowEmpty: true });
+          return;
+        }
+        if (parsedHex) {
+          setMarkedColorPickerHex($row, parsedHex);
+          return;
+        }
+        renderMarkedColorPicker($row);
+      });
+
+      $('#marked-inputs-container').off('click', '.marked-color-format').on('click', '.marked-color-format', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const $row = $(e.currentTarget).closest('.marked-row');
+        setMarkedColorPickerFormat($row, $(e.currentTarget).data('format'));
+        return false;
+      });
+
+      $('#marked-inputs-container').off('mousedown touchstart', '.marked-color-sv').on('mousedown touchstart', '.marked-color-sv', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        beginMarkedColorDrag($(e.currentTarget).closest('.marked-row'), 'sv', e);
+        return false;
+      });
+
+      $('#marked-inputs-container').off('mousedown touchstart', '.marked-color-hue').on('mousedown touchstart', '.marked-color-hue', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        beginMarkedColorDrag($(e.currentTarget).closest('.marked-row'), 'hue', e);
+        return false;
+      });
+
+      $('#marked-inputs-container').off('click', '.marked-color-clear').on('click', '.marked-color-clear', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const $row = $(e.currentTarget).closest('.marked-row');
+        const $popover = $row.find('.marked-color-popover');
+        $row.find('.marked-color-value').val('');
+        if ($popover.is(':visible')) {
+          setMarkedColorPickerHex($row, '', { allowEmpty: true });
+          const state = $popover.data('pickerState');
+          if (state) {
+            state.format = 'hex';
+            $popover.data('pickerState', state);
+            renderMarkedColorPicker($row);
+          }
+        } else {
+          updateMarkedRowSwatch($row, '');
+        }
+        $popover.hide();
+        return false;
+      });
+
+      $('#marked-inputs-container').off('click', '.marked-color-save').on('click', '.marked-color-save', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const $row = $(e.currentTarget).closest('.marked-row');
+        const $popover = $row.find('.marked-color-popover');
+        const parsedHex = readMarkedColorInputAsHex($popover);
+        if (parsedHex === null) {
+          toast('颜色格式无效，应为 #RRGGBB 或 rgb(r, g, b)');
+          $row.find('.marked-color-input').trigger('focus');
+          return false;
+        }
+        const normalized = normalizeHexColor(parsedHex);
+        $row.find('.marked-color-value').val(normalized);
+        if (normalized) {
+          setMarkedColorPickerHex($row, normalized);
+          setMarkedColorPickerFormat($row, 'hex');
+        } else {
+          setMarkedColorPickerHex($row, '', { allowEmpty: true });
+        }
+        updateMarkedRowSwatch($row, normalized);
+        $popover.hide();
+        return false;
       });
 
       // ========== 导入/导出配置 ==========
@@ -1825,20 +2281,11 @@ init() {
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
 
         // 标记分组（双字段结构）
-        const mk = [];
-        let valid = true;
-        $('#marked-inputs-container .marked-row').each((idx, el)=>{
-          const $row = $(el);
-          const desc = ($row.find('.marked-desc-input').val() || '').trim();
-          const cookies = Utils.strToList(($row.find('.marked-cookies-input').val() || '').trim());
-          if (!desc && !cookies.length) return;
-          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
-          if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
-          if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
-          mk.push({ desc, cookies });
-        });
-        if (!valid) return;
+        const mk = collectMarkedGroupsFromPanel();
+        if (!mk) return;
         this.state.markedGroups = mk;
+
+        let valid = true;
 
         // 屏蔽分组（双字段结构）
         const bk = [];
@@ -2240,7 +2687,7 @@ init() {
       // 如果没有匹配到任何分组，保持清除状态
       if (firstMatchIdx === -1) return;
       // 根据第一个匹配的分组索引选择颜色
-      const color = markColors[firstMatchIdx % markColors.length];
+      const color = getMarkedGroupEffectiveColor(groups[firstMatchIdx], firstMatchIdx);
       if (parts.length > 1 && cid) {
         $el.empty();
         $el.append(document.createTextNode(parts[0] + ':'));
