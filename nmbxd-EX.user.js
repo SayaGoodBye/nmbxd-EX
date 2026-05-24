@@ -7170,6 +7170,7 @@ init() {
 
     // —— 新增：处理 [h]...[/h] 隐藏文本 ——
     $root.find('.h-threads-content').each(function () {
+      if (this.dataset.xdexPreviewSpoilerRendered === '1') return;
       const $content = $(this);
       let html = $content.html();
       // 匹配 [h]内容[/h]
@@ -11524,7 +11525,7 @@ init() {
     // 预览引用/隐藏文本渲染
     const previewBox = $('<div/>'); // 占位，真正引用在 initPreviewBox 后重新抓取
     const refExp = /^([>＞]+.*)$/g;
-    const hideExp = /\[h\](.*)\[\/h\]/g;
+    const hideExp = /\[h\]([\s\S]*?)\[\/h\]/g;
 
     function renderContent(raw) {
       const box = $('.h-preview-box');
@@ -11536,17 +11537,36 @@ init() {
         return;
       }
       previewContent.text('');
+      previewContent[0]?.setAttribute('data-xdex-preview-spoiler-rendered', '1');
+      function appendPreviewText(text, className) {
+        if (text === '') return;
+        const span = $('<span></span>').text(text);
+        if (className) span.addClass(className);
+        previewContent.append(span);
+      }
       for (let i of raw.split('\n')) {
         i = i.replace(/ +/g, ' ');
         let e;
         if (refExp.test(i)) {
           e = $('<font color="#789922"></font>').text(i);
-        } else if (hideExp.test(i)) {
-          e = $('<span class="h-hidden-text"></span>').text(i);
+          previewContent.append(e);
         } else {
-          e = $('<span></span>').text(i);
+          hideExp.lastIndex = 0;
+          let lastIndex = 0;
+          let match;
+          let hasHiddenText = false;
+          while ((match = hideExp.exec(i)) !== null) {
+            hasHiddenText = true;
+            appendPreviewText(i.slice(lastIndex, match.index));
+            appendPreviewText(match[1], 'h-hidden-text');
+            lastIndex = hideExp.lastIndex;
+          }
+          if (hasHiddenText) {
+            appendPreviewText(i.slice(lastIndex));
+          } else {
+            appendPreviewText(i);
+          }
         }
-        previewContent.append(e);
         previewContent.append('<br>');
         // 支持拓展引用：把扩展引用包上 <font color="#789922">，以便可点击弹窗
         if (typeof extendQuote === 'function') {
