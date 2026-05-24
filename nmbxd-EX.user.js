@@ -4882,8 +4882,7 @@ init() {
       try { if (liveCfg && liveCfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
       try { refreshFilterDisplay(liveCfg, document); } catch (e) {}
       try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
-      try { if (typeof initContent === 'function') initContent(); } catch (e) {}
-      try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
+      try { if (typeof initContent === 'function') initContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
       try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
       // if (typeof preventContentOverflow === 'function') {
@@ -5732,9 +5731,8 @@ init() {
               reinitForNewContent(listClone);
               try { if (cfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
               if (typeof initContent === 'function') {
-                initContent();   // 重新绑定引用悬浮预览
+                initContent(listClone);   // 重新绑定引用悬浮预览
               }
-              initExtendedContent(listClone); // 扩展引用
               //autoHideRefView(listClone); // 拓展引用悬浮
               // ============================================
 
@@ -6957,6 +6955,12 @@ init() {
    * tag 9. 引用浮窗/鼠标离开后自动隐藏原生引用
    * -------------------------------------------------- */
   function enableQuotePreview() {
+    if (enableQuotePreview.__initialized) return;
+    const quotePreviewRoot = document.body;
+    if (!quotePreviewRoot) {
+      setTimeout(enableQuotePreview, 25);
+      return;
+    }
 
     const cache = Object.create(null);
     // 防止短时间内重复点击同一引用号导致多重弹窗
@@ -7077,14 +7081,12 @@ init() {
       }
     });
     
-    observer.observe(document.body, { 
+    observer.observe(quotePreviewRoot, { 
       childList: true, 
       subtree: true,
       attributes: true,
       attributeFilter: ['style']
     });
-    
-    observer.observe(document.body, { childList: true, subtree: true });
 
     const $overlay = $('<div class="qp-overlay-quote"></div>').appendTo('body');
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
@@ -7202,9 +7204,8 @@ init() {
       runAutoUrlLinkify($quote[0]);
       runLinkBlank($quote[0]);
       enableHDImageAndLayoutFix();
-      initExtendedContent($quote[0]);
       hideEmptyTitleAndEmail($quote[0]);
-      initContent();
+      initContent($quote[0]);
       try {
         const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
         if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', $quote[0]);
@@ -7378,6 +7379,7 @@ init() {
         refView.style.opacity = '';  // 重置透明度
       }
     });
+    enableQuotePreview.__initialized = true;
   }
 
   function monitorRefView(){
@@ -7558,25 +7560,6 @@ init() {
         }
         return best;
     }
-    // === 自动定时检测 ===
-    if (root === document && !extendQuote.__interval) {
-        try {
-            const cfg = typeof SettingPanel !== 'undefined'
-                ? Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}))
-                : { extendQuote: true };
-            if (cfg.extendQuote) {
-                extendQuote.__interval = setInterval(() => {
-                    try {
-                        extendQuote(); // 再次全局扫描
-                    } catch (e) {
-                        console.warn('extendQuote interval error', e);
-                    }
-                }, 2000); // 每 2 秒检测一次
-            }
-        } catch (e) {
-            console.warn('extendQuote auto-scan init error', e);
-        }
-    }
   }
 
   function initExtendedContent(root) {
@@ -7628,17 +7611,6 @@ init() {
         $content.html(html);
       }
     });
-    // === 自动定时检测 ===
-    if (root === document && !initExtendedContent.__interval) {
-      initExtendedContent.__interval = setInterval(() => {
-        try {
-          initExtendedContent(); // 再次全局扫描
-        } catch (e) {
-          console.warn('initExtendedContent interval error', e);
-        }
-      }, 2000); // 每 2 秒检测一次
-    }
-
   }
 
   /* --------------------------------------------------
@@ -8170,12 +8142,8 @@ init() {
       if (typeof extendQuote === 'function') {
         extendQuote(previewEl || wrap);
       }
-      if (typeof initExtendedContent === 'function') {
-        try { initExtendedContent(root); } catch (e) { try { initExtendedContent(); } catch (e) {} }
-      }
-
       if (typeof initContent === 'function') {
-        try { initContent(root); } catch (e) { try { initContent(document); } catch (e) {} }
+        try { initContent(root); } catch (e) {}
       }
 
       // if (typeof autoHideRefView === 'function') {
@@ -10256,8 +10224,7 @@ init() {
                 try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
                 try { if (typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(document); } catch (e) {}
                 try { if (typeof enableHDImage === 'function') enableHDImage(document); } catch (e) {}
-                try { if (typeof initContent === 'function') initContent(); } catch (e) {}
-                try { if (typeof initExtendedContent === 'function') initExtendedContent(targetReplies); } catch (e) {}
+                try { if (typeof initContent === 'function') initContent(targetReplies); } catch (e) {}
               }
             } catch (e) {}
           }, 50);
@@ -11974,14 +11941,58 @@ init() {
     const previewBox = $('<div/>'); // 占位，真正引用在 initPreviewBox 后重新抓取
     const refExp = /^([>＞]+.*)$/g;
     const hideExp = /\[h\]([\s\S]*?)\[\/h\]/g;
+    let lastPreviewRaw = null;
+    let lastPreviewRenderedHtml = '';
+    let lastPreviewEnhanceAt = 0;
+    let previewEnhanceTimer = null;
+
+    function bindPreviewQuoteHover(previewRoot) {
+      if (!previewRoot) return;
+      if (typeof initContent === 'function') initContent(previewRoot);
+    }
+
+    function extendPreviewQuoteText(previewRoot) {
+      if (!previewRoot) return;
+      if (typeof extendQuote === 'function') extendQuote(previewRoot);
+      bindPreviewQuoteHover(previewRoot);
+    }
+
+    function schedulePreviewEnhance(previewRoot) {
+      if (!previewRoot) return;
+      const now = Date.now();
+      const elapsed = now - lastPreviewEnhanceAt;
+      if (previewEnhanceTimer) {
+        clearTimeout(previewEnhanceTimer);
+        previewEnhanceTimer = null;
+      }
+
+      if (elapsed >= 3000) {
+        lastPreviewEnhanceAt = now;
+        extendPreviewQuoteText(previewRoot);
+        return;
+      }
+
+      previewEnhanceTimer = setTimeout(() => {
+        previewEnhanceTimer = null;
+        lastPreviewEnhanceAt = Date.now();
+        extendPreviewQuoteText(previewRoot);
+      }, 3000 - elapsed);
+    }
 
     function renderContent(raw) {
       const box = $('.h-preview-box');
       if (!box.length) return;
       const previewContent = box.find('.h-threads-content');
+      if (raw === lastPreviewRaw) return;
+      lastPreviewRaw = raw;
 
       if (typeof raw !== 'string' || raw.trim() === '') {
         previewContent.text('');
+        lastPreviewRenderedHtml = '';
+        if (previewEnhanceTimer) {
+          clearTimeout(previewEnhanceTimer);
+          previewEnhanceTimer = null;
+        }
         return;
       }
       previewContent.text('');
@@ -12016,11 +12027,13 @@ init() {
           }
         }
         previewContent.append('<br>');
-        // 支持拓展引用：把扩展引用包上 <font color="#789922">，以便可点击弹窗
-        if (typeof extendQuote === 'function') {
-          extendQuote(previewContent[0]);
-          enhanceNode(previewContent[0]);
-        }
+      }
+      const renderedHtml = previewContent[0]?.innerHTML || '';
+      const previewChanged = renderedHtml !== lastPreviewRenderedHtml;
+      lastPreviewRenderedHtml = renderedHtml;
+      if (previewChanged) {
+        bindPreviewQuoteHover(previewContent[0]);
+        schedulePreviewEnhance(previewContent[0]);
       }
       // 自动识别链接
       if (typeof runAutoUrlLinkify === 'function') {
@@ -15147,7 +15160,7 @@ init() {
             _initContent(root);
         }
         // 再执行扩展逻辑
-        initExtendedContent(root || document);
+        if (root) initExtendedContent(root);
     };
     deferStartupTask(() => {
       if (cfg.enableHDImageAndLayoutFix)   enableHDImageAndLayoutFix(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
