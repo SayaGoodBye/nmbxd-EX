@@ -7426,11 +7426,22 @@ init() {
       }
       #h-ref-view.xdex-ref-view-stack-image:has(img) {
         min-width: 0 !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
       }
       #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-img-box {
         float: none !important;
         display: block !important;
         max-width: 100% !important;
+      }
+      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-img-a,
+      #h-ref-view.xdex-ref-view-stack-image:has(img) img {
+        max-width: 100% !important;
+      }
+      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-img {
+        float: none !important;
+        display: block !important;
+        margin: 0 0 12px 0 !important;
       }
       #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-item-reply-main,
       #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-content {
@@ -7453,11 +7464,20 @@ init() {
   function updateRefViewImageLayout(refView, anchorEl) {
     if (!refView || !anchorEl) return;
     refView.classList.remove('xdex-ref-view-stack-image');
-    if (!refView.querySelector('img')) return;
+    refView.style.width = '';
+
+    const layoutImages = Array.from(refView.querySelectorAll('img')).filter(img => {
+      if (img.closest('.xdex-hide-noimage')) return false;
+      const box = img.closest('.h-threads-img-box');
+      if (box && getComputedStyle(box).display === 'none') return false;
+      return getComputedStyle(img).display !== 'none';
+    });
+    if (!layoutImages.length) return;
 
     const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
     const imageWidth = 30 * rootFontSize;
     const readableTextWidth = 22 * rootFontSize;
+    const stackedReadableWidth = 38 * rootFontSize;
     const margin = 16;
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth || 0;
     const viewportLeft = window.pageXOffset || document.documentElement.scrollLeft || 0;
@@ -7466,11 +7486,32 @@ init() {
     const fullInlineWidth = Math.min(imageWidth + readableTextWidth, Math.max(0, viewportWidth - margin * 2));
     const availableRight = viewportRight - anchorLeft;
     const shouldStack = availableRight < fullInlineWidth;
-    const expectedWidth = shouldStack ? Math.min(imageWidth, Math.max(0, viewportWidth - margin * 2)) : fullInlineWidth;
+    const expectedWidth = shouldStack ? Math.min(Math.max(imageWidth, stackedReadableWidth), Math.max(0, viewportWidth - margin * 2)) : fullInlineWidth;
     const left = Math.max(viewportLeft + margin, Math.min(anchorLeft, viewportRight - expectedWidth));
 
     refView.classList.toggle('xdex-ref-view-stack-image', shouldStack);
+    if (shouldStack) {
+      layoutImages.forEach(img => {
+        img.removeAttribute('align');
+        img.removeAttribute('hspace');
+      });
+    }
     refView.style.left = left + 'px';
+    refView.style.width = expectedWidth > 0 ? expectedWidth + 'px' : '';
+  }
+
+  function renderHiddenTextContent(root) {
+    const $root = $(root || document);
+    $root.find('.h-threads-content').add($root.filter('.h-threads-content')).each(function () {
+      if (this.dataset.xdexPreviewSpoilerRendered === '1') return;
+      const $content = $(this);
+      let html = $content.html();
+      const hideenRegExp = /\[h\]([\s\S]*?)\[\/h\]/g;
+      if (hideenRegExp.test(html)) {
+        html = html.replace(hideenRegExp, '<span class="h-hidden-text">$1</span>');
+        $content.html(html);
+      }
+    });
   }
 
   // function autoHideRefView() {
@@ -7614,52 +7655,61 @@ init() {
     const $root = $(root || document);
     ensureRefViewLayoutStyle();
 
-    // —— 现有的引用扩展逻辑保持不变 ——
+    // —— 在捕获阶段接管原生引用浮窗，避免原站先显示未处理内容 ——
     $root.find("font[color='#789922']").add($root.filter("font[color='#789922']"))
       .filter(function () {
         return /(No\.\d{8}|\d{8})/.test($(this).text());
       })
       .off('mouseenter.ext')
-      .on('mouseenter.ext', function () {
-        var self = this;
-        var tid = /\d+/.exec($(this).text())[0];
-        $.get('/Home/Forum/ref?id=' + tid)
-          .done(function (data) {
-            if (data.indexOf('<!DOCTYPE html><html><head>') >= 0) {
-              return false;
-            }
-            // 先隐藏容器，避免内容渲染后闪烁（无标题/无名氏）
-            const $rv = $("#h-ref-view").off().stop(true, true).hide().css('visibility', 'hidden').html(data).css({
-              top: $(self).offset().top,
-              left: $(self).offset().left
-            });
+      .each(function () {
+        const quoteEl = this;
+        if (quoteEl.__xdexRefHoverHandler) {
+          quoteEl.removeEventListener('mouseover', quoteEl.__xdexRefHoverHandler, true);
+          quoteEl.removeEventListener('mouseenter', quoteEl.__xdexRefHoverHandler, true);
+        }
 
-            // 内容注入后直接增强
-            try {
-              const refEl = $rv[0];
-              hideEmptyTitleAndEmail(refEl);
-              const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
-              if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
-              if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
-              updateRefViewImageLayout(refEl, self);
-            } catch (e) {}
-            // 增强完成后再显示
-            $rv.css('visibility', '').show();
-          });
+        quoteEl.__xdexRefHoverHandler = function (event) {
+          if (event.type === 'mouseover' && event.relatedTarget && quoteEl.contains(event.relatedTarget)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+
+          const match = /\d+/.exec($(quoteEl).text());
+          if (!match) return;
+          const tid = match[0];
+          const seq = (window.__xdexRefViewRequestSeq || 0) + 1;
+          window.__xdexRefViewRequestSeq = seq;
+          const $rv = $("#h-ref-view").off().stop(true, true).hide().css('visibility', 'hidden');
+
+          $.get('/Home/Forum/ref?id=' + tid)
+            .done(function (data) {
+              if (seq !== window.__xdexRefViewRequestSeq) return;
+              if (data.indexOf('<!DOCTYPE html><html><head>') >= 0) return;
+
+              $rv.html(data).css({
+                top: $(quoteEl).offset().top,
+                left: $(quoteEl).offset().left
+              });
+
+              try {
+                const refEl = $rv[0];
+                hideEmptyTitleAndEmail(refEl);
+                renderHiddenTextContent(refEl);
+                const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+                if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
+                if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
+                updateRefViewImageLayout(refEl, quoteEl);
+              } catch (e) {}
+              $rv.css('visibility', '').show();
+            });
+        };
+
+        quoteEl.addEventListener('mouseover', quoteEl.__xdexRefHoverHandler, true);
+        quoteEl.addEventListener('mouseenter', quoteEl.__xdexRefHoverHandler, true);
       });
 
     // —— 新增：处理 [h]...[/h] 隐藏文本 ——
-    $root.find('.h-threads-content').add($root.filter('.h-threads-content')).each(function () {
-      if (this.dataset.xdexPreviewSpoilerRendered === '1') return;
-      const $content = $(this);
-      let html = $content.html();
-      // 匹配 [h]内容[/h]
-      const hideenRegExp = /\[h\]([\s\S]*?)\[\/h\]/g;
-      if (hideenRegExp.test(html)) {
-        html = html.replace(hideenRegExp, '<span class="h-hidden-text">$1</span>');
-        $content.html(html);
-      }
-    });
+    renderHiddenTextContent(root);
   }
 
   /* --------------------------------------------------
