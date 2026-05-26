@@ -2856,15 +2856,17 @@ init() {
   }
 
   function refreshFilterDisplay(cfg, root) {
-    if (!isLiveDocumentRoot(root)) {
-      applyFilters(cfg, root || document);
-      return;
-    }
-    if (typeof refreshPOAnnotationMode === 'function') {
-      refreshPOAnnotationMode(root || document, cfg);
-    } else if (typeof applyFilters === 'function') {
-      applyFilters(cfg, root || document);
-    }
+    return startupPerfDebug.measure('refreshFilterDisplay', () => {
+      if (!isLiveDocumentRoot(root)) {
+        applyFilters(cfg, root || document);
+        return;
+      }
+      if (typeof refreshPOAnnotationMode === 'function') {
+        refreshPOAnnotationMode(root || document, cfg);
+      } else if (typeof applyFilters === 'function') {
+        applyFilters(cfg, root || document);
+      }
+    }, () => startupPerfDebug.summarizeRoot(root || document));
   }
 
   function getThreadCookieWhitelistDisplayMode(cfg) {
@@ -2924,6 +2926,7 @@ init() {
 
   function applyFilters(cfg) {
     const root = arguments.length > 1 ? arguments[1] : undefined;
+    return startupPerfDebug.measure('applyFilters', () => {
     const $root = asFilterRoot(root);
     cfg = getFilterConfig(cfg);
     if (applyFilters._running) return; // 防重入
@@ -3063,6 +3066,7 @@ init() {
       }
     }
     } finally { applyFilters._running = false; }
+    }, () => startupPerfDebug.summarizeRoot(root || document));
   }
 
   function resetPOAnnotationLayout(root) {
@@ -4769,10 +4773,161 @@ init() {
     }
   }
 
-  function deferStartupTask(task, delay = 0) {
+  const startupPerfDebug = (() => {
+    const LONG_TASK_MS = 50;
+    const LOG_TASK_MS = 16;
+    const AUTO_REPORT_AFTER_MS = 60000;
+    const stats = new Map();
+    const events = [];
+    const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const target = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+
+    function now() {
+      return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    }
+
+    function getStat(label) {
+      if (!stats.has(label)) {
+        stats.set(label, { label, count: 0, total: 0, max: 0, longCount: 0, last: 0, meta: null });
+      }
+      return stats.get(label);
+    }
+
+    function normalizeMeta(meta) {
+      try {
+        return typeof meta === 'function' ? meta() : (meta || null);
+      } catch (e) {
+        return { metaError: e && e.message ? e.message : String(e) };
+      }
+    }
+
+    function record(label, duration, meta) {
+      const stat = getStat(label);
+      stat.count += 1;
+      stat.total += duration;
+      stat.max = Math.max(stat.max, duration);
+      stat.last = duration;
+      if (duration >= LONG_TASK_MS) stat.longCount += 1;
+      stat.meta = normalizeMeta(meta);
+      const event = {
+        at: Math.round(now()),
+        label,
+        duration: Number(duration.toFixed(2)),
+        meta: stat.meta
+      };
+      events.push(event);
+      if (duration >= LOG_TASK_MS) {
+        console.log('[XDEX startup perf]', event);
+      }
+    }
+
+    function measure(label, fn, meta) {
+      const started = now();
+      try {
+        return fn();
+      } finally {
+        record(label, now() - started, meta);
+      }
+    }
+
+    function summarizeRoot(root) {
+      const scope = root && root.querySelectorAll ? root : document;
+      if (!scope || !scope.querySelectorAll) return { root: 'unknown' };
+      return {
+        root: root === document ? 'document' : (root && root.className ? String(root.className).slice(0, 80) : root && root.nodeName),
+        threads: scope.querySelectorAll('.h-threads-content').length,
+        replies: scope.querySelectorAll('.h-threads-item-reply-main').length,
+        imgs: scope.querySelectorAll('img').length,
+        previewBoxes: scope.querySelectorAll('.h-preview-box').length
+      };
+    }
+
+    function recordObserver(label, mutations, meta) {
+      let added = 0;
+      let removed = 0;
+      for (const mutation of mutations || []) {
+        added += mutation.addedNodes ? mutation.addedNodes.length : 0;
+        removed += mutation.removedNodes ? mutation.removedNodes.length : 0;
+      }
+      record(`observer:${label}`, 0, () => Object.assign({
+        records: mutations ? mutations.length : 0,
+        added,
+        removed
+      }, normalizeMeta(meta) || {}));
+    }
+
+    function report(options = {}) {
+      const table = Array.from(stats.values())
+        .map(item => ({
+          label: item.label,
+          count: item.count,
+          total: Number(item.total.toFixed(2)),
+          max: Number(item.max.toFixed(2)),
+          avg: Number((item.total / Math.max(1, item.count)).toFixed(2)),
+          longCount: item.longCount,
+          last: Number(item.last.toFixed(2)),
+          meta: item.meta
+        }))
+        .sort((a, b) => b.total - a.total || b.max - a.max);
+      const elapsed = Number((now() - startedAt).toFixed(2));
+      if (options.table !== false) console.table(table);
+      const result = {
+        elapsed,
+        autoWindowMs: AUTO_REPORT_AFTER_MS,
+        stats: table,
+        events: events.slice(-200)
+      };
+      console.log(options.auto ? '[XDEX startup perf auto report]' : '[XDEX startup perf report]', result);
+      return result;
+    }
+
+    function reset() {
+      stats.clear();
+      events.length = 0;
+      console.log('[XDEX startup perf] reset');
+      return 'reset';
+    }
+
+    const api = { measure, record, recordObserver, report, reset, summarizeRoot };
+    window.__xdexStartupPerfReport = report;
+    window.__xdexStartupPerfReset = reset;
+    target.__xdexStartupPerfReport = report;
+    target.__xdexStartupPerfReset = reset;
+    setTimeout(() => {
+      report({ auto: true });
+    }, AUTO_REPORT_AFTER_MS);
+    console.log('[XDEX startup perf] auto collection started; auto report in 60s');
+    return api;
+  })();
+
+  function deferStartupTask(task, delay = 0, label = 'anonymous') {
     const run = () => {
-      try { task(); } catch (e) { console.warn('启动延迟任务失败', e); }
+      try {
+        startupPerfDebug.measure(`deferStartupTask:${label}`, task, { delay });
+      } catch (e) { console.warn('启动延迟任务失败', e); }
     };
+    const schedule = () => setTimeout(run, delay);
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(schedule);
+    } else {
+      schedule();
+    }
+  }
+
+  function deferStartupSteps(steps, delay = 0, label = 'anonymous') {
+    const list = Array.isArray(steps) ? steps.filter(step => step && typeof step.run === 'function') : [];
+    if (!list.length) return;
+
+    const runStep = (index) => {
+      if (index >= list.length) return;
+      const step = list[index];
+      try {
+        startupPerfDebug.measure(step.label || `deferStartupSteps:${label}:${index + 1}`, step.run, step.meta || { delay, index });
+      } catch (e) { console.warn('启动分片任务失败', step.label || label, e); }
+      setTimeout(() => runStep(index + 1), 0);
+    };
+
+    const run = () => runStep(0);
     const schedule = () => setTimeout(run, delay);
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(schedule);
@@ -4865,8 +5020,6 @@ init() {
       try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
       try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
-      enableHDImageAndLayoutFix(document);
-      enableHDImage(document);
       try {
         if (typeof applyImageHideMode === 'function') {
           if (liveCfg && liveCfg.enableImageHideMode) {
@@ -6224,6 +6377,13 @@ init() {
   hdImageDebugTarget.__xdexReportHDImageConcurrency = reportHDImageConcurrency;
 
   function enableHDImageAndLayoutFix(root = document) {
+    return startupPerfDebug.measure('enableHDImageAndLayoutFix', () => {
+    const isDocumentRoot = root === document;
+    if (isDocumentRoot && enableHDImageAndLayoutFix.__documentProcessed) {
+      handlePendingHDImageAndLayoutFix(document);
+      return;
+    }
+    if (isDocumentRoot) enableHDImageAndLayoutFix.__documentProcessed = true;
     // ==================== 注入样式（只注入一次）====================
     if (!document.getElementById('prevent-overflow-style')) {
       const style = document.createElement('style');
@@ -6991,6 +7151,7 @@ init() {
           // 监听 class 变化
           if (!imgBox.__overflowObserver) {
             const observer = new MutationObserver(mutations => {
+              startupPerfDebug.recordObserver('hdImageBox', mutations, () => ({ imgBoxes: 1 }));
               mutations.forEach(mutation => {
                 if (mutation.attributeName === 'class') {
                   handleImageLayout.handleActiveImageBox(imgBox);
@@ -7037,19 +7198,16 @@ init() {
     // 监听 DOM 变化
     if (root === document && !enableHDImageAndLayoutFix.__globalObserver) {
       const observer = new MutationObserver(mutations => {
+        startupPerfDebug.recordObserver('hdGlobal', mutations, () => startupPerfDebug.summarizeRoot(document));
         mutations.forEach(mutation => {
           mutation.addedNodes.forEach(node => {
-            if (node.nodeType === 1) {
-              handleImageInteraction.replaceHDLinks(node);
-              hdImageLazyLoader.observe(node);
-              handleImageInteraction.bindImageClickLogic(node);
-              handleImageInteraction.bindImageControls(node);
-              if (typeof enableImageContextMenu === 'function') enableImageContextMenu(node);
-              handleImageLayout.handleGeneralElements(node);
-              handleImageInteraction.observeImageBoxes(node);
-            }
+            if (node.nodeType !== 1 || !node.dataset) return;
+            const isRelevant = node.matches?.('.h-threads-img-box, .h-threads-img-a, .h-threads-img, .h-threads-content, .h-preview-box')
+              || node.querySelector?.('.h-threads-img-box, .h-threads-img-a, .h-threads-img, .h-threads-content, .h-preview-box');
+            if (isRelevant) node.dataset.xdexHdLayoutPending = '1';
           });
         });
+        schedulePendingHDImageAndLayoutFix();
       });
 
       observer.observe(document.body, {
@@ -7070,10 +7228,62 @@ init() {
       });
       enableHDImageAndLayoutFix.__resizeHandlerBound = true;
     }
+    }, () => startupPerfDebug.summarizeRoot(root));
+  }
+
+  function handlePendingHDImageAndLayoutFix(root = document) {
+    if (!root || !root.querySelectorAll) return;
+    const queue = handlePendingHDImageAndLayoutFix.__queue || [];
+    const queued = handlePendingHDImageAndLayoutFix.__queued || new Set();
+    handlePendingHDImageAndLayoutFix.__queue = queue;
+    handlePendingHDImageAndLayoutFix.__queued = queued;
+
+    root.querySelectorAll('[data-xdex-hd-layout-pending="1"]').forEach(node => {
+      delete node.dataset.xdexHdLayoutPending;
+      if (queued.has(node)) return;
+      queued.add(node);
+      queue.push(node);
+    });
+
+    handlePendingHDImageAndLayoutFix.__scheduled = false;
+    if (handlePendingHDImageAndLayoutFix.__running || !queue.length) return;
+    processPendingHDImageAndLayoutFix(root);
+  }
+
+  function processPendingHDImageAndLayoutFix(root = document) {
+    const queue = handlePendingHDImageAndLayoutFix.__queue || [];
+    const queued = handlePendingHDImageAndLayoutFix.__queued || new Set();
+    const batchSize = 5;
+    handlePendingHDImageAndLayoutFix.__running = true;
+
+    startupPerfDebug.measure('enableHDImageAndLayoutFix.pending', () => {
+      let processed = 0;
+      while (processed < batchSize && queue.length) {
+        const node = queue.shift();
+        queued.delete(node);
+        if (node && node.isConnected) {
+          enableHDImageAndLayoutFix(node);
+          processed++;
+        }
+      }
+    }, () => startupPerfDebug.summarizeRoot(root));
+
+    if (queue.length) {
+      setTimeout(() => processPendingHDImageAndLayoutFix(root), 0);
+      return;
+    }
+    handlePendingHDImageAndLayoutFix.__running = false;
+  }
+
+  function schedulePendingHDImageAndLayoutFix() {
+    if (handlePendingHDImageAndLayoutFix.__scheduled) return;
+    handlePendingHDImageAndLayoutFix.__scheduled = true;
+    setTimeout(() => handlePendingHDImageAndLayoutFix(document), 0);
   }
 
   // 旧逻辑，只作用于预览框
   function enableHDImage(root = document) {
+    return startupPerfDebug.measure('enableHDImage', () => {
     // 记录点击次数（用于切换展开/收起）
     const clickCountMap = new WeakMap();
     let lastClickedAnchor = null;
@@ -7121,7 +7331,7 @@ init() {
         if (count % 2 === 1) {
           box.classList.add('h-active');
           hdImageLazyLoader.load(img, this.href);
-          handleImageLayout.handleActiveImageBox(box, true);
+          updatePreviewImageLayout(box);
         } else {
           box.classList.remove('h-active');
           img.style.transform = '';
@@ -7131,7 +7341,7 @@ init() {
           const ds = img.getAttribute('data-src');
           if (ds) img.src = ds;
           else if (img.dataset.xdexThumbSrc) img.src = img.dataset.xdexThumbSrc;
-          handleImageLayout.handleActiveImageBox(box, true);
+          updatePreviewImageLayout(box);
         }
       });
     });
@@ -7152,6 +7362,15 @@ init() {
         img.style.left = '0px';
         imgA.style.height = height + 'px';
       }
+    }
+
+    function updatePreviewImageLayout(box) {
+      if (!box) return;
+      const img = box.querySelector('.h-threads-img');
+      const imgA = box.querySelector('.h-threads-img-a');
+      if (!img || !imgA) return;
+      const rotateIndex = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
+      applyResizeForRotation(img, imgA, rotateIndex);
     }
 
     // 3. 仅绑定预览框内的图片盒子工具按钮
@@ -7192,7 +7411,7 @@ init() {
           if (!box.closest('.h-preview-box') || !box.classList.contains('h-active')) return;
           rotateIndex = (rotateIndex - 1 + rotateArray.length) % rotateArray.length;
           img.dataset.rotateIndex = rotateIndex;
-          handleImageLayout.applyImageSize(box, rotateIndex);
+          updatePreviewImageLayout(box);
         });
       }
 
@@ -7204,11 +7423,11 @@ init() {
           if (!box.closest('.h-preview-box') || !box.classList.contains('h-active')) return;
           rotateIndex = (rotateIndex + 1) % rotateArray.length;
           img.dataset.rotateIndex = rotateIndex;
-          handleImageLayout.applyImageSize(box, rotateIndex);
+          updatePreviewImageLayout(box);
         });
       }
     });
-
+    }, () => startupPerfDebug.summarizeRoot(root));
   }
 
   // 板块页链接新标签页打开
@@ -7521,15 +7740,11 @@ init() {
 
       // 仅在"手柄"元素上启动拖拽：标题栏 + 四边窄条
       $handles.on('mousedown.qpdrag', function(e){
-        console.log('Edge Debug: mousedown triggered', e);  // ← 添加
         // 避免点击标题栏中的交互控件（返回按钮等）触发拖拽
         if ($(e.target).closest('a,button,input,textarea,select,label').length) return;
 
         //dragging = true;
         $quote.data('dragging', true);  // ← 使用 data 存储
-        console.log('Edge Debug: dragging set to true');  // ← 添加
-
-        console.log('Edge Debug: mousemove handlers count:', $._data(window, 'events')?.mousemove?.length);  // ← 添加这行
 
         $overlay.data('isDragging', true); // 标记正在拖拽
         $quote.addClass('is-dragging');
@@ -7545,9 +7760,8 @@ init() {
       });
 
       //$(document).on('mousemove.qpdrag', function(e){
+      $(window).off('mousemove.qpdrag mouseup.qpdrag');
       $(window).on('mousemove.qpdrag', function(e){
-        //console.log('Edge Debug: mousemove triggered, dragging=', dragging);  // ← 添加
-        console.log('Edge Debug: mousemove triggered, dragging=', $quote.data('dragging'));
         //if (!dragging) return;
         if (!$quote.data('dragging')) return;
         e.preventDefault();  // ← 在这里添加
@@ -7566,13 +7780,10 @@ init() {
         left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
 
         $quote.css({ top: top + 'px', left: left + 'px' });
-        console.log('Edge Debug: position updated to', top, left);  // ← 添加
       });
 
       //$(document).on('mouseup.qpdrag', function(e){
       $(window).on('mouseup.qpdrag', function(e){
-        //console.log('Edge Debug: mouseup triggered, dragging=', dragging);  // ← 添加
-        console.log('Edge Debug: mouseup triggered, dragging=', $quote.data('dragging'));
         //if (!dragging) return;
         e.preventDefault();    // ← 添加（但注意这里没有 e 参数）
         //dragging = false;
@@ -7818,6 +8029,7 @@ init() {
 
   //引用格式拓展
   function extendQuote(root = document) {
+    return startupPerfDebug.measure('extendQuote', () => {
     const ROOT_SELECTOR = '.h-threads-content, .h-post-form-input';
     const QUOTE_COLOR = '#789922';
 
@@ -7919,9 +8131,11 @@ init() {
         }
         return best;
     }
+    }, () => startupPerfDebug.summarizeRoot(root));
   }
 
   function initExtendedContent(root) {
+    return startupPerfDebug.measure('initExtendedContent', () => {
     const $root = $(root || document);
     ensureRefViewLayoutStyle();
 
@@ -7980,6 +8194,7 @@ init() {
 
     // —— 新增：处理 [h]...[/h] 隐藏文本 ——
     renderHiddenTextContent(root);
+    }, () => startupPerfDebug.summarizeRoot(root || document));
   }
 
   /* --------------------------------------------------
@@ -10752,6 +10967,7 @@ init() {
    * -------------------------------------------------- */
   // 高亮 Po 主（内置并先执行楼层编号）
   function highlightPO() {
+    return startupPerfDebug.measure('highlightPO', () => {
     const poTextColor  = '#00FFCC'; // Po 本体颜色
     const iconWidthEm  = 3.0;       // 所有图标统一宽度
 
@@ -10826,6 +11042,7 @@ init() {
         icon.appendChild(badge);
       }
     });
+    }, () => startupPerfDebug.summarizeRoot(document));
   }
 
   // 初次执行
@@ -12067,6 +12284,7 @@ init() {
 
   // 完整移植为可调用函数。需要：jQuery 2.2.4+；GM_setValue/GM_getValue/GM_deleteValue 授权
   function enhanceIsland(config = {}) {
+    return startupPerfDebug.measure('enhanceIsland', () => {
     // 配置开关（默认全开）
     const cfg = Object.assign({
       enablePreview: true,         // 发帖预览（插入预览DOM并实时渲染）
@@ -12157,7 +12375,9 @@ init() {
         // 只创建一次预览框
         if (!$('.h-preview-box').length) {
             const $box = $(previewHtml).insertAfter('#h-post-form form');
-            enhanceNode($box[0]);
+            setTimeout(() => {
+              startupPerfDebug.measure('enhanceIsland.deferEnhanceNode', () => enhanceNode($box[0]), () => startupPerfDebug.summarizeRoot($box[0]));
+            }, 0);
             // ★ 新增：让预览框里的图片也启用高清图+旋转布局逻辑
             if (typeof enableHDImage === 'function') {
                 enableHDImage($box[0]);
@@ -12167,6 +12387,7 @@ init() {
             const boxEl = $box[0];
 
             function applyBoxStyle(previewEl) {
+              return startupPerfDebug.measure('enhanceIsland.applyBoxStyle', () => {
               if (!$box.closest('.qp-body').length) {
                 // 不在 .qp-body 内时，应用基础样式
                 $box.css({
@@ -12195,14 +12416,24 @@ init() {
                   'white-space': 'normal'
                 });
               }
+              }, () => ({ previewBoxes: document.querySelectorAll('.h-preview-box').length }));
             }
 
             // 初始化时执行一次
             applyBoxStyle();
 
             // 监听 DOM 变化
-            const mo = new MutationObserver(() => {
-              applyBoxStyle();
+            let previewStyleScheduled = false;
+            const mo = new MutationObserver((mutations) => {
+              startupPerfDebug.recordObserver('enhanceIsland.previewBoxStyle', mutations, () => ({
+                previewBoxes: document.querySelectorAll('.h-preview-box').length
+              }));
+              if (previewStyleScheduled) return;
+              previewStyleScheduled = true;
+              requestAnimationFrame(() => {
+                previewStyleScheduled = false;
+                applyBoxStyle();
+              });
             });
 
             // 监听父节点变化（包括被移动到别的容器）
@@ -12335,6 +12566,16 @@ init() {
         previewEnhanceTimer = null;
       }
 
+      if (lastPreviewEnhanceAt === 0) {
+        lastPreviewEnhanceAt = now;
+        previewEnhanceTimer = setTimeout(() => {
+          previewEnhanceTimer = null;
+          lastPreviewEnhanceAt = Date.now();
+          extendPreviewQuoteText(previewRoot);
+        }, 0);
+        return;
+      }
+
       if (elapsed >= 3000) {
         lastPreviewEnhanceAt = now;
         extendPreviewQuoteText(previewRoot);
@@ -12349,6 +12590,7 @@ init() {
     }
 
     function renderContent(raw) {
+      return startupPerfDebug.measure('enhanceIsland.renderContent', () => {
       const box = $('.h-preview-box');
       if (!box.length) return;
       const previewContent = box.find('.h-threads-content');
@@ -12415,6 +12657,11 @@ init() {
           markAllCookies(cfg.markedGroups || [], previewContent[0]);
         } catch (e) {}
       }
+      }, () => ({
+        textLength: typeof raw === 'string' ? raw.length : 0,
+        lines: typeof raw === 'string' && raw ? raw.split('\n').length : 0,
+        previewBoxes: document.querySelectorAll('.h-preview-box').length
+      }));
     }
 
   // 草稿：发帖成功清空（拦截模式优先）
@@ -12486,6 +12733,7 @@ init() {
     }
 
     function 保存编辑() {
+      return startupPerfDebug.measure('enhanceIsland.saveDraftAndPreview', () => {
       if (!正文框.length) return;
       if (isDraftEnabled()) {
         saveDraftValue(getDraftKey(), 正文框.val());
@@ -12515,6 +12763,7 @@ init() {
         }
       }
 
+      }, () => ({ textLength: 正文框 && 正文框.val ? String(正文框.val() || '').length : 0 }));
     }
 
     // 点击 No.xxxx 插入引用（保持原先光标与选择区逻辑）
@@ -12873,6 +13122,10 @@ init() {
 
     // 以便无缝翻页后修改标题
     window.enhanceIslandAutoTitle = 自动标题;
+    }, () => {
+      const textarea = document.querySelector('textarea.h-post-form-textarea');
+      return { path: location.pathname, textLength: textarea ? String(textarea.value || '').length : 0 };
+    });
   }
 
   /* --------------------------------------------------
@@ -14163,6 +14416,7 @@ init() {
    * tag 20. 默认/模糊/无图/Tips模式
    * -------------------------------------------------- */
   function applyImageHideMode(mode = 'default', root = document) {
+    return startupPerfDebug.measure('applyImageHideMode', () => {
     const COVER_URL = 'https://moetu.org/xdchan/cover.php?from=index';
     const VALID_MODES = new Set(['default', 'blur', 'noimage', 'tips', 'none']);
     const finalMode = VALID_MODES.has(mode) ? mode : 'default';
@@ -14542,6 +14796,7 @@ init() {
     });
 
     window.__xdexImageHideMode = finalMode;
+    }, () => Object.assign({ mode }, startupPerfDebug.summarizeRoot(root || document)));
   }
 
   // 暴露给外部：window.applyImageHideMode('default'|'blur'|'noimage'|'tips'|'none', root)
@@ -14551,6 +14806,7 @@ init() {
    * tag 21. 自动识别链接
    * -------------------------------------------------- */
   function runAutoUrlLinkify(root = document) {
+    return startupPerfDebug.measure('runAutoUrlLinkify', () => {
     const scope = root && root.querySelectorAll ? root : document;
     const processedAttr = 'data-xdex-linkified';
     const containerSelector = '.h-threads-content, .h-preview-box';
@@ -14728,6 +14984,7 @@ init() {
       scope.querySelectorAll(containerSelector).forEach(node => containers.add(node));
     }
     containers.forEach(processContainer);
+    }, () => startupPerfDebug.summarizeRoot(root || document));
   }
 
   /* --------------------------------------------------
@@ -15531,43 +15788,31 @@ init() {
         // 再执行扩展逻辑
         if (root) initExtendedContent(root);
     };
-    deferStartupTask(() => {
-      if (cfg.enableHDImageAndLayoutFix)   enableHDImageAndLayoutFix(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
-      if (cfg.enableHDImageAndLayoutFix)   enableHDImage(document);    //X岛-揭示板的增强型体验-高清图片链接+图片控件
-      if (cfg.enableImageHideMode)         applyImageHideMode(cfg.applyImageHideMode || 'default', document); //默认/模糊/无图/Tips模式
-      highlightPO();                                                   //高亮Po主
-      enablePostExpand(document);                                      //添加串展开-折叠按钮
-      refreshFilterDisplay(cfg);                                       //标记/屏蔽/过滤-饼干/关键词 + PO批注侧栏
-    });
+    deferStartupSteps([
+      { label: 'startup.batch1.enableHDImageAndLayoutFix', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImageAndLayoutFix(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch1.enableHDImage', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImage(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch1.applyImageHideMode', run: () => { if (cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch1.highlightPO', run: () => highlightPO(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch1.enablePostExpand', run: () => enablePostExpand(document), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch1.refreshFilterDisplay', run: () => refreshFilterDisplay(cfg), meta: () => startupPerfDebug.summarizeRoot(document) }
+    ], 0, 'batch1-layout-filter-image');
 
-    deferStartupTask(() => {
-      if (cfg.enableExternalImagePreview)  ExternalImagePreview.init();//显示外部图床
-      if (cfg.enableLinkBlank)             runLinkBlank();             //X岛-揭示板的增强型体验-新标签打开串
-      if (cfg.enableAutoUrlLinkify)        runAutoUrlLinkify();        //自动识别链接
-      if (cfg.enableQuotePreview)          enableQuotePreview();       //优化引用弹窗
-      replaceRightSidebar();                                           //扩展坞增强
-      if (cfg.extendQuote)                 extendQuote();              //扩展引用格式
-      kaomojiEnhancer();                                               //颜文字拓展
-      initExtendedContent();                                           //扩展引用
-      //autoHideRefView();                                               //原生引用弹窗自动隐藏
-      searchServiceBy4sY();                                            //野生搜索酱
-      monitorRefView();                                                //监视引用弹窗变化
-      //preventContentOverflow();                                      //防止内容超出浏览器边缘-已合并入enableHDImageAndLayoutFix
-      overrideTopImageClick();                                         //替换顶栏图片点击事件
-      enhanceIsland({                                                  //增强X岛匿名版
-        // 这些都可选，默认全开
-        enablePreview: true,                                           //添加预览框
-        enableDraft: true,                                             //草稿保存/恢复
-        enableAutoTitle: true,                                         //自动设置网页标题
-        enableRelativeTime: true,                                      //人类友好时间显示
-        enableQuoteInsert: true,                                       //点击 No.xxxx 插入引用
-        enablePasteImage: true,                                        //粘贴剪贴板图片到文件输入
-        // 可传入你的 jQuery 实例（若页面没有全局 $）
-        // $: window.myJQ
-      });
-      initContent(document);
-      document.querySelectorAll('form textarea[name="content"]').forEach(bindCtrlEnter);
-    }, 50);
+    deferStartupSteps([
+      { label: 'startup.batch2.ExternalImagePreview.init', run: () => { if (cfg.enableExternalImagePreview) ExternalImagePreview.init(); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.runLinkBlank', run: () => { if (cfg.enableLinkBlank) runLinkBlank(); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.runAutoUrlLinkify', run: () => { if (cfg.enableAutoUrlLinkify) runAutoUrlLinkify(); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.enableQuotePreview', run: () => { if (cfg.enableQuotePreview) enableQuotePreview(); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.replaceRightSidebar', run: () => replaceRightSidebar(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.extendQuote', run: () => { if (cfg.extendQuote) extendQuote(); }, meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.kaomojiEnhancer', run: () => kaomojiEnhancer(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.initExtendedContent', run: () => initExtendedContent(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.searchServiceBy4sY', run: () => searchServiceBy4sY(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.monitorRefView', run: () => monitorRefView(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.overrideTopImageClick', run: () => overrideTopImageClick(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.enhanceIsland', run: () => enhanceIsland({ enablePreview: true, enableDraft: true, enableAutoTitle: true, enableRelativeTime: true, enableQuoteInsert: true, enablePasteImage: true }), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.initContent(document)', run: () => initContent(document), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.bindCtrlEnter', run: () => document.querySelectorAll('form textarea[name="content"]').forEach(bindCtrlEnter), meta: () => startupPerfDebug.summarizeRoot(document) }
+    ], 50, 'batch2-preview-content');
 
     // 屏蔽原站点的 initImageBox，改由 enableHDImageAndLayoutFix 负责初始化
     // window.initImageBox = function() {
