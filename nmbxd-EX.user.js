@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.2.8
+// @version      2.2.8.1
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -26,8 +26,8 @@
 // @note         致谢：部分功能移植自[X岛-揭示板的增强型体验](https://greasyfork.org/zh-CN/scripts/497875-x%E5%B2%9B-%E6%8F%AD%E7%A4%BA%E6%9D%BF%E7%9A%84%E5%A2%9E%E5%BC%BA%E5%9E%8B%E4%BD%93%E9%AA%8C#%E8%BF%9E%E6%8E%A5%E7%9B%B4%E6%8E%A5%E8%B7%B3%E8%BD%AC)
 // @note         致谢：来自4sYbzEX的搜索服务[野生搜索酱](https://www.nmbxd.com/t/64792841)
 // @note         致谢：来自acVMxuv的[侧边栏优化](https://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88)
-// @downloadURL  https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
-// @updateURL    https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
+// @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
+// @updateURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
 // @run-at       document-start
 // ==/UserScript==
 /* global $, jQuery */
@@ -5985,6 +5985,244 @@ init() {
     console.debug("initImageBox 已被屏蔽，由 enableHDImageAndLayoutFix 接管");
   };
   // 新逻辑，启用高清图片链接和布局修正
+  const hdImageLazyLoader = (() => {
+    const ROOT_MARGIN = '600px 0px';
+    const MAX_CONCURRENT = 3;
+    const BEHIND_PENALTY_DISTANCE = 2500;
+    let observer = null;
+    let scrollListenerBound = false;
+    let lastScrollY = window.scrollY || window.pageYOffset || 0;
+    let scrollDirection = 1;
+    let activeLoads = 0;
+    let peakActiveLoads = 0;
+    const queue = [];
+    const queued = new Set();
+
+    function getHdUrl(url) {
+      const raw = String(url || '');
+      return raw.includes('/thumb/') ? raw.replace('/thumb/', '/image/') : raw;
+    }
+
+    function isGifUrl(url) {
+      return /\.gif(?:$|[?#])/i.test(String(url || ''));
+    }
+
+    function bindScrollListener() {
+      if (scrollListenerBound) return;
+      window.addEventListener('scroll', () => {
+        const currentY = window.scrollY || window.pageYOffset || 0;
+        if (currentY > lastScrollY) scrollDirection = 1;
+        else if (currentY < lastScrollY) scrollDirection = -1;
+        lastScrollY = currentY;
+        processQueue();
+      }, { passive: true });
+      scrollListenerBound = true;
+    }
+
+    function ensureObserver() {
+      if (observer || typeof IntersectionObserver !== 'function') return observer;
+      observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          const img = entry.target;
+          enqueue(img);
+          observer.unobserve(img);
+        });
+      }, {
+        root: null,
+        rootMargin: ROOT_MARGIN,
+        threshold: 0.01
+      });
+      return observer;
+    }
+
+    function prepare(img, hdUrl) {
+      if (!img) return '';
+      const finalHdUrl = getHdUrl(hdUrl || img.currentSrc || img.src || img.getAttribute('src') || '');
+      if (!finalHdUrl || !finalHdUrl.includes('/image/')) return '';
+      if (!img.dataset.xdexThumbSrc) {
+        img.dataset.xdexThumbSrc = img.currentSrc || img.src || img.getAttribute('src') || '';
+      }
+      img.dataset.xdexHdSrc = finalHdUrl;
+      img.loading = 'lazy';
+      return finalHdUrl;
+    }
+
+    function collect(root) {
+      if (!root) return [];
+      const imgs = [];
+      if (root.matches && root.matches('img[data-xdex-hd-src]')) imgs.push(root);
+      if (root.querySelectorAll) {
+        root.querySelectorAll('img[data-xdex-hd-src]').forEach(img => imgs.push(img));
+      }
+      return imgs;
+    }
+
+    function getImagePriority(img) {
+      const rect = img.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const viewportCenter = viewportHeight / 2;
+      const imgCenter = rect.top + rect.height / 2;
+      const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
+      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
+      const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
+      const isAhead = aheadDistance >= 0;
+      const isBehind = behindDistance > 0;
+
+      if (isVisible) return Math.abs(imgCenter - viewportCenter);
+      if (isAhead) return 10000 + aheadDistance;
+      if (isBehind) {
+        const farBehindPenalty = behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000;
+        return farBehindPenalty + behindDistance;
+      }
+      return 200000 + Math.abs(imgCenter - viewportCenter);
+    }
+
+    function processQueue() {
+      if (activeLoads >= MAX_CONCURRENT || queue.length === 0) return;
+
+      queue.sort((a, b) => getImagePriority(a) - getImagePriority(b));
+      while (activeLoads < MAX_CONCURRENT && queue.length > 0) {
+        const img = queue.shift();
+        queued.delete(img);
+        if (!img || !img.isConnected) continue;
+        if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') continue;
+
+        const hdSrc = img.dataset.xdexHdSrc;
+        if (!hdSrc) continue;
+
+        activeLoads++;
+        peakActiveLoads = Math.max(peakActiveLoads, activeLoads);
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          activeLoads = Math.max(0, activeLoads - 1);
+          processQueue();
+        };
+        img.addEventListener('load', finish, { once: true });
+        img.addEventListener('error', finish, { once: true });
+        load(img, hdSrc);
+        if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading !== '1') finish();
+      }
+    }
+
+    function enqueue(img) {
+      if (!img || img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
+      if (!img.dataset.xdexHdSrc) return;
+      if (!queued.has(img)) {
+        queued.add(img);
+        queue.push(img);
+      }
+      processQueue();
+    }
+
+    function observe(root) {
+      const io = ensureObserver();
+      if (!io) return;
+      bindScrollListener();
+      collect(root).forEach(img => {
+        if (img.dataset.xdexHdLoaded === '1') return;
+        io.observe(img);
+      });
+    }
+
+    function load(img, hdUrl) {
+      if (!img) return;
+      const finalHdUrl = prepare(img, hdUrl);
+      if (!finalHdUrl) return;
+      if ((img.currentSrc || img.src) === finalHdUrl) {
+        img.dataset.xdexHdLoaded = '1';
+        delete img.dataset.xdexHdLoading;
+        return;
+      }
+      if (img.dataset.xdexHdLoading === '1') return;
+
+      img.dataset.xdexHdLoading = '1';
+      const thumbSrc = img.dataset.xdexThumbSrc || '';
+      const onLoad = () => {
+        img.dataset.xdexHdLoaded = '1';
+        delete img.dataset.xdexHdLoading;
+      };
+      const onError = () => {
+        delete img.dataset.xdexHdLoading;
+        if (thumbSrc && (img.currentSrc || img.src) === finalHdUrl) img.src = thumbSrc;
+      };
+
+      img.addEventListener('load', onLoad, { once: true });
+      img.addEventListener('error', onError, { once: true });
+      img.src = finalHdUrl;
+    }
+
+    function getStats() {
+      return {
+        activeLoads,
+        peakActiveLoads,
+        queued: queue.length,
+        maxConcurrent: MAX_CONCURRENT,
+        scrollDirection
+      };
+    }
+
+    return { getHdUrl, isGifUrl, prepare, observe, load, getStats };
+  })();
+
+  const hdImageDebugTarget = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+
+  function clearHDImageTiming() {
+    if (performance && typeof performance.clearResourceTimings === 'function') {
+      performance.clearResourceTimings();
+    }
+    return 'cleared';
+  }
+
+  function reportHDImageConcurrency(options = {}) {
+    const includeGif = !!options.includeGif;
+    const showTable = options.table !== false;
+    const entries = performance.getEntriesByType('resource')
+      .filter(e => e && e.initiatorType === 'img')
+      .filter(e => String(e.name || '').includes('/image/'))
+      .filter(e => includeGif || !/\.gif(?:$|[?#])/i.test(String(e.name || '')))
+      .filter(e => Number.isFinite(e.startTime) && Number.isFinite(e.responseEnd) && e.responseEnd > e.startTime)
+      .sort((a, b) => a.startTime - b.startTime);
+
+    let peak = 0;
+    let peakAt = 0;
+    entries.forEach(a => {
+      let active = 0;
+      entries.forEach(b => {
+        if (b.startTime <= a.startTime && b.responseEnd >= a.startTime) active++;
+      });
+      if (active > peak) {
+        peak = active;
+        peakAt = a.startTime;
+      }
+    });
+
+    const rows = entries.map(e => ({
+      start: Math.round(e.startTime),
+      end: Math.round(e.responseEnd),
+      duration: Math.round(e.duration),
+      url: String(e.name || '').slice(-100)
+    }));
+    if (showTable && rows.length) console.table(rows);
+
+    const result = {
+      peakResourceOverlap: peak,
+      peakAt: Math.round(peakAt),
+      countedRequests: entries.length,
+      includeGif,
+      loader: hdImageLazyLoader.getStats()
+    };
+    console.log('[XDEX HD image concurrency]', result);
+    return result;
+  }
+
+  window.__xdexClearHDImageTiming = clearHDImageTiming;
+  window.__xdexReportHDImageConcurrency = reportHDImageConcurrency;
+  hdImageDebugTarget.__xdexClearHDImageTiming = clearHDImageTiming;
+  hdImageDebugTarget.__xdexReportHDImageConcurrency = reportHDImageConcurrency;
+
   function enableHDImageAndLayoutFix(root = document) {
     // ==================== 注入样式（只注入一次）====================
     if (!document.getElementById('prevent-overflow-style')) {
@@ -6550,18 +6788,27 @@ init() {
       clickCountMap: new WeakMap(),
       lastClickedAnchor: null,
 
-      // 替换所有 thumb 链接为 image（高清）
+      // 准备高清地址，实际图片请求交给近视窗懒加载。
       replaceHDLinks(container) {
-        container.querySelectorAll('img').forEach(img => {
+        const imgs = [];
+        if (container.matches && container.matches('img')) imgs.push(container);
+        container.querySelectorAll('img').forEach(img => imgs.push(img));
+        imgs.forEach(img => {
           if (img.closest('.h-preview-box')) return; // 新增：预览框中跳过
-          if (img.src.includes('/thumb/')) {
-            img.src = img.src.replace('/thumb/', '/image/');
+          const src = img.currentSrc || img.src || img.getAttribute('src') || '';
+          if (src.includes('/thumb/')) {
+            const hdSrc = hdImageLazyLoader.prepare(img, src);
+            if (hdImageLazyLoader.isGifUrl(hdSrc)) hdImageLazyLoader.load(img, hdSrc);
           }
         });
-        container.querySelectorAll('a').forEach(a => {
+
+        const anchors = [];
+        if (container.matches && container.matches('a')) anchors.push(container);
+        container.querySelectorAll('a').forEach(a => anchors.push(a));
+        anchors.forEach(a => {
           if (a.closest('.h-preview-box')) return; // 新增：预览框中跳过
           if (a.href.includes('/thumb/')) {
-            a.href = a.href.replace('/thumb/', '/image/');
+            a.href = hdImageLazyLoader.getHdUrl(a.href);
           }
         });
       },
@@ -6607,19 +6854,15 @@ init() {
             }
             this.clickCountMap.set(anchor, shouldOpen ? 1 : 0);
 
-            if (img.src.includes('/thumb/')) {
-              img.src = img.src.replace('/thumb/', '/image/');
-            }
-
             if (shouldOpen) {
               // 展开
               box.classList.add('h-active');
-              img.src = anchor.href.replace('/thumb/', '/image/');
+              hdImageLazyLoader.load(img, anchor.href);
               img.dataset.rotateIndex = '0'; // 重置旋转索引
               // ★ 新增：加载失败兜底
               img.onerror = () => {
                 console.warn('[图片加载失败，回退到缩略图]', img.src);
-                const fallback = img.getAttribute('data-src') || anchor.href;
+                const fallback = img.dataset.xdexThumbSrc || img.getAttribute('data-src') || anchor.href;
                 img.src = fallback;
               };
               // 触发布局计算
@@ -6770,6 +7013,7 @@ init() {
 
     // 1. 替换高清链接
     handleImageInteraction.replaceHDLinks(root);
+    hdImageLazyLoader.observe(root);
 
     // 2. 绑定图片点击和控件
     handleImageInteraction.bindImageClickLogic(root);
@@ -6797,6 +7041,7 @@ init() {
           mutation.addedNodes.forEach(node => {
             if (node.nodeType === 1) {
               handleImageInteraction.replaceHDLinks(node);
+              hdImageLazyLoader.observe(node);
               handleImageInteraction.bindImageClickLogic(node);
               handleImageInteraction.bindImageControls(node);
               if (typeof enableImageContextMenu === 'function') enableImageContextMenu(node);
@@ -6833,17 +7078,20 @@ init() {
     const clickCountMap = new WeakMap();
     let lastClickedAnchor = null;
 
-    // 1. 仅在预览框内把所有 thumb 链接替换成 image
+    // 1. 仅在预览框内准备高清链接，实际请求交给近视窗懒加载
     root.querySelectorAll('.h-preview-box img').forEach(img => {
-      if (img.src.includes('/thumb/')) {
-        img.src = img.src.replace('/thumb/', '/image/');
+      const src = img.currentSrc || img.src || img.getAttribute('src') || '';
+      if (src.includes('/thumb/')) {
+        const hdSrc = hdImageLazyLoader.prepare(img, src);
+        if (hdImageLazyLoader.isGifUrl(hdSrc)) hdImageLazyLoader.load(img, hdSrc);
       }
     });
     root.querySelectorAll('.h-preview-box a').forEach(a => {
       if (a.href.includes('/thumb/')) {
-        a.href = a.href.replace('/thumb/', '/image/');
+        a.href = hdImageLazyLoader.getHdUrl(a.href);
       }
     });
+    hdImageLazyLoader.observe(root);
 
     // 2. 仅绑定预览框内的图片盒子的点击逻辑
     root.querySelectorAll('.h-preview-box .h-threads-img-a').forEach(anchor => {
@@ -6870,13 +7118,9 @@ init() {
         let count = (clickCountMap.get(this) || 0) + 1;
         clickCountMap.set(this, count);
 
-        if (img.src.includes('/thumb/')) {
-          img.src = img.src.replace('/thumb/', '/image/');
-        }
-
         if (count % 2 === 1) {
           box.classList.add('h-active');
-          img.src = this.href.replace('/thumb/', '/image/');
+          hdImageLazyLoader.load(img, this.href);
           handleImageLayout.handleActiveImageBox(box, true);
         } else {
           box.classList.remove('h-active');
@@ -6886,6 +7130,7 @@ init() {
           img.dataset.rotateIndex = 0;
           const ds = img.getAttribute('data-src');
           if (ds) img.src = ds;
+          else if (img.dataset.xdexThumbSrc) img.src = img.dataset.xdexThumbSrc;
           handleImageLayout.handleActiveImageBox(box, true);
         }
       });
