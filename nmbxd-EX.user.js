@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
-// @version      2.2.5
+// @version      2.2.8
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -19,15 +19,15 @@
 // @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
 // @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
 // @license      WTFPL
-// @changelog    新增：\n1.新增ScriptCat更新渠道：新增 ScriptCat（脚本猫）作为备选更新源(https://scriptcat.org/api/v2/scripts/6289)，无法访问GreasyFork的肥哥可通过此渠道下载更新\n2.更新提示：启动时自动检查 GreasyFork 与 ScriptCat 的最新版本，展示更新日志，支持「立即更新 / 忽略此版本 / 今日关闭」三种操作\n3.只看饼干·批注模式：开启后，若Po主与只看饼干设置中填写的其他饼干回复 ≥ 2 条，则重点回复置于主栏，其余回复展示在侧栏；不足 2 条时按网页默认顺序排列。侧栏支持「展开 / 收起」切换，收起时侧栏高度与对应主栏回复平齐\n4.屏蔽饼干/关键词·隐藏模式：开启后完全隐藏被关键词/饼干匹配的回复\n5.图片右键菜单：右键图片弹出自定义菜单，支持复制图片、下载图片、复制图片链接、复制串链接。GIF / APNG 通过 Chromium Web Custom Format 写入剪贴板，粘贴时保留动态效果（注意：不会显示在 Windows 剪贴板历史中，复制后请及时粘贴）\n\n优化：\n1.饼干切换快捷键：使用 `Ctrl + \` 切换饼干时，若选中已激活的饼干，焦点将回到输入框而非停留在选择栏中，避免误操作\n2.设置项交互统一：「增强 X 岛匿名版」（关闭草稿 / 开启草稿）与「展开板块页长串」（全部展开 / 全部收起）由按钮改为选择框，交互风格与其他设置项保持一致
+// @changelog    新增\n1. 新增更新检查开关，现在可以自行控制是否启用更新检测。\n2. 新增登录弹窗。退出登录后，可通过点击“刷新”重新打开登录弹窗；登录成功后会自动应用上次使用的饼干。\n\n优化\n1. 优化网页加载时脚本的执行顺序，提升响应速度，并尽量降低页面负载。\n2. 优化退出登录状态下的饼干缓存判断逻辑，使相关状态显示更加准确。\n3. 优化触底刷新时的 Toast 提示间隔，现在提示时机与页面变化更加同步。\n4. 优化原生引用框的文字展示效果：为文字区域增加最小展示宽度，减少被图片挤压导致的阅读问题；当引用浮窗打开位置靠近浏览器右侧边界时，文字会自动移动至图片下方，避免内容溢出。\n5. 标记饼干现已支持自定义颜色，便于区分和管理。\n\n修复\n1. 修复“图片控件 - 布局调整”中的若干问题，并优化整体布局表现。\n2. 修复部分 UI 显示与交互细节问题。
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
 // @note         致谢：完整移植[增强x岛匿名版](https://greasyfork.org/zh-CN/scripts/513156-%E5%A2%9E%E5%BC%BAx%E5%B2%9B%E5%8C%BF%E5%90%8D%E7%89%88)
 // @note         致谢：部分功能移植自[X岛-揭示板的增强型体验](https://greasyfork.org/zh-CN/scripts/497875-x%E5%B2%9B-%E6%8F%AD%E7%A4%BA%E6%9D%BF%E7%9A%84%E5%A2%9E%E5%BC%BA%E5%9E%8B%E4%BD%93%E9%AA%8C#%E8%BF%9E%E6%8E%A5%E7%9B%B4%E6%8E%A5%E8%B7%B3%E8%BD%AC)
 // @note         致谢：来自4sYbzEX的搜索服务[野生搜索酱](https://www.nmbxd.com/t/64792841)
 // @note         致谢：来自acVMxuv的[侧边栏优化](https://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88)
-// @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
-// @updateURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
+// @downloadURL  https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
+// @updateURL    https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
 // @run-at       document-start
 // ==/UserScript==
 /* global $, jQuery */
@@ -6060,15 +6060,20 @@ init() {
     // ==================== 子函数1: 布局计算和溢出处理 ====================
     const handleImageLayout = {
 
+      getElementContentWidth(el) {
+        if (!el) return 0;
+        const style = getComputedStyle(el);
+        const paddingX = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+        const width = el.clientWidth || el.offsetWidth || 0;
+        return Math.max(0, Math.floor(width - paddingX));
+      },
+
       // ★ 新增：根据场景（板块页/串内页）计算消息容器最大允许宽度
       getMaxMsgWidth(msgMain) {
         // ===== 新增：引用浮窗场景 =====
         const quoteBox = msgMain.closest('.qp-quote');
         if (quoteBox) {
-          // 获取引用浮窗的实际宽度
-          const quoteWidth = quoteBox.offsetWidth || quoteBox.clientWidth;
-          // 减去可能的内边距和边距（根据实际情况调整，这里预留40px）
-          return Math.max(0, quoteWidth - 15);
+          return this.getElementContentWidth(quoteBox);
         }
         // 基础浏览器边缘限制
         const viewportLimit = window.innerWidth - 240; // 保留你的全局边距逻辑
@@ -6203,6 +6208,12 @@ init() {
 
         if (!imgA || !img || !imgBox.__sizeCache) return;
 
+        img.removeAttribute('align');
+        img.removeAttribute('hspace');
+        imgBox.style.float = 'none';
+        imgA.style.float = 'none';
+        img.style.float = 'none';
+
         // 强制重置图片定位为 relative，确保在容器内正确定位
         img.style.position = 'relative';
         img.style.top = 'auto';
@@ -6306,9 +6317,6 @@ init() {
 
       // 处理激活状态的图片盒子
       handleActiveImageBox(imgBox, forceRecalculate = false) {
-        // ===== 新增：预览框内的图片不做布局处理 =====
-        if (imgBox.closest('.h-preview-box')) return;
-
         const imgA = imgBox.querySelector('.h-threads-img-a');
         const img = imgBox.querySelector('.h-threads-img');
 
@@ -6339,6 +6347,13 @@ init() {
             img.style.marginLeft = imgBox.__originalStyles.imgMarginLeft || '';
             img.style.marginRight = imgBox.__originalStyles.imgMarginRight || '';
             img.style.marginBottom = imgBox.__originalStyles.imgMarginBottom || '';
+            imgBox.style.float = imgBox.__originalStyles.boxFloat || '';
+            imgA.style.float = imgBox.__originalStyles.aFloat || '';
+            img.style.float = imgBox.__originalStyles.imgFloat || '';
+            if (imgBox.__originalStyles.imgAlign == null) img.removeAttribute('align');
+            else img.setAttribute('align', imgBox.__originalStyles.imgAlign);
+            if (imgBox.__originalStyles.imgHspace == null) img.removeAttribute('hspace');
+            else img.setAttribute('hspace', imgBox.__originalStyles.imgHspace);
 
             delete imgBox.__originalStyles;
             delete imgBox.__sizeCache;
@@ -6379,7 +6394,12 @@ init() {
             imgMarginTop: img.style.marginTop,
             imgMarginLeft: img.style.marginLeft,
             imgMarginRight: img.style.marginRight,
-            imgMarginBottom: img.style.marginBottom
+            imgMarginBottom: img.style.marginBottom,
+            boxFloat: imgBox.style.float,
+            aFloat: imgA.style.float,
+            imgFloat: img.style.float,
+            imgAlign: img.getAttribute('align'),
+            imgHspace: img.getAttribute('hspace')
           };
         }
 
@@ -6422,12 +6442,17 @@ init() {
           if (isPreview) {
             if (isOverlay) {
               // 在预览框 + 浮窗中：使用浮窗内容容器宽度
-              const wrapEl = imgBox.closest('.qp-content-wrap');
-              if (wrapEl) {
-                msgWidth = wrapEl.offsetWidth || msgWidth;
+              const quoteBox = imgBox.closest('.qp-quote');
+              if (quoteBox) {
+                maxWidth = this.getElementContentWidth(quoteBox);
+              } else {
+                const wrapEl = imgBox.closest('.qp-content-wrap');
+                if (wrapEl) {
+                  msgWidth = wrapEl.offsetWidth || msgWidth;
+                }
+                // 留边距 40（与原逻辑一致），不再受 window.innerWidth - 240 限制
+                maxWidth = Math.max(0, (msgWidth || 0) - 40);
               }
-              // 留边距 40（与原逻辑一致），不再受 window.innerWidth - 240 限制
-              maxWidth = Math.max(0, (msgWidth || 0) - 40);
             } else {
               // 在预览框但不在浮窗中：最大宽度限制为 800
               // 仍保留消息容器边距 40
@@ -6852,6 +6877,7 @@ init() {
         if (count % 2 === 1) {
           box.classList.add('h-active');
           img.src = this.href.replace('/thumb/', '/image/');
+          handleImageLayout.handleActiveImageBox(box, true);
         } else {
           box.classList.remove('h-active');
           img.style.transform = '';
@@ -6860,6 +6886,7 @@ init() {
           img.dataset.rotateIndex = 0;
           const ds = img.getAttribute('data-src');
           if (ds) img.src = ds;
+          handleImageLayout.handleActiveImageBox(box, true);
         }
       });
     });
@@ -6920,8 +6947,7 @@ init() {
           if (!box.closest('.h-preview-box') || !box.classList.contains('h-active')) return;
           rotateIndex = (rotateIndex - 1 + rotateArray.length) % rotateArray.length;
           img.dataset.rotateIndex = rotateIndex;
-          img.style.transform = rotateArray[rotateIndex];
-          applyResizeForRotation(img, imgA, rotateIndex);
+          handleImageLayout.applyImageSize(box, rotateIndex);
         });
       }
 
@@ -6933,8 +6959,7 @@ init() {
           if (!box.closest('.h-preview-box') || !box.classList.contains('h-active')) return;
           rotateIndex = (rotateIndex + 1) % rotateArray.length;
           img.dataset.rotateIndex = rotateIndex;
-          img.style.transform = rotateArray[rotateIndex];
-          applyResizeForRotation(img, imgA, rotateIndex);
+          handleImageLayout.applyImageSize(box, rotateIndex);
         });
       }
     });
