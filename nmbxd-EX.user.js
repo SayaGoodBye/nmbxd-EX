@@ -7284,6 +7284,22 @@ init() {
       }
     };
 
+    function expandReplyMainWidths(scope) {
+      const replyMains = [];
+      if (scope.matches && scope.matches('.h-threads-item-reply-main')) {
+        replyMains.push(scope);
+      }
+      if (scope.querySelectorAll) {
+        scope.querySelectorAll('.h-threads-item-reply-main').forEach(msgMain => {
+          replyMains.push(msgMain);
+        });
+      }
+
+      replyMains.forEach(msgMain => {
+        handleImageLayout.expandMsgWidthIfImageExists(msgMain);
+      });
+    }
+
     // ==================== 执行所有处理 ====================
 
     // 1. 替换高清链接
@@ -7301,12 +7317,8 @@ init() {
     // 4. 监听图片盒子状态
     handleImageInteraction.observeImageBoxes(root);
 
-    // ★ 页面加载时拓展消息容器宽度
-    if (root === document) {
-      document.querySelectorAll('.h-threads-item-reply-main').forEach(msgMain => {
-        handleImageLayout.expandMsgWidthIfImageExists(msgMain);
-      });
-    }
+    // ★ 页面加载和无缝翻页新内容都需要拓展带图回复宽度
+    expandReplyMainWidths(root);
     // ==================== 全局监听 ====================
 
     // 监听 DOM 变化
