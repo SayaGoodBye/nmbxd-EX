@@ -7556,7 +7556,7 @@ init() {
   }
 
   /* --------------------------------------------------
-   * tag 9. 引用浮窗/鼠标离开后自动隐藏原生引用
+   * tag 9. 引用浮窗/鼠标离开后自动隐藏原生引用/引用格式拓展
    * -------------------------------------------------- */
   function enableQuotePreview() {
     if (enableQuotePreview.__initialized) return;
@@ -7805,6 +7805,8 @@ init() {
       $overlay.fadeIn(160);
 
       enableHDImageAndLayoutFix($quote[0]);
+      if (typeof extendQuote === 'function') extendQuote($quote[0]);
+      if (typeof initExtendedContent === 'function') initExtendedContent($quote[0]);
       runAutoUrlLinkify($quote[0]);
       runLinkBlank($quote[0]);
       enableHDImageAndLayoutFix();
@@ -8294,6 +8296,8 @@ init() {
                 const refEl = $rv[0];
                 hideEmptyTitleAndEmail(refEl);
                 renderHiddenTextContent(refEl);
+                if (typeof extendQuote === 'function') extendQuote(refEl);
+                if (typeof initExtendedContent === 'function') initExtendedContent(refEl);
                 const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
                 if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
                 if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
@@ -12656,6 +12660,7 @@ init() {
     // 预览引用/隐藏文本渲染
     const previewBox = $('<div/>'); // 占位，真正引用在 initPreviewBox 后重新抓取
     const refExp = /^([>＞]+.*)$/g;
+    const quoteTokenExp = /(?:>>)?No\.(\d{8})\b|(?:>>)?(?<!\d)(\d{8})(?!\d)/g;
     const hideExp = /\[h\]([\s\S]*?)\[\/h\]/g;
     let lastPreviewRaw = null;
     let lastPreviewRenderedHtml = '';
@@ -12730,12 +12735,29 @@ init() {
         if (className) span.addClass(className);
         previewContent.append(span);
       }
+      function appendPreviewQuoteLine(line) {
+        quoteTokenExp.lastIndex = 0;
+        let lastIndex = 0;
+        let match;
+        let hasQuoteToken = false;
+
+        while ((match = quoteTokenExp.exec(line)) !== null) {
+          hasQuoteToken = true;
+          appendPreviewText(line.slice(lastIndex, match.index));
+          previewContent.append($('<font color="#789922"></font>').text(match[0]));
+          lastIndex = quoteTokenExp.lastIndex;
+        }
+
+        if (hasQuoteToken) {
+          appendPreviewText(line.slice(lastIndex));
+        } else {
+          appendPreviewText(line);
+        }
+      }
       for (let i of raw.split('\n')) {
         i = i.replace(/ +/g, ' ');
-        let e;
         if (refExp.test(i)) {
-          e = $('<font color="#789922"></font>').text(i);
-          previewContent.append(e);
+          appendPreviewQuoteLine(i);
         } else {
           hideExp.lastIndex = 0;
           let lastIndex = 0;
@@ -13974,7 +13996,7 @@ init() {
           // 立即执行视觉相关过滤，避免闪烁
           try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(); } catch (e) {}
           try { if (cfg2) refreshFilterDisplay(cfg2); } catch (e) {}
-      try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
+          try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
 
           // 延迟执行其他增强
           setTimeout(() => {
@@ -15290,14 +15312,49 @@ init() {
     return await resp.blob();
   }
 
+  function handleImageContextMenuEvent(e, layer) {
+    if (layer === 'document' && e.defaultPrevented) return false;
+    // console.info('【右键菜单｜收到右键】', {
+    //   标签: e.target && e.target.tagName,
+    //   类名: e.target && e.target.className ? String(e.target.className).slice(0, 120) : '',
+    //   坐标: `${e.clientX},${e.clientY}`,
+    //   层级: layer
+    // });
+    const anchor = e.target && e.target.closest ? e.target.closest('.h-threads-img-a') : null;
+    if (!anchor) {
+      // console.info('【右键菜单｜跳过】', { 原因: '未命中图片链接', 层级: layer });
+      return false;
+    }
+    if (anchor.closest('.h-preview-box')) {
+      // console.info('【右键菜单｜跳过】', { 原因: '命中预览框图片', 层级: layer });
+      return false;
+    }
+    // console.info('【右键菜单｜命中】', { 链接: (anchor.href || '').slice(0, 200), 层级: layer });
+
+    const ctx = resolveImageContextData(anchor);
+    if (!ctx) {
+      console.warn('【右键菜单｜解析失败】', { 原因: '图片上下文为空', 层级: layer });
+      return false;
+    }
+
+    e.preventDefault();
+    if (typeof e.stopImmediatePropagation === 'function') {
+      e.stopImmediatePropagation();
+    }
+    e.stopPropagation();
+    e.cancelBubble = true;
+    e.returnValue = false;
+    // console.info('【右键菜单｜阻止原生】', { 成功: true, 层级: layer });
+    openImageContextMenu(ctx, e.clientX, e.clientY);
+    return true;
+  }
+
   function getImageContextMenu() {
     ensureImageContextMenuStyle();
     let menu = document.getElementById('xdex-image-context-menu');
-    if (menu) {
-      console.debug('【右键菜单｜复用】', { 已存在: true });
-      return menu;
-    }
-    console.debug('【右键菜单｜创建】', { 已存在: false });
+    // if (menu) console.debug('【右键菜单｜复用】', { 已存在: true });
+    if (menu) return menu;
+    // console.debug('【右键菜单｜创建】', { 已存在: false });
     menu = document.createElement('div');
     menu.id = 'xdex-image-context-menu';
     menu.className = 'xdex-hidden';
@@ -15334,107 +15391,16 @@ init() {
       }
     });
     document.body.appendChild(menu);
-    console.info('【右键菜单｜挂载】', { 位置: 'body', 菜单项数: menu.querySelectorAll('.xdex-image-context-item').length });
+    // console.info('【右键菜单｜挂载】', { 位置: 'body', 菜单项数: menu.querySelectorAll('.xdex-image-context-item').length });
 
     if (!getImageContextMenu.__globalBound) {
-      console.info('【右键菜单｜注册】', { 类型: 'contextmenu/click/blur/scroll/keydown', 阶段: 'capture' });
-      window.addEventListener('mousedown', (e) => {
-        if (e.button !== 2) return;
-        console.info('【右键菜单｜窗口按下】', {
-          标签: e.target && e.target.tagName,
-          类名: e.target && e.target.className ? String(e.target.className).slice(0, 120) : '',
-          坐标: `${e.clientX},${e.clientY}`,
-          按键: e.button
-        });
-      }, true);
+      // console.info('【右键菜单｜注册】', { 类型: 'contextmenu/click/blur/scroll/keydown', 阶段: 'capture' });
       window.addEventListener('contextmenu', (e) => {
-        console.info('【右键菜单｜窗口收到右键】', {
-          标签: e.target && e.target.tagName,
-          类名: e.target && e.target.className ? String(e.target.className).slice(0, 120) : '',
-          坐标: `${e.clientX},${e.clientY}`
-        });
-        const anchor = e.target.closest && e.target.closest('.h-threads-img-a');
-        if (!anchor) {
-          console.info('【右键菜单｜跳过】', { 原因: '未命中图片链接' });
-          return;
-        }
-        if (anchor.closest('.h-preview-box')) {
-          console.info('【右键菜单｜跳过】', { 原因: '命中预览框图片' });
-          return;
-        }
-        console.info('【右键菜单｜命中】', {
-          链接: (anchor.href || '').slice(0, 200),
-          层级: 'window'
-        });
-        const ctx = resolveImageContextData(anchor);
-        if (!ctx) {
-          console.warn('【右键菜单｜解析失败】', { 原因: '图片上下文为空', 层级: 'window' });
-          return;
-        }
-        console.info('【右键菜单｜解析成功】', {
-          图片地址: String(ctx.imageUrl || '').slice(0, 200),
-          串链接: String(ctx.threadUrl || '').slice(0, 160),
-          文件名: ctx.fileName,
-          GIF: !!ctx.isGif,
-          层级: 'window'
-        });
-        e.preventDefault();
-        if (typeof e.stopImmediatePropagation === 'function') {
-          e.stopImmediatePropagation();
-        }
-        e.stopPropagation();
-        e.cancelBubble = true;
-        e.returnValue = false;
-        console.info('【右键菜单｜阻止原生】', { 成功: true, 层级: 'window' });
-        openImageContextMenu(ctx, e.clientX, e.clientY);
-        return false;
+        return handleImageContextMenuEvent(e, 'window') ? false : undefined;
       }, true);
       document.addEventListener('contextmenu', (e) => {
-        console.info('【右键菜单｜收到右键】', {
-          标签: e.target && e.target.tagName,
-          类名: e.target && e.target.className ? String(e.target.className).slice(0, 120) : '',
-          坐标: `${e.clientX},${e.clientY}`
-        });
-        if (e.defaultPrevented) {
-          console.info('【右键菜单｜跳过】', { 原因: '事件已在更上层处理', 层级: 'document' });
-          return;
-        }
-        const anchor = e.target.closest && e.target.closest('.h-threads-img-a');
-        if (!anchor) {
-          console.info('【右键菜单｜跳过】', { 原因: '未命中图片链接', 层级: 'document' });
-          return;
-        }
-        if (anchor.closest('.h-preview-box')) {
-          console.info('【右键菜单｜跳过】', { 原因: '命中预览框图片', 层级: 'document' });
-          return;
-        }
-        console.info('【右键菜单｜命中】', {
-          链接: (anchor.href || '').slice(0, 200),
-          层级: 'document'
-        });
-        const ctx = resolveImageContextData(anchor);
-        if (!ctx) {
-          console.warn('【右键菜单｜解析失败】', { 原因: '图片上下文为空', 层级: 'document' });
-          return;
-        }
-        console.info('【右键菜单｜解析成功】', {
-          图片地址: String(ctx.imageUrl || '').slice(0, 200),
-          串链接: String(ctx.threadUrl || '').slice(0, 160),
-          文件名: ctx.fileName,
-          GIF: !!ctx.isGif,
-          层级: 'document'
-        });
-                e.preventDefault();
-                if (typeof e.stopImmediatePropagation === 'function') {
-                    e.stopImmediatePropagation();
-                }
-                e.stopPropagation();
-                e.cancelBubble = true;
-                e.returnValue = false;
-                console.info('【右键菜单｜阻止原生】', { 成功: true, 层级: 'document' });
-                openImageContextMenu(ctx, e.clientX, e.clientY);
-                return false;
-            }, true);
+        return handleImageContextMenuEvent(e, 'document') ? false : undefined;
+      }, true);
       document.addEventListener('click', (e) => {
         const cur = document.getElementById('xdex-image-context-menu');
         if (!cur || cur.classList.contains('xdex-hidden')) return;
@@ -15458,7 +15424,7 @@ init() {
     menu.style.left = '-9999px';
     menu.style.top = '-9999px';
     menu.__context = null;
-    console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
+    // console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
   }
 
   function openImageContextMenu(context, x, y) {
@@ -15472,11 +15438,11 @@ init() {
     const top = Math.min(y, window.innerHeight - rect.height - 8);
     menu.style.left = Math.max(8, left) + 'px';
     menu.style.top = Math.max(8, top) + 'px';
-    console.info('【右键菜单｜显示】', {
-      位置: `${menu.style.left},${menu.style.top}`,
-      图片地址: String(context && context.imageUrl || '').slice(0, 200),
-      GIF: !!(context && context.isGif)
-    });
+    // console.info('【右键菜单｜显示】', {
+    //   位置: `${menu.style.left},${menu.style.top}`,
+    //   图片地址: String(context && context.imageUrl || '').slice(0, 200),
+    //   GIF: !!(context && context.isGif)
+    // });
   }
 
   function resolveThreadLinkFromImageTarget(target) {
@@ -15499,10 +15465,7 @@ init() {
       : anchorOrBox && anchorOrBox.querySelector
         ? anchorOrBox.querySelector('.h-threads-img-a')
         : null;
-    if (!anchor) {
-      console.debug('【右键菜单｜解析跳过】', { 原因: '未找到图片链接节点' });
-      return null;
-    }
+    if (!anchor) return null;
     const imgBox = anchor.closest('.h-threads-img-box');
     const img = imgBox ? imgBox.querySelector('.h-threads-img') : null;
     const rawUrl = (anchor.href || (img && (img.currentSrc || img.src)) || '').trim();
@@ -15832,28 +15795,12 @@ init() {
     await writeClipboardText(ctx.threadUrl, '串链接已复制');
   }
 
-  function bindImageContextMenu(container) {
-    if (!container || !container.querySelectorAll) return;
-    container.querySelectorAll('.h-threads-img-a').forEach((anchor) => {
-      if (anchor.closest('.h-preview-box')) return;
-      if (anchor.dataset.xdexContextMenuBound === '1') return;
-      anchor.dataset.xdexContextMenuBound = '1';
-    });
-  }
-
   function enableImageContextMenu(root = document) {
     return startupPerfDebug.measure('enableImageContextMenu', () => {
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     if (!cfg.enableImageContextMenu) return;
     ensureImageContextMenuStyle();
     getImageContextMenu();
-    const imageAnchors = root && root.querySelectorAll ? root.querySelectorAll('.h-threads-img-a') : [];
-    if (!imageAnchors || !imageAnchors.length) return;
-    bindImageContextMenu(root);
-    console.info('【右键菜单｜初始化】', {
-      根节点: root === document ? 'document' : (root && root.nodeName) || 'unknown',
-      图片链接数: imageAnchors.length
-    });
     }, () => startupPerfDebug.summarizeRoot(root));
   }
 
