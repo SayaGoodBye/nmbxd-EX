@@ -4779,6 +4779,7 @@ init() {
     const AUTO_REPORT_AFTER_MS = 60000;
     const stats = new Map();
     const events = [];
+    const browserEvents = [];
     const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
     const target = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
@@ -4821,12 +4822,56 @@ init() {
       }
     }
 
+    function mark(label, meta) {
+      const event = {
+        at: Math.round(now()),
+        label: `mark:${label}`,
+        duration: 0,
+        meta: normalizeMeta(meta)
+      };
+      events.push(event);
+      if (typeof performance !== 'undefined' && performance.mark) {
+        try { performance.mark(`XDEX:${label}`); } catch (e) {}
+      }
+      return event;
+    }
+
     function measure(label, fn, meta) {
       const started = now();
       try {
         return fn();
       } finally {
         record(label, now() - started, meta);
+      }
+    }
+
+    async function measureAsync(label, fn, meta) {
+      const started = now();
+      try {
+        return await fn();
+      } finally {
+        record(label, now() - started, meta);
+      }
+    }
+
+    function measureObserver(label, mutations, fn, meta) {
+      let result;
+      const started = now();
+      try {
+        result = fn();
+        return result;
+      } finally {
+        let added = 0;
+        let removed = 0;
+        for (const mutation of mutations || []) {
+          added += mutation.addedNodes ? mutation.addedNodes.length : 0;
+          removed += mutation.removedNodes ? mutation.removedNodes.length : 0;
+        }
+        record(`observer:${label}`, now() - started, () => Object.assign({
+          records: mutations ? mutations.length : 0,
+          added,
+          removed
+        }, normalizeMeta(meta) || {}));
       }
     }
 
@@ -4875,7 +4920,8 @@ init() {
         elapsed,
         autoWindowMs: AUTO_REPORT_AFTER_MS,
         stats: table,
-        events: events.slice(-200)
+        events: events.slice(-300),
+        browserEvents: browserEvents.slice(-200)
       };
       console.log(options.auto ? '[XDEX startup perf auto report]' : '[XDEX startup perf report]', result);
       return result;
@@ -4884,15 +4930,64 @@ init() {
     function reset() {
       stats.clear();
       events.length = 0;
+      browserEvents.length = 0;
       console.log('[XDEX startup perf] reset');
       return 'reset';
     }
 
-    const api = { measure, record, recordObserver, report, reset, summarizeRoot };
+    function installBrowserObservers() {
+      if (typeof PerformanceObserver === 'undefined' || !PerformanceObserver.supportedEntryTypes) return;
+      const supported = PerformanceObserver.supportedEntryTypes;
+      if (supported.includes('longtask')) {
+        try {
+          const observer = new PerformanceObserver(list => {
+            list.getEntries().forEach(entry => {
+              const item = {
+                at: Math.round(entry.startTime),
+                label: 'browser:longtask',
+                duration: Number(entry.duration.toFixed(2)),
+                name: entry.name || '',
+                attribution: Array.from(entry.attribution || []).map(attr => ({
+                  name: attr.name || '',
+                  containerType: attr.containerType || '',
+                  containerName: attr.containerName || '',
+                  containerSrc: attr.containerSrc || ''
+                }))
+              };
+              browserEvents.push(item);
+              console.log('[XDEX browser perf]', item);
+            });
+          });
+          observer.observe({ entryTypes: ['longtask'] });
+        } catch (e) {}
+      }
+      if (supported.includes('long-animation-frame')) {
+        try {
+          const observer = new PerformanceObserver(list => {
+            list.getEntries().forEach(entry => {
+              const item = {
+                at: Math.round(entry.startTime),
+                label: 'browser:long-animation-frame',
+                duration: Number(entry.duration.toFixed(2)),
+                renderStart: entry.renderStart ? Number(entry.renderStart.toFixed(2)) : 0,
+                styleAndLayoutStart: entry.styleAndLayoutStart ? Number(entry.styleAndLayoutStart.toFixed(2)) : 0,
+                blockingDuration: entry.blockingDuration ? Number(entry.blockingDuration.toFixed(2)) : 0
+              };
+              browserEvents.push(item);
+              console.log('[XDEX browser perf]', item);
+            });
+          });
+          observer.observe({ type: 'long-animation-frame', buffered: true });
+        } catch (e) {}
+      }
+    }
+
+    const api = { measure, measureAsync, measureObserver, record, recordObserver, mark, report, reset, summarizeRoot };
     window.__xdexStartupPerfReport = report;
     window.__xdexStartupPerfReset = reset;
     target.__xdexStartupPerfReport = report;
     target.__xdexStartupPerfReset = reset;
+    installBrowserObservers();
     setTimeout(() => {
       report({ auto: true });
     }, AUTO_REPORT_AFTER_MS);
@@ -4921,9 +5016,13 @@ init() {
     const runStep = (index) => {
       if (index >= list.length) return;
       const step = list[index];
+      startupPerfDebug.mark(`deferStartupSteps:${label}:${index + 1}:start`, { delay, index, step: step.label || '' });
       try {
         startupPerfDebug.measure(step.label || `deferStartupSteps:${label}:${index + 1}`, step.run, step.meta || { delay, index });
       } catch (e) { console.warn('启动分片任务失败', step.label || label, e); }
+      finally {
+        startupPerfDebug.mark(`deferStartupSteps:${label}:${index + 1}:end`, { delay, index, step: step.label || '' });
+      }
       setTimeout(() => runStep(index + 1), 0);
     };
 
@@ -5615,6 +5714,8 @@ init() {
     
       // 串内页加载
       async function loadNext() {
+        const loadNextStarted = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        startupPerfDebug.mark('seamless.loadNext.start', { lastLoadedPage, loading, done });
         console.log('[loadNext] 函数被调用');
 
         const now = Date.now();
@@ -5723,16 +5824,16 @@ init() {
 
         loading = true;
         try {
-          const res = await fetch(nextUrl, { credentials: 'same-origin' });
+          const res = await startupPerfDebug.measureAsync('seamless.loadNext.fetch', () => fetch(nextUrl, { credentials: 'same-origin' }), { nextPageNum, nextUrl });
           if (!res.ok) {
               toast('刷新失败，网络错误');
               return;
           }
-          const html = await res.text();
-          const { replies, pagination } = extractFromHTML(html);
+          const html = await startupPerfDebug.measureAsync('seamless.loadNext.responseText', () => res.text(), { nextPageNum });
+          const { replies, pagination } = startupPerfDebug.measure('seamless.loadNext.extractFromHTML', () => extractFromHTML(html), { nextPageNum, htmlLength: html.length });
           if (!replies) { return; }
 
-          let pagClone = pagination ? pagination.cloneNode(true) : null;
+          let pagClone = startupPerfDebug.measure('seamless.loadNext.clonePagination', () => pagination ? pagination.cloneNode(true) : null, { nextPageNum });
           if (!pagClone) {
             pagClone = document.createElement('ul');
             pagClone.className = 'uk-pagination uk-pagination-left h-pagination';
@@ -5743,7 +5844,7 @@ init() {
           if (lastPageNum) pagClone.setAttribute('data-last-page', String(lastPageNum));
           pagClone.setAttribute('data-cloned-page', String(nextPageNum));
 
-          const repliesClone = replies.cloneNode(true);
+          const repliesClone = startupPerfDebug.measure('seamless.loadNext.cloneReplies', () => replies.cloneNode(true), { nextPageNum, replies: replies.querySelectorAll ? replies.querySelectorAll('.h-threads-item-reply').length : 0 });
           repliesClone.setAttribute('data-cloned-page', String(nextPageNum));
           removeIdsFromNode(repliesClone);
 
@@ -5751,12 +5852,14 @@ init() {
           if (!containers) { return; }
           const { lastReplies } = containers;
 
-          lastReplies.insertAdjacentElement('afterend', pagClone);
-          pagClone.insertAdjacentElement('afterend', repliesClone);
+          startupPerfDebug.measure('seamless.loadNext.insertDom', () => {
+            lastReplies.insertAdjacentElement('afterend', pagClone);
+            pagClone.insertAdjacentElement('afterend', repliesClone);
+          }, { nextPageNum });
 
           // ======== 新增：让其他脚本对新内容生效 ========
-          reinitForNewContent(repliesClone);
-          applyPageEnhancements(repliesClone, cfg);
+          startupPerfDebug.measure('seamless.loadNext.reinitForNewContent', () => reinitForNewContent(repliesClone), { nextPageNum });
+          startupPerfDebug.measure('seamless.loadNext.applyPageEnhancements', () => applyPageEnhancements(repliesClone, cfg), { nextPageNum });
           // ============================================
 
           // 更新底部分页条
@@ -5797,10 +5900,15 @@ init() {
           return;
         } finally {
           loading = false;
+          const finished = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+          startupPerfDebug.record('seamless.loadNext.total', finished - loadNextStarted, { lastLoadedPage, loading, done });
+          startupPerfDebug.mark('seamless.loadNext.end', { lastLoadedPage, loading, done });
         }
       }
 
       async function loadNextBoard() {
+        const loadNextBoardStarted = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        startupPerfDebug.mark('seamless.loadNextBoard.start', { lastLoadedPage, loading, done });
         if (loading || done) return;
         const nextPageNum = lastLoadedPage + 1;
         if (loadedPages.has(nextPageNum)) return;
@@ -5817,10 +5925,10 @@ init() {
 
         loading = true;
         try {
-          const res = await fetch(nextUrl, { credentials: 'same-origin' });
+          const res = await startupPerfDebug.measureAsync('seamless.loadNextBoard.fetch', () => fetch(nextUrl, { credentials: 'same-origin' }), { nextPageNum, nextUrl });
           if (!res.ok) { done = true; return; }
-          const html = await res.text();
-          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const html = await startupPerfDebug.measureAsync('seamless.loadNextBoard.responseText', () => res.text(), { nextPageNum });
+          const doc = startupPerfDebug.measure('seamless.loadNextBoard.parseHTML', () => new DOMParser().parseFromString(html, 'text/html'), { nextPageNum, htmlLength: html.length });
           const list = doc.querySelector('.h-threads-list');
           const pagination = doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination');
 
@@ -5850,7 +5958,7 @@ init() {
           toast(`正在加载第 ${nextPageNum} 页……`);
           if (!list) { done = true; return; }
 
-          const listClone = list.cloneNode(true);
+          const listClone = startupPerfDebug.measure('seamless.loadNextBoard.cloneList', () => list.cloneNode(true), { nextPageNum, threads: list.querySelectorAll ? list.querySelectorAll('.h-threads-item').length : 0 });
           removeIdsFromNode(listClone);
 
           // 找到当前页面最后一个 .h-threads-list
@@ -5860,13 +5968,15 @@ init() {
             let pagClone = pagination ? pagination.cloneNode(true) : null;
             if (pagClone) {
               removeIdsFromNode(pagClone);
-              lastList.insertAdjacentElement('afterend', pagClone);
-              pagClone.insertAdjacentElement('afterend', listClone);
+              startupPerfDebug.measure('seamless.loadNextBoard.insertDom', () => {
+                lastList.insertAdjacentElement('afterend', pagClone);
+                pagClone.insertAdjacentElement('afterend', listClone);
+              }, { nextPageNum });
 
               // ======== 新增：让其他脚本对新内容生效 ========
-              reinitForNewContent(listClone);
+              startupPerfDebug.measure('seamless.loadNextBoard.reinitForNewContent', () => reinitForNewContent(listClone), { nextPageNum });
 
-              applyPageEnhancements(listClone, cfg);
+              startupPerfDebug.measure('seamless.loadNextBoard.applyPageEnhancements', () => applyPageEnhancements(listClone, cfg), { nextPageNum });
 
               // ============================================
 
@@ -5879,12 +5989,12 @@ init() {
                 }
               }
             } else {
-              lastList.insertAdjacentElement('afterend', listClone);
+              startupPerfDebug.measure('seamless.loadNextBoard.insertDom', () => lastList.insertAdjacentElement('afterend', listClone), { nextPageNum });
               // ======== 新增：让其他脚本对新内容生效 ========
-              reinitForNewContent(listClone);
-              try { if (cfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
+              startupPerfDebug.measure('seamless.loadNextBoard.reinitForNewContent', () => reinitForNewContent(listClone), { nextPageNum });
+              try { if (cfg.enableQuotePreview && typeof enableQuotePreview === 'function') startupPerfDebug.measure('seamless.loadNextBoard.enableQuotePreview', () => enableQuotePreview(), { nextPageNum }); } catch (e) {}
               if (typeof initContent === 'function') {
-                initContent(listClone);   // 重新绑定引用悬浮预览
+                startupPerfDebug.measure('seamless.loadNextBoard.initContent', () => initContent(listClone), { nextPageNum });   // 重新绑定引用悬浮预览
               }
               //autoHideRefView(listClone); // 拓展引用悬浮
               // ============================================
@@ -5904,6 +6014,9 @@ init() {
         return;
         } finally {
           loading = false;
+          const finished = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+          startupPerfDebug.record('seamless.loadNextBoard.total', finished - loadNextBoardStarted, { lastLoadedPage, loading, done });
+          startupPerfDebug.mark('seamless.loadNextBoard.end', { lastLoadedPage, loading, done });
         }
       }
 
@@ -7151,12 +7264,13 @@ init() {
           // 监听 class 变化
           if (!imgBox.__overflowObserver) {
             const observer = new MutationObserver(mutations => {
-              startupPerfDebug.recordObserver('hdImageBox', mutations, () => ({ imgBoxes: 1 }));
+              startupPerfDebug.measureObserver('hdImageBox', mutations, () => {
               mutations.forEach(mutation => {
                 if (mutation.attributeName === 'class') {
                   handleImageLayout.handleActiveImageBox(imgBox);
                 }
               });
+              }, () => ({ imgBoxes: 1 }));
             });
 
             observer.observe(imgBox, {
@@ -7198,7 +7312,7 @@ init() {
     // 监听 DOM 变化
     if (root === document && !enableHDImageAndLayoutFix.__globalObserver) {
       const observer = new MutationObserver(mutations => {
-        startupPerfDebug.recordObserver('hdGlobal', mutations, () => startupPerfDebug.summarizeRoot(document));
+        startupPerfDebug.measureObserver('hdGlobal', mutations, () => {
         mutations.forEach(mutation => {
           mutation.addedNodes.forEach(node => {
             if (node.nodeType !== 1 || !node.dataset) return;
@@ -7208,6 +7322,7 @@ init() {
           });
         });
         schedulePendingHDImageAndLayoutFix();
+        }, () => startupPerfDebug.summarizeRoot(document));
       });
 
       observer.observe(document.body, {
@@ -11941,7 +12056,7 @@ init() {
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
               "(　‸ო‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)ゞ",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
-              "(ˇωˇ ﾐэ)Э三三三三　乚","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
+              "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
           const EXTRA_RICH = {
               "҉( ﾟ∀。)": "　　҉\n( ﾟ∀。)",
@@ -12425,15 +12540,16 @@ init() {
             // 监听 DOM 变化
             let previewStyleScheduled = false;
             const mo = new MutationObserver((mutations) => {
-              startupPerfDebug.recordObserver('enhanceIsland.previewBoxStyle', mutations, () => ({
-                previewBoxes: document.querySelectorAll('.h-preview-box').length
-              }));
+              startupPerfDebug.measureObserver('enhanceIsland.previewBoxStyle', mutations, () => {
               if (previewStyleScheduled) return;
               previewStyleScheduled = true;
               requestAnimationFrame(() => {
                 previewStyleScheduled = false;
                 applyBoxStyle();
               });
+              }, () => ({
+                previewBoxes: document.querySelectorAll('.h-preview-box').length
+              }));
             });
 
             // 监听父节点变化（包括被移动到别的容器）
@@ -15726,6 +15842,7 @@ init() {
   }
 
   function enableImageContextMenu(root = document) {
+    return startupPerfDebug.measure('enableImageContextMenu', () => {
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     if (!cfg.enableImageContextMenu) return;
     ensureImageContextMenuStyle();
@@ -15737,15 +15854,21 @@ init() {
       根节点: root === document ? 'document' : (root && root.nodeName) || 'unknown',
       图片链接数: imageAnchors.length
     });
+    }, () => startupPerfDebug.summarizeRoot(root));
   }
 
   /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
-  window.addEventListener('load', () => enableHDImageAndLayoutFix(document));
+  window.addEventListener('load', () => {
+    startupPerfDebug.mark('window.load.start', startupPerfDebug.summarizeRoot(document));
+    startupPerfDebug.measure('window.load.enableHDImageAndLayoutFix', () => enableHDImageAndLayoutFix(document), () => startupPerfDebug.summarizeRoot(document));
+    startupPerfDebug.mark('window.load.end', startupPerfDebug.summarizeRoot(document));
+  });
   installEarlyStartupObserver();
 
   $(document).ready(() => {
+    startupPerfDebug.mark('document.ready.start', startupPerfDebug.summarizeRoot(document));
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
@@ -15775,6 +15898,7 @@ init() {
     interceptReplyForm();                                            //拦截回复中间页
     enhancePostFormLayout();                                         //发帖UI调整
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
+    startupPerfDebug.mark('document.ready.syncSetup.end', startupPerfDebug.summarizeRoot(document));
 
     // 保存原始函数
     const _initContent = window.initContent;
@@ -15865,6 +15989,7 @@ init() {
           }
       }, { passive: true });
     }
+    startupPerfDebug.mark('document.ready.end', startupPerfDebug.summarizeRoot(document));
 
     // 全局：在运行时立即应用“全部展开 / 全部收起”模式
     window.applyPostExpandAllMode = function(enable) {
