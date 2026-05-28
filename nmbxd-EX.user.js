@@ -26,8 +26,8 @@
 // @note         致谢：部分功能移植自[X岛-揭示板的增强型体验](https://greasyfork.org/zh-CN/scripts/497875-x%E5%B2%9B-%E6%8F%AD%E7%A4%BA%E6%9D%BF%E7%9A%84%E5%A2%9E%E5%BC%BA%E5%9E%8B%E4%BD%93%E9%AA%8C#%E8%BF%9E%E6%8E%A5%E7%9B%B4%E6%8E%A5%E8%B7%B3%E8%BD%AC)
 // @note         致谢：来自4sYbzEX的搜索服务[野生搜索酱](https://www.nmbxd.com/t/64792841)
 // @note         致谢：来自acVMxuv的[侧边栏优化](https://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88)
-// @downloadURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
-// @updateURL https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
+// @downloadURL  https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js
+// @updateURL    https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js
 // @run-at       document-start
 // ==/UserScript==
 /* global $, jQuery */
@@ -5143,6 +5143,16 @@ init() {
     }, 50);
   }
 
+  function refreshEnhanceIslandAutoTitle() {
+    try {
+      if (typeof window.enhanceIslandAutoTitle === 'function') {
+        window.enhanceIslandAutoTitle();
+      }
+    } catch (e) {
+      console.warn('[enhanceIslandAutoTitle] refresh failed:', e);
+    }
+  }
+
   function initSeamlessPaging() {
     let lastCheckAt = 0;
 
@@ -5875,6 +5885,7 @@ init() {
           lastLoadedPage = nextPageNum;
 
           try { history.pushState(null, '', nextUrl); } catch (e) {}
+          refreshEnhanceIslandAutoTitle();
 
           ensureSentinelPlaced();
 
@@ -6005,6 +6016,7 @@ init() {
         loadedPages.add(nextPageNum);
         lastLoadedPage = nextPageNum;
         try { history.pushState(null, '', nextUrl); } catch (e) {}
+        refreshEnhanceIslandAutoTitle();
 
         const hasNextLink = pagination && Array.from(pagination.querySelectorAll('a')).some(a => /下一页|下页|Next|›|»|→/i.test(a.textContent));
         //if (!hasNextLink) done = true;
@@ -7476,10 +7488,12 @@ init() {
     // 3. 工具按钮逻辑（收起/旋转）
     function applyResizeForRotation(img, imgA, rotateIndex) {
       if (!img || !imgA) return;
+      const normalizedRotateIndex = ((rotateIndex % rotateArray.length) + rotateArray.length) % rotateArray.length;
+      img.style.transform = rotateArray[normalizedRotateIndex];
       const width = img.width;
       const height = img.height;
 
-      if (rotateIndex === 1 || rotateIndex === 3) {
+      if (normalizedRotateIndex === 1 || normalizedRotateIndex === 3) {
         const offset = (width - height) / 2;
         img.style.top = offset + 'px';
         img.style.left = -offset + 'px';
@@ -7511,6 +7525,7 @@ init() {
       const img = box.querySelector('.h-threads-img');
       const imgA = box.querySelector('.h-threads-img-a');
       const toolSmall = box.querySelector('.h-threads-img-tool-small');
+      const toolLarge = box.querySelector('.h-threads-img-tool-large');
       const toolLeft = box.querySelector('.h-threads-img-tool-left');
       const toolRight = box.querySelector('.h-threads-img-tool-right');
 
@@ -7520,8 +7535,6 @@ init() {
         'matrix(-1, 0, 0, -1, 0, 0)',
         'matrix(0, -1, 1, 0, 0, 0)'
       ];
-      let rotateIndex = 0;
-
       if (toolSmall && imgA) {
         toolSmall.addEventListener('click', (e) => {
           e.preventDefault();
@@ -7530,14 +7543,33 @@ init() {
         });
       }
 
+      if (toolLarge && imgA) {
+        toolLarge.href = imgA.href || img.src || 'javascript:;';
+        toolLarge.target = '_blank';
+        toolLarge.addEventListener('click', (e) => {
+          e.stopImmediatePropagation();
+          const url = imgA.href || img.src || '';
+          if (!url || url === location.href || /(^|\/)?:javascript:;?$/.test(url)) {
+            e.preventDefault();
+            return;
+          }
+          toolLarge.href = url;
+        });
+      }
+
       if (toolLeft && img) {
         toolLeft.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopImmediatePropagation();
           // 保护：仅在预览框且激活时旋转
-          if (!box.closest('.h-preview-box') || !box.classList.contains('h-active')) return;
+          if (!box.closest('.h-preview-box')) return;
+          if (!box.classList.contains('h-active')) {
+            box.classList.add('h-active');
+            hdImageLazyLoader.load(img, imgA && imgA.href ? imgA.href : img.src);
+          }
+          let rotateIndex = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
           rotateIndex = (rotateIndex - 1 + rotateArray.length) % rotateArray.length;
-          img.dataset.rotateIndex = rotateIndex;
+          img.dataset.rotateIndex = String(rotateIndex);
           updatePreviewImageLayout(box);
         });
       }
@@ -7547,9 +7579,14 @@ init() {
           e.preventDefault();
           e.stopImmediatePropagation();
           // 保护：仅在预览框且激活时旋转
-          if (!box.closest('.h-preview-box') || !box.classList.contains('h-active')) return;
+          if (!box.closest('.h-preview-box')) return;
+          if (!box.classList.contains('h-active')) {
+            box.classList.add('h-active');
+            hdImageLazyLoader.load(img, imgA && imgA.href ? imgA.href : img.src);
+          }
+          let rotateIndex = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
           rotateIndex = (rotateIndex + 1) % rotateArray.length;
-          img.dataset.rotateIndex = rotateIndex;
+          img.dataset.rotateIndex = String(rotateIndex);
           updatePreviewImageLayout(box);
         });
       }
@@ -10414,9 +10451,6 @@ init() {
             }));
             // 重置预览框
             const previewBox = document.querySelector('.h-preview-box');
-            if (typeof enableHDImage === 'function') {
-              enableHDImage(previewBox);
-            }
             if (previewBox) {
               const cur = getCurrentCookie();
               const cookieText = cur ? cur.name : '--';
@@ -10430,7 +10464,7 @@ init() {
                           <div class="h-threads-img-box">
                             <div class="h-threads-img-tool uk-animation-slide-top">
                               <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                              <a href=":javascript:;" class="h-threads-img-tool-btn uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
+                              <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
                               <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
                               <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
                             </div>
@@ -10452,6 +10486,9 @@ init() {
                     </div>
                   </div>
                   </div>`;
+              if (typeof enableHDImage === 'function') {
+                enableHDImage(previewBox);
+              }
             }
             if (typeof refreshCookies === 'function') {
               refreshCookies(() => {
@@ -12527,7 +12564,7 @@ init() {
                 <div class="h-threads-img-box">
                   <div class="h-threads-img-tool uk-animation-slide-top">
                     <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                    <a href=":javascript:;" class="h-threads-img-tool-btn uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
+                    <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
                     <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
                     <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
                   </div>
@@ -12644,6 +12681,8 @@ init() {
             function updatePreviewFromFile(file) {
                 const imgEl = $box.find('.h-threads-img')[0];
                 const imgLink = $box.find('.h-threads-img-a')[0];
+                const toolLarge = $box.find('.h-threads-img-tool-large')[0];
+                const imgBox = $box.find('.h-threads-img-box')[0];
                 if (!imgEl) return;
 
                 // 清理旧 URL
@@ -12658,6 +12697,12 @@ init() {
                   imgEl.dataset.prevObjectUrl = objectUrl;
                   imgEl.style.display = 'block';
                   if (imgLink) imgLink.href = objectUrl;
+                  if (toolLarge) toolLarge.href = objectUrl;
+                  if (imgBox) imgBox.classList.remove('h-active');
+                  imgEl.dataset.rotateIndex = '0';
+                  imgEl.style.transform = '';
+                  imgEl.style.top = '0px';
+                  imgEl.style.left = '0px';
                   // 清理默认宽度，避免占满
                   imgEl.style.width = 'auto';
                   imgEl.style.height = 'auto';
@@ -12680,6 +12725,22 @@ init() {
                           imgEl.style.height = 'auto';
                       }
                   }
+              } else {
+                  imgEl.removeAttribute('src');
+                  imgEl.style.display = 'none';
+                  imgEl.style.maxWidth = '';
+                  imgEl.style.width = '';
+                  imgEl.style.height = '';
+                  imgEl.style.transform = '';
+                  imgEl.style.top = '0px';
+                  imgEl.style.left = '0px';
+                  delete imgEl.dataset.rotateIndex;
+                  if (imgLink) {
+                    imgLink.removeAttribute('href');
+                    imgLink.style.height = '';
+                  }
+                  if (toolLarge) toolLarge.href = 'javascript:;';
+                  if (imgBox) imgBox.classList.remove('h-active');
               }
 
             }
@@ -13775,7 +13836,7 @@ init() {
                           <div class="h-threads-img-box">
                             <div class="h-threads-img-tool uk-animation-slide-top">
                               <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                              <a href=":javascript:;" class="h-threads-img-tool-btn uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
+                              <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
                               <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
                               <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
                             </div>
@@ -13798,6 +13859,9 @@ init() {
                     </div>
                   </div>
                   </div>`;
+              if (typeof enableHDImage === 'function') {
+                enableHDImage(previewBox);
+              }
             }
             updatePreviewCookieId();
             toast('已重置');
