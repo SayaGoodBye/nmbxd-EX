@@ -7486,21 +7486,29 @@ init() {
     });
 
     // 3. 工具按钮逻辑（收起/旋转）
+    const rotateArray = [
+      'matrix(1, 0, 0, 1, 0, 0)',
+      'matrix(0, 1, -1, 0, 0, 0)',
+      'matrix(-1, 0, 0, -1, 0, 0)',
+      'matrix(0, -1, 1, 0, 0, 0)'
+    ];
+
     function applyResizeForRotation(img, imgA, rotateIndex) {
       if (!img || !imgA) return;
       const normalizedRotateIndex = ((rotateIndex % rotateArray.length) + rotateArray.length) % rotateArray.length;
-      img.style.transform = rotateArray[normalizedRotateIndex];
+      img.style.setProperty('transform', rotateArray[normalizedRotateIndex], 'important');
+      img.style.setProperty('transform-origin', 'center center', 'important');
       const width = img.width;
       const height = img.height;
 
       if (normalizedRotateIndex === 1 || normalizedRotateIndex === 3) {
         const offset = (width - height) / 2;
-        img.style.top = offset + 'px';
-        img.style.left = -offset + 'px';
+        img.style.setProperty('top', offset + 'px', 'important');
+        img.style.setProperty('left', -offset + 'px', 'important');
         imgA.style.height = width + 'px';
       } else {
-        img.style.top = '0px';
-        img.style.left = '0px';
+        img.style.setProperty('top', '0px', 'important');
+        img.style.setProperty('left', '0px', 'important');
         imgA.style.height = height + 'px';
       }
     }
@@ -7512,6 +7520,22 @@ init() {
       if (!img || !imgA) return;
       const rotateIndex = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
       applyResizeForRotation(img, imgA, rotateIndex);
+    }
+
+    function rotatePreviewImage(box, delta) {
+      if (!box || !box.closest('.h-preview-box')) return;
+      const img = box.querySelector('.h-threads-img');
+      const imgA = box.querySelector('.h-threads-img-a');
+      if (!img || !imgA) return;
+      if (!box.classList.contains('h-active')) {
+        box.classList.add('h-active');
+        hdImageLazyLoader.load(img, imgA.getAttribute('href') || img.src || '');
+      }
+      const current = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
+      const next = (current + delta + rotateArray.length) % rotateArray.length;
+      img.dataset.rotateIndex = String(next);
+      updatePreviewImageLayout(box);
+      requestAnimationFrame(() => updatePreviewImageLayout(box));
     }
 
     // 3. 仅绑定预览框内的图片盒子工具按钮
@@ -7529,12 +7553,6 @@ init() {
       const toolLeft = box.querySelector('.h-threads-img-tool-left');
       const toolRight = box.querySelector('.h-threads-img-tool-right');
 
-      const rotateArray = [
-        'matrix(1, 0, 0, 1, 0, 0)',
-        'matrix(0, 1, -1, 0, 0, 0)',
-        'matrix(-1, 0, 0, -1, 0, 0)',
-        'matrix(0, -1, 1, 0, 0, 0)'
-      ];
       if (toolSmall && imgA) {
         toolSmall.addEventListener('click', (e) => {
           e.preventDefault();
@@ -7561,16 +7579,7 @@ init() {
         toolLeft.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopImmediatePropagation();
-          // 保护：仅在预览框且激活时旋转
-          if (!box.closest('.h-preview-box')) return;
-          if (!box.classList.contains('h-active')) {
-            box.classList.add('h-active');
-            hdImageLazyLoader.load(img, imgA && imgA.href ? imgA.href : img.src);
-          }
-          let rotateIndex = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
-          rotateIndex = (rotateIndex - 1 + rotateArray.length) % rotateArray.length;
-          img.dataset.rotateIndex = String(rotateIndex);
-          updatePreviewImageLayout(box);
+          rotatePreviewImage(box, -1);
         });
       }
 
@@ -7578,16 +7587,7 @@ init() {
         toolRight.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopImmediatePropagation();
-          // 保护：仅在预览框且激活时旋转
-          if (!box.closest('.h-preview-box')) return;
-          if (!box.classList.contains('h-active')) {
-            box.classList.add('h-active');
-            hdImageLazyLoader.load(img, imgA && imgA.href ? imgA.href : img.src);
-          }
-          let rotateIndex = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
-          rotateIndex = (rotateIndex + 1) % rotateArray.length;
-          img.dataset.rotateIndex = String(rotateIndex);
-          updatePreviewImageLayout(box);
+          rotatePreviewImage(box, 1);
         });
       }
     });
