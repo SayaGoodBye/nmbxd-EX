@@ -11274,10 +11274,47 @@ init() {
    * tag 13. 颜文字增强-光标处插入/选择框优化/额外颜文字拓展
    * -------------------------------------------------- */
   function kaomojiEnhancer() {
+      const SELECTOR = '#h-emot-select';
+      let enhanceScheduled = false;
+
+      function runKaomojiEnhancePass() {
+        initInsertAtCaret();      // 功能 1：颜文字插入光标处
+        extendKaomojiSet();       // 功能 3：颜文字样式拓展，先补稳定 key
+        optimizeSelectorStyle();  // 功能 2：选择框样式优化，基于稳定 key 渲染排序
+      }
+
+      function scheduleKaomojiEnhancePass() {
+        if (enhanceScheduled) return;
+        enhanceScheduled = true;
+        setTimeout(() => {
+          enhanceScheduled = false;
+          runKaomojiEnhancePass();
+        }, 0);
+      }
+
+      function observeKaomojiSelects() {
+        if (kaomojiEnhancer.__selectObserverInstalled) return;
+        const observeRoot = document.body || document.documentElement;
+        if (!observeRoot) return;
+        kaomojiEnhancer.__selectObserverInstalled = true;
+
+        const observer = new MutationObserver(mutations => {
+          for (const mutation of mutations) {
+            for (const node of mutation.addedNodes || []) {
+              if (!node || node.nodeType !== 1) continue;
+              if ((node.matches && node.matches(SELECTOR)) || (node.querySelector && node.querySelector(SELECTOR))) {
+                scheduleKaomojiEnhancePass();
+                return;
+              }
+            }
+          }
+        });
+        observer.observe(observeRoot, { childList: true, subtree: true });
+      }
+
       // 初始化所有功能
-      initInsertAtCaret();      // 功能 1：颜文字插入光标处
-      optimizeSelectorStyle();  // 功能 2：选择框样式优化
-      extendKaomojiSet();       // 功能 3：颜文字样式拓展
+      runKaomojiEnhancePass();
+      observeKaomojiSelects();
 
       /**
        * 功能 1：选择颜文字后插入到光标位置
@@ -11397,7 +11434,6 @@ init() {
        * 功能 2：颜文字选择框样式优化
        */
       function optimizeSelectorStyle() {
-        const SELECTOR = '#h-emot-select';
         const GAP = 4;               // 单元格间距（缩小）
         const CHAR_W = 14;           // 每个字宽度（px）
         const CHAR_H = 16;           // 每个字高度（px）
@@ -11405,11 +11441,18 @@ init() {
         const ITEM_W = CHAR_W * 6 + 6; // 大约半个长颜文字宽度
         const ITEM_H = CHAR_H * 2 + 4; // 不超过两行字高
         const KAO_STATS_KEY = 'kaomojiUsageStats';
+        let kaomojiStatsReadable = true;
 
         function getSortMode() {
           try {
+            const stateMode = SettingPanel && SettingPanel.state && SettingPanel.state.kaomojiSort;
+            if (stateMode === 'default' || stateMode === 'recent' || stateMode === 'freq') return stateMode;
+          } catch (e) {}
+
+          try {
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
-            return cfg.kaomojiSort || 'default';
+            const mode = cfg.kaomojiSort || 'default';
+            return (mode === 'default' || mode === 'recent' || mode === 'freq') ? mode : 'default';
           } catch (e) {
             return 'default';
           }
@@ -11418,13 +11461,16 @@ init() {
         function loadKaomojiStats() {
           try {
             const v = GM_getValue(KAO_STATS_KEY, {});
-            return (v && typeof v === 'object') ? v : {};
+            kaomojiStatsReadable = !!(v && typeof v === 'object');
+            return kaomojiStatsReadable ? v : {};
           } catch (e) {
+            kaomojiStatsReadable = false;
             return {};
           }
         }
 
         function saveKaomojiStats(stats) {
+          if (!kaomojiStatsReadable) return;
           try { GM_setValue(KAO_STATS_KEY, stats || {}); } catch (e) {}
         }
 
@@ -11467,6 +11513,15 @@ init() {
                 lastUsed: Number(stats[legacyKey].lastUsed) || 0
               };
               delete stats[legacyKey];
+            }
+
+            const fallbackKey = `k:${label}\nv:${normalizeKaomojiValue(opt?.value)}`;
+            if (key !== fallbackKey && !stats[key] && stats[fallbackKey] && typeof stats[fallbackKey] === 'object') {
+              stats[key] = {
+                count: Number(stats[fallbackKey].count) || 0,
+                lastUsed: Number(stats[fallbackKey].lastUsed) || 0
+              };
+              delete stats[fallbackKey];
             }
 
             if (!stats[key]) stats[key] = { count: 0, lastUsed: 0 };
@@ -12063,7 +12118,6 @@ init() {
        * 功能 3：颜文字样式拓展
        */
       function extendKaomojiSet() {
-          const SELECTOR = '#h-emot-select';
           const EXTRA_EMOTS = [
               "( ´_ゝ`)旦","(<ゝω・) ☆","(`ε´ (つ*⊂)","=͟͟͞͞( 'ヮ' 三 'ヮ' =͟͟͞͞)","↙(`ヮ´ )↗ 开摆！",
               "(っ˘Д˘)ノ<","(ﾉ#)`д´)σ","₍₍(ง`ᝫ´ )ว⁾","( `ᵂ´)","( *・ω・)✄╰ひ╯","U•ェ•*U","⊂( ﾟωﾟ)つ",
@@ -12140,6 +12194,7 @@ init() {
           // 一次性补齐（选择器就绪且已有至少一个选项时调用）
           function patchSelect(sel) {
               if (!sel || sel.dataset.kaoExtended === '1') return;
+              if (!sel.options || sel.options.length === 0) return;
               // 去重集合
               const existingValues = new Set();
               const existingLabels = new Set();
@@ -12189,6 +12244,16 @@ init() {
               sel.dispatchEvent(new CustomEvent('kaomoji:updated', { bubbles: true }));
           }
 
+          function patchSelectsIn(root = document) {
+              if (!root) return;
+              const selects = [];
+              if (root.matches && root.matches(SELECTOR)) selects.push(root);
+              if (root.querySelectorAll) root.querySelectorAll(SELECTOR).forEach(sel => selects.push(sel));
+              selects.forEach(sel => {
+                  if (sel.options && sel.options.length > 0) patchSelect(sel);
+              });
+          }
+
           // 方案 A：钩住 jQuery 的 append，仅针对 #h-emot-select
           (function hookjQueryAppend(){
               const $ = window.jQuery;
@@ -12199,10 +12264,7 @@ init() {
                   try {
                       // 如果目标包含我们的 select，就尝试打补丁
                       this.each(function(){
-                          if (this && this.querySelector) {
-                              const sel = this.matches && this.matches(SELECTOR) ? this : this.querySelector(SELECTOR);
-                              if (sel) patchSelect(sel);
-                          }
+                          patchSelectsIn(this);
                       });
                   } catch(_) {}
                   return ret;
@@ -12212,32 +12274,34 @@ init() {
 
           // 方案 B：用 MutationObserver 监听 select 的子节点变化，首次填充后补齐
           (function observeSelect(){
-              const sel = document.querySelector(SELECTOR);
-              if (!sel) return;
-              // 若已有人填充过，直接打一次补丁
-              if (sel.options && sel.options.length > 0) {
-                  patchSelect(sel);
-              }
-              // 监听后续填充
-              const mo = new MutationObserver(() => {
-                  // 一旦看到有 option 节点，就补丁并停止观察
+              document.querySelectorAll(SELECTOR).forEach(sel => {
                   if (sel.options && sel.options.length > 0) {
                       patchSelect(sel);
-                      mo.disconnect();
+                      return;
                   }
+                  if (sel.dataset.kaoOptionObserver === '1') return;
+                  sel.dataset.kaoOptionObserver = '1';
+                  const mo = new MutationObserver(() => {
+                      if (sel.options && sel.options.length > 0) {
+                          patchSelect(sel);
+                          mo.disconnect();
+                          delete sel.dataset.kaoOptionObserver;
+                          scheduleKaomojiEnhancePass();
+                      }
+                  });
+                  mo.observe(sel, { childList: true, subtree: false });
               });
-              mo.observe(sel, { childList: true, subtree: false });
           })();
 
           // 方案 C：兜底重试（避免异步加载错过时机）
           let tries = 0;
           (function retry(){
-              const sel = document.querySelector(SELECTOR);
-              if (sel && sel.options && sel.options.length > 0) {
-                  patchSelect(sel);
-                  return;
+              patchSelectsIn(document);
+              const pending = Array.from(document.querySelectorAll(SELECTOR)).some(sel => !sel.dataset.kaoExtended);
+              if (!pending) return;
+              if (tries++ < 30) {
+                  setTimeout(retry, 100);
               }
-              if (tries++ < 30) setTimeout(retry, 100);
           })();
       }
   }
