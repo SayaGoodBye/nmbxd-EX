@@ -5143,7 +5143,12 @@ init() {
     }, 50);
   }
 
+  function isEnhanceIslandAutoTitlePage() {
+    return /^\/t\/\d{4,}/.test(location.pathname) || /^\/Forum\/po\/id\/\d+/.test(location.pathname);
+  }
+
   function refreshEnhanceIslandAutoTitle() {
+    if (!isEnhanceIslandAutoTitlePage()) return;
     try {
       if (typeof window.enhanceIslandAutoTitle === 'function') {
         window.enhanceIslandAutoTitle();
@@ -13208,6 +13213,9 @@ init() {
       });
       const 路径 = window.location.pathname;
       const 路径分块 = 路径.split('/').splice(1);
+
+      const 是串页 = 路径分块[0] === 't' || (路径分块[0] === 'Forum' && 路径分块[1] === 'po' && 路径分块[2] === 'id');
+      if (!是串页) return;
 
       const 页码 = 路径分块[0] === 'Forum'
         ? (路径分块[5]?.replace(/\.html$/, '') || 1)
