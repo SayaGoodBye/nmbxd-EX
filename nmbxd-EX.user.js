@@ -46,6 +46,7 @@
    * -------------------------------------------------- */
   const VERSION = GM_info.script.version;
   const XDEX_SINGLETON_OWNER_DATASET_KEY = 'xdexSingletonOwner';
+  const XDEX_SINGLETON_WAIT_MS = 100;
   function getXDexRuntimeInfo(){
       const declared = typeof globalThis !== 'undefined' ? globalThis.__xdexRuntime : null;
       if (declared && declared.kind === 'crx') {
@@ -66,7 +67,18 @@
       console.log('[version]:', VERSION);
   }
   const XDEX_RUNTIME = getXDexRuntimeInfo();
-  if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
+  function scheduleXDexStartup(){
+      if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
+      if (XDEX_RUNTIME.kind !== 'crx') {
+        setTimeout(() => {
+          if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
+          startXDexRuntime();
+        }, XDEX_SINGLETON_WAIT_MS);
+        return;
+      }
+      startXDexRuntime();
+  }
+  function startXDexRuntime(){
   cat_version();
   console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
 
@@ -16349,5 +16361,7 @@ init() {
     };
 
   });
+  }
+  scheduleXDexStartup();
 
 })(jQuery);
