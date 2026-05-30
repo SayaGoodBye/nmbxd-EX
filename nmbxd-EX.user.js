@@ -45,10 +45,23 @@
    * tag 0. 通用与工具函数
    * -------------------------------------------------- */
   const VERSION = GM_info.script.version;
+  function getXDexRuntimeInfo(){
+      const declared = typeof globalThis !== 'undefined' ? globalThis.__xdexRuntime : null;
+      if (declared && declared.kind === 'crx') {
+          return Object.assign({ kind: 'crx' }, declared);
+      }
+      const scriptHandler = GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler)) || '';
+      return {
+          kind: 'userscript',
+          scriptHandler: scriptHandler || 'unknown'
+      };
+  }
   function cat_version(){
       console.log('[version]:', VERSION);
   }
   cat_version();
+  const XDEX_RUNTIME = getXDexRuntimeInfo();
+  console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
 
   const UPDATE_CHECK_KEY = 'xdex_update_check_state';
   const UPDATE_GREASYFORK_META_URL = 'https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js';
@@ -13168,12 +13181,22 @@ init() {
       }, () => ({ textLength: 正文框 && 正文框.val ? String(正文框.val() || '').length : 0 }));
     }
 
+    function isPreviewPlaceholderInfoId(anchor) {
+      const text = anchor && anchor.textContent ? anchor.textContent.trim() : '';
+      return text === 'No.9999999' && !!(anchor && anchor.closest && anchor.closest('.h-preview-box'));
+    }
+
     // 点击 No.xxxx 插入引用（保持原先光标与选择区逻辑）
     function 注册追记引用串号() {
       if (!cfg.enableQuoteInsert) return;
       $('body').on('click', 'a.h-threads-info-id', e => {
         // 如果按住 Ctrl/Meta/Shift 键，允许浏览器默认行为（在新标签页/新窗口打开链接）
         if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+        if (isPreviewPlaceholderInfoId(e.currentTarget)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         if (!正文框.length) return;
         const start = 正文框.prop('selectionStart');
         const end = 正文框.prop('selectionEnd');
