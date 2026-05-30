@@ -6,6 +6,7 @@
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
+// @match        https://nmb-search.166666666.xyz/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
@@ -14736,6 +14737,63 @@ init() {
     btn._4sYHandler = handler;
   }
 
+  function isNmbSearchPage() {
+    return location.hostname === 'nmb-search.166666666.xyz';
+  }
+
+  function normalizeNmbSearchMobileThreadUrl(rawHref) {
+    let url;
+    try {
+      url = new URL(rawHref, location.href);
+    } catch (e) {
+      return rawHref;
+    }
+    if (url.protocol !== 'https:' || url.hostname !== 'www.nmbxd1.com') return rawHref;
+    const nextPath = url.pathname.replace(/^\/m\/t\/(\d+)/, '/t/$1');
+    if (nextPath === url.pathname) return rawHref;
+    url.pathname = nextPath;
+    return url.toString();
+  }
+
+  function makeNmbSearchLinkOpenInNewTab(a) {
+    a.setAttribute('target', '_blank');
+    const rel = new Set(String(a.getAttribute('rel') || '').split(/\s+/).filter(Boolean));
+    rel.add('noopener');
+    rel.add('noreferrer');
+    a.setAttribute('rel', Array.from(rel).join(' '));
+  }
+
+  function rewriteNmbSearchMobileThreadLinks(root = document) {
+    if (!isNmbSearchPage()) return;
+    const selector = 'a[href*="//www.nmbxd1.com/m/t/"]';
+    const links = [];
+    if (root && root.matches && root.matches(selector)) links.push(root);
+    if (root && root.querySelectorAll) {
+      root.querySelectorAll(selector).forEach(a => links.push(a));
+    }
+    links.forEach(a => {
+      const rawHref = a.getAttribute('href') || a.href || '';
+      const nextHref = normalizeNmbSearchMobileThreadUrl(rawHref);
+      if (nextHref !== rawHref) a.setAttribute('href', nextHref);
+      makeNmbSearchLinkOpenInNewTab(a);
+    });
+  }
+
+  function initNmbSearchMobileThreadRedirector() {
+    if (!isNmbSearchPage()) return;
+    rewriteNmbSearchMobileThreadLinks(document);
+    if (initNmbSearchMobileThreadRedirector.observer || !document.body) return;
+    const observer = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
+        mutation.addedNodes.forEach(node => {
+          if (node && node.nodeType === 1) rewriteNmbSearchMobileThreadLinks(node);
+        });
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    initNmbSearchMobileThreadRedirector.observer = observer;
+  }
+
   /* --------------------------------------------------
    * tag 18. 侧栏收起（来自acVMxuvhttps://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88）
    * -------------------------------------------------- */
@@ -16085,6 +16143,11 @@ init() {
 
   $(document).ready(() => {
     startupPerfDebug.mark('document.ready.start', startupPerfDebug.summarizeRoot(document));
+    if (isNmbSearchPage()) {
+      initNmbSearchMobileThreadRedirector();
+      startupPerfDebug.mark('startup.nmbSearchMobileThreadRedirector', startupPerfDebug.summarizeRoot(document));
+      return;
+    }
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
