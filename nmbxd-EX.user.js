@@ -14788,7 +14788,7 @@ init() {
 
   function rewriteNmbSearchMobileThreadLinks(root = document) {
     if (!isNmbSearchPage()) return;
-    const selector = 'a[href*="//www.nmbxd1.com/m/t/"]';
+    const selector = 'a[href]';
     const links = [];
     if (root && root.matches && root.matches(selector)) links.push(root);
     if (root && root.querySelectorAll) {
@@ -14802,9 +14802,27 @@ init() {
     });
   }
 
+  function handleNmbSearchLinkClick(e) {
+    if (!isNmbSearchPage() || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a) return;
+    const rawHref = a.getAttribute('href') || a.href || '';
+    if (!rawHref || /^javascript:/i.test(rawHref)) return;
+    const nextHref = normalizeNmbSearchMobileThreadUrl(rawHref);
+    if (nextHref !== rawHref) a.setAttribute('href', nextHref);
+    makeNmbSearchLinkOpenInNewTab(a);
+    e.preventDefault();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    window.open(a.href, '_blank', 'noopener,noreferrer');
+  }
+
   function initNmbSearchMobileThreadRedirector() {
     if (!isNmbSearchPage()) return;
     rewriteNmbSearchMobileThreadLinks(document);
+    if (!initNmbSearchMobileThreadRedirector.clickHandlerInstalled) {
+      document.addEventListener('click', handleNmbSearchLinkClick, true);
+      initNmbSearchMobileThreadRedirector.clickHandlerInstalled = true;
+    }
     if (initNmbSearchMobileThreadRedirector.observer || !document.body) return;
     const observer = new MutationObserver(mutations => {
       mutations.forEach(mutation => {
