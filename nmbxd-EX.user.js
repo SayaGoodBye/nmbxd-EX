@@ -45,6 +45,7 @@
    * tag 0. 通用与工具函数
    * -------------------------------------------------- */
   const VERSION = GM_info.script.version;
+  const XDEX_SINGLETON_OWNER_DATASET_KEY = 'xdexSingletonOwner';
   function getXDexRuntimeInfo(){
       const declared = typeof globalThis !== 'undefined' ? globalThis.__xdexRuntime : null;
       if (declared && declared.kind === 'crx') {
@@ -56,11 +57,17 @@
           scriptHandler: scriptHandler || 'unknown'
       };
   }
+  function shouldExitForXDexSingleton(runtimeInfo){
+      const root = document.documentElement;
+      const owner = root && root.dataset ? root.dataset[XDEX_SINGLETON_OWNER_DATASET_KEY] : '';
+      return owner === 'crx' && (!runtimeInfo || runtimeInfo.kind !== 'crx');
+  }
   function cat_version(){
       console.log('[version]:', VERSION);
   }
-  cat_version();
   const XDEX_RUNTIME = getXDexRuntimeInfo();
+  if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
+  cat_version();
   console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
 
   const UPDATE_CHECK_KEY = 'xdex_update_check_state';
