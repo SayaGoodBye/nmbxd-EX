@@ -711,6 +711,13 @@
       </div>`;
   }
 
+  function buildBlockedKeywordGroupRowHtml(index, group = {}) {
+    const keywordText = typeof group.value === 'string'
+      ? group.value
+      : (Array.isArray(group.keywords) ? group.keywords.join(',') : '');
+    return buildCookieGroupRowHtml('blocked-keyword', index, keywordText, '关键词1,关键词2；8位数字同时也作为串号/回复号匹配');
+  }
+
   function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
     const desc = group.desc || '';
     const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
@@ -854,6 +861,46 @@ ${markedSwatchHtml}
     return [];
   }
 
+  function escapeBlockedKeywordInputToken(keyword) {
+    return String(keyword || '').trim().replace(/([\\,，])/g, '\\$1');
+  }
+
+  function joinBlockedKeywordInputTokens(keywords) {
+    return keywords.map(escapeBlockedKeywordInputToken).filter(Boolean).join(',');
+  }
+
+  function normalizeBlockedKeywordGroupValue(group) {
+    if (typeof group === 'string') return group.trim();
+    if (Array.isArray(group)) return joinBlockedKeywordInputTokens(group);
+    if (!group || typeof group !== 'object') return '';
+    if (typeof group.value === 'string') return group.value.trim();
+    if (typeof group.text === 'string') return group.text.trim();
+    if (typeof group.keywords === 'string') return group.keywords.trim();
+    if (Array.isArray(group.keywords)) return joinBlockedKeywordInputTokens(group.keywords);
+    return '';
+  }
+
+  function normalizeBlockedKeywordGroups(val) {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      const value = normalizeBlockedKeywordGroupValue(val);
+      return Utils.strToList(value).length ? [{ value }] : [];
+    }
+    if (!Array.isArray(val)) return [];
+    return val.map((group) => {
+      const value = normalizeBlockedKeywordGroupValue(group);
+      return { value };
+    }).filter((group) => Utils.strToList(group.value).length);
+  }
+
+  function flattenBlockedKeywords(groups) {
+    return [...new Set(normalizeBlockedKeywordGroups(groups).flatMap((group) => Utils.strToList(group.value)))];
+  }
+
+  function isEightDigitKeyword(keyword) {
+    return /^\d{8}$/.test(String(keyword || '').trim());
+  }
+
   function normalizeMarkedGroups(val) {
     if (!val) return [];
     if (typeof val === 'string') {
@@ -937,7 +984,7 @@ ${markedSwatchHtml}
       markedGroups: [],
       blockedCookies: [],
 
-      blockedKeywords: '',
+      blockedKeywords: [],
 
       blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
 
@@ -988,6 +1035,11 @@ ${markedSwatchHtml}
       let skipped = 0;
       for (const [key, val] of Object.entries(incoming)) {
         if (!(key in defaults)) continue;
+        if (key === 'blockedKeywords') {
+          if (typeof val !== 'string' && !Array.isArray(val)) { skipped++; continue; }
+          validated[key] = normalizeBlockedKeywordGroups(val);
+          continue;
+        }
         if (typeof val !== typeof defaults[key]) { skipped++; continue; }
         if (Array.isArray(defaults[key]) && !Array.isArray(val)) { skipped++; continue; }
         validated[key] = val;
@@ -1097,6 +1149,7 @@ init() {
   // 兼容迁移：屏蔽饼干到组结构
   this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
   this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+  this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
   this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
   
   // 清理废弃字段
@@ -1123,6 +1176,7 @@ init() {
       this.state = Object.assign({}, this.defaults, nv);
       this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
       this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+      this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
       this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
       this.syncInputs();
       this.syncAuxiliaryControls();
@@ -1410,8 +1464,20 @@ init() {
                   </div>
                 </div>
 
-                <!-- 屏蔽关键词（单输入） -->
-                ${fold('sp_blockedKeywords','屏蔽关键词','关键词请用逗号隔开，词中包含逗号请加\\\转义')}
+                <!-- 屏蔽关键词（组） -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_blockedKeywords,#btn_group_blockedKeywords"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>屏蔽关键词</span>
+                    <button id="btn_group_blockedKeywords" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
+                    <button id="btn_sp_blockedKeywords" class="sp_save xdex-inv" data-id="sp_blockedKeywords"
+                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div id="blocked-keyword-inputs-container"></div>
+                    <div style="font-size:12px;color:#888;text-align:center;">每组仍使用逗号分隔；8位纯数字会同时匹配正文、串号和回复号</div>
+                  </div>
+                </div>
 
                 <!-- 导入/导出配置 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
@@ -1612,6 +1678,13 @@ init() {
         $('#thread-cookie-whitelist-inputs-container .thread-cookie-whitelist-row').last().find('.thread-cookie-whitelist-desc-input').focus();
       });
 
+      $('#btn_group_blockedKeywords').off('click').on('click', e=>{
+        e.stopPropagation();
+        const nextIndex = $('#blocked-keyword-inputs-container .blocked-keyword-row').length + 1;
+        $('#blocked-keyword-inputs-container').append(buildBlockedKeywordGroupRowHtml(nextIndex));
+        $('#blocked-keyword-inputs-container .blocked-keyword-row').last().find('.blocked-keyword-input').focus();
+      });
+
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
         const parsed = collectMarkedGroupsFromPanel();
         if (!parsed) return false;
@@ -1678,6 +1751,24 @@ init() {
         return true;
       };
 
+      const collectBlockedKeywordGroupsFromPanel = () => {
+        const parsed = [];
+        $('#blocked-keyword-inputs-container .blocked-keyword-row').each((idx, el)=>{
+          const rawValue = ($(el).find('.blocked-keyword-input').val() || '').trim();
+          if (Utils.strToList(rawValue).length) parsed.push({ value: rawValue });
+        });
+        return parsed;
+      };
+
+      const saveBlockedKeywordGroups = ({ fromDelete = false } = {}) => {
+        this.state.blockedKeywords = collectBlockedKeywordGroupsFromPanel();
+        GM_setValue(this.key, this.state);
+        this.syncInputs();
+        toast(fromDelete ? '已删除关键词分组' : '屏蔽关键词已保存');
+        refreshFilterDisplay(this.state);
+        return true;
+      };
+
       $('#marked-inputs-container').off('click', '.marked-delete').on('click', '.marked-delete', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1702,6 +1793,14 @@ init() {
         return false;
       });
 
+      $('#blocked-keyword-inputs-container').off('click', '.blocked-keyword-delete').on('click', '.blocked-keyword-delete', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $(e.currentTarget).closest('.blocked-keyword-row').remove();
+        saveBlockedKeywordGroups({ fromDelete: true });
+        return false;
+      });
+
       // 标记：保存
       $('#btn_sp_marked').off('click').on('click', e=>{
         e.stopPropagation();
@@ -1714,15 +1813,9 @@ init() {
         saveBlockedGroups();
       });
 
-      // 屏蔽关键词：单项保存
-      $('.sp_save').filter('[data-id="sp_blockedKeywords"]').off('click').on('click', e=>{
+      $('#btn_sp_blockedKeywords').off('click').on('click', e=>{
         e.stopPropagation();
-        const v = $('#sp_blockedKeywords').val().trim();
-        if (v && !Utils.strToList(v).length) return toast('屏蔽关键词 规则有误');
-        this.state.blockedKeywords = v;
-        GM_setValue(this.key, this.state);
-        toast('屏蔽关键词已保存');
-        refreshFilterDisplay(this.state);
+        saveBlockedKeywordGroups();
       });
 
       $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
@@ -2270,8 +2363,7 @@ init() {
         // 固定启用：不受面板勾选状态影响
         this.state.enableImageHideMode = true;
 
-        // 屏蔽关键词
-        this.state.blockedKeywords = $('#sp_blockedKeywords').val().trim();
+        this.state.blockedKeywords = collectBlockedKeywordGroupsFromPanel();
 
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
@@ -2618,15 +2710,18 @@ init() {
         $w.append(buildThreadCookieWhitelistRowHtml(idx + 1, g));
       });
 
-      // 屏蔽关键词
-      $('#sp_blockedKeywords').val(this.state.blockedKeywords);
+      const groupsK = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
+      const $k = $('#blocked-keyword-inputs-container').empty();
+      (groupsK.length ? groupsK : [{value:''}]).forEach((g, idx)=>{
+        $k.append(buildBlockedKeywordGroupRowHtml(idx + 1, g));
+      });
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
 
       // 初始折叠与按钮隐藏
       $('.sp_fold_body').hide();
-      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist').addClass('xdex-inv');
+      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords').addClass('xdex-inv');
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
@@ -2707,6 +2802,7 @@ init() {
     if (cfg && typeof cfg === 'object') {
       const next = Object.assign({}, cfg);
       next.blockedCookies = normalizeBlockedGroups(next.blockedCookies);
+      next.blockedKeywords = normalizeBlockedKeywordGroups(next.blockedKeywords);
       next.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(next.threadCookieWhitelistGroups);
       return next;
     }
@@ -2714,6 +2810,7 @@ init() {
       const next = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
       next.markedGroups = normalizeMarkedGroups(next.markedGroups);
       next.blockedCookies = normalizeBlockedGroups(next.blockedCookies);
+      next.blockedKeywords = normalizeBlockedKeywordGroups(next.blockedKeywords);
       next.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(next.threadCookieWhitelistGroups);
       return next;
     } catch (e) {
@@ -2824,6 +2921,30 @@ init() {
       .find('.h-threads-info-id[href*="/t/"]').first().attr('href') || '';
     const hrefMatch = href.match(/\/t\/(\d{8,})/);
     return hrefMatch ? hrefMatch[1].slice(0, 8) : '';
+  }
+
+  function addFilterId(ids, value) {
+    const match = String(value || '').match(/\d{8}/);
+    if (match && match[0] !== '99999999' && !ids.includes(match[0])) ids.push(match[0]);
+  }
+
+  function getFilterIdsForElement($el) {
+    const ids = [];
+    addFilterId(ids, $el.attr('data-threads-id'));
+    addFilterId(ids, $el.closest('[data-threads-id]').attr('data-threads-id'));
+    addFilterId(ids, $el.find('.h-threads-info-id').first().text());
+    addFilterId(ids, $el.closest('.h-threads-item-index, .h-threads-item, .h-threads-item-reply, .h-threads-item-reply-main').find('.h-threads-info-id').first().text());
+    const href = $el.closest('.h-threads-item-index, .h-threads-item, .h-threads-item-reply, .h-threads-item-reply-main').find('.h-threads-info-id[href]').first().attr('href') || '';
+    addFilterId(ids, href);
+    return ids;
+  }
+
+  function findBlockedKeywordHit(text, groups, $el) {
+    const keywords = flattenBlockedKeywords(groups);
+    const textHit = Utils.firstHit(text || '', keywords);
+    if (textHit) return textHit;
+    const ids = getFilterIdsForElement($el);
+    return keywords.find((keyword) => isEightDigitKeyword(keyword) && ids.includes(keyword)) || null;
   }
 
   function getThreadWhitelistGroup(threadId, groups) {
@@ -2938,7 +3059,7 @@ init() {
 
     // 屏蔽（按组，匹配到则折叠，文案含备注）
     const blkG = (cfg.blockedCookies||[]);
-    const blkK = Utils.strToList(cfg.blockedKeywords);
+    const blkKGroups = normalizeBlockedKeywordGroups(cfg.blockedKeywords);
     const whitelistGroups = normalizeThreadCookieWhitelistGroups(cfg.threadCookieWhitelistGroups || []);
     const whitelistDisplayMode = getThreadCookieWhitelistDisplayMode(cfg);
     const poAnnotationMode = isPOAnnotationActive(cfg);
@@ -2977,7 +3098,7 @@ init() {
         }
       }
 
-      const kw = Utils.firstHit(txt, blkK);
+      const kw = findBlockedKeywordHit(txt, blkKGroups, $el);
 
       if (kw) {
         if (displayMode === 'hide') {
