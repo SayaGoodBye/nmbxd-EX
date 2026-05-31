@@ -8801,14 +8801,14 @@ init() {
 
           .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
           .hld__docker:hover,
-          .hld__docker:has(.hld__docker-sidebar:hover),
           .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
           .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
           .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
           .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
           .hld__docker:hover .hld__docker-btns>div,
-          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div,
           .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
+          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
           .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
           .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
         `;
@@ -8845,7 +8845,7 @@ init() {
     `);
     $('body').append(dockerDom);
 
-    dockerDom.find('.hld__docker-sidebar')
+    dockerDom
       .on('mouseenter', () => dockerDom.addClass('is-hover'))
       .on('mouseleave', () => dockerDom.removeClass('is-hover'));
 
