@@ -8620,8 +8620,23 @@ init() {
    * tag 10. 创建拓展坞+reply按钮呼出回复悬浮窗
    * -------------------------------------------------- */
   function replaceRightSidebar() {
+    const logRightSidebar = (stage, detail) => {
+      console.log('[replaceRightSidebar]', stage, detail || {});
+    };
+
+    logRightSidebar('start', {
+      原始工具栏数: $('#h-tool').length,
+      既有拓展坞数: $('.hld__docker').length,
+      既有样式: !!document.getElementById('qp-style'),
+      readyState: document.readyState,
+      href: location.href,
+    });
+
     // 移除原始工具栏
     $('#h-tool').remove();
+    logRightSidebar('original-toolbar-removed', {
+      remainingToolbarCount: $('#h-tool').length,
+    });
 
       const isDarkReaderActive = () => {
         const root = document.documentElement;
@@ -8813,6 +8828,9 @@ init() {
           .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
         `;
         document.head.appendChild(style);
+        logRightSidebar('style-injected', { 样式ID: style.id });
+    } else {
+        logRightSidebar('style-reused', { 样式ID: 'qp-style' });
     }
 
     syncQuotePopupTheme();
@@ -8844,10 +8862,23 @@ init() {
         </div>
     `);
     $('body').append(dockerDom);
+    logRightSidebar('docker-appended', {
+      拓展坞数: $('.hld__docker').length,
+      按钮数: dockerDom.find('.hld__docker-btns>div').length,
+      支持Has选择器: !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))')),
+    });
 
     dockerDom
-      .on('mouseenter', () => dockerDom.addClass('is-hover'))
-      .on('mouseleave', () => dockerDom.removeClass('is-hover'));
+      .on('mouseenter', () => {
+        dockerDom.addClass('is-hover');
+      })
+      .on('mouseleave', () => {
+        dockerDom.removeClass('is-hover');
+      });
+    logRightSidebar('hover-bound', {
+      targetClass: 'hld__docker',
+      fallbackClass: 'is-hover',
+    });
 
     // 顶部按钮
     dockerDom.find('[data-type="TOP"]').on('click', () => {
