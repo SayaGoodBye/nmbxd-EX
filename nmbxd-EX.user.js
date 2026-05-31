@@ -67,16 +67,33 @@
       console.log('[version]:', VERSION);
   }
   const XDEX_RUNTIME = getXDexRuntimeInfo();
+  function getXDexGmStorageReady(){
+      const ready = typeof globalThis !== 'undefined' ? globalThis.__xdexGmStorageReady : null;
+      return ready && typeof ready.then === 'function' ? ready : Promise.resolve();
+  }
+  const XDEX_GM_STORAGE_READY = getXDexGmStorageReady();
   function scheduleXDexStartup(){
       if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
+      const startAfterStorageReady = () => {
+          if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
+          startXDexRuntime();
+      };
       if (XDEX_RUNTIME.kind !== 'crx') {
         setTimeout(() => {
           if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
-          startXDexRuntime();
+          XDEX_GM_STORAGE_READY.then(() => {
+              startAfterStorageReady();
+          }, () => {
+              startAfterStorageReady();
+          });
         }, XDEX_SINGLETON_WAIT_MS);
         return;
       }
-      startXDexRuntime();
+      XDEX_GM_STORAGE_READY.then(() => {
+          startAfterStorageReady();
+      }, () => {
+          startAfterStorageReady();
+      });
   }
   function startXDexRuntime(){
   cat_version();
@@ -4928,6 +4945,7 @@ init() {
   }
 
   const startupPerfDebug = (() => {
+    const AUTO_COLLECTION_ENABLED = false;
     const LONG_TASK_MS = 50;
     const LOG_TASK_MS = 16;
     const AUTO_REPORT_AFTER_MS = 60000;
@@ -4957,6 +4975,7 @@ init() {
     }
 
     function record(label, duration, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return;
       const stat = getStat(label);
       stat.count += 1;
       stat.total += duration;
@@ -4977,6 +4996,7 @@ init() {
     }
 
     function mark(label, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return null;
       const event = {
         at: Math.round(now()),
         label: `mark:${label}`,
@@ -5141,11 +5161,13 @@ init() {
     window.__xdexStartupPerfReset = reset;
     target.__xdexStartupPerfReport = report;
     target.__xdexStartupPerfReset = reset;
-    installBrowserObservers();
-    setTimeout(() => {
-      report({ auto: true });
-    }, AUTO_REPORT_AFTER_MS);
-    console.log('[XDEX startup perf] auto collection started; auto report in 60s');
+    if (AUTO_COLLECTION_ENABLED) {
+      installBrowserObservers();
+      setTimeout(() => {
+        report({ auto: true });
+      }, AUTO_REPORT_AFTER_MS);
+      console.log('[XDEX startup perf] auto collection started; auto report in 60s');
+    }
     return api;
   })();
 
@@ -11218,6 +11240,73 @@ init() {
     }
   }
 
+  function isCookieDropdownShortcut(e) {
+    return !!(e && e.ctrlKey && (e.code === 'Backslash' || e.code === 'IntlBackslash' || e.key === '\\'));
+  }
+
+  function logCookieDropdownShortcutStage(stage, detail) {
+    try {
+      console.log('[XDEX cookie shortcut]', stage, Object.assign({ runtime: XDEX_RUNTIME && XDEX_RUNTIME.kind }, detail || {}));
+    } catch (e) {}
+  }
+
+  function openCookieDropdownFromShortcut(focusBackTarget) {
+    const dropdown = document.getElementById('cookie-dropdown');
+    if (!dropdown) {
+      logCookieDropdownShortcutStage('dropdown-missing', {
+        activeTag: document.activeElement && document.activeElement.tagName,
+        textareas: document.querySelectorAll('form textarea[name="content"]').length,
+        switcher: !!document.getElementById('cookie-switcher-ui')
+      });
+      return false;
+    }
+    dropdown.__focusBackTarget = focusBackTarget || document.activeElement || null;
+    dropdown.__openedValue = dropdown.value;
+    dropdown.focus();
+    logCookieDropdownShortcutStage('dropdown-focus', {
+      options: dropdown.options ? dropdown.options.length : 0,
+      value: dropdown.value,
+      hasShowPicker: typeof dropdown.showPicker === 'function'
+    });
+    if (typeof dropdown.showPicker === 'function') {
+      try {
+        dropdown.showPicker();
+        logCookieDropdownShortcutStage('showPicker-called');
+        return true;
+      } catch (e) {
+        logCookieDropdownShortcutStage('showPicker-failed', { message: e && e.message ? e.message : String(e) });
+      }
+    }
+    const mouseDownEvent = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    });
+    dropdown.dispatchEvent(mouseDownEvent);
+    logCookieDropdownShortcutStage('fallback-mousedown-dispatched');
+    return true;
+  }
+
+  function installCookieDropdownShortcutHandler() {
+    if (installCookieDropdownShortcutHandler.__installed) return;
+    installCookieDropdownShortcutHandler.__installed = true;
+    logCookieDropdownShortcutStage('handler-installed');
+    function onCookieDropdownShortcutKeydown(e) {
+      if (e && e.ctrlKey) {
+        logCookieDropdownShortcutStage('ctrl-keydown', { key: e.key, code: e.code, targetTag: e.target && e.target.tagName });
+      }
+      if (!isCookieDropdownShortcut(e)) return;
+      logCookieDropdownShortcutStage('shortcut-matched', { key: e.key, code: e.code });
+      if (!openCookieDropdownFromShortcut(document.activeElement)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      }
+    }
+    document.addEventListener('keydown', onCookieDropdownShortcutKeydown, true);
+  }
+
   // 绑定 Ctrl+Enter 快捷提交表单 + 全局打开浮窗
   function bindCtrlEnter(ta) {
     if (!ta || ta.__ctrlEnterBound) return;
@@ -11239,25 +11328,12 @@ init() {
       }
 
       // Ctrl+\ 打开 cookie 下拉框
-      if (e.ctrlKey && e.key === '\\') {
-        e.preventDefault();
-        e.stopPropagation();
-        const dropdown = document.getElementById('cookie-dropdown');
-        if (dropdown) {
-          dropdown.__focusBackTarget = ta;
-          dropdown.__openedValue = dropdown.value;
-          dropdown.focus();
-          // 使用 showPicker() 方法打开下拉框
-          if (typeof dropdown.showPicker === 'function') {
-            dropdown.showPicker();
-          } else {
-            // 降级方案：模拟鼠标按下事件
-            const mouseDownEvent = new MouseEvent('mousedown', {
-              bubbles: true,
-              cancelable: true,
-              view: window
-            });
-            dropdown.dispatchEvent(mouseDownEvent);
+      if (isCookieDropdownShortcut(e)) {
+        if (openCookieDropdownFromShortcut(ta)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === 'function') {
+            e.stopImmediatePropagation();
           }
         }
       }
@@ -15814,6 +15890,10 @@ init() {
     // console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
   }
 
+  function shouldUseCrxNativeImageContextMenu(cfg) {
+    return !!(XDEX_RUNTIME && XDEX_RUNTIME.kind === 'crx' && cfg && cfg.enableImageContextMenu);
+  }
+
   function openImageContextMenu(context, x, y) {
     const menu = getImageContextMenu();
     menu.__context = context;
@@ -16005,7 +16085,7 @@ init() {
         'text/html': createClipboardBlob(html, 'text/html'),
         'text/plain': createClipboardBlob(imageUrl, 'text/plain')
       })]);
-      toast('APNG 已复制到剪贴板');
+      toast('APNG 已按富文本图片复制到剪贴板');
       console.info('【右键菜单｜APNG复制】', { 阶段: 'web image/png成功', 附带: 'text/html,text/plain' });
       return true;
     } catch (err) {
@@ -16066,7 +16146,7 @@ init() {
         'text/plain': createClipboardBlob(gifUrl, 'text/plain')
       };
       await navigator.clipboard.write([new ClipboardItem(data)]);
-      toast('GIF 已复制到剪贴板');
+      toast('GIF 已按富文本图片复制到剪贴板');
       console.info('【右键菜单｜GIF复制】', { 阶段: 'web image/gif成功', 附带: 'text/html,text/plain' });
       return true;
     } catch (err) {
@@ -16186,6 +16266,7 @@ init() {
     return startupPerfDebug.measure('enableImageContextMenu', () => {
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     if (!cfg.enableImageContextMenu) return;
+    if (shouldUseCrxNativeImageContextMenu(cfg)) return;
     ensureImageContextMenuStyle();
     getImageContextMenu();
     }, () => startupPerfDebug.summarizeRoot(root));
@@ -16274,6 +16355,7 @@ init() {
       { label: 'startup.batch2.overrideTopImageClick', run: () => overrideTopImageClick(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.enhanceIsland', run: () => enhanceIsland({ enablePreview: true, enableDraft: true, enableAutoTitle: true, enableRelativeTime: true, enableQuoteInsert: true, enablePasteImage: true }), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.initContent(document)', run: () => initContent(document), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.installCookieDropdownShortcutHandler', run: () => { if (cfg.enableCookieSwitch) installCookieDropdownShortcutHandler(); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.bindCtrlEnter', run: () => document.querySelectorAll('form textarea[name="content"]').forEach(bindCtrlEnter), meta: () => startupPerfDebug.summarizeRoot(document) }
     ], 50, 'batch2-preview-content');
 
