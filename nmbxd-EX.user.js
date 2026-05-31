@@ -4033,6 +4033,76 @@ init() {
       delete dropdown.__openedValue;
     }, delay);
   }
+
+  function closeCookieShortcutMenu() {
+    const existing = document.getElementById('xdex-cookie-shortcut-menu');
+    if (existing) existing.remove();
+  }
+
+  function openCookieShortcutMenu(dropdown, focusBackTarget) {
+    closeCookieShortcutMenu();
+    const options = Array.from(dropdown.options || []);
+    if (!options.length) return false;
+    const menu = document.createElement('div');
+    menu.id = 'xdex-cookie-shortcut-menu';
+    menu.tabIndex = -1;
+    menu.style.cssText = 'position:fixed;z-index:2147483647;min-width:220px;max-width:420px;max-height:50vh;overflow:auto;background:#fff;color:#222;border:1px solid rgba(0,0,0,.25);border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.25);font-size:14px;line-height:1.4;padding:4px 0;';
+    options.forEach((option) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.textContent = option.textContent || option.value;
+      item.dataset.value = option.value;
+      item.style.cssText = 'display:block;width:100%;box-sizing:border-box;border:0;background:transparent;color:inherit;text-align:left;padding:6px 12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      if (option.value === dropdown.value) item.style.background = 'rgba(0,0,0,.08)';
+      item.addEventListener('mouseenter', () => { item.style.background = 'rgba(0,0,0,.12)'; });
+      item.addEventListener('mouseleave', () => { item.style.background = option.value === dropdown.value ? 'rgba(0,0,0,.08)' : 'transparent'; });
+      item.addEventListener('click', () => {
+        dropdown.__focusBackTarget = focusBackTarget || dropdown.__focusBackTarget || document.activeElement || null;
+        dropdown.value = item.dataset.value || '';
+        dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+        closeCookieShortcutMenu();
+      });
+      menu.appendChild(item);
+    });
+    const rect = dropdown.getBoundingClientRect();
+    document.documentElement.appendChild(menu);
+    const width = Math.max(rect.width || 220, 220);
+    menu.style.width = `${width}px`;
+    const menuRect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - menuRect.width - 8));
+    const top = Math.min(Math.max(8, rect.bottom + 4), Math.max(8, window.innerHeight - menuRect.height - 8));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.addEventListener('keydown', (e) => {
+      const items = Array.from(menu.querySelectorAll('button[data-value]'));
+      const active = document.activeElement;
+      const index = Math.max(0, items.indexOf(active));
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeCookieShortcutMenu();
+        if (focusBackTarget && focusBackTarget.isConnected) focusBackTarget.focus();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[Math.min(items.length - 1, index + 1)].focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[Math.max(0, index - 1)].focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        active && active.click && active.click();
+      }
+    });
+    document.addEventListener('mousedown', function onMouseDown(e) {
+      if (menu.contains(e.target)) return;
+      closeCookieShortcutMenu();
+      document.removeEventListener('mousedown', onMouseDown, true);
+    }, true);
+    const selected = Array.from(menu.querySelectorAll('button[data-value]')).find((item) => item.dataset.value === dropdown.value) || menu.querySelector('button[data-value]');
+    if (selected) selected.focus();
+    logCookieDropdownShortcutStage('custom-menu-opened', { options: options.length, value: dropdown.value });
+    return true;
+  }
+
   function switch_cookie(cookie, opts = {}){
     const silent = !!opts.silent;
     const onDone = typeof opts.onDone === 'function' ? opts.onDone : null;
@@ -11268,6 +11338,9 @@ init() {
       value: dropdown.value,
       hasShowPicker: typeof dropdown.showPicker === 'function'
     });
+    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'crx') {
+      return openCookieShortcutMenu(dropdown, focusBackTarget);
+    }
     if (typeof dropdown.showPicker === 'function') {
       try {
         dropdown.showPicker();
