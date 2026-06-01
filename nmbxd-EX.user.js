@@ -13135,7 +13135,7 @@ init() {
     }
     // 预览引用/隐藏文本渲染
     const previewBox = $('<div/>'); // 占位，真正引用在 initPreviewBox 后重新抓取
-    const refExp = /^([>＞]+.*)$/g;
+    const refExp = /^([>＞]+.*)$/;
     const quoteTokenExp = /(?:>>)?No\.(\d{8})\b|(?:>>)?(?<!\d)(\d{8})(?!\d)/g;
     const hideExp = /\[h\]([\s\S]*?)\[\/h\]/g;
     let lastPreviewRaw = null;
@@ -13212,23 +13212,7 @@ init() {
         previewContent.append(span);
       }
       function appendPreviewQuoteLine(line) {
-        quoteTokenExp.lastIndex = 0;
-        let lastIndex = 0;
-        let match;
-        let hasQuoteToken = false;
-
-        while ((match = quoteTokenExp.exec(line)) !== null) {
-          hasQuoteToken = true;
-          appendPreviewText(line.slice(lastIndex, match.index));
-          previewContent.append($('<font color="#789922"></font>').text(match[0]));
-          lastIndex = quoteTokenExp.lastIndex;
-        }
-
-        if (hasQuoteToken) {
-          appendPreviewText(line.slice(lastIndex));
-        } else {
-          appendPreviewText(line);
-        }
+        previewContent.append($('<font color="#789922"></font>').text(line));
       }
       for (let i of raw.split('\n')) {
         i = i.replace(/ +/g, ' ');
