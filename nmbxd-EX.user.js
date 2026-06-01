@@ -1022,6 +1022,7 @@ ${markedSwatchHtml}
       enableImageHideMode: true, // 图片隐藏/无图模式
       applyImageHideMode: 'default', // default | blur | noimage | tips
       enableDraft: true,
+      timeDisplayMode: 'relative', // relative | exact
       extendQuote: true, // 拓展引用格式
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
@@ -1184,6 +1185,10 @@ ${markedSwatchHtml}
         const enabled = !!(this.state && this.state.enablePostExpandAll);
         expandSelect.value = enabled ? 'expand' : 'collapse';
       }
+      const timeDisplaySelect = document.getElementById('sp_timeDisplayMode');
+      if (timeDisplaySelect) {
+        timeDisplaySelect.value = (this.state && this.state.timeDisplayMode === 'exact') ? 'exact' : 'relative';
+      }
     },
 
 init() {
@@ -1191,7 +1196,8 @@ init() {
   const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
   
   console.log('init读取的原始数据:', JSON.stringify(saved));
-  this.state = Object.assign({}, this.defaults, saved);
+      this.state = Object.assign({}, this.defaults, saved);
+      if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
   // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
   this.state.enableImageHideMode = true;
   console.log('init合并后的state:', JSON.stringify(this.state));
@@ -1228,9 +1234,11 @@ init() {
       this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
       this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
       this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
+      if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
       this.syncInputs();
       this.syncAuxiliaryControls();
       try { refreshFilterDisplay(this.state); } catch (e) {}
+      try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
     }
   });
 },
@@ -1396,7 +1404,7 @@ init() {
         </style>
         <div id="sp_cover" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;">
           <div id="sp_panel" style="
-              position:relative;margin:40px auto;width:min(560px, calc(100vw - 32px));
+              position:relative;margin:40px auto;width:min(640px, calc(100vw - 32px));
               max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;">
@@ -1436,7 +1444,7 @@ init() {
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><select id="sp_blockDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option></select><input type="hidden" name="sp_applyFilters" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_threadCookieWhitelistModeEnabled" class="fixed-on" checked disabled><label for="sp_threadCookieWhitelistModeEnabled"> 只看饼干</label><select id="sp_threadCookieWhitelistDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option><option value="column">分栏</option></select><select id="sp_poAnnotationSideDisplayMode" style="height:24px;"><option value="collapse">收起</option><option value="expand">展开</option></select></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><select id="sp_enableDraftMode" style="height:24px;"><option value="on">关闭草稿</option><option value="off">开启草稿</option></select><input type="hidden" name="sp_enhanceIsland" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><select id="sp_enableDraftMode" style="height:24px;"><option value="on">关闭草稿</option><option value="off">开启草稿</option></select><select id="sp_timeDisplayMode" style="height:24px;"><option value="relative">相对时间</option><option value="exact">精确时间</option></select><input type="hidden" name="sp_enhanceIsland" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><select id="sp_postExpandAllMode" style="height:24px;"><option value="collapse">全部收起</option><option value="expand">全部展开</option></select><input type="hidden" name="sp_enablePostExpand" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
                 <div style="${checkboxRowStyle}">
@@ -1702,6 +1710,20 @@ init() {
               try { if (typeof 注册自动保存编辑 === 'function') 注册自动保存编辑(); } catch (err) {}
               toast('已开启草稿缓存');
             }
+          });
+      })();
+
+      (function initTimeDisplayModeSelect() {
+          const sel = document.getElementById('sp_timeDisplayMode');
+          if (!sel) return;
+          sel.value = (SettingPanel.state && SettingPanel.state.timeDisplayMode === 'exact') ? 'exact' : 'relative';
+          sel.addEventListener('change', (e) => {
+            e.stopPropagation();
+            const mode = (sel.value === 'exact') ? 'exact' : 'relative';
+            SettingPanel.state.timeDisplayMode = mode;
+            try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
+            try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (err) {}
+            toast(mode === 'exact' ? '已切换为精确时间' : '已切换为相对时间');
           });
       })();
 
@@ -2421,6 +2443,7 @@ init() {
         this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
+        this.state.timeDisplayMode = ($('#sp_timeDisplayMode').val() === 'exact') ? 'exact' : 'relative';
 
         // 标记分组（双字段结构）
         const mk = collectMarkedGroupsFromPanel();
@@ -2565,6 +2588,7 @@ init() {
         sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面',
         sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则\n折叠：匹配到的串/回复显示为可展开的按钮\n隐藏：匹配到的串/回复完全隐藏',
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
+        sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间。',
         sp_replyQuicklyOnBoardPage: '为板块页添加快速回复模式，在板块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“板块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
@@ -2739,6 +2763,7 @@ init() {
       $('#sp_threadCookieWhitelistDisplayMode').val(this.state.threadCookieWhitelistDisplayMode || 'fold');
       $('#sp_poAnnotationSideDisplayMode').val(this.state.poAnnotationSideDisplayMode || 'collapse');
       $('#sp_kaomojiSort').val(this.state.kaomojiSort || 'default');
+      $('#sp_timeDisplayMode').val(this.state.timeDisplayMode === 'exact' ? 'exact' : 'relative');
 
       // 标记分组
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
@@ -12857,7 +12882,7 @@ init() {
   function enhanceIsland(config = {}) {
     return startupPerfDebug.measure('enhanceIsland', () => {
     // 配置开关（默认全开）
-    const cfg = Object.assign({
+    let cfg = Object.assign({
       enablePreview: true,         // 发帖预览（插入预览DOM并实时渲染）
       enableDraft: true,           // 草稿保存/恢复和成功后清理
       enableAutoTitle: true,       // 自动设置网页标题（含页码）
@@ -13593,6 +13618,10 @@ init() {
     function formatDateStrOnPage(root = document) {
       if (!cfg.enableRelativeTime) return;
       if (document.visibilityState && document.visibilityState !== 'visible') return;
+      if (getTimeDisplayMode() === 'exact') {
+        restoreExactDateStrOnPage(root);
+        return;
+      }
       const $root = root && root.jquery ? root : $(root || document);
       const targets = withSelf($root, 'span.h-threads-info-createdat');
       targets.each(function () {
@@ -13603,6 +13632,35 @@ init() {
         const friendlyTime = getFriendlyTime(timeStr);
         target.text(friendlyTime);
       });
+    }
+
+    function getTimeDisplayMode() {
+      try {
+        const saved = GM_getValue(SettingPanel.key, {});
+        return saved && saved.timeDisplayMode === 'exact' ? 'exact' : 'relative';
+      } catch (e) {
+        return cfg.timeDisplayMode === 'exact' ? 'exact' : 'relative';
+      }
+    }
+
+    function restoreExactDateStrOnPage(root = document) {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      const $root = root && root.jquery ? root : $(root || document);
+      const targets = withSelf($root, 'span.h-threads-info-createdat');
+      targets.each(function () {
+        const target = $(this);
+        const timeStr = target.attr('title');
+        if (timeStr) target.text(timeStr);
+      });
+    }
+
+    function applyTimeDisplayMode(root = document) {
+      if (!cfg.enableRelativeTime) return;
+      if (getTimeDisplayMode() === 'exact') {
+        restoreExactDateStrOnPage(root);
+        return;
+      }
+      formatDateStrOnPage(root);
     }
 
     function stopRelativeTimeScheduler() {
@@ -13625,7 +13683,7 @@ init() {
       if (!window.__xdexRelativeTimeVisibilityHandler) {
         window.__xdexRelativeTimeVisibilityHandler = () => {
           if (document.visibilityState === 'visible') {
-            formatDateStrOnPage();
+            applyTimeDisplayMode();
           }
         };
         document.addEventListener('visibilitychange', window.__xdexRelativeTimeVisibilityHandler, { passive: true });
@@ -13633,14 +13691,16 @@ init() {
 
       if (!window.__xdexRelativeTimeTimer) {
         window.__xdexRelativeTimeTimer = setInterval(() => {
-          formatDateStrOnPage();
+          applyTimeDisplayMode();
         }, 5000);
       }
 
       if (!document.visibilityState || document.visibilityState === 'visible') {
-        formatDateStrOnPage();
+        applyTimeDisplayMode();
       }
     }
+
+    window.__xdexApplyTimeDisplayMode = applyTimeDisplayMode;
 
     // 路由：各页面初始化（与原逻辑一致）
     function 串() {
@@ -16441,7 +16501,7 @@ init() {
       { label: 'startup.batch2.searchServiceBy4sY', run: () => searchServiceBy4sY(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.monitorRefView', run: () => monitorRefView(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.overrideTopImageClick', run: () => overrideTopImageClick(), meta: () => startupPerfDebug.summarizeRoot(document) },
-      { label: 'startup.batch2.enhanceIsland', run: () => enhanceIsland({ enablePreview: true, enableDraft: true, enableAutoTitle: true, enableRelativeTime: true, enableQuoteInsert: true, enablePasteImage: true }), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch2.enhanceIsland', run: () => enhanceIsland({ enablePreview: true, enableDraft: true, enableAutoTitle: true, enableRelativeTime: true, timeDisplayMode: cfg.timeDisplayMode, enableQuoteInsert: true, enablePasteImage: true }), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.initContent(document)', run: () => initContent(document), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.installCookieDropdownShortcutHandler', run: () => { if (cfg.enableCookieSwitch) installCookieDropdownShortcutHandler(); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.bindCtrlEnter', run: () => document.querySelectorAll('form textarea[name="content"]').forEach(bindCtrlEnter), meta: () => startupPerfDebug.summarizeRoot(document) }
