@@ -4068,19 +4068,45 @@ init() {
     closeCookieShortcutMenu();
     const options = Array.from(dropdown.options || []);
     if (!options.length) return false;
+    const selectedValue = dropdown.value;
+    const normalStyle = 'display:block;width:100%;box-sizing:border-box;border:0;background:transparent;color:inherit;text-align:left;padding:6px 12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;outline:none;';
+    const selectedStyle = normalStyle + 'background:#eaf7ff;outline:2px solid #66ccff;outline-offset:-2px;box-shadow:inset 3px 0 0 #66ccff;';
+    const hoverStyle = normalStyle + 'background:#f2f2f2;';
+    const selectedHoverStyle = normalStyle + 'background:#dff3ff;outline:2px solid #66ccff;outline-offset:-2px;box-shadow:inset 3px 0 0 #66ccff;';
+    const activeStyle = normalStyle + 'background:#e8e8e8;outline:2px solid #66ccff;outline-offset:-2px;';
+    const activeSelectedStyle = normalStyle + 'background:#dff3ff;outline:2px solid #66ccff;outline-offset:-2px;box-shadow:inset 3px 0 0 #66ccff;';
     const menu = document.createElement('div');
     menu.id = 'xdex-cookie-shortcut-menu';
     menu.tabIndex = -1;
     menu.style.cssText = 'position:fixed;z-index:2147483647;min-width:220px;max-width:420px;max-height:50vh;overflow:auto;background:#fff;color:#222;border:1px solid rgba(0,0,0,.25);border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.25);font-size:14px;line-height:1.4;padding:4px 0;';
+    function applyCookieShortcutItemStyle(item) {
+      if (!item) return;
+      const isCurrent = item.dataset.current === '1';
+      const isActive = item.dataset.active === '1';
+      item.style.cssText = isActive ? (isCurrent ? activeSelectedStyle : activeStyle) : (isCurrent ? selectedStyle : normalStyle);
+    }
+    function setActiveCookieShortcutItem(nextItem) {
+      menu.querySelectorAll('button[data-value]').forEach((item) => {
+        item.dataset.active = item === nextItem ? '1' : '0';
+        applyCookieShortcutItemStyle(item);
+      });
+      if (nextItem) {
+        nextItem.focus();
+        nextItem.scrollIntoView({ block: 'nearest' });
+      }
+    }
     options.forEach((option) => {
+      const isSelected = option.value === selectedValue;
       const item = document.createElement('button');
       item.type = 'button';
       item.textContent = option.textContent || option.value;
       item.dataset.value = option.value;
-      item.style.cssText = 'display:block;width:100%;box-sizing:border-box;border:0;background:transparent;color:inherit;text-align:left;padding:6px 12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      if (option.value === dropdown.value) item.style.background = 'rgba(0,0,0,.08)';
-      item.addEventListener('mouseenter', () => { item.style.background = 'rgba(0,0,0,.12)'; });
-      item.addEventListener('mouseleave', () => { item.style.background = option.value === dropdown.value ? 'rgba(0,0,0,.08)' : 'transparent'; });
+      item.dataset.current = isSelected ? '1' : '0';
+      item.dataset.active = '0';
+      if (isSelected) item.setAttribute('aria-current', 'true');
+      applyCookieShortcutItemStyle(item);
+      item.addEventListener('mouseenter', () => { item.style.cssText = isSelected ? selectedHoverStyle : hoverStyle; });
+      item.addEventListener('mouseleave', () => { applyCookieShortcutItemStyle(item); });
       item.addEventListener('click', () => {
         dropdown.__focusBackTarget = focusBackTarget || dropdown.__focusBackTarget || document.activeElement || null;
         dropdown.value = item.dataset.value || '';
@@ -4100,7 +4126,7 @@ init() {
     menu.style.top = `${top}px`;
     menu.addEventListener('keydown', (e) => {
       const items = Array.from(menu.querySelectorAll('button[data-value]'));
-      const active = document.activeElement;
+      const active = items.find((item) => item.dataset.active === '1') || document.activeElement;
       const index = Math.max(0, items.indexOf(active));
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -4108,11 +4134,11 @@ init() {
         if (focusBackTarget && focusBackTarget.isConnected) focusBackTarget.focus();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        items[Math.min(items.length - 1, index + 1)].focus();
+        setActiveCookieShortcutItem(items[Math.min(items.length - 1, index + 1)]);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        items[Math.max(0, index - 1)].focus();
-      } else if (e.key === 'Enter') {
+        setActiveCookieShortcutItem(items[Math.max(0, index - 1)]);
+      } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         active && active.click && active.click();
       }
@@ -4123,7 +4149,7 @@ init() {
       document.removeEventListener('mousedown', onMouseDown, true);
     }, true);
     const selected = Array.from(menu.querySelectorAll('button[data-value]')).find((item) => item.dataset.value === dropdown.value) || menu.querySelector('button[data-value]');
-    if (selected) selected.focus();
+    if (selected) setActiveCookieShortcutItem(selected);
     logCookieDropdownShortcutStage('custom-menu-opened', { options: options.length, value: dropdown.value });
     return true;
   }
