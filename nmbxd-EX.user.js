@@ -5011,6 +5011,108 @@ init() {
     }
   }
 
+  function getEnhanceIslandOriginalTitle() {
+    const root = document.documentElement;
+    if (!root) return document.title;
+    if (!root.dataset.xdexOriginalTitle) {
+      root.dataset.xdexOriginalTitle = document.title;
+    }
+    return root.dataset.xdexOriginalTitle || document.title;
+  }
+
+  function selectEnhanceIslandTitleText() {
+    const titleEl = document.querySelector('.h-threads-list .h-threads-item-main .h-threads-info .h-threads-info-title');
+    const contentEl = document.querySelector('.h-threads-list .h-threads-item-main .h-threads-content');
+    if (!contentEl) return '';
+
+    const titleText = (titleEl?.textContent || '').trim();
+    if (titleText && titleText !== '无标题') return titleText;
+
+    const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_ELEMENT);
+    let node = contentEl;
+    while (node) {
+      try {
+        if (window.getComputedStyle(node).color === 'rgb(255, 0, 0)') {
+          const redSegment = node.textContent.replace(/^[=\s+]+|[=\s+]+$/g, '');
+          if (redSegment) return redSegment;
+        }
+      } catch (_) {}
+      node = walker.nextNode();
+    }
+
+    const lines = (contentEl.innerText || contentEl.textContent || '').split('\n');
+    for (let line of lines) {
+      line = line.trim();
+      if (line) return line;
+    }
+    return '';
+  }
+
+  function applyEarlyEnhanceIslandAutoTitle() {
+    if (!isEnhanceIslandAutoTitlePage()) return false;
+    const titleText = selectEnhanceIslandTitleText();
+    if (!titleText) return false;
+
+    const pathBlocks = window.location.pathname.split('/').splice(1);
+    const searchParams = new URLSearchParams(window.location.search || '');
+    const page = pathBlocks[0] === 'Forum'
+      ? (pathBlocks[5]?.replace(/\.html$/, '') || 1)
+      : (searchParams.get('page') || 1);
+    const titleEl = document.querySelector('title');
+    if (!titleEl) return false;
+    titleEl.textContent = `${titleText} - ${getEnhanceIslandOriginalTitle()} - page ${page}`;
+    return true;
+  }
+
+  function installEarlyEnhanceIslandAutoTitle() {
+    if (!isEnhanceIslandAutoTitlePage()) return;
+    let observer = null;
+    let rafId = 0;
+    let stopped = false;
+
+    const stop = () => {
+      stopped = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (observer) observer.disconnect();
+      observer = null;
+    };
+
+    const queueTitleUpdate = () => {
+      if (stopped || rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        if (stopped) return;
+        if (applyEarlyEnhanceIslandAutoTitle()) stop();
+      });
+    };
+
+    const startObserve = () => {
+      if (stopped) return;
+      const target = document.body || document.documentElement;
+      if (!target || observer) return;
+      observer = new MutationObserver(queueTitleUpdate);
+      observer.observe(target, { childList: true, subtree: true, characterData: true });
+      queueTitleUpdate();
+      setTimeout(stop, 5000);
+    };
+
+    getEnhanceIslandOriginalTitle();
+    if (document.body || document.documentElement) {
+      startObserve();
+    } else {
+      const timer = setInterval(() => {
+        if (document.body || document.documentElement) {
+          clearInterval(timer);
+          startObserve();
+        }
+      }, 25);
+      setTimeout(() => {
+        clearInterval(timer);
+        stop();
+      }, 5000);
+    }
+  }
+
   function installEarlyStartupObserver() {
     const relevantSelector = '.h-threads-info-title, .h-threads-info-email, .h-forum-header, form[action="/Home/Forum/doReplyThread.html"], form[action="/Home/Forum/doPostThread.html"]';
     let observer = null;
@@ -13557,45 +13659,12 @@ init() {
       刷新按钮();
     }
 
-    // 递归访问 DOM
-    function visit(root, cb) {
-      if (!root) return;
-      if (cb(root) === '停止') return;
-      for (const child of root.children || []) {
-        visit(child, cb);
-      }
-    }
-
     // 自动标题：择标题（与原逻辑等价）
     function 选择标题() {
-      const titleEl = document.querySelector('.h-threads-list .h-threads-item-main .h-threads-info .h-threads-info-title');
-      const contentEl = document.querySelector('.h-threads-list .h-threads-item-main .h-threads-content');
-      if (!contentEl) return document.title;
-
-      const titleText = (titleEl?.textContent || '').trim();
-      if (titleText && titleText !== '无标题') return titleText;
-
-      const redTexts = [];
-      visit(contentEl, el => {
-        try {
-          if (window.getComputedStyle(el).color === 'rgb(255, 0, 0)') {
-            const redSegment = el.textContent.replace(/^[=\s+]+|[=\s+]+$/, '');
-            if (redSegment !== '') redTexts.push(redSegment);
-            return '停止';
-          }
-        } catch (_) {}
-      });
-      const red = redTexts.join('');
-      if (red !== '') return red;
-
-      const lines = (contentEl.innerText || '').split('\n');
-      for (let line of lines) {
-        if ((line = line.trim()) !== '') return line;
-      }
-      return document.title;
+      return selectEnhanceIslandTitleText() || document.title;
     }
 
-    const 原始标题 = document.title;
+    const 原始标题 = getEnhanceIslandOriginalTitle();
 
     function 自动标题() {
       if (!cfg.enableAutoTitle) return;
@@ -16473,6 +16542,7 @@ init() {
     startupPerfDebug.mark('window.load.end', startupPerfDebug.summarizeRoot(document));
   });
   installEarlyStartupObserver();
+  installEarlyEnhanceIslandAutoTitle();
 
   $(document).ready(() => {
     startupPerfDebug.mark('document.ready.start', startupPerfDebug.summarizeRoot(document));
