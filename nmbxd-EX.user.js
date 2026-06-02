@@ -4839,6 +4839,14 @@ init() {
       }
     });
 
+    $('#cookie-dropdown').on('keydown', function(e){
+      if (!(e && (e.key === ' ' || e.code === 'Space'))) return;
+      if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      $(this).trigger('change');
+    });
+
     $('#cookie-dropdown').on('blur', function(){
       if (this.__focusBackTimer) {
         clearTimeout(this.__focusBackTimer);

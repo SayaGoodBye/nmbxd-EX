@@ -36,6 +36,17 @@
 
 鼠标悬停至设置面板的每个选项上可以查看功能简介，或者可在[串内](https://www.nmbxd1.com/t/67024789)查看，此处不过多赘述。
 
+### TODO：
+
+- [ ] 现有功能完整迁移CRX版本
+- [ ] 导出全部数据
+- [ ] 常用串
+- [ ] 浏览历史
+- [ ] 发言记录
+- [ ] 同步移动端订阅
+
+
+
 ### 致谢：
 - 切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 - 外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
