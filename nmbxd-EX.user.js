@@ -10798,11 +10798,20 @@ init() {
               }
             }
             if (typeof refreshCookies === 'function') {
-              refreshCookies(() => {
-                if (typeof updatePreviewCookieId === 'function') {
-                  updatePreviewCookieId();
-                }
-              }, false);
+              try {
+                refreshCookies(() => {
+                  try {
+                    if (typeof updatePreviewCookieId === 'function') {
+                      updatePreviewCookieId();
+                    }
+                  } catch (err) {
+                    console.warn('[interceptReplyForm] updatePreviewCookieId after success failed', err);
+                  }
+                }, false);
+              } catch (err) {
+                console.warn('[interceptReplyForm] refreshCookies after success failed', err);
+                toast('回复已发送，但饼干刷新失败，请刷新页面');
+              }
             }
             // if (isReply) {
             //   try {
