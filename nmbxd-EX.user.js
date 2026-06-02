@@ -716,6 +716,87 @@
     return /^\d{8}$/.test(threadId);
   }
 
+  function normalizeFavoriteThreadInput(raw) {
+    const value = String(raw || '').trim();
+    if (isValidThreadId(value)) return value;
+
+    let url;
+    try {
+      url = new URL(value, location.origin);
+    } catch (e) {
+      return '';
+    }
+
+    if (url.hostname && !['www.nmbxd1.com', 'nmbxd1.com', 'www.nmbxd.com', 'nmbxd.com'].includes(url.hostname)) return '';
+
+    const path = url.pathname || '';
+    const threadMatch = path.match(/^\/t\/(\d{8})(?:\/\d+)?\/?$/);
+    if (threadMatch) return threadMatch[1];
+
+    const poMatch = path.match(/^\/Forum\/po\/id\/(\d{8})(?:\/page\/\d+)?(?:\.html)?$/);
+    if (poMatch) return poMatch[1];
+
+    return '';
+  }
+
+  function makeFavoriteThreadUrl(threadId) {
+    return `https://www.nmbxd1.com/t/${threadId}`;
+  }
+
+  function normalizeFavoriteThreads(val) {
+    if (!Array.isArray(val)) return [];
+    const seen = new Set();
+    return val.map((item) => {
+      const desc = item && typeof item.desc === 'string' && isValidDesc(item.desc.trim()) ? item.desc.trim() : '';
+      const threadId = normalizeFavoriteThreadInput(item && typeof item.threadId === 'string' ? item.threadId : '');
+      return { desc, threadId };
+    }).filter((item) => {
+      if (!isValidThreadId(item.threadId) || seen.has(item.threadId)) return false;
+      seen.add(item.threadId);
+      return true;
+    });
+  }
+
+  function collectFavoriteThreadsFromPanel() {
+    const parsed = [];
+    const seen = new Map();
+    let valid = true;
+    $('#favorite-thread-inputs-container .favorite-thread-row').each((idx, el) => {
+      const $row = $(el);
+      const desc = ($row.find('.favorite-thread-desc-input').val() || '').trim();
+      const rawThread = ($row.find('.favorite-thread-id-input').val() || '').trim();
+      const threadId = normalizeFavoriteThreadInput(rawThread);
+      if (!desc && !rawThread) return;
+      if (!isValidDesc(desc)) { toast(`第${idx + 1}组备注过长`); valid = false; return false; }
+      if (!rawThread) { toast(`第${idx + 1}组未指定串号或链接`); valid = false; return false; }
+      if (!threadId) { toast(`第${idx + 1}组存在不合法串号或链接`); valid = false; return false; }
+      if (seen.has(threadId)) {
+        const first = seen.get(threadId);
+        const suffix = first.desc ? `（${first.desc}）` : '';
+        toast(`第${idx + 1}组与第${first.index}组${suffix}重复`);
+        valid = false;
+        return false;
+      }
+      seen.set(threadId, { index: idx + 1, desc });
+      parsed.push({ desc, threadId });
+    });
+    return valid ? parsed : null;
+  }
+
+  function buildFavoriteThreadRowHtml(index, item = {}) {
+    const desc = item.desc || '';
+    const threadId = item.threadId || '';
+    return `
+      <div class="favorite-thread-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="8位串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
+        </div>
+      </div>`;
+  }
+
   function parseThreadCookieWhitelistRule(raw) {
     const idx = Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('：'));
     let threadPart = '';
@@ -1037,6 +1118,8 @@ ${markedSwatchHtml}
 
       blockedKeywords: [],
 
+      favoriteThreads: [],
+
       blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
 
     },
@@ -1206,6 +1289,7 @@ init() {
   this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
   this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
   this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
+  this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
   this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
   
   // 清理废弃字段
@@ -1233,10 +1317,12 @@ init() {
       this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
       this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
       this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
+      this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
       this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
       if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
       this.syncInputs();
       this.syncAuxiliaryControls();
+      try { renderFavoriteThreadsMenu(); } catch (e) {}
       try { refreshFilterDisplay(this.state); } catch (e) {}
       try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
     }
@@ -1537,6 +1623,21 @@ init() {
                   </div>
                 </div>
 
+                <!-- 常用串 -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_favoriteThreads,#btn_group_favoriteThreads"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>常用串</span>
+                    <button id="btn_group_favoriteThreads" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加常用串</button>
+                    <button id="btn_sp_favoriteThreads" class="sp_save xdex-inv" data-id="sp_favoriteThreads"
+                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div id="favorite-thread-inputs-container"></div>
+                    <!-- <div style="font-size:12px;color:#888;text-align:center;">备注可选；可填写 8 位串号或串链接，保存后统一为主串链接</div> -->
+                  </div>
+                </div>
+
                 <!-- 导入/导出配置 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
@@ -1757,6 +1858,13 @@ init() {
         $('#blocked-keyword-inputs-container .blocked-keyword-row').last().find('.blocked-keyword-input').focus();
       });
 
+      $('#btn_group_favoriteThreads').off('click').on('click', e=>{
+        e.stopPropagation();
+        const nextIndex = $('#favorite-thread-inputs-container .favorite-thread-row').length + 1;
+        $('#favorite-thread-inputs-container').append(buildFavoriteThreadRowHtml(nextIndex));
+        $('#favorite-thread-inputs-container .favorite-thread-row').last().find('.favorite-thread-desc-input').focus();
+      });
+
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
         const parsed = collectMarkedGroupsFromPanel();
         if (!parsed) return false;
@@ -1841,6 +1949,17 @@ init() {
         return true;
       };
 
+      const saveFavoriteThreads = ({ fromDelete = false } = {}) => {
+        const parsed = collectFavoriteThreadsFromPanel();
+        if (!parsed) return false;
+        this.state.favoriteThreads = parsed;
+        GM_setValue(this.key, this.state);
+        this.syncInputs();
+        renderFavoriteThreadsMenu();
+        toast(fromDelete ? '已删除常用串' : '常用串已保存');
+        return true;
+      };
+
       $('#marked-inputs-container').off('click', '.marked-delete').on('click', '.marked-delete', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1873,6 +1992,14 @@ init() {
         return false;
       });
 
+      $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').on('click', '.favorite-thread-delete', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $(e.currentTarget).closest('.favorite-thread-row').remove();
+        saveFavoriteThreads({ fromDelete: true });
+        return false;
+      });
+
       // 标记：保存
       $('#btn_sp_marked').off('click').on('click', e=>{
         e.stopPropagation();
@@ -1888,6 +2015,11 @@ init() {
       $('#btn_sp_blockedKeywords').off('click').on('click', e=>{
         e.stopPropagation();
         saveBlockedKeywordGroups();
+      });
+
+      $('#btn_sp_favoriteThreads').off('click').on('click', e=>{
+        e.stopPropagation();
+        saveFavoriteThreads();
       });
 
       $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
@@ -2435,7 +2567,13 @@ init() {
         // 固定启用：不受面板勾选状态影响
         this.state.enableImageHideMode = true;
 
+        let valid = true;
+
         this.state.blockedKeywords = collectBlockedKeywordGroupsFromPanel();
+
+        const favoriteThreads = collectFavoriteThreadsFromPanel();
+        if (!favoriteThreads) return;
+        this.state.favoriteThreads = favoriteThreads;
 
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
@@ -2449,8 +2587,6 @@ init() {
         const mk = collectMarkedGroupsFromPanel();
         if (!mk) return;
         this.state.markedGroups = mk;
-
-        let valid = true;
 
         // 屏蔽分组（双字段结构）
         const bk = [];
@@ -2791,12 +2927,18 @@ init() {
         $k.append(buildBlockedKeywordGroupRowHtml(idx + 1, g));
       });
 
+      const favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
+      const $favoriteThreads = $('#favorite-thread-inputs-container').empty();
+      (favoriteThreads.length ? favoriteThreads : [{desc:'', threadId:''}]).forEach((item, idx)=>{
+        $favoriteThreads.append(buildFavoriteThreadRowHtml(idx + 1, item));
+      });
+
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
 
       // 初始折叠与按钮隐藏
       $('.sp_fold_body').hide();
-      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords').addClass('xdex-inv');
+      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads').addClass('xdex-inv');
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
@@ -16534,6 +16676,145 @@ init() {
   }
 
   /* --------------------------------------------------
+   * tag 24. 常用串
+   * -------------------------------------------------- */
+  function getFavoriteThreadsConfig() {
+    try {
+      const cfg = Object.assign({}, SettingPanel.defaults, SettingPanel.state || {}, GM_getValue(SettingPanel.key, {}));
+      cfg.favoriteThreads = normalizeFavoriteThreads(cfg.favoriteThreads);
+      return cfg;
+    } catch (e) {
+      const cfg = Object.assign({}, SettingPanel.defaults, SettingPanel.state || {});
+      cfg.favoriteThreads = normalizeFavoriteThreads(cfg.favoriteThreads);
+      return cfg;
+    }
+  }
+
+  function ensureFavoriteThreadsMenuStyle() {
+    if (document.getElementById('xdex-favorite-threads-menu-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-favorite-threads-menu-style';
+    style.textContent = `
+      #h-menu-content.uk-nav-parent-icon > #xdex-favorite-threads-menu > a::after {
+        content: "\\f104";
+        width: 20px;
+        margin-right: -10px;
+        float: right;
+        font-family: FontAwesome;
+        text-align: center;
+      }
+      #h-menu-content.uk-nav-parent-icon > #xdex-favorite-threads-menu.uk-open > a::after {
+        content: "\\f107";
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function createFavoriteThreadsMenuNode(items, isOpen = false) {
+    const li = document.createElement('li');
+    li.id = 'xdex-favorite-threads-menu';
+    li.className = 'uk-parent';
+    if (isOpen) li.classList.add('uk-open');
+
+    const header = document.createElement('a');
+    header.href = '#';
+    header.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
+    header.setAttribute('achecked', '1');
+    header.setAttribute('onclick', 'return false;');
+    header.textContent = '常用串';
+    li.appendChild(header);
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `overflow:hidden;height:${isOpen ? 'auto' : '0'};position:relative;`;
+    wrapper.classList.toggle('uk-hidden', !isOpen);
+    const list = document.createElement('ul');
+    list.className = 'uk-nav-sub';
+
+    if (items.length) {
+      items.forEach((item) => {
+        const subItem = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = makeFavoriteThreadUrl(item.threadId);
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.setAttribute('achecked', '1');
+        link.textContent = item.desc || item.threadId;
+        link.title = item.desc ? item.threadId : '';
+        subItem.appendChild(link);
+        list.appendChild(subItem);
+      });
+    } else {
+      const subItem = document.createElement('li');
+      const placeholder = document.createElement('a');
+      placeholder.href = '#';
+      placeholder.setAttribute('achecked', '1');
+      placeholder.textContent = '暂无';
+      placeholder.style.cursor = 'default';
+      placeholder.onclick = () => false;
+      subItem.appendChild(placeholder);
+      list.appendChild(subItem);
+    }
+
+    wrapper.appendChild(list);
+    li.appendChild(wrapper);
+    if (window.jQuery) $(li).data('list-container', $(wrapper));
+    li.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+
+    header.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const opening = !li.classList.contains('uk-open');
+      li.classList.toggle('uk-open', opening);
+      li.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      if (window.jQuery) {
+        if (opening) wrapper.classList.remove('uk-hidden');
+        $(wrapper).stop(true, true).animate({ height: opening ? $(list).outerHeight() : 0 }, () => {
+          if (opening && li.classList.contains('uk-open')) {
+            wrapper.style.height = 'auto';
+            wrapper.classList.remove('uk-hidden');
+          } else if (!opening) {
+            wrapper.style.height = '0';
+            wrapper.classList.add('uk-hidden');
+          }
+        });
+        return;
+      }
+      if (opening) {
+        wrapper.classList.remove('uk-hidden');
+        wrapper.style.height = `${list.scrollHeight}px`;
+        window.setTimeout(() => {
+          if (li.classList.contains('uk-open')) wrapper.style.height = 'auto';
+        }, 160);
+      } else {
+        wrapper.style.height = `${list.scrollHeight}px`;
+        window.requestAnimationFrame(() => {
+          wrapper.style.height = '0';
+          wrapper.classList.add('uk-hidden');
+        });
+      }
+    });
+    return li;
+  }
+
+  function renderFavoriteThreadsMenu() {
+    const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
+    if (!menu) return;
+    menu.classList.add('uk-nav-parent-icon');
+    ensureFavoriteThreadsMenuStyle();
+    const old = document.getElementById('xdex-favorite-threads-menu');
+    const wasOpen = !!(old && old.classList.contains('uk-open'));
+    if (old) old.remove();
+
+    const items = getFavoriteThreadsConfig().favoriteThreads || [];
+    const node = createFavoriteThreadsMenuNode(items, wasOpen);
+    const timeline = Array.from(menu.children).find((li) => {
+      const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
+      return header && (header.textContent || '').trim() === '时间线';
+    });
+    menu.insertBefore(node, timeline || menu.firstChild);
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => {
@@ -16580,6 +16861,7 @@ init() {
     interceptReplyForm();                                            //拦截回复中间页
     enhancePostFormLayout();                                         //发帖UI调整
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
+    renderFavoriteThreadsMenu();                                      //常用串
     startupPerfDebug.mark('document.ready.syncSetup.end', startupPerfDebug.summarizeRoot(document));
 
     // 保存原始函数
