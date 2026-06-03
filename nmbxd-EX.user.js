@@ -8177,6 +8177,14 @@ init() {
         if (!href || href === '#' || /^javascript:/i.test(href)) return;
         // =====================================
         a.setAttribute('target', '_blank');
+        if (!a.dataset.xdexLinkBlankCurrentBound) {
+          a.dataset.xdexLinkBlankCurrentBound = '1';
+          a.addEventListener('click', e => {
+            if (e.button !== 0 || !(e.ctrlKey || e.metaKey)) return;
+            e.preventDefault();
+            window.location.href = a.href;
+          });
+        }
     });
   }
 
