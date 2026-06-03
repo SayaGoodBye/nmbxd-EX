@@ -1496,10 +1496,18 @@ init() {
             filter: none;       /* 去掉可能的灰度滤镜 */
             cursor: default;    /* 鼠标变成普通箭头 */
           }
+
+          .xdex-switch { appearance:none; width:34px; height:18px; flex:0 0 34px; border:1px solid #a98f7a; border-radius:999px; background:#EE0000; cursor:pointer; position:relative; box-sizing:border-box; transition:background .18s ease,border-color .18s ease; }
+          .xdex-switch::before { content:""; position:absolute; width:14px; height:14px; left:1px; top:1px; border-radius:50%; background:#FFFFEE; box-shadow:0 1px 2px rgba(0,0,0,.24); transition:transform .18s ease; }
+          .xdex-switch:checked { background:#66CCFF; border-color:#7da6bf; }
+          input.xdex-switch.fixed-on:checked:disabled { background:#00FFCC; border-color:#00b894; }
+          .xdex-switch:checked::before { transform:translateX(16px); }
+          .xdex-switch:focus-visible { outline:2px solid #cc1105; outline-offset:2px; }
+          .xdex-switch:disabled { opacity:1; cursor:default; }
         </style>
         <div id="sp_cover" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;">
           <div id="sp_panel" style="
-              position:relative;margin:40px auto;width:min(640px, calc(100vw - 32px));
+              position:relative;margin:40px auto;width:min(711px, calc(100vw - 32px));
               max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;">
@@ -1512,38 +1520,38 @@ init() {
               </div>
 
               <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_updatePreviewCookie"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_hideEmptyTitleEmail"><label for="sp_hideEmptyTitleEmail"> 隐藏无标题/无名氏/版规</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableExternalImagePreview"><label for="sp_enableExternalImagePreview"> 显示外部图床</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableAutoCookieRefresh"><label for="sp_enableAutoCookieRefresh"> 自动刷新饼干</label><input type="checkbox" id="sp_enableAutoCookieRefreshToast"><label for="sp_enableAutoCookieRefreshToast"> toast提示</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSeamlessPaging"><label for="sp_enableSeamlessPaging"> 无缝翻页</label><input type="checkbox" id="sp_enableAutoSeamlessPaging" checked><label for="sp_enableAutoSeamlessPaging"> 自动翻页</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableHDImageAndLayoutFix"><label for="sp_enableHDImageAndLayoutFix"> 图片控件-布局调整</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableLinkBlank"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableAutoUrlLinkify"><label for="sp_enableAutoUrlLinkify"> 自动识别网址链接</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableQuotePreview"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote"><label for="sp_extendQuote"> 拓展引用格式</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication" class="xdex-switch" role="switch"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark" class="xdex-switch" role="switch"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_updatePreviewCookie" class="xdex-switch" role="switch"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_hideEmptyTitleEmail" class="xdex-switch" role="switch"><label for="sp_hideEmptyTitleEmail"> 隐藏无标题/无名氏/版规</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableExternalImagePreview" class="xdex-switch" role="switch"><label for="sp_enableExternalImagePreview"> 显示外部图床</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableAutoCookieRefresh" class="xdex-switch" role="switch"><label for="sp_enableAutoCookieRefresh"> 自动刷新饼干</label><input type="checkbox" id="sp_enableAutoCookieRefreshToast" class="xdex-switch" role="switch"><label for="sp_enableAutoCookieRefreshToast"> toast提示</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSeamlessPaging" class="xdex-switch" role="switch"><label for="sp_enableSeamlessPaging"> 无缝翻页</label><input type="checkbox" id="sp_enableAutoSeamlessPaging" class="xdex-switch" role="switch" checked><label for="sp_enableAutoSeamlessPaging"> 自动翻页</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableHDImageAndLayoutFix" class="xdex-switch" role="switch"><label for="sp_enableHDImageAndLayoutFix"> 图片控件-布局调整</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableLinkBlank" class="xdex-switch" role="switch"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableAutoUrlLinkify" class="xdex-switch" role="switch"><label for="sp_enableAutoUrlLinkify"> 自动识别网址链接</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableQuotePreview" class="xdex-switch" role="switch"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote" class="xdex-switch" role="switch"><label for="sp_extendQuote"> 拓展引用格式</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar" class="xdex-switch" role="switch"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck" class="xdex-switch" role="switch"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
                 <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
                 <!-- 以下是默认勾选项不可更改 -->
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="fixed-on" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyFormUnvcode"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_updateReplyNumbers" class="fixed-on" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="fixed-on" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_kaomojiEnhancer" class="fixed-on" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_highlightPO" class="fixed-on" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="fixed-on" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><select id="sp_blockDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option></select><input type="hidden" name="sp_applyFilters" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_threadCookieWhitelistModeEnabled" class="fixed-on" checked disabled><label for="sp_threadCookieWhitelistModeEnabled"> 只看饼干</label><select id="sp_threadCookieWhitelistDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option><option value="column">分栏</option></select><select id="sp_poAnnotationSideDisplayMode" style="height:24px;"><option value="collapse">收起</option><option value="expand">展开</option></select></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="fixed-on" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="fixed-on" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><select id="sp_enableDraftMode" style="height:24px;"><option value="on">关闭草稿</option><option value="off">开启草稿</option></select><select id="sp_timeDisplayMode" style="height:24px;"><option value="relative">相对时间</option><option value="exact">精确时间</option></select><input type="hidden" name="sp_enhanceIsland" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="fixed-on" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><select id="sp_postExpandAllMode" style="height:24px;"><option value="collapse">全部收起</option><option value="expand">全部展开</option></select><input type="hidden" name="sp_enablePostExpand" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="fixed-on" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyFormUnvcode" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_updateReplyNumbers" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_kaomojiEnhancer" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_highlightPO" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><select id="sp_blockDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option></select><input type="hidden" name="sp_applyFilters" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_threadCookieWhitelistModeEnabled" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_threadCookieWhitelistModeEnabled"> 只看饼干</label><select id="sp_threadCookieWhitelistDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option><option value="column">分栏</option></select><select id="sp_poAnnotationSideDisplayMode" style="height:24px;"><option value="collapse">收起</option><option value="expand">展开</option></select></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><select id="sp_enableDraftMode" style="height:24px;"><option value="on">关闭草稿</option><option value="off">开启草稿</option></select><select id="sp_timeDisplayMode" style="height:24px;"><option value="relative">相对时间</option><option value="exact">精确时间</option></select><input type="hidden" name="sp_enhanceIsland" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><select id="sp_postExpandAllMode" style="height:24px;"><option value="collapse">全部收起</option><option value="expand">全部展开</option></select><input type="hidden" name="sp_enablePostExpand" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
                 <div style="${checkboxRowStyle}">
-                  <input type="checkbox" id="sp_enableImageHideMode" class="fixed-on" checked disabled><label for="sp_enableImageHideMode"> 模糊/无图/Tips模式</label>
+                  <input type="checkbox" id="sp_enableImageHideMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageHideMode"> 模糊/无图/Tips模式</label>
                   <select id="sp_applyImageHideMode" style="height:24px;">
                     <option value="default">默认</option>
                     <option value="blur">模糊</option>
