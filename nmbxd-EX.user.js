@@ -1562,6 +1562,7 @@ init() {
                     <option value="tips">Tips</option>
                   </select>
                 </div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -2749,6 +2750,7 @@ init() {
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
+        sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加',
       };
 
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
@@ -4665,7 +4667,7 @@ init() {
     });
   }
 
-  //TODO : 弹出登录提示弹窗未修复
+  //done : 弹出登录提示弹窗已修复
   function showLoginPrompt(force = false){
     const url = window.location.href;
     const allowed = (
