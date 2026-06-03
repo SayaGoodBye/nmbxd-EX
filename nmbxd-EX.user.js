@@ -743,6 +743,15 @@
     return `https://www.nmbxd1.com/t/${threadId}`;
   }
 
+  function trimFavoriteThreadDesc(desc) {
+    return String(desc || '').trim().slice(0, 20);
+  }
+
+  function formatFavoriteThreadMenuText(item) {
+    const text = item && item.desc ? item.desc : item && item.threadId ? item.threadId : '';
+    return text.length > 7 ? `${text.slice(0, 7)}……` : text;
+  }
+
   function normalizeFavoriteThreads(val) {
     if (!Array.isArray(val)) return [];
     const seen = new Set();
@@ -8150,9 +8159,11 @@ init() {
 
   // 板块页链接新标签页打开
   function runLinkBlank(root = document) {
-    root.querySelectorAll('#h-content .h-threads-list a').forEach(a => {
+    root.querySelectorAll('#h-content .h-threads-list a, .margin-bottom a, .margin-top a, #h-menu-content a').forEach(a => {
         // ===== 新增：排除分页导航内的链接 =====
         if (a.closest('ul.uk-pagination.uk-pagination-left.h-pagination')) return;
+        const href = String(a.getAttribute('href') || '').trim();
+        if (!href || href === '#' || /^javascript:/i.test(href)) return;
         // =====================================
         a.setAttribute('target', '_blank');
     });
@@ -16690,6 +16701,84 @@ init() {
     }
   }
 
+  function isFavoriteThreadPageLocation() {
+    const path = window.location.pathname || '';
+    return /^\/t\/\d{8}(?:\/\d+)?\/?$/.test(path)
+      || /^\/Forum\/po\/id\/\d{8}(?:\/page\/\d+)?(?:\.html)?$/i.test(path);
+  }
+
+  function getCurrentFavoriteThreadId() {
+    if (!isFavoriteThreadPageLocation()) return '';
+    const fromUrl = normalizeFavoriteThreadInput(window.location.href);
+    if (fromUrl) return fromUrl;
+    const mainThreadId = document.querySelector('.h-threads-list .h-threads-item[data-threads-id]')?.getAttribute('data-threads-id') || '';
+    return isValidThreadId(mainThreadId) ? mainThreadId : '';
+  }
+
+  function getFavoriteThreadsAddLinkText() {
+    return isFavoriteThreadPageLocation() ? '添加当前串' : '添加常用串';
+  }
+
+  function getCurrentFavoriteThreadDesc() {
+    const fromTitle = String(document.title || '').replace(/\s+-\s+No\.\d{8}.*$/, '').trim();
+    const title = fromTitle && !/^No\.\d{8}/.test(fromTitle) ? fromTitle : selectEnhanceIslandTitleText();
+    return trimFavoriteThreadDesc(title);
+  }
+
+  function openFavoriteThreadsSettingsPanel(options = {}) {
+    try {
+      if (!$('#sp_btn').length) SettingPanel.init();
+      $('#sp_btn').trigger('click');
+      window.setTimeout(() => {
+        const $container = $('#favorite-thread-inputs-container');
+        const $fold = $container.closest('.sp_fold');
+        const $body = $fold.children('.sp_fold_body');
+        if (!$body.is(':visible')) {
+          $body.slideDown(150);
+          $('#btn_sp_favoriteThreads,#btn_group_favoriteThreads').removeClass('xdex-inv');
+        }
+        if ($fold[0]) $fold[0].scrollIntoView({ block: 'center' });
+        if (options.addEmptyGroup) {
+          const nextIndex = $container.find('.favorite-thread-row').length + 1;
+          $container.append(buildFavoriteThreadRowHtml(nextIndex));
+        }
+        const $target = $container.find('.favorite-thread-id-input').last();
+        if ($target.length) $target.focus();
+      }, 0);
+    } catch (e) {
+      console.warn('[favoriteThreads] open settings failed:', e);
+    }
+  }
+
+  function addCurrentThreadToFavoriteThreads() {
+    const threadId = getCurrentFavoriteThreadId();
+    if (!threadId) {
+      openFavoriteThreadsSettingsPanel({ addEmptyGroup: true });
+      toast('请在常用串设置中手动填写');
+      return;
+    }
+
+    const cfg = getFavoriteThreadsConfig();
+    const duplicateIndex = cfg.favoriteThreads.findIndex((item) => item.threadId === threadId);
+    if (duplicateIndex >= 0) {
+      const dup = cfg.favoriteThreads[duplicateIndex];
+      const suffix = dup.desc ? `（${dup.desc}）` : '';
+      toast(`当前串已在第${duplicateIndex + 1}组${suffix}`);
+      return;
+    }
+
+    const settings = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}), SettingPanel.state || {});
+    settings.favoriteThreads = normalizeFavoriteThreads([...(cfg.favoriteThreads || []), {
+      desc: getCurrentFavoriteThreadDesc(),
+      threadId,
+    }]);
+    SettingPanel.state = settings;
+    GM_setValue(SettingPanel.key, settings);
+    try { SettingPanel.syncInputs(); } catch (e) {}
+    renderFavoriteThreadsMenu();
+    toast('已添加当前串到常用串');
+  }
+
   function ensureFavoriteThreadsMenuStyle() {
     if (document.getElementById('xdex-favorite-threads-menu-style')) return;
     const style = document.createElement('style');
@@ -16705,6 +16794,9 @@ init() {
       }
       #h-menu-content.uk-nav-parent-icon > #xdex-favorite-threads-menu.uk-open > a::after {
         content: "\\f107";
+      }
+      #xdex-favorite-threads-menu .xdex-favorite-add-current {
+        text-decoration: underline;
       }
     `;
     document.head.appendChild(style);
@@ -16730,30 +16822,33 @@ init() {
     const list = document.createElement('ul');
     list.className = 'uk-nav-sub';
 
-    if (items.length) {
-      items.forEach((item) => {
-        const subItem = document.createElement('li');
-        const link = document.createElement('a');
-        link.href = makeFavoriteThreadUrl(item.threadId);
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.setAttribute('achecked', '1');
-        link.textContent = item.desc || item.threadId;
-        link.title = item.desc ? item.threadId : '';
-        subItem.appendChild(link);
-        list.appendChild(subItem);
-      });
-    } else {
+    const addItem = document.createElement('li');
+    const addLink = document.createElement('a');
+    addLink.href = '#';
+    addLink.className = 'xdex-favorite-add-current';
+    addLink.setAttribute('achecked', '1');
+    addLink.textContent = getFavoriteThreadsAddLinkText();
+    addLink.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      addCurrentThreadToFavoriteThreads();
+      return false;
+    };
+    addItem.appendChild(addLink);
+    list.appendChild(addItem);
+
+    items.forEach((item) => {
       const subItem = document.createElement('li');
-      const placeholder = document.createElement('a');
-      placeholder.href = '#';
-      placeholder.setAttribute('achecked', '1');
-      placeholder.textContent = '暂无';
-      placeholder.style.cursor = 'default';
-      placeholder.onclick = () => false;
-      subItem.appendChild(placeholder);
+      const link = document.createElement('a');
+      link.href = makeFavoriteThreadUrl(item.threadId);
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.setAttribute('achecked', '1');
+      link.textContent = formatFavoriteThreadMenuText(item);
+      link.title = item.desc ? `${item.desc} - ${item.threadId}` : '';
+      subItem.appendChild(link);
       list.appendChild(subItem);
-    }
+    });
 
     wrapper.appendChild(list);
     li.appendChild(wrapper);
