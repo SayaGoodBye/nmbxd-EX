@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "crx-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Read userscript version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(node - <<'NODE'
+          const fs = require('fs');
+          const source = fs.readFileSync('nmbxd-EX.user.js', 'utf8');
+          const match = source.match(/^\/\/\s*@version\s+(.+)$/m);
+          if (!match) {
+            throw new Error('Missing userscript @version');
+          }
+
+          const version = match[1].trim();
+          const parts = version.split('.');
+          const valid = parts.length >= 1 && parts.length <= 4 && parts.every((part) => {
+            if (!/^\d+$/.test(part)) return false;
+            if (part.length > 1 && part.startsWith('0')) return false;
+            const value = Number(part);
+            return Number.isInteger(value) && value >= 0 && value <= 65535;
+          });
+
+          if (!valid || parts.every((part) => Number(part) === 0)) {
+            throw new Error(`Invalid Chrome manifest version: ${version}`);
+          }
+
+          console.log(version);
+          NODE
+          )"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag matches userscript version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          REF_NAME="${GITHUB_REF_NAME}"
+          REF_VERSION="${REF_NAME#crx-v}"
+          REF_VERSION="${REF_VERSION#v}"
+
+          if [ "$REF_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "Tag version '$REF_VERSION' does not match userscript @version '${{ steps.version.outputs.version }}'"
+            exit 1
+          fi
+
+      - name: Prepare dist
+        shell: bash
+        run: |
+          rm -rf dist
+          mkdir -p dist
+
+          cp nmbxd-EX.user.js dist/nmbxd-EX.user.js
+          cp nmbxd-EX.user.js "dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js"
+          cp -R nmbxd-EX-Extension dist/nmbxd-EX-Extension
+          cp nmbxd-EX.user.js dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
+
+      - name: Sync extension metadata
+        shell: bash
+        working-directory: dist/nmbxd-EX-Extension
+        run: node scripts/sync-userscript-meta.js
+
+      - name: Verify versions
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const userscript = fs.readFileSync('dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js', 'utf8');
+          const gmCompat = fs.readFileSync('dist/nmbxd-EX-Extension/src/content/gm-compat.js', 'utf8');
+          const manifest = JSON.parse(fs.readFileSync('dist/nmbxd-EX-Extension/manifest.json', 'utf8'));
+
+          const userscriptVersion = userscript.match(/^\/\/\s*@version\s+(.+)$/m)?.[1]?.trim();
+          const gmVersion = gmCompat.match(/version:\s*"([^"]+)"/)?.[1];
+
+          if (!userscriptVersion) throw new Error('Missing userscript @version');
+          if (gmVersion !== userscriptVersion) {
+            throw new Error(`gm-compat version ${gmVersion} does not match userscript ${userscriptVersion}`);
+          }
+          if (manifest.version !== userscriptVersion) {
+            throw new Error(`manifest version ${manifest.version} does not match userscript ${userscriptVersion}`);
+          }
+
+          console.log(`version ok: ${userscriptVersion}`);
+          NODE
+
+      - name: Run checks
+        shell: bash
+        run: |
+          node --check dist/nmbxd-EX.user.js
+          node --check dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
+          node --check dist/nmbxd-EX-Extension/src/content/gm-compat.js
+          node --check dist/nmbxd-EX-Extension/scripts/sync-userscript-meta.js
+          cd dist/nmbxd-EX-Extension
+          node tests/direct-replacement.test.js
+
+      - name: Package extension
+        shell: bash
+        run: |
+          cd dist/nmbxd-EX-Extension
+          zip -r "../nmbxd-EX-Extension-v${{ steps.version.outputs.version }}.zip" . \
+            -x "*.git*" \
+            -x "tests/*"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.version.outputs.tag }}
+          name: X岛-EX v${{ steps.version.outputs.version }}
+          files: |
+            dist/nmbxd-EX.user.js
+            dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js
+            dist/nmbxd-EX-Extension-v${{ steps.version.outputs.version }}.zip

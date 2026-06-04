@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X岛-EX 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="options-shell">
+    <header class="hero-panel">
+      <div>
+        <p class="eyebrow">MV3 Migration Prototype</p>
+        <h1>X岛-EX 设置</h1>
+        <p class="hero-copy">这里编辑的配置会写入 <code>chrome.storage.local</code>，并与页面内设置面板共用同一个 flat settings 对象。</p>
+      </div>
+      <div class="hero-mark" aria-hidden="true">EX</div>
+    </header>
+
+    <section class="toolbar" aria-label="设置操作">
+      <button type="button" class="button button-primary" id="saveButton">保存设置</button>
+      <button type="button" class="button" id="resetButton">恢复默认</button>
+      <button type="button" class="button" id="reloadButton">重新载入</button>
+      <span class="status" id="status" role="status" aria-live="polite"></span>
+    </section>
+
+    <form id="settingsForm" class="settings-grid" novalidate></form>
+  </main>
+
+  <script src="../src/shared/settings-schema.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

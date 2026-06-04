@@ -1,0 +1,89 @@
+{
+  "manifest_version": 3,
+  "name": "X岛-EX",
+  "version": "2.3.1",
+  "description": "X岛揭示板网页端增强，移动端般的浏览体验",
+  "icons": {
+    "16": "icons/YanHe_by_9Hr_16.png",
+    "32": "icons/YanHe_by_9Hr_32.png",
+    "48": "icons/YanHe_by_9Hr_48.png",
+    "128": "icons/YanHe_by_9Hr_128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/YanHe_by_9Hr_16.png",
+      "32": "icons/YanHe_by_9Hr_32.png",
+      "48": "icons/YanHe_by_9Hr_48.png",
+      "128": "icons/YanHe_by_9Hr_128.png"
+    },
+    "default_title": "X岛-EX"
+  },
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "cookies",
+    "downloads",
+    "offscreen",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://*.nmbxd1.com/*",
+    "https://*.nmbxd.com/*",
+    "https://nmb-search.166666666.xyz/*",
+    "https://image.nmb.best/*",
+    "https://update.greasyfork.org/*",
+    "https://scriptcat.org/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "offscreen/offscreen.html",
+        "vendor/gifsicle/gifsicle.min.js"
+      ],
+      "matches": [
+        "https://*.nmbxd1.com/*",
+        "https://*.nmbxd.com/*",
+        "https://nmb-search.166666666.xyz/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.nmbxd1.com/*",
+        "https://*.nmbxd.com/*",
+        "https://nmb-search.166666666.xyz/*"
+      ],
+      "js": [
+        "src/content/page-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.nmbxd1.com/*",
+        "https://*.nmbxd.com/*",
+        "https://nmb-search.166666666.xyz/*"
+      ],
+      "js": [
+        "vendor/jquery-3.6.0.min.js",
+        "vendor/apng-js-1.1.5.js",
+        "vendor/pako-2.1.0.min.js",
+        "vendor/UPNG-2.1.0.js",
+        "src/content/gm-compat.js",
+        "src/content/gifsicle-loader.js",
+        "src/content/userscript-bridge.js",
+        "src/content/nmbxd-EX-for-edit.user.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}
