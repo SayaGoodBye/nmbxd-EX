@@ -104,6 +104,9 @@ jobs:
           if (manifest.version !== userscriptVersion) {
             throw new Error(`manifest version ${manifest.version} does not match userscript ${userscriptVersion}`);
           }
+          if (!manifest.key) {
+            throw new Error('Missing manifest key for stable unpacked extension ID');
+          }
 
           console.log(`version ok: ${userscriptVersion}`);
           NODE
@@ -124,7 +127,11 @@ jobs:
           cd dist/nmbxd-EX-Extension
           zip -r "../nmbxd-EX-Extension-v${{ steps.version.outputs.version }}.zip" . \
             -x "*.git*" \
-            -x "tests/*"
+            -x "tests/*" \
+            -x "*.pem" \
+            -x "*.key" \
+            -x "*key*.txt" \
+            -x "*.md"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
