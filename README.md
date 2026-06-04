@@ -36,6 +36,20 @@
 
 鼠标悬停至设置面板的每个选项上可以查看功能简介，或者可在[串内](https://www.nmbxd1.com/t/67024789)查看，此处不过多赘述。
 
+
+
+### 浏览器拓展版安装方法：
+
+0.本浏览器拓展适配Chrome、Edge等Chromium内核浏览器，Firefox浏览器无法使用
+1.打开浏览器拓展页面
+2.开启“开发者模式”
+3.点击加载解压缩的拓展
+4.选择通过GitHub release下载的拓展压缩包解压后的文件夹
+5.安装成功\\( ﾟ∀。)/
+![nmbxd-EX-Extension](https://image.nmb.best/image/2026-06-04/6a21708e92a6c.png)
+
+
+
 ### TODO：
 
 - [x] 常用串
@@ -46,12 +60,14 @@
 - [ ] 同步移动端订阅
 - [ ] 设置面板标签模式
 - [ ] 图片浏览模式
-- [ ] 类蓝岛发送前手动选择饼干
-- [ ] 现有功能完整迁移CRX版本
+- [ ] 类蓝岛可选发送前手动选择饼干
+- [ ] 现有功能完整迁移至Extension版本
 
 
 
 ### 致谢：
+
+- icon由9HrD12x设计并绘制 >>No.68765505
 - 切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 - 外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
 - 完整移植[增强x岛匿名版](https://greasyfork.org/zh-CN/scripts/513156-%E5%A2%9E%E5%BC%BAx%E5%B2%9B%E5%8C%BF%E5%90%8D%E7%89%88)
