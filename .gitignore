@@ -1,11 +1,24 @@
-.alma-snapshots
-.opencode
-.temp
+.alma-snapshots/
+.opencode/
+.temp/
 # hunkwise
 .vscode/hunkwise/
-.sisyphus
-.playwright-mcp
-.vscode
-.codex
-.omo
+.sisyphus/
+.playwright-mcp/
+.vscode/
+.codex/
+.omo/
 .omc/project-memory.json
+
+# release build output
+dist/
+release/
+*.zip
+*.crx
+
+# extension private keys, if CRX packaging is added later
+*.pem
+*.key
+
+# node dependencies, if package tooling is added later
+node_modules/
