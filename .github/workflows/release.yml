@@ -131,6 +131,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.version.outputs.tag }}
           name: X岛-EX v${{ steps.version.outputs.version }}
+          generate_release_notes: true
           files: |
             dist/nmbxd-EX.user.js
             dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js
