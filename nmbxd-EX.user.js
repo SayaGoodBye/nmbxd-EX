@@ -1498,6 +1498,47 @@ init() {
                        color:#8a1f1f !important;
                        font-weight:600;
                   }
+
+                  #sp_panel_tab_slot {
+                        position:absolute;
+                        left:-82px;
+                        top:48px;
+                        width:82px;
+                        display:flex;
+                       flex-direction:column;
+                        gap:6px;
+                   }
+
+                  #sp_panel_tab_slot:empty {
+                        display:none;
+                  }
+
+                  #sp_panel_tab_slot .sp_panel_tab {
+                        padding:6px 8px;
+                        border:1px solid var(--xdex-sp-border);
+                        border-right:none;
+                       border-radius:8px 0 0 8px;
+                       background:var(--xdex-sp-fold-bg);
+                       cursor:pointer;
+                        text-align:left;
+                   }
+
+                  #sp_panel_tab_slot .sp_panel_tab.active {
+                        background:var(--xdex-sp-panel-bg);
+                        font-weight:bold;
+                   }
+
+                  #sp_panel_views {
+                        display:contents;
+                   }
+
+                  .sp_panel_module.active {
+                        display:contents;
+                  }
+
+                  .sp_panel_module:not(.active) {
+                        display:none;
+                   }
               </style>
           `);
       }
@@ -1559,8 +1600,11 @@ init() {
               position:relative;margin:40px auto;width:min(711px, calc(100vw - 32px));
               max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
-            <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;">
-              <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
+            <div id="sp_panel_tab_slot" aria-label="设置面板模块"></div>
+            <div id="sp_panel_views">
+              <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
+                <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;box-sizing:border-box;">
+                  <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
 
                 <span style="font-size:20px; font-weight:bold;">X岛-EX</span>
 
@@ -1568,7 +1612,7 @@ init() {
 
               </div>
 
-              <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
+                  <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication" class="xdex-switch" role="switch"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark" class="xdex-switch" role="switch"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
@@ -1630,7 +1674,7 @@ init() {
                     </select>
                   </div>
                 </div>
-              </div>
+                  </div>
 
               <div style="margin-top:12px;">
                 <!-- 标记饼干（组） -->
@@ -1726,6 +1770,7 @@ init() {
                     <div style="font-size:12px;color:#888;text-align:center;">导入将覆盖当前全部配置，建议先导出备份</div>
                   </div>
                 </div>
+                </div>
               </div>
             </div>
 
@@ -1746,6 +1791,22 @@ init() {
         </div>`;
       $('#sp_cover').remove();
       $('body').append(html);
+
+      function setSettingsPanelModule(moduleName) {
+        const $nextView = $(`#sp_panel_views [data-sp-module-view="${moduleName}"]`);
+        const nextModule = $nextView.length ? moduleName : 'settings';
+        $('#sp_panel_tab_slot .sp_panel_tab').removeClass('active')
+          .filter(`[data-sp-module="${nextModule}"]`).addClass('active');
+        $('#sp_panel_views .sp_panel_module').removeClass('active')
+          .filter(`[data-sp-module-view="${nextModule}"]`).addClass('active');
+        $('#sp_apply').toggle(nextModule === 'settings');
+      }
+
+      $('#sp_panel_tab_slot').off('click', '[data-sp-module]').on('click', '[data-sp-module]', (e) => {
+        e.preventDefault();
+        setSettingsPanelModule($(e.currentTarget).data('spModule'));
+      });
+      setSettingsPanelModule('settings');
 
       // 折叠头：统一控制
       $('.sp_fold_head').off('click').on('click', function(){
