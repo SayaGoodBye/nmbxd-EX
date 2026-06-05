@@ -32,7 +32,8 @@
 - 图片自动压缩/非法图像格式（无GCT）GIF重编码
 - 链接自动识别
 - 设置项导入/导出-剪贴板/文件
-- 图片右键菜单-可复制GIF
+- 图片右键菜单-可复制GIF/APNG
+- 侧边栏常用串
 
 鼠标悬停至设置面板的每个选项上可以查看功能简介，或者可在[串内](https://www.nmbxd1.com/t/67024789)查看，此处不过多赘述。
 
@@ -40,12 +41,14 @@
 
 ### 浏览器拓展版安装方法：
 
-0.本浏览器拓展适配Chrome、Edge等Chromium内核浏览器，Firefox浏览器无法使用
-1.打开浏览器拓展页面
-2.开启“开发者模式”
-3.点击加载解压缩的拓展
-4.选择通过GitHub release下载的拓展压缩包解压后的文件夹
-5.安装成功\\( ﾟ∀。)/
+1. 打开浏览器拓展页面
+2. 开启“开发者模式”
+3. 点击“加载解压缩的拓展”
+4. 选择通过[GitHub release](https://github.com/SayaGoodBye/nmbxd-EX/releases/latest)或者[百度网盘](https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf)下载的拓展压缩包解压后的文件夹
+5. 安装成功\\( ﾟ∀。)/
+
+PS:本浏览器拓展适配Chrome、Edge等Chromium内核浏览器，**Firefox浏览器无法使用**
+
 ![nmbxd-EX-Extension](https://image.nmb.best/image/2026-06-04/6a21708e92a6c.png)
 
 

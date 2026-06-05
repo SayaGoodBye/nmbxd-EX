@@ -2,7 +2,7 @@
 // @name         X岛-EX
 // @namespace    http://tampermonkey.net/
 // @version      2.3.1
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -22,7 +22,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1. 新增图片懒加载功能，根据浏览方向建立加载列表，最高3并发，GIF不受限制。\n2. 新增“屏蔽关键词”分组，若关键词为八位数字则同时在正文、串号、回复号中进行匹配。\n3. 新增“增强X岛匿名版”的“人类友好时间”的“相对时间/精确时间”选择。\n\n优化\n1. 优化脚本作用顺序、减少各函数作用时间。\n2. 优化“野生搜索酱”，结果中的移动端链接重定向到网页端，并在新窗口打开。\n3. 优化图片高清化/图片控件功能\n\n修复\n1. 尝试修复部分浏览器中扩展坞自动展开可能无法触发的问题。\n2. 修复若干预览框中引用渲染问题。\n3. 修复“增强x岛匿名版”自动设置网页标题功能错误作用于板块页的问题。\n4. 尝试修复颜文字面板偶现“最近/常用“未生效，回退到”默认“的问题。\n5. 修复无缝翻页后带图回复被横向挤压的问题。
+// @changelog    新增\n1.侧栏新增“常用串”，支持串内一键添加，同样支持手动填写，支持https://www.nmbxd1.com/t/67024789?page=23、https://www.nmbxd1.com/t/67024789/23、https://www.nmbxd1.com/Forum/po/id/67024789/page/10.html、67024789等写法。\n\n优化\n1.底栏、侧栏链接默认新标签页打开，按住CTRL在本页面打开。
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -52,8 +52,8 @@
   const XDEX_SINGLETON_WAIT_MS = 100;
   function getXDexRuntimeInfo(){
       const declared = typeof globalThis !== 'undefined' ? globalThis.__xdexRuntime : null;
-      if (declared && declared.kind === 'crx') {
-          return Object.assign({ kind: 'crx' }, declared);
+      if (declared && declared.kind === 'extension') {
+          return Object.assign({ kind: 'extension' }, declared);
       }
       const scriptHandler = GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler)) || '';
       return {
@@ -64,7 +64,7 @@
   function shouldExitForXDexSingleton(runtimeInfo){
       const root = document.documentElement;
       const owner = root && root.dataset ? root.dataset[XDEX_SINGLETON_OWNER_DATASET_KEY] : '';
-      return owner === 'crx' && (!runtimeInfo || runtimeInfo.kind !== 'crx');
+      return owner === 'extension' && (!runtimeInfo || runtimeInfo.kind !== 'extension');
   }
   function cat_version(){
       console.log('[version]:', VERSION);
@@ -81,7 +81,7 @@
           if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
           startXDexRuntime();
       };
-      if (XDEX_RUNTIME.kind !== 'crx') {
+      if (XDEX_RUNTIME.kind !== 'extension') {
         setTimeout(() => {
           if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
           XDEX_GM_STORAGE_READY.then(() => {
@@ -103,9 +103,12 @@
   console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
 
   const UPDATE_CHECK_KEY = 'xdex_update_check_state';
+  const UPDATE_EXTENSION_CHECK_KEY = 'xdex_extension_update_check_state';
   const UPDATE_GREASYFORK_META_URL = 'https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js';
   const UPDATE_SCRIPTCAT_API_URL = 'https://scriptcat.org/api/v2/scripts/6289';
-  const UPDATE_CHECK_HOUR = 10;
+  const UPDATE_EXTENSION_GITHUB_JSON_URL = 'https://raw.githubusercontent.com/SayaGoodBye/nmbxd-EX/main/nmbxd-EX-Extension/update.json';
+  const UPDATE_EXTENSION_JSDELIVR_JSON_URL = 'https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@main/nmbxd-EX-Extension/update.json';
+  const UPDATE_CHECK_HOUR = 11;
 
   function normalizeMetaChangelog(text) {
     return String(text || '')
@@ -131,6 +134,10 @@
   }
 
   const CHANGELOG = parseVersionAndChangelogFromMeta(GM_info.scriptMetaStr || '').changelog || '';
+  function getUpdateCheckStorageKey() {
+    return XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? UPDATE_EXTENSION_CHECK_KEY : UPDATE_CHECK_KEY;
+  }
+
   function getDefaultUpdateCheckState() {
     return {
       lastCheckDate: '',
@@ -148,7 +155,7 @@
 
   function getUpdateCheckState() {
     try {
-      const saved = GM_getValue(UPDATE_CHECK_KEY, null);
+      const saved = GM_getValue(getUpdateCheckStorageKey(), null);
       const merged = Object.assign(getDefaultUpdateCheckState(), saved || {});
       console.log('[update-check] get state:', merged);
       return merged;
@@ -160,7 +167,7 @@
 
   function setUpdateCheckState(nextState) {
     const merged = Object.assign(getDefaultUpdateCheckState(), nextState || {});
-    GM_setValue(UPDATE_CHECK_KEY, merged);
+    GM_setValue(getUpdateCheckStorageKey(), merged);
     console.log('[update-check] set state:', merged);
     return merged;
   }
@@ -235,13 +242,40 @@
     };
   }
 
+  async function fetchExtensionUpdateJson(url, source) {
+    const resp = await gmRequest(url, 'text');
+    const json = JSON.parse(resp.responseText || '{}');
+    const extension = json && json.extension ? json.extension : json;
+    return {
+      source,
+      url,
+      version: String(extension.version || '').trim(),
+      changelog: String(extension.changelog || '').trim(),
+      downloads: extension.downloads || {}
+    };
+  }
+
+  function getUpdateCheckRequestsForRuntime() {
+    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
+      return [
+        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_GITHUB_JSON_URL, 'github'),
+        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_JSDELIVR_JSON_URL, 'jsdelivr')
+      ];
+    }
+    return [
+      () => fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork'),
+      () => fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')
+    ];
+  }
+
   function choosePreferredRemoteMeta(results) {
     const valid = (results || []).filter(item => item && item.version);
     if (!valid.length) return null;
     valid.sort((a, b) => compareVersionStrings(b.version, a.version));
     const topVersion = valid[0].version;
     const topCandidates = valid.filter(item => compareVersionStrings(item.version, topVersion) === 0);
-    const preferred = topCandidates.find(item => item.source === 'greasyfork') || topCandidates[0];
+    const preferredSource = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? 'github' : 'greasyfork';
+    const preferred = topCandidates.find(item => item.source === preferredSource) || topCandidates[0];
     return preferred;
   }
 
@@ -266,7 +300,7 @@
 
   function clearFooterUpdateHighlight() {
     const $links = $('#sp_panel_footer .sp_panel_links');
-    $links.removeClass('xdex-update-highlight xdex-update-source-greasyfork xdex-update-source-scriptcat');
+    $links.removeClass('xdex-update-highlight xdex-update-source-greasyfork xdex-update-source-scriptcat xdex-update-source-github');
     $links.find('[data-update-channel]').removeClass('xdex-update-link-primary xdex-update-link-secondary');
   }
 
@@ -286,6 +320,16 @@
         containerClass: 'xdex-update-source-scriptcat',
         primary: 'scriptcat',
         secondary: ['baidupan']
+      },
+      github: {
+        containerClass: 'xdex-update-source-github',
+        primary: 'github',
+        secondary: ['baidupan']
+      },
+      jsdelivr: {
+        containerClass: 'xdex-update-source-github',
+        primary: 'baidupan',
+        secondary: ['github']
       }
     };
     const config = channelMap[sourceKey];
@@ -400,12 +444,12 @@
       nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
     });
     try {
-      const settled = await Promise.allSettled([
-        fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork'),
-        fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')
-      ]);
+      const requests = getUpdateCheckRequestsForRuntime();
+      const settled = await Promise.allSettled(requests.map((request) => request()));
       const sourceResults = settled.map((item, index) => {
-        const source = index === 0 ? 'greasyfork' : 'scriptcat';
+        const source = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension'
+          ? (index === 0 ? 'github' : 'jsdelivr')
+          : (index === 0 ? 'greasyfork' : 'scriptcat');
         if (item.status === 'fulfilled') {
           console.log('[update-check] remote meta success:', item.value);
           return item.value;
@@ -11715,7 +11759,7 @@ init() {
       value: dropdown.value,
       hasShowPicker: typeof dropdown.showPicker === 'function'
     });
-    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'crx') {
+    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
       return openCookieShortcutMenu(dropdown, focusBackTarget);
     }
     if (typeof dropdown.showPicker === 'function') {
@@ -16327,8 +16371,8 @@ init() {
     // console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
   }
 
-  function shouldUseCrxNativeImageContextMenu(cfg) {
-    return !!(XDEX_RUNTIME && XDEX_RUNTIME.kind === 'crx' && cfg && cfg.enableImageContextMenu);
+  function shouldUseExtensionNativeImageContextMenu(cfg) {
+    return !!(XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' && cfg && cfg.enableImageContextMenu);
   }
 
   function openImageContextMenu(context, x, y) {
@@ -16703,7 +16747,7 @@ init() {
     return startupPerfDebug.measure('enableImageContextMenu', () => {
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     if (!cfg.enableImageContextMenu) return;
-    if (shouldUseCrxNativeImageContextMenu(cfg)) return;
+    if (shouldUseExtensionNativeImageContextMenu(cfg)) return;
     ensureImageContextMenuStyle();
     getImageContextMenu();
     }, () => startupPerfDebug.summarizeRoot(root));
