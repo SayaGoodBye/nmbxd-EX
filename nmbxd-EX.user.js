@@ -115,6 +115,10 @@
   const THREAD_HISTORY_EXCERPT_LIMIT = 250;
   const THREAD_HISTORY_RECORD_RETRY_LIMIT = 10;
   const THREAD_HISTORY_RECORD_RETRY_DELAY = 500;
+  const THREAD_HISTORY_SYNC_EVENT = 'xdex:thread-history-changed';
+  const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
+  const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
+  const THREAD_HISTORY_REVISIT_DWELL_MS = 10000;
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
 
   const threadHistoryDebugState = {
@@ -127,6 +131,14 @@
     lastPanelModule: ''
   };
   window.__xdexThreadHistoryDebug = threadHistoryDebugState;
+  let threadHistoryLiveSyncBound = false;
+  let threadHistoryLiveRenderTimer = 0;
+  let threadHistoryLiveRenderFirstAt = 0;
+  let threadHistoryLiveRenderPendingCount = 0;
+  let threadHistoryReactivationTrackingInstalled = false;
+  let threadHistoryDwellTimer = 0;
+  let threadHistoryVisibleSince = 0;
+  let threadHistoryVisibleSessionCounted = false;
 
   function updateThreadHistoryDebugState(patch) {
     Object.assign(threadHistoryDebugState, patch || {});
@@ -274,7 +286,76 @@
   function setThreadHistoryStore(store) {
     const normalized = normalizeThreadHistoryStore(store);
     GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
+    notifyThreadHistoryStoreChanged('local-write', false);
     return normalized;
+  }
+
+  function isThreadHistoryPanelOpen() {
+    const cover = document.getElementById('sp_cover');
+    const module = document.getElementById('sp_module_history');
+    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
+  }
+
+  function scheduleThreadHistoryLiveRender(source, remote) {
+    const active = isThreadHistoryPanelOpen();
+    const now = Date.now();
+    if (!threadHistoryLiveRenderFirstAt) threadHistoryLiveRenderFirstAt = now;
+    threadHistoryLiveRenderPendingCount += 1;
+    updateThreadHistoryDebugState({
+      lastLiveSync: {
+        source,
+        remote: !!remote,
+        active,
+        pendingCount: threadHistoryLiveRenderPendingCount,
+        firstAt: threadHistoryLiveRenderFirstAt,
+        at: new Date().toISOString()
+      }
+    });
+    if (!active) {
+      if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
+      threadHistoryLiveRenderTimer = 0;
+      threadHistoryLiveRenderFirstAt = 0;
+      threadHistoryLiveRenderPendingCount = 0;
+      return;
+    }
+    const run = () => {
+      threadHistoryLiveRenderTimer = 0;
+      threadHistoryLiveRenderFirstAt = 0;
+      threadHistoryLiveRenderPendingCount = 0;
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderThreadHistoryModule());
+      else renderThreadHistoryModule();
+    };
+    if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
+    const elapsed = now - threadHistoryLiveRenderFirstAt;
+    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
+      ? 0
+      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
+    threadHistoryLiveRenderTimer = setTimeout(run, delay);
+  }
+
+  function notifyThreadHistoryStoreChanged(source, remote) {
+    try {
+      window.dispatchEvent(new CustomEvent(THREAD_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
+    } catch (e) {}
+    scheduleThreadHistoryLiveRender(source, remote);
+  }
+
+  function bindThreadHistoryLiveSync() {
+    if (threadHistoryLiveSyncBound) return;
+    threadHistoryLiveSyncBound = true;
+    if (typeof GM_addValueChangeListener === 'function') {
+      try {
+        GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          scheduleThreadHistoryLiveRender('gm-value-change', remote);
+        });
+      } catch (e) {
+        logThreadHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
+      }
+    }
+    window.addEventListener(THREAD_HISTORY_SYNC_EVENT, (event) => {
+      const detail = event && event.detail || {};
+      scheduleThreadHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
+    });
   }
 
   function parseThreadHistoryUrl(inputUrl) {
@@ -662,17 +743,19 @@
     };
   }
 
-  function upsertThreadHistoryRecord(nextRecord) {
+  function upsertThreadHistoryRecord(nextRecord, options = {}) {
     if (!nextRecord || !nextRecord.threadId || !nextRecord.mode) return getThreadHistoryStore();
     const now = Date.now();
+    const countVisit = options.countVisit !== false;
+    const touchVisitedAt = countVisit || options.touchVisitedAt === true;
     const store = getThreadHistoryStore();
     const key = nextRecord.key || getThreadHistoryKey(nextRecord.mode, nextRecord.threadId);
     const old = store.items[key] || {};
     const merged = Object.assign({}, old, nextRecord, {
       key,
       firstVisitedAt: old.firstVisitedAt || now,
-      lastVisitedAt: now,
-      visitCount: (Number(old.visitCount) || 0) + 1,
+      lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
+      visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
       maxVisitedPage: Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1),
       cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
     });
@@ -680,20 +763,49 @@
     store.index[key] = buildThreadHistoryIndexEntry(merged);
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
     const saved = setThreadHistoryStore(store);
-    logThreadHistory('record saved', { key, total: saved.order.length, record: merged });
+    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: merged });
     return saved;
   }
 
-  function updateThreadHistoryScrollPosition() {
-    const parsed = parseThreadHistoryUrl(location.href);
-    if (!parsed) return;
+  function touchThreadHistoryCurrentLocation(options = {}) {
+    const parsed = parseThreadHistoryUrl(options.url || location.href);
+    if (!parsed) return getThreadHistoryStore();
     const key = getThreadHistoryKey(parsed.mode, parsed.threadId);
     const store = getThreadHistoryStore();
     const item = store.items[key];
-    if (!item) return;
+    if (!item) return store;
+    const now = Date.now();
+    item.page = Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1);
+    item.url = options.url || parsed.url;
+    item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
     item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    if (options.touchVisitedAt) item.lastVisitedAt = now;
     store.index[key] = buildThreadHistoryIndexEntry(item);
-    setThreadHistoryStore(store);
+    store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
+    const saved = setThreadHistoryStore(store);
+    logThreadHistory('location touched', { key, reason: options.reason || '', page: item.page, url: item.url, maxVisitedPage: item.maxVisitedPage, touchVisitedAt: !!options.touchVisitedAt });
+    return saved;
+  }
+
+  function recordThreadHistoryProgress(options = {}) {
+    const parsed = parseThreadHistoryUrl(options.url || location.href);
+    if (!parsed) return getThreadHistoryStore();
+    const record = extractThreadHistoryRecord(document) || {
+      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
+      mode: parsed.mode,
+      threadId: parsed.threadId
+    };
+    record.key = getThreadHistoryKey(parsed.mode, parsed.threadId);
+    record.mode = parsed.mode;
+    record.threadId = parsed.threadId;
+    record.page = Math.max(Number(record.page) || 1, Number(options.page || parsed.page) || 1);
+    record.url = options.url || parsed.url;
+    record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
+  }
+
+  function updateThreadHistoryScrollPosition() {
+    touchThreadHistoryCurrentLocation({ reason: 'scroll-position' });
   }
 
   function deleteThreadHistoryItem(key) {
@@ -783,7 +895,50 @@
     window.addEventListener('pagehide', updateThreadHistoryScrollPosition, { passive: true });
   }
 
-  function recordCurrentThreadHistory(attempt = 0) {
+  function isThreadHistoryPageActive() {
+    return document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
+  }
+
+  function cancelThreadHistoryDwellTimer(resetSession) {
+    if (threadHistoryDwellTimer) clearTimeout(threadHistoryDwellTimer);
+    threadHistoryDwellTimer = 0;
+    threadHistoryVisibleSince = 0;
+    if (resetSession) threadHistoryVisibleSessionCounted = false;
+  }
+
+  function scheduleThreadHistoryReactivationVisit(source) {
+    if (!parseThreadHistoryUrl(location.href)) return;
+    if (!isThreadHistoryPageActive()) {
+      cancelThreadHistoryDwellTimer(document.visibilityState !== 'visible');
+      return;
+    }
+    if (threadHistoryVisibleSessionCounted || threadHistoryDwellTimer) return;
+    threadHistoryVisibleSince = Date.now();
+    updateThreadHistoryDebugState({ lastDwell: { source, status: 'scheduled', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
+    threadHistoryDwellTimer = setTimeout(() => {
+      threadHistoryDwellTimer = 0;
+      if (!threadHistoryVisibleSince || !isThreadHistoryPageActive()) return;
+      if (Date.now() - threadHistoryVisibleSince < THREAD_HISTORY_REVISIT_DWELL_MS) return;
+      threadHistoryVisibleSessionCounted = true;
+      updateThreadHistoryDebugState({ lastDwell: { source, status: 'counted', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
+      recordCurrentThreadHistory(0, { reason: 'reactivation-dwell', countVisit: true });
+    }, THREAD_HISTORY_REVISIT_DWELL_MS);
+  }
+
+  function installThreadHistoryReactivationTracking(initialCounted) {
+    if (threadHistoryReactivationTrackingInstalled) return;
+    threadHistoryReactivationTrackingInstalled = true;
+    threadHistoryVisibleSessionCounted = !!initialCounted && document.visibilityState === 'visible';
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') scheduleThreadHistoryReactivationVisit('visibilitychange');
+      else cancelThreadHistoryDwellTimer(true);
+    }, { passive: true });
+    window.addEventListener('focus', () => scheduleThreadHistoryReactivationVisit('focus'), { passive: true });
+    window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
+    window.addEventListener('pagehide', () => cancelThreadHistoryDwellTimer(true), { passive: true });
+  }
+
+  function recordCurrentThreadHistory(attempt = 0, options = {}) {
     const record = extractThreadHistoryRecord(document);
     if (!record) {
       const parsed = parseThreadHistoryUrl(location.href);
@@ -810,8 +965,8 @@
       }
       return;
     }
-    upsertThreadHistoryRecord(record);
-    updateThreadHistoryDebugState({ lastRecord: { status: 'saved', attempt, record, at: new Date().toISOString() } });
+    upsertThreadHistoryRecord(record, Object.assign({ reason: 'initial-load', countVisit: true }, options));
+    updateThreadHistoryDebugState({ lastRecord: { status: 'saved', attempt, reason: options.reason || 'initial-load', record, at: new Date().toISOString() } });
     installThreadHistoryScrollTracking();
   }
 
@@ -2894,6 +3049,7 @@ init() {
 
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
+                <a id="sp_update_log_link" href="javascript:void(0)" style="display:none;">更新日志</a>
                 <a data-update-channel="thread" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
                 <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">GreasyFork</a>
                 <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
@@ -2955,6 +3111,7 @@ init() {
       });
       setSettingsPanelModule('settings');
       bindThreadHistoryModuleEvents();
+      bindThreadHistoryLiveSync();
       renderThreadHistoryModule();
 
       // 折叠头：统一控制
@@ -7761,6 +7918,7 @@ init() {
           lastLoadedPage = nextPageNum;
 
           try { history.pushState(null, '', nextUrl); } catch (e) {}
+          recordThreadHistoryProgress({ url: nextUrl, page: nextPageNum, reason: 'seamless-page', touchVisitedAt: true });
           refreshEnhanceIslandAutoTitle();
 
           ensureSentinelPlaced();
@@ -7892,6 +8050,7 @@ init() {
         loadedPages.add(nextPageNum);
         lastLoadedPage = nextPageNum;
         try { history.pushState(null, '', nextUrl); } catch (e) {}
+        recordThreadHistoryProgress({ url: nextUrl, page: nextPageNum, reason: 'seamless-page', touchVisitedAt: true });
         refreshEnhanceIslandAutoTitle();
 
         const hasNextLink = pagination && Array.from(pagination.querySelectorAll('a')).some(a => /下一页|下页|Next|›|»|→/i.test(a.textContent));
@@ -18277,7 +18436,12 @@ init() {
     enhancePostFormLayout();                                         //发帖UI调整
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
     renderFavoriteThreadsMenu();                                      //常用串
-    recordCurrentThreadHistory();
+    if (isThreadHistoryPageActive()) {
+      recordCurrentThreadHistory(0, { reason: 'initial-load', countVisit: true });
+      installThreadHistoryReactivationTracking(true);
+    } else {
+      installThreadHistoryReactivationTracking(false);
+    }
     startupPerfDebug.mark('document.ready.syncSetup.end', startupPerfDebug.summarizeRoot(document));
 
     // 保存原始函数
