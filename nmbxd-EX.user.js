@@ -2894,7 +2894,6 @@ init() {
 
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
-                <a id="sp_update_log_link" href="javascript:void(0)" style="display:none;">更新日志</a>
                 <a data-update-channel="thread" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
                 <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">GreasyFork</a>
                 <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
