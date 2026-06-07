@@ -14008,6 +14008,17 @@ init() {
                   trigger.textContent = opt.textContent || '选择颜文字';
                   hidePanel();
                 });
+                item.addEventListener('contextmenu', async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  try {
+                    await writeClipboardText(opt.value, null);
+                    toast('颜文字已复制', 900, { queue: false, key: 'kaomoji-copy' });
+                  } catch (err) {
+                    console.warn('[kaomoji] copy failed:', err);
+                    toast('颜文字复制失败', 900, { queue: false, key: 'kaomoji-copy' });
+                  }
+                });
                 panel.appendChild(item);
               });
             }
