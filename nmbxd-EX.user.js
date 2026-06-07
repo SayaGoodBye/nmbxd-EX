@@ -773,7 +773,8 @@
     const cookieText = getElementTextPreserveZeroWidth(cookieEl).trim();
     const cookieId = extractThreadHistoryCookieId(cookieEl, cookieText);
     const cookieHtml = sanitizeThreadHistoryInlineHtml(cookieEl);
-    const createdAt = getElementTextPreserveZeroWidth(mainEl.querySelector('.h-threads-info-createdat, .h-threads-info time')).trim();
+    const createdAtEl = mainEl.querySelector('.h-threads-info-createdat, .h-threads-info time');
+    const createdAt = String(createdAtEl && (createdAtEl.getAttribute('title') || createdAtEl.getAttribute('datetime')) || getElementTextPreserveZeroWidth(createdAtEl)).trim();
     return {
       key: getThreadHistoryKey(parsed.mode, parsed.threadId),
       mode: parsed.mode,
@@ -1138,7 +1139,11 @@
 
     if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
     if (shouldRenderThreadHistoryAuthor(item.author)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.author);
-    appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', item.createdAt);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', item.createdAt);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = item.createdAt;
+      createdAtNode.title = item.createdAt;
+    }
     const cookieHtml = item.cookieHtml || buildThreadHistoryLegacyCookieHtml(item.cookieId);
     const cookieMarkId = getThreadHistoryCookieMarkId(item);
     if (cookieHtml) {
@@ -1205,7 +1210,8 @@
     footer.className = 'xdex-history-footer';
     appendThreadHistoryText(footer, 'span', 'xdex-history-time', formatThreadHistoryTime(item.lastVisitedAt));
     appendThreadHistoryText(footer, 'span', 'xdex-history-visit-count', `共访问 ${item.visitCount || 1} 次`);
-    appendThreadHistoryText(footer, 'span', 'xdex-history-page', `最高到 P${item.maxVisitedPage || item.page || 1}`);
+    appendThreadHistoryText(footer, 'span', 'xdex-history-page', `串内最远：P${item.maxVisitedPage || item.page || 1}`);
+    appendThreadHistoryText(footer, 'span', 'xdex-history-current-page', `最近查看：P${item.page || 1}`);
     if (item.mode === 'po') appendThreadHistoryText(footer, 'span', 'xdex-history-po-label', 'Po');
     main.appendChild(footer);
     markAllCookies(getFilterConfig().markedGroups || [], wrapper);
@@ -15483,8 +15489,11 @@ init() {
       const targets = withSelf($root, 'span.h-threads-info-createdat');
       targets.each(function () {
         const target = $(this);
-        const timeStr = target.attr('title') || target.text().trim();
+        const timeStr = target.attr('data-xdex-original-time') || target.attr('title') || target.text().trim();
         if (!timeStr) return;
+        const date = new Date(timeStr);
+        if (Number.isNaN(date.getTime())) return;
+        target.attr('data-xdex-original-time', timeStr);
         target.attr('title', timeStr);
         const friendlyTime = getFriendlyTime(timeStr);
         target.text(friendlyTime);
@@ -15506,7 +15515,7 @@ init() {
       const targets = withSelf($root, 'span.h-threads-info-createdat');
       targets.each(function () {
         const target = $(this);
-        const timeStr = target.attr('title');
+        const timeStr = target.attr('data-xdex-original-time') || target.attr('title');
         if (timeStr) target.text(timeStr);
       });
     }
