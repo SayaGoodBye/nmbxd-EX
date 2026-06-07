@@ -118,7 +118,7 @@
   const THREAD_HISTORY_SYNC_EVENT = 'xdex:thread-history-changed';
   const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
   const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
-  const THREAD_HISTORY_REVISIT_DWELL_MS = 10000;
+  const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
 
   const threadHistoryDebugState = {
@@ -1179,8 +1179,9 @@
     deleteButton.type = 'button';
     deleteButton.className = 'xdex-history-delete';
     deleteButton.dataset.historyKey = result.key;
-    deleteButton.textContent = '删除';
-    info.appendChild(deleteButton);
+    deleteButton.title = '删除';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
 
     if (item.imageFile) {
       const imageLink = document.createElement('a');
@@ -2744,26 +2745,29 @@ init() {
                           white-space:nowrap;
                      }
 
-                  #sp_history_results {
-                         display:block;
-                         min-height:40px;
-                         color:inherit;
-                    }
+                   #sp_history_results {
+                          display:block;
+                          min-height:40px;
+                          padding-top:8px;
+                          color:inherit;
+                     }
 
                    .xdex-history-item {
-                          display:block !important;
-                           margin:8px 0;
-                           border:1px solid var(--xdex-sp-border);
-                           border-radius:8px;
-                           background:var(--xdex-sp-fold-bg);
-                           overflow:hidden;
-                      }
+                           display:block !important;
+                            position:relative;
+                            margin:10px 0 8px;
+                            border:1px solid var(--xdex-sp-border);
+                            border-radius:8px;
+                            background:var(--xdex-sp-fold-bg);
+                            overflow:visible;
+                       }
 
-                  .xdex-history-item .h-threads-item-main {
-                         display:block !important;
-                          padding:10px;
-                          background:transparent;
-                     }
+                   .xdex-history-item .h-threads-item-main {
+                          display:block !important;
+                           position:relative;
+                           padding:10px;
+                           background:transparent;
+                      }
 
                     .xdex-history-item .h-threads-content {
                            display:block !important;
@@ -2801,10 +2805,9 @@ init() {
                     .xdex-history-item .h-threads-info-createdat,
                     .xdex-history-item .h-threads-info-uid,
                     .xdex-history-item .h-threads-info-id,
-                    .xdex-history-item .h-threads-info-reply-btn,
-                    .xdex-history-item .xdex-history-delete {
-                           margin-left:5px;
-                      }
+                    .xdex-history-item .h-threads-info-reply-btn {
+                            margin-left:5px;
+                       }
 
                     .xdex-history-delete,
                     .xdex-history-reply-action {
@@ -2829,11 +2832,21 @@ init() {
                            color:#059;
                       }
 
-                    .xdex-history-delete {
-                           flex:0 0 auto;
-                           margin-left:auto;
-                           color:#800000;
-                      }
+                     .xdex-history-delete {
+                            position:absolute;
+                            top:-9px;
+                            right:10px;
+                            width:20px;
+                            height:20px;
+                            border:1px solid #a98f7a;
+                            border-radius:999px;
+                            background:#F0E0D6;
+                            line-height:16px;
+                            padding:0;
+                            font-size:14px;
+                            z-index:1;
+                            color:#800000;
+                       }
 
                     .xdex-history-footer {
                            display:flex;
@@ -4243,7 +4256,7 @@ init() {
         sp_enableSeamlessPaging: '阅读到页面底部时无缝加载下一页并为新页首添加页码提示',
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
-        sp_enableImageContextMenu: '为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单。',
+        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中可不在前台。',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
