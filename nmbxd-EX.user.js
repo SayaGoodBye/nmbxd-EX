@@ -9730,9 +9730,11 @@ init() {
 
   // 板块页链接新标签页打开
   function runLinkBlank(root = document) {
-    root.querySelectorAll('#h-content .h-threads-list a, .margin-bottom a, .margin-top a, #h-menu-content a').forEach(a => {
+    const selector = '#h-content .h-threads-list a, .margin-bottom a, .margin-top a, [style*="margin-top: -5px"] a, [style*="margin-top:-5px"] a, #h-menu-content a';
+    root.querySelectorAll(selector).forEach(a => {
         // ===== 新增：排除分页导航内的链接 =====
         if (a.closest('ul.uk-pagination.uk-pagination-left.h-pagination')) return;
+        if (a.closest('.uk-parent')) return;
         const href = String(a.getAttribute('href') || '').trim();
         if (!href || href === '#' || /^javascript:/i.test(href)) return;
         // =====================================
@@ -16884,9 +16886,13 @@ init() {
     a.setAttribute('rel', Array.from(rel).join(' '));
   }
 
+  function isNmbSearchResultLink(a) {
+    return !!(a && a.matches && a.matches('#overflow.text-result a[href]'));
+  }
+
   function rewriteNmbSearchMobileThreadLinks(root = document) {
     if (!isNmbSearchPage()) return;
-    const selector = 'a[href]';
+    const selector = '#overflow.text-result a[href]';
     const links = [];
     if (root && root.matches && root.matches(selector)) links.push(root);
     if (root && root.querySelectorAll) {
@@ -16904,6 +16910,7 @@ init() {
     if (!isNmbSearchPage() || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
     if (!a) return;
+    if (!isNmbSearchResultLink(a)) return;
     const rawHref = a.getAttribute('href') || a.href || '';
     if (!rawHref || /^javascript:/i.test(rawHref)) return;
     const nextHref = normalizeNmbSearchMobileThreadUrl(rawHref);
