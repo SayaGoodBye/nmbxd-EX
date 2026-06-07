@@ -380,6 +380,83 @@
     };
   }
 
+  function buildThreadHistoryPageUrl(mode, threadId, page) {
+    const tid = String(threadId || '').trim();
+    const pageNum = Math.max(1, Number(page) || 1);
+    if (!tid) return location.href;
+    if (mode === 'po') return `${location.origin}/Forum/po/id/${tid}/page/${pageNum}.html`;
+    return `${location.origin}/t/${tid}?page=${pageNum}`;
+  }
+
+  function parseThreadHistoryPageNumberFromElement(el) {
+    if (!el) return 0;
+    const text = String(el.textContent || '').trim();
+    const lastTextMatch = text.match(/末页\s*\((\d+)\)/);
+    if (lastTextMatch) return Number(lastTextMatch[1]) || 0;
+    const href = el.getAttribute && el.getAttribute('href');
+    const parsed = href ? parseThreadHistoryUrl(href) : null;
+    if (parsed && parsed.page) return Number(parsed.page) || 0;
+    const numericText = text.match(/^\d+$/);
+    return numericText ? Number(numericText[0]) || 0 : 0;
+  }
+
+  function getThreadHistoryPaginationBounds(root = document) {
+    const paginations = Array.from((root || document).querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
+    const pagination = paginations.length ? paginations[paginations.length - 1] : null;
+    if (!pagination) return null;
+
+    const items = Array.from(pagination.querySelectorAll('li'));
+    const elements = Array.from(pagination.querySelectorAll('a, span'));
+    const parsedLinks = elements
+      .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
+      .filter(Boolean);
+    const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
+    const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
+    const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
+    const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
+    const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
+    const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
+    const numericPages = elements
+      .map(parseThreadHistoryPageNumberFromElement)
+      .filter(num => num > 0);
+
+    let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
+    if (!lastPage && nextItem && !nextHasLink) {
+      lastPage = activePage || Math.max(0, ...numericPages);
+    }
+    if (!lastPage) return null;
+
+    return {
+      lastPage,
+      activePage,
+      threadId: parsedIdentity && parsedIdentity.threadId || '',
+      mode: parsedIdentity && parsedIdentity.mode || '',
+      source: lastPageLink ? 'last-link' : 'disabled-next'
+    };
+  }
+
+  function applyThreadHistoryPageBounds(record, root = document) {
+    if (!record || !record.threadId) return record;
+    const bounds = getThreadHistoryPaginationBounds(root);
+    if (!bounds || !bounds.lastPage) return record;
+    if (bounds.threadId && bounds.threadId !== String(record.threadId)) return record;
+    if (bounds.mode && record.mode && bounds.mode !== record.mode) return record;
+
+    const parsedUrl = record.url ? parseThreadHistoryUrl(record.url) : null;
+    const page = Math.max(1, Number(record.page || (parsedUrl && parsedUrl.page)) || 1);
+    const boundedPage = Math.min(page, bounds.lastPage);
+    const existingUrlPage = parsedUrl && parsedUrl.page || 0;
+    const next = Object.assign({}, record, {
+      page: boundedPage,
+      maxVisitedPage: Math.min(Math.max(Number(record.maxVisitedPage) || boundedPage, boundedPage), bounds.lastPage),
+      lastKnownPage: bounds.lastPage
+    });
+    if (page > bounds.lastPage || existingUrlPage > bounds.lastPage) {
+      next.url = buildThreadHistoryPageUrl(next.mode, next.threadId, boundedPage);
+    }
+    return next;
+  }
+
   function getElementTextPreserveZeroWidth(el) {
     return el ? String(el.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
   }
@@ -749,14 +826,18 @@
     const countVisit = options.countVisit !== false;
     const touchVisitedAt = countVisit || options.touchVisitedAt === true;
     const store = getThreadHistoryStore();
+    nextRecord = applyThreadHistoryPageBounds(nextRecord);
     const key = nextRecord.key || getThreadHistoryKey(nextRecord.mode, nextRecord.threadId);
     const old = store.items[key] || {};
-    const merged = Object.assign({}, old, nextRecord, {
+    const maxVisitedPage = Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1);
+    const boundedMaxVisitedPage = nextRecord.lastKnownPage ? Math.min(maxVisitedPage, Number(nextRecord.lastKnownPage) || maxVisitedPage) : maxVisitedPage;
+    const mergedBase = Object.assign({}, old, nextRecord);
+    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase), {
       key,
       firstVisitedAt: old.firstVisitedAt || now,
       lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
       visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
-      maxVisitedPage: Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1),
+      maxVisitedPage: boundedMaxVisitedPage,
       cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
     });
     store.items[key] = merged;
@@ -775,9 +856,16 @@
     const item = store.items[key];
     if (!item) return store;
     const now = Date.now();
-    item.page = Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1);
-    item.url = options.url || parsed.url;
-    item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
+    const bounded = applyThreadHistoryPageBounds(Object.assign({}, item, {
+      page: Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1),
+      url: options.url || parsed.url
+    }));
+    item.page = bounded.page;
+    item.url = bounded.url;
+    item.maxVisitedPage = bounded.lastKnownPage
+      ? Math.min(Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1), Number(bounded.lastKnownPage) || Number(item.page) || 1)
+      : Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
+    if (bounded.lastKnownPage) item.lastKnownPage = bounded.lastKnownPage;
     item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
     if (options.touchVisitedAt) item.lastVisitedAt = now;
     store.index[key] = buildThreadHistoryIndexEntry(item);
@@ -992,9 +1080,18 @@
     if (item && item.url) return item.url;
     const threadId = item && item.threadId ? item.threadId : '';
     const page = item && item.page ? item.page : 1;
-    if (!threadId) return location.href;
-    if (item && item.mode === 'po') return `${location.origin}/Forum/po/id/${threadId}/page/${page}.html`;
-    return `${location.origin}/t/${threadId}?page=${page}`;
+    return buildThreadHistoryPageUrl(item && item.mode, threadId, page);
+  }
+
+  function getLatestThreadHistoryUrl(threadId) {
+    const tid = String(threadId || '').trim();
+    if (!isValidThreadId(tid)) return '';
+    const store = getThreadHistoryStore();
+    const candidates = ['normal', 'po']
+      .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
+    return candidates.length ? buildThreadHistoryItemUrl(candidates[0]) : '';
   }
 
   function appendThreadHistoryText(parent, tagName, className, text) {
@@ -2903,6 +3000,7 @@ init() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -4163,7 +4261,8 @@ init() {
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
-        sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加',
+        sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
+        sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
       };
 
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
@@ -18229,6 +18328,18 @@ init() {
     }
   }
 
+  function openThreadHistorySettingsPanel() {
+    try {
+      if (!$('#sp_btn').length) SettingPanel.init();
+      $('#sp_btn').trigger('click');
+      window.setTimeout(() => {
+        $('#sp_panel_tab_slot [data-sp-module="history"]').trigger('click');
+      }, 0);
+    } catch (e) {
+      console.warn('[thread-history] open settings failed:', e);
+    }
+  }
+
   function addCurrentThreadToFavoriteThreads() {
     const threadId = getCurrentFavoriteThreadId();
     if (!threadId) {
@@ -18319,7 +18430,7 @@ init() {
     items.forEach((item) => {
       const subItem = document.createElement('li');
       const link = document.createElement('a');
-      link.href = makeFavoriteThreadUrl(item.threadId);
+      link.href = getLatestThreadHistoryUrl(item.threadId) || makeFavoriteThreadUrl(item.threadId);
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.setAttribute('achecked', '1');
@@ -18370,22 +18481,44 @@ init() {
     return li;
   }
 
+  function createThreadHistoryMenuNode() {
+    const li = document.createElement('li');
+    li.id = 'xdex-thread-history-menu';
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
+    link.setAttribute('achecked', '1');
+    link.textContent = '浏览历史';
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openThreadHistorySettingsPanel();
+      return false;
+    };
+    li.appendChild(link);
+    return li;
+  }
+
   function renderFavoriteThreadsMenu() {
     const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
     if (!menu) return;
     menu.classList.add('uk-nav-parent-icon');
     ensureFavoriteThreadsMenuStyle();
     const old = document.getElementById('xdex-favorite-threads-menu');
+    const oldHistory = document.getElementById('xdex-thread-history-menu');
     const wasOpen = !!(old && old.classList.contains('uk-open'));
     if (old) old.remove();
+    if (oldHistory) oldHistory.remove();
 
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
+    const historyNode = createThreadHistoryMenuNode();
     const timeline = Array.from(menu.children).find((li) => {
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
       return header && (header.textContent || '').trim() === '时间线';
     });
     menu.insertBefore(node, timeline || menu.firstChild);
+    menu.insertBefore(historyNode, timeline || node.nextSibling);
   }
 
   /* --------------------------------------------------
