@@ -3166,7 +3166,6 @@ init() {
 
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
-                <a id="sp_update_log_link" href="javascript:void(0)" style="display:none;">更新日志</a>
                 <a data-update-channel="thread" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
                 <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">GreasyFork</a>
                 <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
@@ -3174,7 +3173,7 @@ init() {
                 <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
               </div>
               <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
-                <button id="sp_apply" style="padding:6px 10px;">应用更改</button>
+                <button id="sp_apply" style="padding:6px 10px;">保存并刷新</button>
                 <button id="sp_close" style="padding:6px 10px;">关闭</button>
               </div>
             </div>
@@ -3241,6 +3240,49 @@ init() {
 
       // 同步已有配置 & 默认折叠
       this.syncInputs();
+
+      const reloadRequiredSettingKeys = [
+        'enableCookieSwitch',
+        'disableWatermark',
+        'enablePaginationDuplication',
+        'updatePreviewCookie',
+        'hideEmptyTitleEmail',
+        'enableExternalImagePreview',
+        'enableUpdateCheck',
+        'enableAutoCookieRefresh',
+        'enableAutoCookieRefreshToast',
+        'interceptReplyFormUnvcode',
+        'interceptReplyFormU200B',
+        'interceptReplyFormAutoCompress',
+        'enableSeamlessPaging',
+        'enableAutoSeamlessPaging',
+        'enableHDImageAndLayoutFix',
+        'enableImageContextMenu',
+        'enableLinkBlank',
+        'enableAutoUrlLinkify',
+        'enableQuotePreview',
+        'extendQuote',
+        'toggleSidebar'
+      ];
+
+      const collectReloadRequiredSettingsFromPanel = () => {
+        reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
+        // 固定启用：不受面板勾选状态影响
+        this.state.enableImageHideMode = true;
+      };
+
+      const saveReloadRequiredSettingsImmediately = () => {
+        collectReloadRequiredSettingsFromPanel();
+        try {
+          GM_setValue(this.key, this.state);
+          toast('设置已保存，刷新后生效', 900, { queue: false, key: 'settings-saved' });
+        } catch (e) {}
+      };
+
+      const reloadRequiredSettingSelector = reloadRequiredSettingKeys.map(k => '#sp_' + k).join(',');
+      $(reloadRequiredSettingSelector)
+        .off('change.xdexReloadSettingSave')
+        .on('change.xdexReloadSettingSave', saveReloadRequiredSettingsImmediately);
 
       // 图片隐藏模式：即时切换并即时应用（无需点“应用更改”）
       const applyImageHideModeImmediately = () => {
@@ -4089,34 +4131,8 @@ init() {
       const _origClose = $('#sp_close,#sp_cover').off.bind($('#sp_close,#sp_cover'), 'click');
       delete SettingPanel.__pendingImport;
 
-      // 应用更改：保存开关、屏蔽(组)、标记(组)
       $('#sp_apply').off('click').on('click', ()=>{
-        [
-          'enableCookieSwitch',
-          'disableWatermark',
-          'enablePaginationDuplication',
-          'updatePreviewCookie',
-          'hideEmptyTitleEmail',
-          'enableExternalImagePreview',
-          'enableUpdateCheck',
-          'enableAutoCookieRefresh',
-          'enableAutoCookieRefreshToast',
-          'interceptReplyFormUnvcode',
-          'interceptReplyFormU200B',
-          'interceptReplyFormAutoCompress',
-          'enableSeamlessPaging',
-          'enableAutoSeamlessPaging',
-          'enableHDImageAndLayoutFix',
-          'enableImageContextMenu',
-          'enableLinkBlank',
-          'enableAutoUrlLinkify',
-          'enableQuotePreview',
-          'extendQuote',
-          'toggleSidebar'
-        ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
-
-        // 固定启用：不受面板勾选状态影响
-        this.state.enableImageHideMode = true;
+        collectReloadRequiredSettingsFromPanel();
 
         let valid = true;
 
@@ -14035,6 +14051,7 @@ init() {
                   try {
                     await writeClipboardText(opt.value, null);
                     toast('颜文字已复制', 900, { queue: false, key: 'kaomoji-copy' });
+                    hidePanel();
                   } catch (err) {
                     console.warn('[kaomoji] copy failed:', err);
                     toast('颜文字复制失败', 900, { queue: false, key: 'kaomoji-copy' });
