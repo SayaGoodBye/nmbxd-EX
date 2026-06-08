@@ -2653,33 +2653,87 @@ init() {
                   }
 
                   #sp_panel_tab_slot {
-                        position:absolute;
-                        left:-82px;
-                        top:48px;
-                        width:82px;
-                        display:flex;
-                       flex-direction:column;
-                        gap:6px;
-                   }
+                         position:absolute;
+                         left:-112px;
+                         top:48px;
+                         width:112px;
+                         display:flex;
+                        flex-direction:column;
+                         align-items:flex-end;
+                         gap:6px;
+                    }
 
                   #sp_panel_tab_slot:empty {
                         display:none;
                   }
 
                   #sp_panel_tab_slot .sp_panel_tab {
-                        padding:6px 8px;
-                        border:1px solid var(--xdex-sp-border);
-                        border-right:none;
-                       border-radius:8px 0 0 8px;
-                       background:var(--xdex-sp-fold-bg);
-                       cursor:pointer;
-                        text-align:left;
-                   }
+                         --sp-panel-tab-bg:#006666;
+                         --sp-panel-tab-icon-size:28px;
+                         --sp-panel-tab-label-width:4em;
+                         --sp-panel-tab-collapsed-width:42px;
+                         --sp-panel-tab-expanded-width:calc(var(--sp-panel-tab-icon-size) + var(--sp-panel-tab-label-width) + 20px);
+                         width:var(--sp-panel-tab-collapsed-width);
+                         min-height:50px;
+                         padding:6px;
+                         border:1px solid var(--xdex-sp-border);
+                         border-right:none;
+                        border-radius:999px 0 0 999px;
+                        background:var(--sp-panel-tab-bg);
+                        color:#fff;
+                        cursor:pointer;
+                         display:flex;
+                         align-items:center;
+                         justify-content:flex-start;
+                         gap:8px;
+                         overflow:hidden;
+                         box-sizing:border-box;
+                         transition:width .16s ease, filter .16s ease;
+                    }
 
-                  #sp_panel_tab_slot .sp_panel_tab.active {
-                        background:var(--xdex-sp-panel-bg);
-                        font-weight:bold;
-                   }
+                  #sp_panel_tab_slot .sp_panel_tab[data-sp-module="settings"] {
+                         --sp-panel-tab-bg:#006666;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab[data-sp-module="history"] {
+                         --sp-panel-tab-bg:#0080FF;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab.active,
+                  #sp_panel_tab_slot .sp_panel_tab:hover,
+                  #sp_panel_tab_slot .sp_panel_tab:focus,
+                  #sp_panel_tab_slot .sp_panel_tab:focus-visible,
+                  #sp_panel_tab_slot .sp_panel_tab.is-hover {
+                         width:var(--sp-panel-tab-expanded-width);
+                         font-weight:bold;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab_icon {
+                         width:var(--sp-panel-tab-icon-size);
+                         height:var(--sp-panel-tab-icon-size);
+                         line-height:var(--sp-panel-tab-icon-size);
+                         border-radius:50%;
+                         background:rgba(255,255,255,.18);
+                         flex:0 0 var(--sp-panel-tab-icon-size);
+                         text-align:center;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab_label {
+                         width:var(--sp-panel-tab-label-width);
+                         flex:0 0 var(--sp-panel-tab-label-width);
+                         text-align:center;
+                         white-space:nowrap;
+                         opacity:0;
+                         transition:opacity .16s ease;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab.active .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab:hover .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab:focus .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab:focus-visible .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab.is-hover .sp_panel_tab_label {
+                         opacity:1;
+                    }
 
                   #sp_panel_views {
                         display:flex;
@@ -2964,8 +3018,8 @@ init() {
               max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_tab_slot" aria-label="设置面板模块">
-              <button type="button" class="sp_panel_tab" data-sp-module="settings">设置</button>
-              <button type="button" class="sp_panel_tab" data-sp-module="history">浏览历史</button>
+              <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span></button>
             </div>
             <div id="sp_panel_views">
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
@@ -3225,6 +3279,9 @@ init() {
         setSettingsPanelModule($(e.currentTarget).data('spModule'));
         if ($(e.currentTarget).data('spModule') === 'history') renderThreadHistoryModuleSoon();
       });
+      $('#sp_panel_tab_slot').off('mouseenter mouseleave', '.sp_panel_tab')
+        .on('mouseenter', '.sp_panel_tab', (e) => { $(e.currentTarget).addClass('is-hover'); })
+        .on('mouseleave', '.sp_panel_tab', (e) => { $(e.currentTarget).removeClass('is-hover'); });
       setSettingsPanelModule('settings');
       bindThreadHistoryModuleEvents();
       bindThreadHistoryLiveSync();
