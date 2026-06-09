@@ -27,7 +27,7 @@
         if (suppressNextPageDone === suppressMarker) suppressNextPageDone -= 1;
       } catch (err) {
         if (suppressNextPageDone > 0) suppressNextPageDone -= 1;
-        console.warn('[X岛-EX CRX] page initContent bridge failed', err);
+        console.warn('[X岛-EX Extension] page initContent bridge failed', err);
       }
       return fn.apply(this, arguments);
     };
@@ -50,7 +50,7 @@
       }
     });
   } catch (err) {
-    console.warn('[X岛-EX CRX] userscript initContent bridge install failed', err);
+    console.warn('[X岛-EX Extension] userscript initContent bridge install failed', err);
   }
 
   document.addEventListener(pageInitDoneEvent, (event) => {
@@ -62,7 +62,7 @@
     try {
       callUserscriptInit(root, window, [root]);
     } catch (err) {
-      console.warn('[X岛-EX CRX] userscript initContent call failed', err);
+      console.warn('[X岛-EX Extension] userscript initContent call failed', err);
     }
   });
 

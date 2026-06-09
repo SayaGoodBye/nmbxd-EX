@@ -2,8 +2,8 @@
   'use strict';
 
   if (document.documentElement && document.documentElement.dataset) {
-    document.documentElement.dataset.xdexSingletonOwner = 'crx';
-    document.documentElement.dataset.xdexSingletonSource = 'crx-main';
+    document.documentElement.dataset.xdexSingletonOwner = 'extension';
+    document.documentElement.dataset.xdexSingletonSource = 'extension-main';
   }
 
   const callPageInitEvent = 'xdex:call-page-init-content';
@@ -48,7 +48,7 @@
     });
     if (nativeInitContent) setNativeInitContent(nativeInitContent);
   } catch (err) {
-    console.warn('[X岛-EX CRX] page initContent bridge install failed', err);
+    console.warn('[X岛-EX Extension] page initContent bridge install failed', err);
   }
 
   document.addEventListener(callPageInitEvent, (event) => {
@@ -56,7 +56,7 @@
     try {
       callNativeInit(root, window, [root]);
     } catch (err) {
-      console.warn('[X岛-EX CRX] page initContent call failed', err);
+      console.warn('[X岛-EX Extension] page initContent call failed', err);
     }
   });
 

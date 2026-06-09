@@ -25,9 +25,9 @@
   const scriptMetaStr = [
     "// ==UserScript==",
     "// @name         X岛-EX",
-    "// @namespace    http://tampermonkey.net/",
-    "// @version      2.3.1",
-    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。",
+    "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
+    "// @version      3.0.0",
+    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 。",
     "// @author       XY",
     "// @match        https://*.nmbxd1.com/*",
     "// @match        https://*.nmbxd.com/*",
@@ -47,7 +47,7 @@
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
     "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
     "// @license      WTFPL",
-    "// @changelog    新增\\n1. 新增图片懒加载功能，根据浏览方向建立加载列表，最高3并发，GIF不受限制。\\n2. 新增“屏蔽关键词”分组，若关键词为八位数字则同时在正文、串号、回复号中进行匹配。\\n3. 新增“增强X岛匿名版”的“人类友好时间”的“相对时间/精确时间”选择。\\n\\n优化\\n1. 优化脚本作用顺序、减少各函数作用时间。\\n2. 优化“野生搜索酱”，结果中的移动端链接重定向到网页端，并在新窗口打开。\\n3. 优化图片高清化/图片控件功能\\n\\n修复\\n1. 尝试修复部分浏览器中扩展坞自动展开可能无法触发的问题。\\n2. 修复若干预览框中引用渲染问题。\\n3. 修复“增强x岛匿名版”自动设置网页标题功能错误作用于板块页的问题。\\n4. 尝试修复颜文字面板偶现“最近/常用“未生效，回退到”默认“的问题。\\n5. 修复无缝翻页后带图回复被横向挤压的问题。",
+    "// @changelog    新增\\n0.浏览器拓展版发布，完整迁移目前脚本版全部功能。\\n注意事项：\\n1)本浏览器拓展适配Chrome、Edge等Chromium内核浏览器，**Firefox浏览器无法使用**；\\n2)拓展版与脚本版共同开启时默认作用前者，由于二者数据不互通，请先导出脚本版设置后再开启拓展版;\\n3)提示：拓展版稳定性略优于脚本版，“图片菜单”功能二者作用方式不一致，建议优先选择拓展版。\\n安装方法：\\n1) 打开浏览器拓展页面\\n2) 开启“开发者模式”\\n3) 点击“加载解压缩的拓展”\\n4) 选择通过[GitHub release](https://github.com/SayaGoodBye/nmbxd-EX/releases/latest)或者[百度网盘](https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf)下载的拓展压缩包（nmbxd-EX-Extension-version.zip）解压后的文件夹\\n5) 安装成功\\( ﾟ∀。)/\\n\\n1.侧边栏/设置面板新增浏览历史，当前上限500条，支持搜索，支持多种排序方式。\\n2.侧边栏新增常用串，支持串内一键添加，并支持直接跳转“浏览历史”中记录的最近浏览位置。\\n\\n优化\\n1.更新设置面板UI，当前在“设置面板/浏览历史”中切换，设置项修改为即时保存，刷新后作用。\\n2.支持鼠标右键直接复制颜文字；颜文字面板中可使用空格/Enter选择颜文字。\\n\\n致谢：\\n本项目Icon由9HrD12x设计并绘制。\\n你们怎么知道这是9Hr给我画的无偿 Y(`ε´ )",
     "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
     "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
     "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
@@ -60,7 +60,7 @@
     "// @run-at       document-start",
     "// ==/UserScript=="
   ].join('\n');
-  const scriptMeta = { name: "X岛-EX", version: "2.3.1" };
+  const scriptMeta = { name: "X岛-EX", version: "3.0.0" };
   // END GENERATED USERSCRIPT META
 
   function normalizeKey(key) {
@@ -131,7 +131,7 @@
       rememberSyncVersion(key, envelope);
       localStorage.setItem(syncStoragePrefix + String(key), JSON.stringify(envelope));
     } catch (err) {
-      console.warn('[X岛-EX CRX] localStorage sync publish failed', err);
+      console.warn('[X岛-EX Extension] localStorage sync publish failed', err);
     }
   }
 
@@ -177,7 +177,7 @@
       if (!valuesEqual(oldValue, nextValue)) emitValueChange(rawKey, oldValue, nextValue, true);
       return true;
     } catch (err) {
-      console.warn('[X岛-EX CRX] localStorage mirror sync parse failed', err);
+      console.warn('[X岛-EX Extension] localStorage mirror sync parse failed', err);
       return false;
     }
   }
@@ -189,7 +189,7 @@
       try {
         callback(String(key), cloneValue(oldValue), cloneValue(newValue), !!remote);
       } catch (err) {
-        console.warn('[X岛-EX CRX] GM_addValueChangeListener callback failed', err);
+        console.warn('[X岛-EX Extension] GM_addValueChangeListener callback failed', err);
       }
     });
   }
@@ -208,8 +208,8 @@
     if (root.__xdexRuntime) root.__xdexRuntime.extensionContextInvalidated = true;
     if (!extensionContextReminderShown) {
       extensionContextReminderShown = true;
-      console.warn('[X岛-EX CRX] extension context invalidated; refresh this page to reconnect', error);
-      showCrxToast('扩展已更新，刷新页面可恢复完整同步');
+      console.warn('[X岛-EX Extension] extension context invalidated; refresh this page to reconnect', error);
+      showExtensionToast('扩展已更新，刷新页面可恢复完整同步');
     }
     return true;
   }
@@ -295,7 +295,7 @@
           const lastError = getRuntimeLastError();
           if (lastError) {
             markExtensionContextInvalidated(lastError);
-            console.warn('[X岛-EX CRX] storage preload failed', lastError.message);
+            console.warn('[X岛-EX Extension] storage preload failed', lastError.message);
             resolve(false);
             return;
           }
@@ -316,7 +316,7 @@
         });
       } catch (err) {
         markExtensionContextInvalidated(err);
-        console.warn('[X岛-EX CRX] storage preload failed', err);
+        console.warn('[X岛-EX Extension] storage preload failed', err);
         resolve(false);
       }
     });
@@ -331,7 +331,7 @@
         memoryStore.set(rawKey, JSON.parse(localStorage.getItem(key)));
       }
     } catch (err) {
-      console.warn('[X岛-EX CRX] localStorage preload failed', err);
+      console.warn('[X岛-EX Extension] localStorage preload failed', err);
     }
   }
 
@@ -340,7 +340,7 @@
       localStorage.setItem(localStoragePrefix + String(key), JSON.stringify(value));
       if (!options || options.publish !== false) publishLocalStorageSync(key, value, false);
     } catch (err) {
-      console.warn('[X岛-EX CRX] localStorage mirror write failed', err);
+      console.warn('[X岛-EX Extension] localStorage mirror write failed', err);
     }
   }
 
@@ -349,7 +349,7 @@
       localStorage.removeItem(localStoragePrefix + String(key));
       if (!options || options.publish !== false) publishLocalStorageSync(key, undefined, true);
     } catch (err) {
-      console.warn('[X岛-EX CRX] localStorage mirror remove failed', err);
+      console.warn('[X岛-EX Extension] localStorage mirror remove failed', err);
     }
   }
 
@@ -362,7 +362,7 @@
   };
 
   root.__xdexRuntime = root.__xdexRuntime || {
-    kind: 'crx',
+    kind: 'extension',
     storage: 'chrome.storage.local',
     gmCompat: true,
     cookieBridge: true,
@@ -392,12 +392,12 @@
             const lastError = getRuntimeLastError();
             if (lastError) {
               markExtensionContextInvalidated(lastError);
-              console.warn('[X岛-EX CRX] GM_setValue storage write failed', lastError.message);
+              console.warn('[X岛-EX Extension] GM_setValue storage write failed', lastError.message);
             }
           });
         } catch (err) {
           markExtensionContextInvalidated(err);
-          console.warn('[X岛-EX CRX] GM_setValue storage write failed', err);
+          console.warn('[X岛-EX Extension] GM_setValue storage write failed', err);
         }
       }
     }
@@ -420,12 +420,12 @@
             const lastError = getRuntimeLastError();
             if (lastError) {
               markExtensionContextInvalidated(lastError);
-              console.warn('[X岛-EX CRX] GM_deleteValue storage remove failed', lastError.message);
+              console.warn('[X岛-EX Extension] GM_deleteValue storage remove failed', lastError.message);
             }
           });
         } catch (err) {
           markExtensionContextInvalidated(err);
-          console.warn('[X岛-EX CRX] GM_deleteValue storage remove failed', err);
+          console.warn('[X岛-EX Extension] GM_deleteValue storage remove failed', err);
         }
       }
     }
@@ -467,7 +467,7 @@
       //     .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
       //   return true;
       // }
-        console.log('[X岛-EX CRX 图片菜单]', message.stage, message.detail || {});
+        console.log('[X岛-EX Extension 图片菜单]', message.stage, message.detail || {});
         showImageMenuToast(message.stage, message.detail || {});
         return false;
       });
@@ -530,10 +530,10 @@
     //   : (stage === 'copy-succeeded'
     //   ? getImageMenuSuccessToast(detail)
     //   : (stage === 'skipped-static' ? '静态图片请使用浏览器原生复制图像' : `复制失败：${detail.error || '未知错误'}`));
-    showCrxToast(text);
+    showExtensionToast(text);
   }
 
-  function showCrxToast(text) {
+  function showExtensionToast(text) {
     const toast = document.createElement('div');
     toast.className = 'ae-toast';
     toast.textContent = text;
@@ -691,7 +691,7 @@
         try {
           applyLocalStorageSyncEnvelope(JSON.parse(event.newValue || 'null'));
         } catch (err) {
-          console.warn('[X岛-EX CRX] localStorage sync event failed', err);
+          console.warn('[X岛-EX Extension] localStorage sync event failed', err);
         }
         return;
       }
