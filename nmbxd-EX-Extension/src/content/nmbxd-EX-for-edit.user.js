@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
-// @namespace    http://tampermonkey.net/
-// @version      2.3.1
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 。
+// @namespace    https://github.com/SayaGoodBye/nmbxd-EX
+// @version      3.0.0
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -22,7 +22,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1. 新增图片懒加载功能，根据浏览方向建立加载列表，最高3并发，GIF不受限制。\n2. 新增“屏蔽关键词”分组，若关键词为八位数字则同时在正文、串号、回复号中进行匹配。\n3. 新增“增强X岛匿名版”的“人类友好时间”的“相对时间/精确时间”选择。\n\n优化\n1. 优化脚本作用顺序、减少各函数作用时间。\n2. 优化“野生搜索酱”，结果中的移动端链接重定向到网页端，并在新窗口打开。\n3. 优化图片高清化/图片控件功能\n\n修复\n1. 尝试修复部分浏览器中扩展坞自动展开可能无法触发的问题。\n2. 修复若干预览框中引用渲染问题。\n3. 修复“增强x岛匿名版”自动设置网页标题功能错误作用于板块页的问题。\n4. 尝试修复颜文字面板偶现“最近/常用“未生效，回退到”默认“的问题。\n5. 修复无缝翻页后带图回复被横向挤压的问题。
+// @changelog    新增\n0.浏览器拓展版发布，完整迁移目前脚本版全部功能。\n注意事项：\n1)本浏览器拓展适配Chrome、Edge等Chromium内核浏览器，**Firefox浏览器无法使用**；\n2)拓展版与脚本版共同开启时默认作用前者，由于二者数据不互通，请先导出脚本版设置后再开启拓展版;\n3)提示：拓展版稳定性略优于脚本版，“图片菜单”功能二者作用方式不一致，建议优先选择拓展版。\n安装方法：\n1) 打开浏览器拓展页面\n2) 开启“开发者模式”\n3) 点击“加载解压缩的拓展”\n4) 选择通过[GitHub release](https://github.com/SayaGoodBye/nmbxd-EX/releases/latest)或者[百度网盘](https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf)下载的拓展压缩包（nmbxd-EX-Extension-version.zip）解压后的文件夹\n5) 安装成功\( ﾟ∀。)/\n\n1.侧边栏/设置面板新增浏览历史，当前上限500条，支持搜索，支持多种排序方式。\n2.侧边栏新增常用串，支持串内一键添加，并支持直接跳转“浏览历史”中记录的最近浏览位置。\n\n优化\n1.更新设置面板UI，当前在“设置面板/浏览历史”中切换，设置项修改为即时保存，刷新后作用。\n2.支持鼠标右键直接复制颜文字；颜文字面板中可使用空格/Enter选择颜文字。\n\n致谢：\n本项目Icon由9HrD12x设计并绘制。\n你们怎么知道这是9Hr给我画的无偿 Y(`ε´ )
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -52,8 +52,8 @@
   const XDEX_SINGLETON_WAIT_MS = 100;
   function getXDexRuntimeInfo(){
       const declared = typeof globalThis !== 'undefined' ? globalThis.__xdexRuntime : null;
-      if (declared && declared.kind === 'crx') {
-          return Object.assign({ kind: 'crx' }, declared);
+      if (declared && declared.kind === 'extension') {
+          return Object.assign({ kind: 'extension' }, declared);
       }
       const scriptHandler = GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler)) || '';
       return {
@@ -64,7 +64,7 @@
   function shouldExitForXDexSingleton(runtimeInfo){
       const root = document.documentElement;
       const owner = root && root.dataset ? root.dataset[XDEX_SINGLETON_OWNER_DATASET_KEY] : '';
-      return owner === 'crx' && (!runtimeInfo || runtimeInfo.kind !== 'crx');
+      return owner === 'extension' && (!runtimeInfo || runtimeInfo.kind !== 'extension');
   }
   function cat_version(){
       console.log('[version]:', VERSION);
@@ -81,7 +81,7 @@
           if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
           startXDexRuntime();
       };
-      if (XDEX_RUNTIME.kind !== 'crx') {
+      if (XDEX_RUNTIME.kind !== 'extension') {
         setTimeout(() => {
           if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
           XDEX_GM_STORAGE_READY.then(() => {
@@ -103,9 +103,65 @@
   console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
 
   const UPDATE_CHECK_KEY = 'xdex_update_check_state';
+  const UPDATE_EXTENSION_CHECK_KEY = 'xdex_extension_update_check_state';
   const UPDATE_GREASYFORK_META_URL = 'https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js';
   const UPDATE_SCRIPTCAT_API_URL = 'https://scriptcat.org/api/v2/scripts/6289';
-  const UPDATE_CHECK_HOUR = 10;
+  const UPDATE_EXTENSION_GITHUB_JSON_URL = 'https://raw.githubusercontent.com/SayaGoodBye/nmbxd-EX/main/nmbxd-EX-Extension/update.json';
+  const UPDATE_EXTENSION_JSDELIVR_JSON_URL = 'https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@main/nmbxd-EX-Extension/update.json';
+  const UPDATE_CHECK_HOUR = 11;
+  const THREAD_HISTORY_STORAGE_KEY = 'xdex_thread_history';
+  const THREAD_HISTORY_STORE_VERSION = 1;
+  const THREAD_HISTORY_LIMIT = 500;
+  const THREAD_HISTORY_EXCERPT_LIMIT = 250;
+  const THREAD_HISTORY_RECORD_RETRY_LIMIT = 10;
+  const THREAD_HISTORY_RECORD_RETRY_DELAY = 500;
+  const THREAD_HISTORY_SYNC_EVENT = 'xdex:thread-history-changed';
+  const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
+  const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
+  const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
+  const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
+
+  const threadHistoryDebugState = {
+    loadedAt: new Date().toISOString(),
+    href: location.href,
+    runtime: XDEX_RUNTIME && XDEX_RUNTIME.kind,
+    storageKey: THREAD_HISTORY_STORAGE_KEY,
+    lastRecord: null,
+    lastRender: null,
+    lastPanelModule: ''
+  };
+  window.__xdexThreadHistoryDebug = threadHistoryDebugState;
+  let threadHistoryLiveSyncBound = false;
+  let threadHistoryLiveRenderTimer = 0;
+  let threadHistoryLiveRenderFirstAt = 0;
+  let threadHistoryLiveRenderPendingCount = 0;
+  let threadHistoryReactivationTrackingInstalled = false;
+  let threadHistoryDwellTimer = 0;
+  let threadHistoryVisibleSince = 0;
+  let threadHistoryVisibleSessionCounted = false;
+
+  function updateThreadHistoryDebugState(patch) {
+    Object.assign(threadHistoryDebugState, patch || {});
+    window.__xdexThreadHistoryDebug = threadHistoryDebugState;
+    return threadHistoryDebugState;
+  }
+
+  function logThreadHistory(message, details, level = 'info') {
+    const payload = Object.assign({ href: location.href }, details || {});
+    updateThreadHistoryDebugState({ lastLog: { message, details: payload, at: new Date().toISOString() } });
+    const logger = console[level] || console.info || console.log;
+    logger.call(console, `[thread-history] ${message}`, payload);
+  }
+
+  function logThreadHistoryFlat(message, details, level = 'info') {
+    const payload = Object.assign({ href: location.href }, details || {});
+    const text = Object.keys(payload)
+      .map(key => `${key}=${JSON.stringify(payload[key])}`)
+      .join(' ');
+    updateThreadHistoryDebugState({ lastFlatLog: { message, details: payload, at: new Date().toISOString() } });
+    const logger = console[level] || console.info || console.log;
+    logger.call(console, `[thread-history] ${message} ${text}`);
+  }
 
   function normalizeMetaChangelog(text) {
     return String(text || '')
@@ -131,6 +187,10 @@
   }
 
   const CHANGELOG = parseVersionAndChangelogFromMeta(GM_info.scriptMetaStr || '').changelog || '';
+  function getUpdateCheckStorageKey() {
+    return XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? UPDATE_EXTENSION_CHECK_KEY : UPDATE_CHECK_KEY;
+  }
+
   function getDefaultUpdateCheckState() {
     return {
       lastCheckDate: '',
@@ -148,7 +208,7 @@
 
   function getUpdateCheckState() {
     try {
-      const saved = GM_getValue(UPDATE_CHECK_KEY, null);
+      const saved = GM_getValue(getUpdateCheckStorageKey(), null);
       const merged = Object.assign(getDefaultUpdateCheckState(), saved || {});
       console.log('[update-check] get state:', merged);
       return merged;
@@ -160,9 +220,1109 @@
 
   function setUpdateCheckState(nextState) {
     const merged = Object.assign(getDefaultUpdateCheckState(), nextState || {});
-    GM_setValue(UPDATE_CHECK_KEY, merged);
+    GM_setValue(getUpdateCheckStorageKey(), merged);
     console.log('[update-check] set state:', merged);
     return merged;
+  }
+
+  function createDefaultThreadHistoryStore() {
+    return {
+      version: 1,
+      limit: 500,
+      items: {},
+      index: {},
+      order: []
+    };
+  }
+
+  function getThreadHistoryKey(mode, threadId) {
+    return `${mode}:${String(threadId || '').slice(0, 8)}`;
+  }
+
+  function normalizeThreadHistoryStore(rawStore) {
+    const store = Object.assign(createDefaultThreadHistoryStore(), rawStore || {});
+    store.version = THREAD_HISTORY_STORE_VERSION;
+    store.limit = Number(store.limit) > 0 ? Number(store.limit) : THREAD_HISTORY_LIMIT;
+    store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    store.index = store.index && typeof store.index === 'object' ? store.index : {};
+    const seen = new Set();
+    store.order = (Array.isArray(store.order) ? store.order : [])
+      .filter(key => {
+        if (!store.items[key] || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    Object.keys(store.items).forEach(key => {
+      if (!store.index[key]) store.index[key] = buildThreadHistoryIndexEntry(store.items[key]);
+      if (!seen.has(key)) {
+        seen.add(key);
+        store.order.push(key);
+      }
+    });
+    Object.keys(store.index).forEach(key => {
+      if (!store.items[key]) delete store.index[key];
+    });
+    store.order.sort((a, b) => {
+      const av = Number(store.items[a] && store.items[a].lastVisitedAt) || 0;
+      const bv = Number(store.items[b] && store.items[b].lastVisitedAt) || 0;
+      return bv - av;
+    });
+    while (store.order.length > store.limit) {
+      const key = store.order.pop();
+      delete store.items[key];
+      delete store.index[key];
+    }
+    return store;
+  }
+
+  function getThreadHistoryStore() {
+    try {
+      return normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+    } catch (e) {
+      return createDefaultThreadHistoryStore();
+    }
+  }
+
+  function setThreadHistoryStore(store) {
+    const normalized = normalizeThreadHistoryStore(store);
+    GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
+    notifyThreadHistoryStoreChanged('local-write', false);
+    return normalized;
+  }
+
+  function isThreadHistoryPanelOpen() {
+    const cover = document.getElementById('sp_cover');
+    const module = document.getElementById('sp_module_history');
+    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
+  }
+
+  function scheduleThreadHistoryLiveRender(source, remote) {
+    const active = isThreadHistoryPanelOpen();
+    const now = Date.now();
+    if (!threadHistoryLiveRenderFirstAt) threadHistoryLiveRenderFirstAt = now;
+    threadHistoryLiveRenderPendingCount += 1;
+    updateThreadHistoryDebugState({
+      lastLiveSync: {
+        source,
+        remote: !!remote,
+        active,
+        pendingCount: threadHistoryLiveRenderPendingCount,
+        firstAt: threadHistoryLiveRenderFirstAt,
+        at: new Date().toISOString()
+      }
+    });
+    if (!active) {
+      if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
+      threadHistoryLiveRenderTimer = 0;
+      threadHistoryLiveRenderFirstAt = 0;
+      threadHistoryLiveRenderPendingCount = 0;
+      return;
+    }
+    const run = () => {
+      threadHistoryLiveRenderTimer = 0;
+      threadHistoryLiveRenderFirstAt = 0;
+      threadHistoryLiveRenderPendingCount = 0;
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderThreadHistoryModule());
+      else renderThreadHistoryModule();
+    };
+    if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
+    const elapsed = now - threadHistoryLiveRenderFirstAt;
+    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
+      ? 0
+      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
+    threadHistoryLiveRenderTimer = setTimeout(run, delay);
+  }
+
+  function notifyThreadHistoryStoreChanged(source, remote) {
+    try {
+      window.dispatchEvent(new CustomEvent(THREAD_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
+    } catch (e) {}
+    scheduleThreadHistoryLiveRender(source, remote);
+  }
+
+  function bindThreadHistoryLiveSync() {
+    if (threadHistoryLiveSyncBound) return;
+    threadHistoryLiveSyncBound = true;
+    if (typeof GM_addValueChangeListener === 'function') {
+      try {
+        GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          scheduleThreadHistoryLiveRender('gm-value-change', remote);
+        });
+      } catch (e) {
+        logThreadHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
+      }
+    }
+    window.addEventListener(THREAD_HISTORY_SYNC_EVENT, (event) => {
+      const detail = event && event.detail || {};
+      scheduleThreadHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
+    });
+  }
+
+  function parseThreadHistoryUrl(inputUrl) {
+    let url;
+    try {
+      url = new URL(inputUrl || location.href, location.origin);
+    } catch (e) {
+      return null;
+    }
+    const path = url.pathname || '';
+    const normalMatch = path.match(/\/t\/(\d{8,})(?:\/(\d+))?/);
+    const poMatch = path.match(/\/Forum\/po\/id\/(\d{8,})(?:\/page\/(\d+)\.html)?/);
+    const match = normalMatch || poMatch;
+    if (!match) return null;
+    const pathPage = parseInt(match[2] || '', 10);
+    const queryPage = parseInt(url.searchParams.get('page') || '', 10);
+    return {
+      mode: poMatch ? 'po' : 'normal',
+      threadId: String(match[1]).slice(0, 8),
+      page: pathPage > 0 ? pathPage : (queryPage > 0 ? queryPage : 1),
+      url: url.toString()
+    };
+  }
+
+  function buildThreadHistoryPageUrl(mode, threadId, page) {
+    const tid = String(threadId || '').trim();
+    const pageNum = Math.max(1, Number(page) || 1);
+    if (!tid) return location.href;
+    if (mode === 'po') return `${location.origin}/Forum/po/id/${tid}/page/${pageNum}.html`;
+    return `${location.origin}/t/${tid}?page=${pageNum}`;
+  }
+
+  function parseThreadHistoryPageNumberFromElement(el) {
+    if (!el) return 0;
+    const text = String(el.textContent || '').trim();
+    const lastTextMatch = text.match(/末页\s*\((\d+)\)/);
+    if (lastTextMatch) return Number(lastTextMatch[1]) || 0;
+    const href = el.getAttribute && el.getAttribute('href');
+    const parsed = href ? parseThreadHistoryUrl(href) : null;
+    if (parsed && parsed.page) return Number(parsed.page) || 0;
+    const numericText = text.match(/^\d+$/);
+    return numericText ? Number(numericText[0]) || 0 : 0;
+  }
+
+  function getThreadHistoryPaginationBounds(root = document) {
+    const paginations = Array.from((root || document).querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
+    const pagination = paginations.length ? paginations[paginations.length - 1] : null;
+    if (!pagination) return null;
+
+    const items = Array.from(pagination.querySelectorAll('li'));
+    const elements = Array.from(pagination.querySelectorAll('a, span'));
+    const parsedLinks = elements
+      .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
+      .filter(Boolean);
+    const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
+    const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
+    const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
+    const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
+    const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
+    const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
+    const numericPages = elements
+      .map(parseThreadHistoryPageNumberFromElement)
+      .filter(num => num > 0);
+
+    let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
+    if (!lastPage && nextItem && !nextHasLink) {
+      lastPage = activePage || Math.max(0, ...numericPages);
+    }
+    if (!lastPage) return null;
+
+    return {
+      lastPage,
+      activePage,
+      threadId: parsedIdentity && parsedIdentity.threadId || '',
+      mode: parsedIdentity && parsedIdentity.mode || '',
+      source: lastPageLink ? 'last-link' : 'disabled-next'
+    };
+  }
+
+  function applyThreadHistoryPageBounds(record, root = document) {
+    if (!record || !record.threadId) return record;
+    const bounds = getThreadHistoryPaginationBounds(root);
+    if (!bounds || !bounds.lastPage) return record;
+    if (bounds.threadId && bounds.threadId !== String(record.threadId)) return record;
+    if (bounds.mode && record.mode && bounds.mode !== record.mode) return record;
+
+    const parsedUrl = record.url ? parseThreadHistoryUrl(record.url) : null;
+    const page = Math.max(1, Number(record.page || (parsedUrl && parsedUrl.page)) || 1);
+    const boundedPage = Math.min(page, bounds.lastPage);
+    const existingUrlPage = parsedUrl && parsedUrl.page || 0;
+    const next = Object.assign({}, record, {
+      page: boundedPage,
+      maxVisitedPage: Math.min(Math.max(Number(record.maxVisitedPage) || boundedPage, boundedPage), bounds.lastPage),
+      lastKnownPage: bounds.lastPage
+    });
+    if (page > bounds.lastPage || existingUrlPage > bounds.lastPage) {
+      next.url = buildThreadHistoryPageUrl(next.mode, next.threadId, boundedPage);
+    }
+    return next;
+  }
+
+  function getElementTextPreserveZeroWidth(el) {
+    return el ? String(el.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
+  }
+
+  function getVisibleTextForHistory(text) {
+    return String(text || '').replace(ZERO_WIDTH_RE, '').replace(/[\s\u00a0]+/g, '');
+  }
+
+  function trimThreadHistoryContentText(text) {
+    return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  }
+
+  function sanitizeThreadHistoryInlineStyle(styleValue) {
+    const safeRules = [];
+    String(styleValue || '').split(';').forEach(rule => {
+      const separator = rule.indexOf(':');
+      if (separator === -1) return;
+      const name = rule.slice(0, separator).trim().toLowerCase();
+      const value = rule.slice(separator + 1).trim();
+      if (!/^(color|background-color|text-decoration|font-weight)$/.test(name) && !/^--darkreader-inline-(?:color|bgcolor)$/.test(name)) return;
+      if (/url\s*\(|expression\s*\(|javascript:/i.test(value)) return;
+      safeRules.push(`${name}: ${value}`);
+    });
+    return safeRules.join('; ');
+  }
+
+  function sanitizeThreadHistoryContentUrl(urlValue) {
+    try {
+      const url = new URL(urlValue, location.origin);
+      if (!/^https?:$/.test(url.protocol)) return '';
+      return url.href;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function escapeThreadHistoryHtml(text) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function cleanThreadHistoryContentWhitespace(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    if (!nodes.length) return;
+    nodes[0].nodeValue = String(nodes[0].nodeValue || '').replace(/^\s+/, '');
+    const last = nodes[nodes.length - 1];
+    last.nodeValue = String(last.nodeValue || '').replace(/\s+$/, '');
+  }
+
+  function normalizeThreadHistoryContentWhitespace(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(node => {
+      const prev = node.previousSibling;
+      const next = node.nextSibling;
+      let value = String(node.nodeValue || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      value = value.replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n');
+      if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR') value = value.replace(/^\s+/, '');
+      if (next && next.nodeType === Node.ELEMENT_NODE && next.tagName === 'BR') value = value.replace(/[ \t]+$/, '');
+      node.nodeValue = value;
+    });
+    cleanThreadHistoryContentWhitespace(root);
+  }
+
+  function removeThreadHistoryTrailingBreaks(root) {
+    while (root && root.lastChild) {
+      const node = root.lastChild;
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        removeThreadHistoryTrailingBreaks(node);
+      }
+      if (node.nodeType === Node.TEXT_NODE && !String(node.nodeValue || '').trim()) {
+        node.remove();
+        continue;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+        node.remove();
+        continue;
+      }
+      if (isEmptyThreadHistoryInlineElement(node)) {
+        node.remove();
+        continue;
+      }
+      break;
+    }
+  }
+
+  function isEmptyThreadHistoryInlineElement(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    if (!/^(A|SPAN|FONT|B|STRONG|I|EM|U|S|DEL|CODE|SUB|SUP)$/.test(node.tagName)) return false;
+    return !String(node.textContent || '').trim() && !node.querySelector('img, video, audio, canvas, svg');
+  }
+
+  function limitThreadHistoryContentText(root, limit) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    let remaining = Math.max(0, Number(limit) || 0);
+    let truncated = false;
+    for (const node of nodes) {
+      if (truncated || remaining <= 0) {
+        node.nodeValue = '';
+        continue;
+      }
+      const value = String(node.nodeValue || '');
+      if (value.length > remaining) {
+        node.nodeValue = value.slice(0, remaining).replace(/\s+$/, '');
+        pruneAfterThreadHistoryTextNode(root, node);
+        truncated = true;
+        remaining = 0;
+      } else {
+        remaining -= value.length;
+      }
+    }
+    cleanThreadHistoryContentWhitespace(root);
+    removeThreadHistoryTrailingBreaks(root);
+  }
+
+  function pruneAfterThreadHistoryTextNode(root, textNode) {
+    let current = textNode;
+    while (current && current.parentNode && current !== root) {
+      while (current.nextSibling) current.nextSibling.remove();
+      current = current.parentNode;
+    }
+    if (current === root) removeThreadHistoryTrailingBreaks(root);
+  }
+
+  function isThreadHistoryContentTruncated(text) {
+    return String(text || '').length > THREAD_HISTORY_EXCERPT_LIMIT;
+  }
+
+  function appendThreadHistoryTruncationMarker(contentEl) {
+    if (!contentEl) return;
+    removeThreadHistoryTrailingBreaks(contentEl);
+    contentEl.appendChild(document.createTextNode('……'));
+  }
+
+  function sanitizeThreadHistoryInlineHtml(sourceEl) {
+    if (!sourceEl) return '';
+    const clone = sourceEl.cloneNode(true);
+    clone.querySelectorAll('script, style, template, iframe, object, embed, svg, math').forEach(el => el.remove());
+    const allowedTags = new Set(['SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'SUB', 'SUP']);
+    Array.from(clone.querySelectorAll('*')).forEach(el => {
+      if (!allowedTags.has(el.tagName)) {
+        el.replaceWith(...Array.from(el.childNodes));
+        return;
+      }
+      Array.from(el.attributes).forEach(attr => {
+        const name = attr.name.toLowerCase();
+        const value = attr.value || '';
+        if (name === 'style') {
+          const safeStyle = sanitizeThreadHistoryInlineStyle(value);
+          if (safeStyle) el.setAttribute('style', safeStyle);
+          else el.removeAttribute(attr.name);
+          return;
+        }
+        if (el.tagName === 'FONT' && name === 'color') return;
+        if (name === 'class') return;
+        if (name === 'data-darkreader-inline-color' || name === 'data-darkreader-inline-bgcolor') return;
+        el.removeAttribute(attr.name);
+      });
+    });
+    cleanThreadHistoryContentWhitespace(clone);
+    return clone.innerHTML.trim();
+  }
+
+  function extractThreadHistoryCookieId(cookieEl, fallbackText) {
+    if (cookieEl) {
+      const font = cookieEl.querySelector('font');
+      if (font) {
+        for (const node of font.childNodes) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const value = String(node.nodeValue || '').trim();
+            if (value) return value;
+          }
+        }
+      }
+    }
+    const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
+    const match = String(value).match(/[A-Za-z0-9]{3,7}/);
+    return match ? match[0] : value;
+  }
+
+  function buildThreadHistoryLegacyCookieHtml(cookieId) {
+    const value = String(cookieId || '').trim();
+    const match = value.match(/^([A-Za-z0-9]{3,7})(.+)$/);
+    if (!match || !match[2].trim()) return '';
+    const id = escapeThreadHistoryHtml(match[1]);
+    const badge = escapeThreadHistoryHtml(match[2].trim());
+    return `ID:<font color="red">${id}<sub style="color: darkorange; font-weight: bold;">${badge}</sub></font>`;
+  }
+
+  function getThreadHistoryCookieMarkId(item) {
+    const value = String(item && item.cookieId || '').trim();
+    const match = value.match(/^([A-Za-z0-9]{3,7})/);
+    return match ? match[1] : value;
+  }
+
+  function sanitizeThreadHistoryContentHtml(contentEl) {
+    if (!contentEl) return '';
+    const clone = contentEl.cloneNode(true);
+    clone.querySelectorAll('script, style, template, iframe, object, embed, svg, math').forEach(el => el.remove());
+    const allowedTags = new Set(['A', 'BR', 'SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'CODE', 'PRE', 'SUB', 'SUP']);
+    Array.from(clone.querySelectorAll('*')).forEach(el => {
+      if (!allowedTags.has(el.tagName)) {
+        el.replaceWith(...Array.from(el.childNodes));
+        return;
+      }
+      Array.from(el.attributes).forEach(attr => {
+        const name = attr.name.toLowerCase();
+        const value = attr.value || '';
+        if (name.startsWith('on') || name === 'id' || (name.startsWith('data-') && name !== 'data-darkreader-inline-color' && name !== 'data-darkreader-inline-bgcolor')) {
+          el.removeAttribute(attr.name);
+          return;
+        }
+        if (name === 'style') {
+          const safeStyle = sanitizeThreadHistoryInlineStyle(value);
+          if (safeStyle) el.setAttribute('style', safeStyle);
+          else el.removeAttribute(attr.name);
+          return;
+        }
+        if (el.tagName === 'A' && name === 'href') {
+          const safeHref = sanitizeThreadHistoryContentUrl(value);
+          if (safeHref) {
+            el.setAttribute('href', safeHref);
+            el.setAttribute('target', '_blank');
+            el.setAttribute('rel', 'noopener');
+          } else {
+            el.removeAttribute(attr.name);
+          }
+          return;
+        }
+        if (el.tagName === 'FONT' && name === 'color') return;
+        if (name !== 'class' && name !== 'title' && name !== 'target' && name !== 'rel') el.removeAttribute(attr.name);
+      });
+    });
+    normalizeThreadHistoryContentWhitespace(clone);
+    return clone.innerHTML.trim();
+  }
+
+  function normalizeThreadHistoryImageFile(urlValue) {
+    if (!urlValue) return '';
+    try {
+      const url = new URL(urlValue, location.origin);
+      const match = url.pathname.match(/\/(?:image|thumb)\/([^?#]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    } catch (e) {
+      const match = String(urlValue).match(/\/(?:image|thumb)\/([^?#]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+  }
+
+  const THREAD_HISTORY_IMAGE_FILE_CONTRACT_EXAMPLE = '2024-12-10/6757ea866e1aa.png';
+
+  function extractThreadHistoryImageFile(mainEl) {
+    if (!mainEl) return '';
+    const anchor = mainEl.querySelector('.h-threads-img-a[href]');
+    const img = mainEl.querySelector('.h-threads-img-a img, img.h-threads-img');
+    const sources = [
+      anchor && anchor.getAttribute('href'),
+      img && img.dataset && img.dataset.xdexHdSrc,
+      img && img.dataset && img.dataset.xdexThumbSrc,
+      img && img.dataset && img.dataset.src,
+      img && img.getAttribute && img.getAttribute('src')
+    ];
+    for (const source of sources) {
+      const imageFile = normalizeThreadHistoryImageFile(source);
+      if (imageFile) return imageFile;
+    }
+    return '';
+  }
+
+  function isThreadHistoryMainCandidate(el) {
+    return !!el && !el.closest('.h-preview-box') && !!el.querySelector('.h-threads-content');
+  }
+
+  function findThreadHistoryMainElement(root, parsed) {
+    const scope = root || document;
+    const primary = scope.querySelector('.h-threads-list .h-threads-item-main');
+    if (isThreadHistoryMainCandidate(primary)) return primary;
+    const mains = Array.from(scope.querySelectorAll('.h-threads-item-main'));
+    return mains.find(isThreadHistoryMainCandidate) || null;
+  }
+
+  function extractThreadHistoryRecord(root) {
+    const parsed = parseThreadHistoryUrl(location.href);
+    if (!parsed) {
+      logThreadHistory('skip record: unsupported url', { url: location.href });
+      return null;
+    }
+    const mainEl = findThreadHistoryMainElement(root, parsed);
+    if (!mainEl) {
+      logThreadHistory('skip record: missing h-threads-item-main', { url: location.href, parsed });
+      return null;
+    }
+    const contentEl = mainEl.querySelector('.h-threads-content');
+    const rawContent = getElementTextPreserveZeroWidth(contentEl);
+    const contentText = trimThreadHistoryContentText(rawContent);
+    const contentTruncated = isThreadHistoryContentTruncated(contentText);
+    const contentHtml = sanitizeThreadHistoryContentHtml(contentEl);
+    const hasZeroWidth = ZERO_WIDTH_RE.test(rawContent);
+    const hasVisibleText = !!getVisibleTextForHistory(rawContent);
+    const hasWhitespaceOnly = !hasVisibleText && /^[\s\u00a0]*$/.test(rawContent.replace(ZERO_WIDTH_RE, '')) && rawContent.length > 0;
+    const imageFile = extractThreadHistoryImageFile(mainEl);
+    const title = getElementTextPreserveZeroWidth(mainEl.querySelector('.h-threads-info-title')).trim();
+    const author = getElementTextPreserveZeroWidth(mainEl.querySelector('.h-threads-info-email')).trim();
+    const cookieEl = mainEl.querySelector('.h-threads-info-uid');
+    const cookieText = getElementTextPreserveZeroWidth(cookieEl).trim();
+    const cookieId = extractThreadHistoryCookieId(cookieEl, cookieText);
+    const cookieHtml = sanitizeThreadHistoryInlineHtml(cookieEl);
+    const createdAtEl = mainEl.querySelector('.h-threads-info-createdat, .h-threads-info time');
+    const createdAt = String(createdAtEl && (createdAtEl.getAttribute('title') || createdAtEl.getAttribute('datetime')) || getElementTextPreserveZeroWidth(createdAtEl)).trim();
+    return {
+      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
+      mode: parsed.mode,
+      threadId: parsed.threadId,
+      page: parsed.page,
+      url: parsed.url,
+      title,
+      author,
+      cookieId,
+      cookieHtml,
+      createdAt,
+      contentText,
+      contentHtml,
+      contentTruncated,
+      excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
+      imageFile,
+      contentFlags: { hasVisibleText, hasWhitespaceOnly, hasZeroWidth },
+      lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
+    };
+  }
+
+  function buildThreadHistoryIndexEntry(item) {
+    const contentFlags = item && item.contentFlags ? item.contentFlags : {};
+    const imageFile = String(item && item.imageFile || '');
+    const titleText = String(item && item.title || '').toLowerCase();
+    const authorText = String(item && item.author || '').toLowerCase();
+    const cookieIdText = String(item && item.cookieId || '').toLowerCase();
+    const excerptText = String(item && (item.contentText || item.excerpt) || '').toLowerCase();
+    const threadIdText = String(item && item.threadId || '');
+    return {
+      searchText: [threadIdText, titleText, authorText, cookieIdText, excerptText].join(' ').toLowerCase(),
+      threadIdText,
+      titleText,
+      authorText,
+      cookieIdText,
+      excerptText,
+      mode: item && item.mode === 'po' ? 'po' : 'normal',
+      hasImage: !!imageFile,
+      isGif: /\.gif(?:$|[?#])/i.test(imageFile),
+      hasZeroWidth: !!contentFlags.hasZeroWidth,
+      hasVisibleText: !!contentFlags.hasVisibleText,
+      hasWhitespaceOnly: !!contentFlags.hasWhitespaceOnly,
+      lastVisitedAt: Number(item && item.lastVisitedAt) || 0
+    };
+  }
+
+  function upsertThreadHistoryRecord(nextRecord, options = {}) {
+    if (!nextRecord || !nextRecord.threadId || !nextRecord.mode) return getThreadHistoryStore();
+    const now = Date.now();
+    const countVisit = options.countVisit !== false;
+    const touchVisitedAt = countVisit || options.touchVisitedAt === true;
+    const store = getThreadHistoryStore();
+    nextRecord = applyThreadHistoryPageBounds(nextRecord);
+    const key = nextRecord.key || getThreadHistoryKey(nextRecord.mode, nextRecord.threadId);
+    const old = store.items[key] || {};
+    const maxVisitedPage = Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1);
+    const boundedMaxVisitedPage = nextRecord.lastKnownPage ? Math.min(maxVisitedPage, Number(nextRecord.lastKnownPage) || maxVisitedPage) : maxVisitedPage;
+    const mergedBase = Object.assign({}, old, nextRecord);
+    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase), {
+      key,
+      firstVisitedAt: old.firstVisitedAt || now,
+      lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
+      visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
+      maxVisitedPage: boundedMaxVisitedPage,
+      cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
+    });
+    store.items[key] = merged;
+    store.index[key] = buildThreadHistoryIndexEntry(merged);
+    store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
+    const saved = setThreadHistoryStore(store);
+    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: merged });
+    return saved;
+  }
+
+  function touchThreadHistoryCurrentLocation(options = {}) {
+    const parsed = parseThreadHistoryUrl(options.url || location.href);
+    if (!parsed) return getThreadHistoryStore();
+    const key = getThreadHistoryKey(parsed.mode, parsed.threadId);
+    const store = getThreadHistoryStore();
+    const item = store.items[key];
+    if (!item) return store;
+    const now = Date.now();
+    const bounded = applyThreadHistoryPageBounds(Object.assign({}, item, {
+      page: Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1),
+      url: options.url || parsed.url
+    }));
+    item.page = bounded.page;
+    item.url = bounded.url;
+    item.maxVisitedPage = bounded.lastKnownPage
+      ? Math.min(Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1), Number(bounded.lastKnownPage) || Number(item.page) || 1)
+      : Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
+    if (bounded.lastKnownPage) item.lastKnownPage = bounded.lastKnownPage;
+    item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    if (options.touchVisitedAt) item.lastVisitedAt = now;
+    store.index[key] = buildThreadHistoryIndexEntry(item);
+    store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
+    const saved = setThreadHistoryStore(store);
+    logThreadHistory('location touched', { key, reason: options.reason || '', page: item.page, url: item.url, maxVisitedPage: item.maxVisitedPage, touchVisitedAt: !!options.touchVisitedAt });
+    return saved;
+  }
+
+  function recordThreadHistoryProgress(options = {}) {
+    const parsed = parseThreadHistoryUrl(options.url || location.href);
+    if (!parsed) return getThreadHistoryStore();
+    const record = extractThreadHistoryRecord(document) || {
+      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
+      mode: parsed.mode,
+      threadId: parsed.threadId
+    };
+    record.key = getThreadHistoryKey(parsed.mode, parsed.threadId);
+    record.mode = parsed.mode;
+    record.threadId = parsed.threadId;
+    record.page = Math.max(Number(record.page) || 1, Number(options.page || parsed.page) || 1);
+    record.url = options.url || parsed.url;
+    record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
+  }
+
+  function updateThreadHistoryScrollPosition() {
+    touchThreadHistoryCurrentLocation({ reason: 'scroll-position' });
+  }
+
+  function deleteThreadHistoryItem(key) {
+    const store = getThreadHistoryStore();
+    delete store.items[key];
+    delete store.index[key];
+    store.order = (store.order || []).filter(itemKey => itemKey !== key);
+    return setThreadHistoryStore(store);
+  }
+
+  function clearThreadHistory() {
+    return setThreadHistoryStore(createDefaultThreadHistoryStore());
+  }
+
+  function parseThreadHistorySearchQuery(query) {
+    const filters = { mode: '', hasImage: false, isGif: false, hasZeroWidth: false };
+    const tokens = [];
+    String(query || '').toLowerCase().split(/\s+/).filter(Boolean).forEach(token => {
+      if (token === 'mode:po') filters.mode = 'po';
+      else if (token === 'mode:normal') filters.mode = 'normal';
+      else if (token === 'has:image') filters.hasImage = true;
+      else if (token === 'has:gif') filters.isGif = true;
+      else if (token === 'has:zwsp' || token === 'has:zerowidth') filters.hasZeroWidth = true;
+      else tokens.push(token);
+    });
+    return { filters, tokens };
+  }
+
+  function scoreThreadHistoryIndexEntry(entry, tokens) {
+    let score = Number(entry.lastVisitedAt) || 0;
+    tokens.forEach(token => {
+      if (/^\d{1,8}$/.test(token)) {
+        if (entry.threadIdText === token) score += 1000000000000000;
+        else if (entry.threadIdText.includes(token)) score += 500000000000000;
+      }
+    });
+    return score;
+  }
+
+  function getThreadHistorySortValue(item, field) {
+    if (!item) return 0;
+    if (field === 'visitCount') return Number(item.visitCount) || 0;
+    if (field === 'maxVisitedPage') return Number(item.maxVisitedPage || item.page) || 0;
+    return Number(item.lastVisitedAt) || 0;
+  }
+
+  function compareThreadHistoryResults(a, b, sortMode, tokens) {
+    const itemA = a.item || {};
+    const itemB = b.item || {};
+    if (sortMode === 'last-asc') return getThreadHistorySortValue(itemA, 'lastVisitedAt') - getThreadHistorySortValue(itemB, 'lastVisitedAt');
+    if (sortMode === 'visits-desc') return getThreadHistorySortValue(itemB, 'visitCount') - getThreadHistorySortValue(itemA, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
+    if (sortMode === 'visits-asc') return getThreadHistorySortValue(itemA, 'visitCount') - getThreadHistorySortValue(itemB, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
+    if (sortMode === 'page-desc') return getThreadHistorySortValue(itemB, 'maxVisitedPage') - getThreadHistorySortValue(itemA, 'maxVisitedPage') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
+    return scoreThreadHistoryIndexEntry(b.index, tokens) - scoreThreadHistoryIndexEntry(a.index, tokens);
+  }
+
+  function searchThreadHistory(query, storeInput, sortMode) {
+    const store = normalizeThreadHistoryStore(storeInput || getThreadHistoryStore());
+    const { filters, tokens } = parseThreadHistorySearchQuery(query);
+    return (store.order || [])
+      .filter(key => {
+        const entry = store.index[key];
+        if (!entry || !store.items[key]) return false;
+        if (filters.mode && entry.mode !== filters.mode) return false;
+        if (filters.hasImage && !entry.hasImage) return false;
+        if (filters.isGif && !entry.isGif) return false;
+        if (filters.hasZeroWidth && !entry.hasZeroWidth) return false;
+        return tokens.every(token => entry.searchText.includes(token));
+      })
+      .map(key => ({ key, item: store.items[key], index: store.index[key] }))
+      .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', tokens));
+  }
+
+  let threadHistoryScrollTrackingInstalled = false;
+
+  function installThreadHistoryScrollTracking() {
+    if (threadHistoryScrollTrackingInstalled) return;
+    threadHistoryScrollTrackingInstalled = true;
+    let scrollTimer = 0;
+    window.addEventListener('scroll', () => {
+      if (scrollTimer) return;
+      scrollTimer = setTimeout(() => {
+        scrollTimer = 0;
+        updateThreadHistoryScrollPosition();
+      }, 1200);
+    }, { passive: true });
+    window.addEventListener('pagehide', updateThreadHistoryScrollPosition, { passive: true });
+  }
+
+  function isThreadHistoryPageActive() {
+    return document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
+  }
+
+  function cancelThreadHistoryDwellTimer(resetSession) {
+    if (threadHistoryDwellTimer) clearTimeout(threadHistoryDwellTimer);
+    threadHistoryDwellTimer = 0;
+    threadHistoryVisibleSince = 0;
+    if (resetSession) threadHistoryVisibleSessionCounted = false;
+  }
+
+  function scheduleThreadHistoryReactivationVisit(source) {
+    if (!parseThreadHistoryUrl(location.href)) return;
+    if (!isThreadHistoryPageActive()) {
+      cancelThreadHistoryDwellTimer(document.visibilityState !== 'visible');
+      return;
+    }
+    if (threadHistoryVisibleSessionCounted || threadHistoryDwellTimer) return;
+    threadHistoryVisibleSince = Date.now();
+    updateThreadHistoryDebugState({ lastDwell: { source, status: 'scheduled', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
+    threadHistoryDwellTimer = setTimeout(() => {
+      threadHistoryDwellTimer = 0;
+      if (!threadHistoryVisibleSince || !isThreadHistoryPageActive()) return;
+      if (Date.now() - threadHistoryVisibleSince < THREAD_HISTORY_REVISIT_DWELL_MS) return;
+      threadHistoryVisibleSessionCounted = true;
+      updateThreadHistoryDebugState({ lastDwell: { source, status: 'counted', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
+      recordCurrentThreadHistory(0, { reason: 'reactivation-dwell', countVisit: true });
+    }, THREAD_HISTORY_REVISIT_DWELL_MS);
+  }
+
+  function installThreadHistoryReactivationTracking(initialCounted) {
+    if (threadHistoryReactivationTrackingInstalled) return;
+    threadHistoryReactivationTrackingInstalled = true;
+    threadHistoryVisibleSessionCounted = !!initialCounted && document.visibilityState === 'visible';
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') scheduleThreadHistoryReactivationVisit('visibilitychange');
+      else cancelThreadHistoryDwellTimer(true);
+    }, { passive: true });
+    window.addEventListener('focus', () => scheduleThreadHistoryReactivationVisit('focus'), { passive: true });
+    window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
+    window.addEventListener('pagehide', () => cancelThreadHistoryDwellTimer(true), { passive: true });
+  }
+
+  function recordCurrentThreadHistory(attempt = 0, options = {}) {
+    const record = extractThreadHistoryRecord(document);
+    if (!record) {
+      const parsed = parseThreadHistoryUrl(location.href);
+      const missingMain = !!parsed && !findThreadHistoryMainElement(document, parsed);
+      updateThreadHistoryDebugState({
+        lastRecord: {
+          status: parsed ? (missingMain ? 'missing-main' : 'extract-failed') : 'unsupported-url',
+          attempt,
+          parsed,
+          at: new Date().toISOString(),
+          readyState: document.readyState,
+          mainCount: document.querySelectorAll('.h-threads-item-main').length,
+          listCount: document.querySelectorAll('.h-threads-list').length
+        }
+      });
+      if (missingMain && attempt < THREAD_HISTORY_RECORD_RETRY_LIMIT) {
+        logThreadHistory('retry record: waiting for h-threads-item-main', {
+          attempt: attempt + 1,
+          limit: THREAD_HISTORY_RECORD_RETRY_LIMIT,
+          delay: THREAD_HISTORY_RECORD_RETRY_DELAY,
+          readyState: document.readyState
+        });
+        setTimeout(() => recordCurrentThreadHistory(attempt + 1), THREAD_HISTORY_RECORD_RETRY_DELAY);
+      }
+      return;
+    }
+    upsertThreadHistoryRecord(record, Object.assign({ reason: 'initial-load', countVisit: true }, options));
+    updateThreadHistoryDebugState({ lastRecord: { status: 'saved', attempt, reason: options.reason || 'initial-load', record, at: new Date().toISOString() } });
+    installThreadHistoryScrollTracking();
+  }
+
+  function formatThreadHistoryTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${day} ${hh}:${mm}`;
+  }
+
+  function buildThreadHistoryImageUrl(imageFile, full) {
+    if (!imageFile) return '';
+    const path = /\.gif$/i.test(imageFile) || full ? 'image' : 'thumb';
+    const encodedFile = String(imageFile).split('/').map(encodeURIComponent).join('/');
+    return `https://image.nmb.best/${path}/${encodedFile}`;
+  }
+
+  function buildThreadHistoryItemUrl(item) {
+    if (item && item.url) return item.url;
+    const threadId = item && item.threadId ? item.threadId : '';
+    const page = item && item.page ? item.page : 1;
+    return buildThreadHistoryPageUrl(item && item.mode, threadId, page);
+  }
+
+  function getLatestThreadHistoryUrl(threadId) {
+    const tid = String(threadId || '').trim();
+    if (!isValidThreadId(tid)) return '';
+    const store = getThreadHistoryStore();
+    const candidates = ['normal', 'po']
+      .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
+    return candidates.length ? buildThreadHistoryItemUrl(candidates[0]) : '';
+  }
+
+  function appendThreadHistoryText(parent, tagName, className, text) {
+    const el = document.createElement(tagName);
+    if (className) el.className = className;
+    el.textContent = text || '';
+    parent.appendChild(el);
+    return el;
+  }
+
+  function appendThreadHistoryInfoText(parent, className, text) {
+    const value = String(text || '').trim();
+    if (!value) return null;
+    return appendThreadHistoryText(parent, 'span', className, value);
+  }
+
+  function shouldRenderThreadHistoryTitle(title) {
+    const value = String(title || '').trim();
+    return !!value && value !== '无标题';
+  }
+
+  function shouldRenderThreadHistoryAuthor(author) {
+    const value = String(author || '').trim();
+    return !!value && value !== '无名氏';
+  }
+
+  function buildThreadHistoryItemElement(result) {
+    const item = result.item || {};
+    const wrapper = document.createElement('div');
+    wrapper.className = 'xdex-history-item';
+    wrapper.dataset.historyKey = result.key;
+
+    const main = document.createElement('div');
+    main.className = 'h-threads-item-main';
+    wrapper.appendChild(main);
+
+    const info = document.createElement('div');
+    info.className = 'h-threads-info xdex-history-info';
+    main.appendChild(info);
+
+    const infoMain = document.createElement('span');
+    infoMain.className = 'xdex-history-info-main';
+    info.appendChild(infoMain);
+
+    if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
+    if (shouldRenderThreadHistoryAuthor(item.author)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.author);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', item.createdAt);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = item.createdAt;
+      createdAtNode.title = item.createdAt;
+    }
+    const cookieHtml = item.cookieHtml || buildThreadHistoryLegacyCookieHtml(item.cookieId);
+    const cookieMarkId = getThreadHistoryCookieMarkId(item);
+    if (cookieHtml) {
+      const cookieSpan = appendThreadHistoryText(infoMain, 'span', 'h-threads-info-uid', '');
+      if (cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
+      cookieSpan.innerHTML = cookieHtml;
+    } else if (item.cookieId) {
+      const cookieSpan = appendThreadHistoryInfoText(infoMain, 'h-threads-info-uid', `ID:${item.cookieId}`);
+      if (cookieSpan && cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
+    }
+
+    const historyUrl = buildThreadHistoryItemUrl(item);
+    const replyLink = document.createElement('a');
+    replyLink.className = 'h-threads-info-id xdex-history-thread-id';
+    replyLink.href = historyUrl;
+    replyLink.textContent = `No.${item.threadId || ''}`;
+    infoMain.appendChild(replyLink);
+
+    const replyAction = document.createElement('span');
+    replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
+    const replyActionLink = document.createElement('a');
+    replyActionLink.className = 'xdex-history-reply-action';
+    replyActionLink.href = historyUrl;
+    replyActionLink.target = '_blank';
+    replyActionLink.rel = 'noopener';
+    replyActionLink.textContent = '回应';
+    replyAction.appendChild(document.createTextNode('['));
+    replyAction.appendChild(replyActionLink);
+    replyAction.appendChild(document.createTextNode(']'));
+    infoMain.appendChild(replyAction);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'xdex-history-delete';
+    deleteButton.dataset.historyKey = result.key;
+    deleteButton.title = '删除';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
+
+    if (item.imageFile) {
+      const imageLink = document.createElement('a');
+      imageLink.className = 'h-threads-img-a xdex-history-image';
+      imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
+      imageLink.target = '_blank';
+      imageLink.rel = 'noopener';
+      const img = document.createElement('img');
+      img.className = 'h-threads-img';
+      img.src = buildThreadHistoryImageUrl(item.imageFile, false);
+      img.alt = item.imageFile;
+      imageLink.appendChild(img);
+      main.appendChild(imageLink);
+    }
+
+    const content = document.createElement('div');
+    content.className = 'h-threads-content';
+    if (item.contentHtml) content.innerHTML = item.contentHtml;
+    else content.textContent = item.contentText || item.excerpt || '';
+    if (item.contentTruncated) {
+      limitThreadHistoryContentText(content, THREAD_HISTORY_EXCERPT_LIMIT);
+      appendThreadHistoryTruncationMarker(content);
+    }
+    main.appendChild(content);
+
+    const footer = document.createElement('div');
+    footer.className = 'xdex-history-footer';
+    appendThreadHistoryText(footer, 'span', 'xdex-history-time', formatThreadHistoryTime(item.lastVisitedAt));
+    appendThreadHistoryText(footer, 'span', 'xdex-history-visit-count', `共访问 ${item.visitCount || 1} 次`);
+    appendThreadHistoryText(footer, 'span', 'xdex-history-page', `串内最远：P${item.maxVisitedPage || item.page || 1}`);
+    appendThreadHistoryText(footer, 'span', 'xdex-history-current-page', `最近查看：P${item.page || 1}`);
+    if (item.mode === 'po') appendThreadHistoryText(footer, 'span', 'xdex-history-po-label', 'Po');
+    main.appendChild(footer);
+    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    return wrapper;
+  }
+
+  function renderThreadHistoryModule(query) {
+    const root = document.getElementById('sp_history_results');
+    if (!root) {
+      logThreadHistory('render skipped: missing #sp_history_results');
+      return;
+    }
+    const input = document.getElementById('sp_history_search');
+    const sortSelect = document.getElementById('sp_history_sort');
+    const effectiveQuery = query == null && input ? input.value : query;
+    const sortMode = sortSelect ? sortSelect.value : 'last-desc';
+    const results = searchThreadHistory(effectiveQuery || '', null, sortMode);
+    updateThreadHistoryDebugState({ lastRender: { query: effectiveQuery || '', sortMode, count: results.length, at: new Date().toISOString() } });
+    logThreadHistory('render module', { query: effectiveQuery || '', sortMode, count: results.length });
+    const count = document.getElementById('sp_history_count');
+    if (count) count.textContent = `${results.length} 条`;
+    root.textContent = '';
+    if (!results.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-history-empty';
+      empty.textContent = effectiveQuery ? '没有匹配的浏览历史' : '暂无浏览历史';
+      root.appendChild(empty);
+      return;
+    }
+    results.forEach(result => root.appendChild(buildThreadHistoryItemElement(result)));
+    const reportThreadHistoryRenderDom = () => {
+      const cover = document.getElementById('sp_cover');
+      const panel = document.getElementById('sp_panel');
+      const views = document.getElementById('sp_panel_views');
+      const module = document.getElementById('sp_module_history');
+      const panelContent = document.querySelector('#sp_module_history .sp_panel_content');
+      const historyContent = document.getElementById('sp_history_content');
+      const firstItem = root.querySelector('.xdex-history-item');
+      updateThreadHistoryDebugState({
+        lastRenderDom: {
+          activeModule: module?.classList.contains('active') || false,
+          contentDisplay: getComputedStyle(historyContent || root).display,
+          resultsDisplay: getComputedStyle(root).display,
+          coverDisplay: getComputedStyle(cover || document.body).display,
+          panelDisplay: getComputedStyle(panel || document.body).display,
+          viewsDisplay: getComputedStyle(views || document.body).display,
+          moduleDisplay: getComputedStyle(module || document.body).display,
+          panelContentDisplay: getComputedStyle(panelContent || document.body).display,
+          childCount: root.children.length,
+          itemCount: root.querySelectorAll('.xdex-history-item').length,
+          coverHeight: cover?.offsetHeight || 0,
+          panelHeight: panel?.offsetHeight || 0,
+          viewsHeight: views?.offsetHeight || 0,
+          moduleHeight: module?.offsetHeight || 0,
+          panelContentHeight: panelContent?.offsetHeight || 0,
+          historyContentHeight: historyContent?.offsetHeight || 0,
+          offsetHeight: root.offsetHeight,
+          scrollHeight: root.scrollHeight,
+          firstItemHeight: firstItem?.offsetHeight || 0,
+          firstItemText: firstItem?.textContent?.slice(0, 80) || '',
+          at: new Date().toISOString()
+        }
+      });
+      logThreadHistory('render dom', threadHistoryDebugState.lastRenderDom);
+      logThreadHistoryFlat('render dom flat', threadHistoryDebugState.lastRenderDom);
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reportThreadHistoryRenderDom);
+    else setTimeout(reportThreadHistoryRenderDom, 0);
+  }
+
+  function renderThreadHistoryModuleSoon(query) {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => renderThreadHistoryModule(query));
+      return;
+    }
+    setTimeout(() => renderThreadHistoryModule(query), 0);
+  }
+
+  function bindThreadHistoryModuleEvents() {
+    $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
+      renderThreadHistoryModule(this.value || '');
+    });
+    $('#sp_history_sort').off('change.xdex-history').on('change.xdex-history', function () {
+      renderThreadHistoryModule();
+    });
+    $('#sp_history_results').off('click.xdex-history-reply', '.xdex-history-reply-action').on('click.xdex-history-reply', '.xdex-history-reply-action', function (e) {
+      if (e.button !== 0) return;
+      const url = this.href || '';
+      if (!url) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        window.location.href = url;
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    });
+    $('#sp_history_results').off('click.xdex-history-delete', '.xdex-history-delete').on('click.xdex-history-delete', '.xdex-history-delete', function (e) {
+      e.preventDefault();
+      const key = this.dataset.historyKey || '';
+      if (!key) return;
+      deleteThreadHistoryItem(key);
+      renderThreadHistoryModule();
+      toast('已删除浏览历史');
+    });
+    $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
+      e.preventDefault();
+      clearThreadHistory();
+      renderThreadHistoryModule();
+      toast('已清空浏览历史');
+    });
   }
 
   function formatLocalDateKey(ts = Date.now()) {
@@ -235,13 +1395,40 @@
     };
   }
 
+  async function fetchExtensionUpdateJson(url, source) {
+    const resp = await gmRequest(url, 'text');
+    const json = JSON.parse(resp.responseText || '{}');
+    const extension = json && json.extension ? json.extension : json;
+    return {
+      source,
+      url,
+      version: String(extension.version || '').trim(),
+      changelog: String(extension.changelog || '').trim(),
+      downloads: extension.downloads || {}
+    };
+  }
+
+  function getUpdateCheckRequestsForRuntime() {
+    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
+      return [
+        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_GITHUB_JSON_URL, 'github'),
+        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_JSDELIVR_JSON_URL, 'jsdelivr')
+      ];
+    }
+    return [
+      () => fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork'),
+      () => fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')
+    ];
+  }
+
   function choosePreferredRemoteMeta(results) {
     const valid = (results || []).filter(item => item && item.version);
     if (!valid.length) return null;
     valid.sort((a, b) => compareVersionStrings(b.version, a.version));
     const topVersion = valid[0].version;
     const topCandidates = valid.filter(item => compareVersionStrings(item.version, topVersion) === 0);
-    const preferred = topCandidates.find(item => item.source === 'greasyfork') || topCandidates[0];
+    const preferredSource = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? 'github' : 'greasyfork';
+    const preferred = topCandidates.find(item => item.source === preferredSource) || topCandidates[0];
     return preferred;
   }
 
@@ -266,7 +1453,7 @@
 
   function clearFooterUpdateHighlight() {
     const $links = $('#sp_panel_footer .sp_panel_links');
-    $links.removeClass('xdex-update-highlight xdex-update-source-greasyfork xdex-update-source-scriptcat');
+    $links.removeClass('xdex-update-highlight xdex-update-source-greasyfork xdex-update-source-scriptcat xdex-update-source-github');
     $links.find('[data-update-channel]').removeClass('xdex-update-link-primary xdex-update-link-secondary');
   }
 
@@ -286,6 +1473,16 @@
         containerClass: 'xdex-update-source-scriptcat',
         primary: 'scriptcat',
         secondary: ['baidupan']
+      },
+      github: {
+        containerClass: 'xdex-update-source-github',
+        primary: 'github',
+        secondary: ['baidupan']
+      },
+      jsdelivr: {
+        containerClass: 'xdex-update-source-github',
+        primary: 'baidupan',
+        secondary: ['github']
       }
     };
     const config = channelMap[sourceKey];
@@ -400,12 +1597,12 @@
       nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
     });
     try {
-      const settled = await Promise.allSettled([
-        fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork'),
-        fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')
-      ]);
+      const requests = getUpdateCheckRequestsForRuntime();
+      const settled = await Promise.allSettled(requests.map((request) => request()));
       const sourceResults = settled.map((item, index) => {
-        const source = index === 0 ? 'greasyfork' : 'scriptcat';
+        const source = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension'
+          ? (index === 0 ? 'github' : 'jsdelivr')
+          : (index === 0 ? 'greasyfork' : 'scriptcat');
         if (item.status === 'fulfilled') {
           console.log('[update-check] remote meta success:', item.value);
           return item.value;
@@ -1454,6 +2651,311 @@ init() {
                        color:#8a1f1f !important;
                        font-weight:600;
                   }
+
+                  #sp_panel_tab_slot {
+                         position:absolute;
+                         left:-112px;
+                         top:48px;
+                         width:112px;
+                         display:flex;
+                        flex-direction:column;
+                         align-items:flex-end;
+                         gap:6px;
+                    }
+
+                  #sp_panel_tab_slot:empty {
+                        display:none;
+                  }
+
+                  #sp_panel_tab_slot .sp_panel_tab {
+                         --sp-panel-tab-bg:#006666;
+                         --sp-panel-tab-icon-size:28px;
+                         --sp-panel-tab-label-width:4em;
+                         --sp-panel-tab-collapsed-width:42px;
+                         --sp-panel-tab-expanded-width:calc(var(--sp-panel-tab-icon-size) + var(--sp-panel-tab-label-width) + 20px);
+                         width:var(--sp-panel-tab-collapsed-width);
+                         min-height:50px;
+                         padding:6px;
+                         border:1px solid var(--xdex-sp-border);
+                         border-right:none;
+                        border-radius:999px 0 0 999px;
+                        background:var(--sp-panel-tab-bg);
+                        color:#fff;
+                        cursor:pointer;
+                         display:flex;
+                         align-items:center;
+                         justify-content:flex-start;
+                         gap:8px;
+                         overflow:hidden;
+                         box-sizing:border-box;
+                         transition:width .16s ease, filter .16s ease;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab[data-sp-module="settings"] {
+                         --sp-panel-tab-bg:#006666;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab[data-sp-module="history"] {
+                         --sp-panel-tab-bg:#0080FF;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab.active,
+                  #sp_panel_tab_slot .sp_panel_tab:hover,
+                  #sp_panel_tab_slot .sp_panel_tab:focus,
+                  #sp_panel_tab_slot .sp_panel_tab:focus-visible,
+                  #sp_panel_tab_slot .sp_panel_tab.is-hover {
+                         width:var(--sp-panel-tab-expanded-width);
+                         font-weight:bold;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab_icon {
+                         width:var(--sp-panel-tab-icon-size);
+                         height:var(--sp-panel-tab-icon-size);
+                         line-height:var(--sp-panel-tab-icon-size);
+                         border-radius:50%;
+                         background:rgba(255,255,255,.18);
+                         flex:0 0 var(--sp-panel-tab-icon-size);
+                         text-align:center;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab_label {
+                         width:var(--sp-panel-tab-label-width);
+                         flex:0 0 var(--sp-panel-tab-label-width);
+                         text-align:center;
+                         white-space:nowrap;
+                         opacity:0;
+                         transition:opacity .16s ease;
+                    }
+
+                  #sp_panel_tab_slot .sp_panel_tab.active .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab:hover .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab:focus .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab:focus-visible .sp_panel_tab_label,
+                  #sp_panel_tab_slot .sp_panel_tab.is-hover .sp_panel_tab_label {
+                         opacity:1;
+                    }
+
+                  #sp_panel_views {
+                        display:flex;
+                        flex-direction:column;
+                        flex:1;
+                        min-height:0;
+                   }
+
+                  .sp_panel_module.active {
+                        display:flex;
+                        flex-direction:column;
+                        flex:1;
+                        min-height:0;
+                  }
+
+                  #sp_module_history.sp_panel_module.active {
+                        display:flex;
+                        flex-direction:column;
+                        flex:1;
+                        min-height:0;
+                  }
+
+                  .sp_panel_module:not(.active) {
+                         display:none;
+                    }
+
+                   .sp_panel_content {
+                          padding:18px;
+                          overflow-y:auto;
+                          flex:1 1 auto;
+                          min-height:300px;
+                          box-sizing:border-box;
+                     }
+
+                   #sp_history_content {
+                          display:block;
+                     }
+
+                  .xdex-history-toolbar {
+                         display:flex;
+                         align-items:center;
+                         gap:8px;
+                         margin:0 0 10px;
+                    }
+
+                  .xdex-history-toolbar input {
+                          flex:1;
+                          min-width:0;
+                          padding:6px 8px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                      }
+
+                  .xdex-history-toolbar select {
+                          padding:6px 8px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                     }
+
+                  .xdex-history-toolbar .xdex-history-count {
+                          white-space:nowrap;
+                     }
+
+                   #sp_history_results {
+                          display:block;
+                          min-height:40px;
+                          padding-top:8px;
+                          color:inherit;
+                     }
+
+                   .xdex-history-item {
+                           display:block !important;
+                            position:relative;
+                            margin:10px 0 8px;
+                            border:1px solid var(--xdex-sp-border);
+                            border-radius:8px;
+                            background:var(--xdex-sp-fold-bg);
+                            overflow:visible;
+                       }
+
+                   .xdex-history-item .h-threads-item-main {
+                          display:block !important;
+                           position:relative;
+                           padding:10px;
+                           background:transparent;
+                      }
+
+                    .xdex-history-item .h-threads-content {
+                           display:block !important;
+                           margin:15px 40px 6px;
+                           font-size:14px;
+                            line-height:20px;
+                           white-space:pre-wrap;
+                           overflow-wrap:anywhere;
+                      }
+
+                    .xdex-history-item .h-threads-info {
+                           display:flex;
+                           align-items:flex-start;
+                           gap:8px;
+                           line-height:1.5;
+                           margin-bottom:6px;
+                      }
+
+                    .xdex-history-info-main {
+                           flex:1 1 auto;
+                           min-width:0;
+                      }
+
+                   .xdex-history-item .h-threads-info-title {
+                          color:#cc1105;
+                          font-weight:bold;
+                     }
+
+                   .xdex-history-item .h-threads-info-email {
+                          color:#117743;
+                          font-weight:bold;
+                     }
+
+                    .xdex-history-item .h-threads-info-email,
+                    .xdex-history-item .h-threads-info-createdat,
+                    .xdex-history-item .h-threads-info-uid,
+                    .xdex-history-item .h-threads-info-id,
+                    .xdex-history-item .h-threads-info-reply-btn {
+                            margin-left:5px;
+                       }
+
+                    .xdex-history-delete,
+                    .xdex-history-reply-action {
+                           text-decoration:none;
+                           border:0;
+                           background:transparent;
+                          padding:0;
+                          font:inherit;
+                           cursor:pointer;
+                      }
+
+                    .xdex-history-delete:hover,
+                    .xdex-history-reply-action:hover {
+                           text-decoration:underline;
+                      }
+
+                    .xdex-history-reply-action {
+                           color:#07d;
+                      }
+
+                    .xdex-history-reply-action:hover {
+                           color:#059;
+                      }
+
+                     .xdex-history-delete {
+                            position:absolute;
+                            top:-9px;
+                            right:10px;
+                            width:20px;
+                            height:20px;
+                            border:1px solid #a98f7a;
+                            border-radius:999px;
+                            background:#F0E0D6;
+                            line-height:16px;
+                            padding:0;
+                            font-size:14px;
+                            z-index:1;
+                            color:#800000;
+                       }
+
+                    .xdex-history-footer {
+                           display:flex;
+                           align-items:center;
+                           flex-wrap:wrap;
+                           gap:0;
+                           clear:both;
+                           margin-top:8px;
+                           color:#777;
+                           font-size:12px;
+                      }
+
+                    .xdex-history-footer span + span::before {
+                           content:'·';
+                           margin:0 6px;
+                           color:#777;
+                      }
+
+                    .xdex-history-po-label {
+                           color:#00FFCC;
+                           font-weight:bold;
+                      }
+
+                  .xdex-history-header {
+                         justify-content:space-between;
+                         margin-bottom:6px;
+                    }
+
+                  .xdex-history-meta {
+                         flex-wrap:wrap;
+                         font-size:12px;
+                    }
+
+                  .xdex-history-image {
+                         display:block;
+                         width:112px;
+                         max-height:112px;
+                         margin:6px 10px 6px 0;
+                         overflow:hidden;
+                         float:left;
+                    }
+
+                  .xdex-history-image img {
+                         max-width:112px;
+                         max-height:112px;
+                         object-fit:contain;
+                    }
+
+                   .xdex-history-footer,
+                   .xdex-history-empty {
+                          clear:both;
+                          margin-top:8px;
+                         color:#777;
+                         font-size:12px;
+                    }
               </style>
           `);
       }
@@ -1515,8 +3017,14 @@ init() {
               position:relative;margin:40px auto;width:min(711px, calc(100vw - 32px));
               max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
-            <div id="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;">
-              <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
+            <div id="sp_panel_tab_slot" aria-label="设置面板模块">
+              <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span></button>
+            </div>
+            <div id="sp_panel_views">
+              <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
+                <div id="sp_panel_content" class="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;box-sizing:border-box;">
+                  <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
 
                 <span style="font-size:20px; font-weight:bold;">X岛-EX</span>
 
@@ -1524,7 +3032,7 @@ init() {
 
               </div>
 
-              <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
+                  <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication" class="xdex-switch" role="switch"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark" class="xdex-switch" role="switch"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
@@ -1565,6 +3073,7 @@ init() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -1586,7 +3095,7 @@ init() {
                     </select>
                   </div>
                 </div>
-              </div>
+                  </div>
 
               <div style="margin-top:12px;">
                 <!-- 标记饼干（组） -->
@@ -1682,6 +3191,30 @@ init() {
                     <div style="font-size:12px;color:#888;text-align:center;">导入将覆盖当前全部配置，建议先导出备份</div>
                   </div>
                 </div>
+                </div>
+              </div>
+              </div>
+              <div id="sp_module_history" class="sp_panel_module" data-sp-module-view="history">
+                <div class="sp_panel_content">
+                  <div id="sp_history_content">
+                    <div id="sp_history_title" style="margin:0 0 10px; position:relative; text-align:center;">
+                      <span style="font-size:20px; font-weight:bold;">浏览历史</span>
+                    </div>
+                    <div class="xdex-history-toolbar">
+                      <input id="sp_history_search" type="search" autocomplete="off" placeholder="搜索串号、标题、饼干、正文；支持 mode:po has:image has:zwsp">
+                      <span id="sp_history_count" class="xdex-history-count">0 条</span>
+                      <select id="sp_history_sort" aria-label="浏览历史排序">
+                        <option value="last-desc">最近访问优先</option>
+                        <option value="last-asc">最早访问优先</option>
+                        <option value="visits-desc">访问次数最多</option>
+                        <option value="visits-asc">访问次数最少</option>
+                        <option value="page-desc">最高页码优先</option>
+                      </select>
+                      <button id="sp_history_clear" type="button" style="padding:6px 10px;">清空</button>
+                    </div>
+                    <div id="sp_history_results"></div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1694,7 +3227,7 @@ init() {
                 <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
               </div>
               <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
-                <button id="sp_apply" style="padding:6px 10px;">应用更改</button>
+                <button id="sp_apply" style="padding:6px 10px;">保存并刷新</button>
                 <button id="sp_close" style="padding:6px 10px;">关闭</button>
               </div>
             </div>
@@ -1702,6 +3235,57 @@ init() {
         </div>`;
       $('#sp_cover').remove();
       $('body').append(html);
+
+      function setSettingsPanelModule(moduleName) {
+        const $nextView = $(`#sp_panel_views [data-sp-module-view="${moduleName}"]`);
+        const nextModule = $nextView.length ? moduleName : 'settings';
+        $('#sp_panel_tab_slot .sp_panel_tab').removeClass('active')
+          .filter(`[data-sp-module="${nextModule}"]`).addClass('active');
+        $('#sp_panel_views .sp_panel_module').removeClass('active').css('display', 'none');
+        const $activeModule = $('#sp_panel_views .sp_panel_module')
+          .filter(`[data-sp-module-view="${nextModule}"]`)
+          .addClass('active')
+          .css({ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: nextModule === 'history' ? '300px' : '0' });
+        if (nextModule === 'history') {
+          $activeModule.find('.sp_panel_content').css({ display: 'block', flex: '1 1 auto', minHeight: '300px', overflowY: 'auto', boxSizing: 'border-box' });
+          $activeModule.find('#sp_history_content').css({ display: 'block' });
+          $activeModule.find('#sp_history_results').css({ display: 'block', minHeight: '40px' });
+        }
+        $('#sp_panel_footer .sp_panel_links').show();
+        $('#sp_panel_footer .sp_panel_links a').toggle(nextModule === 'settings');
+        $('#sp_apply').toggle(nextModule === 'settings');
+        updateThreadHistoryDebugState({
+          lastPanelModule: nextModule,
+          lastPanelState: {
+            requested: moduleName,
+            resolved: nextModule,
+            footerLinksVisible: $('#sp_panel_footer .sp_panel_links').is(':visible'),
+            applyVisible: $('#sp_apply').is(':visible'),
+            historyResults: !!document.getElementById('sp_history_results'),
+            historyResultsHeight: document.getElementById('sp_history_results')?.offsetHeight || 0,
+            historyModuleDisplay: getComputedStyle(document.getElementById('sp_module_history') || document.body).display,
+            historyContentDisplay: getComputedStyle(document.getElementById('sp_history_content') || document.body).display,
+            historyPanelContentHeight: document.querySelector('#sp_module_history .sp_panel_content')?.offsetHeight || 0,
+            at: new Date().toISOString()
+          }
+        });
+        logThreadHistory('panel module switched', threadHistoryDebugState.lastPanelState);
+        logThreadHistoryFlat('panel module switched flat', threadHistoryDebugState.lastPanelState);
+      }
+
+      $('#sp_panel_tab_slot').off('click', '[data-sp-module]').on('click', '[data-sp-module]', (e) => {
+        e.preventDefault();
+        logThreadHistory('panel tab clicked', { module: $(e.currentTarget).data('spModule') });
+        setSettingsPanelModule($(e.currentTarget).data('spModule'));
+        if ($(e.currentTarget).data('spModule') === 'history') renderThreadHistoryModuleSoon();
+      });
+      $('#sp_panel_tab_slot').off('mouseenter mouseleave', '.sp_panel_tab')
+        .on('mouseenter', '.sp_panel_tab', (e) => { $(e.currentTarget).addClass('is-hover'); })
+        .on('mouseleave', '.sp_panel_tab', (e) => { $(e.currentTarget).removeClass('is-hover'); });
+      setSettingsPanelModule('settings');
+      bindThreadHistoryModuleEvents();
+      bindThreadHistoryLiveSync();
+      renderThreadHistoryModule();
 
       // 折叠头：统一控制
       $('.sp_fold_head').off('click').on('click', function(){
@@ -1713,6 +3297,49 @@ init() {
 
       // 同步已有配置 & 默认折叠
       this.syncInputs();
+
+      const reloadRequiredSettingKeys = [
+        'enableCookieSwitch',
+        'disableWatermark',
+        'enablePaginationDuplication',
+        'updatePreviewCookie',
+        'hideEmptyTitleEmail',
+        'enableExternalImagePreview',
+        'enableUpdateCheck',
+        'enableAutoCookieRefresh',
+        'enableAutoCookieRefreshToast',
+        'interceptReplyFormUnvcode',
+        'interceptReplyFormU200B',
+        'interceptReplyFormAutoCompress',
+        'enableSeamlessPaging',
+        'enableAutoSeamlessPaging',
+        'enableHDImageAndLayoutFix',
+        'enableImageContextMenu',
+        'enableLinkBlank',
+        'enableAutoUrlLinkify',
+        'enableQuotePreview',
+        'extendQuote',
+        'toggleSidebar'
+      ];
+
+      const collectReloadRequiredSettingsFromPanel = () => {
+        reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
+        // 固定启用：不受面板勾选状态影响
+        this.state.enableImageHideMode = true;
+      };
+
+      const saveReloadRequiredSettingsImmediately = () => {
+        collectReloadRequiredSettingsFromPanel();
+        try {
+          GM_setValue(this.key, this.state);
+          toast('设置已保存，刷新后生效', 900, { queue: false, key: 'settings-saved' });
+        } catch (e) {}
+      };
+
+      const reloadRequiredSettingSelector = reloadRequiredSettingKeys.map(k => '#sp_' + k).join(',');
+      $(reloadRequiredSettingSelector)
+        .off('change.xdexReloadSettingSave')
+        .on('change.xdexReloadSettingSave', saveReloadRequiredSettingsImmediately);
 
       // 图片隐藏模式：即时切换并即时应用（无需点“应用更改”）
       const applyImageHideModeImmediately = () => {
@@ -2561,34 +4188,8 @@ init() {
       const _origClose = $('#sp_close,#sp_cover').off.bind($('#sp_close,#sp_cover'), 'click');
       delete SettingPanel.__pendingImport;
 
-      // 应用更改：保存开关、屏蔽(组)、标记(组)
       $('#sp_apply').off('click').on('click', ()=>{
-        [
-          'enableCookieSwitch',
-          'disableWatermark',
-          'enablePaginationDuplication',
-          'updatePreviewCookie',
-          'hideEmptyTitleEmail',
-          'enableExternalImagePreview',
-          'enableUpdateCheck',
-          'enableAutoCookieRefresh',
-          'enableAutoCookieRefreshToast',
-          'interceptReplyFormUnvcode',
-          'interceptReplyFormU200B',
-          'interceptReplyFormAutoCompress',
-          'enableSeamlessPaging',
-          'enableAutoSeamlessPaging',
-          'enableHDImageAndLayoutFix',
-          'enableImageContextMenu',
-          'enableLinkBlank',
-          'enableAutoUrlLinkify',
-          'enableQuotePreview',
-          'extendQuote',
-          'toggleSidebar'
-        ].forEach(k=> this.state[k] = $('#sp_'+k).is(':checked'));
-
-        // 固定启用：不受面板勾选状态影响
-        this.state.enableImageHideMode = true;
+        collectReloadRequiredSettingsFromPanel();
 
         let valid = true;
 
@@ -2728,7 +4329,7 @@ init() {
         sp_enableSeamlessPaging: '阅读到页面底部时无缝加载下一页并为新页首添加页码提示',
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
-        sp_enableImageContextMenu: '为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单。',
+        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中可不在前台。',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
@@ -2752,7 +4353,8 @@ init() {
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
-        sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加',
+        sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
+        sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
       };
 
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
@@ -3000,13 +4602,60 @@ init() {
    * tag 3. 饼干标记 / 屏蔽 逻辑
    * -------------------------------------------------- */
   // 标记：支持同一饼干命中多个分组时，title 展示多行备注，颜色取首匹配组
+  function extractCookieIdFromUidElement(el, fallbackText) {
+    const datasetId = el && el.dataset ? el.dataset.xdexCookieId : '';
+    if (datasetId) return datasetId;
+    const font = el && el.querySelector ? el.querySelector('font') : null;
+    if (font) {
+      for (const node of font.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const value = String(node.nodeValue || '').trim();
+          if (value) return value;
+        }
+      }
+    }
+    const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
+    const match = String(value).match(/[A-Za-z0-9]{3,7}/);
+    return match ? match[0] : value;
+  }
+
+  function wrapCookieMarkTargetPreserveHtml(el, color) {
+    if (!el) return;
+    const existing = el.querySelector('.xdex-cookie-mark-target');
+    if (existing) {
+      $(existing).css({ background: color, padding:'0 3px', borderRadius:'2px' });
+      return;
+    }
+    const target = document.createElement('span');
+    target.className = 'xdex-cookie-mark-target';
+    $(target).css({ background: color, padding:'0 3px', borderRadius:'2px' });
+    let passedColon = false;
+    Array.from(el.childNodes).forEach(node => {
+      if (!passedColon && node.nodeType === Node.TEXT_NODE) {
+        const value = node.nodeValue || '';
+        const index = value.indexOf(':');
+        if (index !== -1) {
+          node.nodeValue = value.slice(0, index + 1);
+          const rest = value.slice(index + 1);
+          if (rest) target.appendChild(document.createTextNode(rest));
+          passedColon = true;
+          return;
+        }
+      }
+      if (passedColon) target.appendChild(node);
+    });
+    if (!target.childNodes.length) {
+      while (el.firstChild) target.appendChild(el.firstChild);
+    }
+    el.appendChild(target);
+  }
+
   function markAllCookies(groups, root) {
     const $scope = root ? $(root).find('span.h-threads-info-uid').add($(root).filter('span.h-threads-info-uid')) : $('span.h-threads-info-uid');
     $scope.each(function(){
       const $el = $(this);
       const rawText = $el.text();
-      const parts = rawText.split(':');
-      const cid = (parts[1]||'').trim();
+      const cid = extractCookieIdFromUidElement(this, rawText);
       // 先清除旧的标记样式
       $el.find('.xdex-cookie-mark-target').contents().unwrap();
       $el.css({ background: '', padding: '', borderRadius: '' }).removeAttr('title');
@@ -3024,11 +4673,8 @@ init() {
       if (firstMatchIdx === -1) return;
       // 根据第一个匹配的分组索引选择颜色
       const color = getMarkedGroupEffectiveColor(groups[firstMatchIdx], firstMatchIdx);
-      if (parts.length > 1 && cid) {
-        $el.empty();
-        $el.append(document.createTextNode(parts[0] + ':'));
-        const $target = $('<span class="xdex-cookie-mark-target"></span>').text(cid).css({ background: color, padding:'0 3px', borderRadius:'2px' });
-        $el.append($target);
+      if (rawText.includes(':') && cid) {
+        wrapCookieMarkTargetPreserveHtml(this, color);
       } else {
         $el.css({ background: color, padding:'0 3px', borderRadius:'2px' });
       }
@@ -6463,6 +8109,7 @@ init() {
           lastLoadedPage = nextPageNum;
 
           try { history.pushState(null, '', nextUrl); } catch (e) {}
+          recordThreadHistoryProgress({ url: nextUrl, page: nextPageNum, reason: 'seamless-page', touchVisitedAt: true });
           refreshEnhanceIslandAutoTitle();
 
           ensureSentinelPlaced();
@@ -6594,6 +8241,7 @@ init() {
         loadedPages.add(nextPageNum);
         lastLoadedPage = nextPageNum;
         try { history.pushState(null, '', nextUrl); } catch (e) {}
+        recordThreadHistoryProgress({ url: nextUrl, page: nextPageNum, reason: 'seamless-page', touchVisitedAt: true });
         refreshEnhanceIslandAutoTitle();
 
         const hasNextLink = pagination && Array.from(pagination.querySelectorAll('a')).some(a => /下一页|下页|Next|›|»|→/i.test(a.textContent));
@@ -8174,9 +9822,11 @@ init() {
 
   // 板块页链接新标签页打开
   function runLinkBlank(root = document) {
-    root.querySelectorAll('#h-content .h-threads-list a, .margin-bottom a, .margin-top a, #h-menu-content a').forEach(a => {
+    const selector = '#h-content .h-threads-list a, .margin-bottom a, .margin-top a, [style*="margin-top: -5px"] a, [style*="margin-top:-5px"] a, #h-menu-content a';
+    root.querySelectorAll(selector).forEach(a => {
         // ===== 新增：排除分页导航内的链接 =====
         if (a.closest('ul.uk-pagination.uk-pagination-left.h-pagination')) return;
+        if (a.closest('.uk-parent')) return;
         const href = String(a.getAttribute('href') || '').trim();
         if (!href || href === '#' || /^javascript:/i.test(href)) return;
         // =====================================
@@ -11715,7 +13365,7 @@ init() {
       value: dropdown.value,
       hasShowPicker: typeof dropdown.showPicker === 'function'
     });
-    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'crx') {
+    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
       return openCookieShortcutMenu(dropdown, focusBackTarget);
     }
     if (typeof dropdown.showPicker === 'function') {
@@ -12451,6 +14101,18 @@ init() {
                   select.dispatchEvent(new Event('change', { bubbles: true }));
                   trigger.textContent = opt.textContent || '选择颜文字';
                   hidePanel();
+                });
+                item.addEventListener('contextmenu', async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  try {
+                    await writeClipboardText(opt.value, null);
+                    toast('颜文字已复制', 900, { queue: false, key: 'kaomoji-copy' });
+                    hidePanel();
+                  } catch (err) {
+                    console.warn('[kaomoji] copy failed:', err);
+                    toast('颜文字复制失败', 900, { queue: false, key: 'kaomoji-copy' });
+                  }
                 });
                 panel.appendChild(item);
               });
@@ -13722,8 +15384,8 @@ init() {
       $('body').on('click', 'a.h-threads-info-id', e => {
         // 如果按住 Ctrl/Meta/Shift 键，允许浏览器默认行为（在新标签页/新窗口打开链接）
         if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+        e.preventDefault();
         if (isPreviewPlaceholderInfoId(e.currentTarget)) {
-          e.preventDefault();
           e.stopPropagation();
           return;
         }
@@ -13734,7 +15396,7 @@ init() {
         const str = 正文框.val();
         const left = str.substring(0, start);
         const right = str.substring(end);
-        const ref = `>>${e.target.textContent.trim()}`;
+        const ref = `>>${e.currentTarget.textContent.trim()}`;
         正文框.val(
           start === 0
             ? `${ref}\n${right}`
@@ -13746,7 +15408,6 @@ init() {
         );
         正文框.trigger('input', '');
         保存编辑();
-        e.preventDefault();
       });
     }
 
@@ -13915,8 +15576,11 @@ init() {
       const targets = withSelf($root, 'span.h-threads-info-createdat');
       targets.each(function () {
         const target = $(this);
-        const timeStr = target.attr('title') || target.text().trim();
+        const timeStr = target.attr('data-xdex-original-time') || target.attr('title') || target.text().trim();
         if (!timeStr) return;
+        const date = new Date(timeStr);
+        if (Number.isNaN(date.getTime())) return;
+        target.attr('data-xdex-original-time', timeStr);
         target.attr('title', timeStr);
         const friendlyTime = getFriendlyTime(timeStr);
         target.text(friendlyTime);
@@ -13938,7 +15602,7 @@ init() {
       const targets = withSelf($root, 'span.h-threads-info-createdat');
       targets.each(function () {
         const target = $(this);
-        const timeStr = target.attr('title');
+        const timeStr = target.attr('data-xdex-original-time') || target.attr('title');
         if (timeStr) target.text(timeStr);
       });
     }
@@ -15318,9 +16982,13 @@ init() {
     a.setAttribute('rel', Array.from(rel).join(' '));
   }
 
+  function isNmbSearchResultLink(a) {
+    return !!(a && a.matches && a.matches('#overflow.text-result a[href]'));
+  }
+
   function rewriteNmbSearchMobileThreadLinks(root = document) {
     if (!isNmbSearchPage()) return;
-    const selector = 'a[href]';
+    const selector = '#overflow.text-result a[href]';
     const links = [];
     if (root && root.matches && root.matches(selector)) links.push(root);
     if (root && root.querySelectorAll) {
@@ -15338,6 +17006,7 @@ init() {
     if (!isNmbSearchPage() || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
     if (!a) return;
+    if (!isNmbSearchResultLink(a)) return;
     const rawHref = a.getAttribute('href') || a.href || '';
     if (!rawHref || /^javascript:/i.test(rawHref)) return;
     const nextHref = normalizeNmbSearchMobileThreadUrl(rawHref);
@@ -16327,8 +17996,8 @@ init() {
     // console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
   }
 
-  function shouldUseCrxNativeImageContextMenu(cfg) {
-    return !!(XDEX_RUNTIME && XDEX_RUNTIME.kind === 'crx' && cfg && cfg.enableImageContextMenu);
+  function shouldUseExtensionNativeImageContextMenu(cfg) {
+    return !!(XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' && cfg && cfg.enableImageContextMenu);
   }
 
   function openImageContextMenu(context, x, y) {
@@ -16703,7 +18372,7 @@ init() {
     return startupPerfDebug.measure('enableImageContextMenu', () => {
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     if (!cfg.enableImageContextMenu) return;
-    if (shouldUseCrxNativeImageContextMenu(cfg)) return;
+    if (shouldUseExtensionNativeImageContextMenu(cfg)) return;
     ensureImageContextMenuStyle();
     getImageContextMenu();
     }, () => startupPerfDebug.summarizeRoot(root));
@@ -16770,6 +18439,18 @@ init() {
       }, 0);
     } catch (e) {
       console.warn('[favoriteThreads] open settings failed:', e);
+    }
+  }
+
+  function openThreadHistorySettingsPanel() {
+    try {
+      if (!$('#sp_btn').length) SettingPanel.init();
+      $('#sp_btn').trigger('click');
+      window.setTimeout(() => {
+        $('#sp_panel_tab_slot [data-sp-module="history"]').trigger('click');
+      }, 0);
+    } catch (e) {
+      console.warn('[thread-history] open settings failed:', e);
     }
   }
 
@@ -16863,7 +18544,7 @@ init() {
     items.forEach((item) => {
       const subItem = document.createElement('li');
       const link = document.createElement('a');
-      link.href = makeFavoriteThreadUrl(item.threadId);
+      link.href = getLatestThreadHistoryUrl(item.threadId) || makeFavoriteThreadUrl(item.threadId);
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.setAttribute('achecked', '1');
@@ -16914,22 +18595,44 @@ init() {
     return li;
   }
 
+  function createThreadHistoryMenuNode() {
+    const li = document.createElement('li');
+    li.id = 'xdex-thread-history-menu';
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
+    link.setAttribute('achecked', '1');
+    link.textContent = '浏览历史';
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openThreadHistorySettingsPanel();
+      return false;
+    };
+    li.appendChild(link);
+    return li;
+  }
+
   function renderFavoriteThreadsMenu() {
     const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
     if (!menu) return;
     menu.classList.add('uk-nav-parent-icon');
     ensureFavoriteThreadsMenuStyle();
     const old = document.getElementById('xdex-favorite-threads-menu');
+    const oldHistory = document.getElementById('xdex-thread-history-menu');
     const wasOpen = !!(old && old.classList.contains('uk-open'));
     if (old) old.remove();
+    if (oldHistory) oldHistory.remove();
 
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
+    const historyNode = createThreadHistoryMenuNode();
     const timeline = Array.from(menu.children).find((li) => {
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
       return header && (header.textContent || '').trim() === '时间线';
     });
     menu.insertBefore(node, timeline || menu.firstChild);
+    menu.insertBefore(historyNode, timeline || node.nextSibling);
   }
 
   /* --------------------------------------------------
@@ -16980,6 +18683,12 @@ init() {
     enhancePostFormLayout();                                         //发帖UI调整
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
     renderFavoriteThreadsMenu();                                      //常用串
+    if (isThreadHistoryPageActive()) {
+      recordCurrentThreadHistory(0, { reason: 'initial-load', countVisit: true });
+      installThreadHistoryReactivationTracking(true);
+    } else {
+      installThreadHistoryReactivationTracking(false);
+    }
     startupPerfDebug.mark('document.ready.syncSetup.end', startupPerfDebug.summarizeRoot(document));
 
     // 保存原始函数
