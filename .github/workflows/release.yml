@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "v*"
-      - "crx-v*"
+      - "extension-v*"
   workflow_dispatch:
 
 permissions:
@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           REF_NAME="${GITHUB_REF_NAME}"
-          REF_VERSION="${REF_NAME#crx-v}"
+          REF_VERSION="${REF_NAME#extension-v}"
           REF_VERSION="${REF_VERSION#v}"
 
           if [ "$REF_VERSION" != "${{ steps.version.outputs.version }}" ]; then
