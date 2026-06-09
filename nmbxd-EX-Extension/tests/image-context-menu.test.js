@@ -4,7 +4,12 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const serviceWorker = fs.readFileSync(path.join(root, 'src', 'background', 'service-worker.js'), 'utf8');
 const offscreen = fs.readFileSync(path.join(root, 'offscreen', 'offscreen.js'), 'utf8');
-const userscript = fs.readFileSync(path.resolve(root, '..', 'nmbxd-EX-for-edit.user.js'), 'utf8');
+const userscriptPath = [
+  path.resolve(root, '..', 'nmbxd-EX-for-edit.user.js'),
+  path.resolve(root, '..', 'nmbxd-EX.user.js')
+].find((candidate) => fs.existsSync(candidate));
+if (!userscriptPath) throw new Error('upstream userscript not found');
+const userscript = fs.readFileSync(userscriptPath, 'utf8');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -14,14 +19,14 @@ function hasActiveLine(source, text) {
   return source.split(/\r?\n/).some((line) => !line.trimStart().startsWith('//') && line.includes(text));
 }
 
-function testUserscriptSkipsCustomMenuInCrx() {
-  assert(userscript.includes('function shouldUseCrxNativeImageContextMenu(cfg)'), 'userscript must define CRX native image menu gate');
-  assert(userscript.includes("XDEX_RUNTIME.kind === 'crx'"), 'gate must check CRX runtime');
-  const gateIndex = userscript.indexOf('shouldUseCrxNativeImageContextMenu(cfg)');
+function testUserscriptSkipsCustomMenuInExtension() {
+  assert(userscript.includes('function shouldUseExtensionNativeImageContextMenu(cfg)'), 'userscript must define Extension native image menu gate');
+  assert(userscript.includes("XDEX_RUNTIME.kind === 'extension'"), 'gate must check Extension runtime');
+  const gateIndex = userscript.indexOf('shouldUseExtensionNativeImageContextMenu(cfg)');
   const styleIndex = userscript.indexOf('ensureImageContextMenuStyle();', gateIndex);
   const menuIndex = userscript.indexOf('getImageContextMenu();', gateIndex);
   assert(gateIndex !== -1 && styleIndex !== -1 && menuIndex !== -1, 'enableImageContextMenu must keep existing userscript menu calls');
-  assert(gateIndex < styleIndex && gateIndex < menuIndex, 'CRX gate must run before custom menu creation');
+  assert(gateIndex < styleIndex && gateIndex < menuIndex, 'Extension gate must run before custom menu creation');
 }
 
 function testNativeAnimatedMenuContract() {
@@ -78,9 +83,9 @@ function testContentScriptReceivesImageMenuDiagnostics() {
   assert(gmCompat.includes("stage !== 'skipped-static'"), 'static image skip must show toast to avoid false success feedback');
   assert(!hasActiveLine(gmCompat, "stage !== 'thread-link-succeeded'"), 'thread link success toast must stay commented out');
   assert(gmCompat.includes('静态图片请使用浏览器原生复制图像'), 'static image skip toast must tell users to use native copy image');
-  assert(gmCompat.includes('top:10px;left:50%'), 'CRX toast must use the shared top-center position');
-  assert(gmCompat.includes('GIF 已按富文本图片复制到剪贴板'), 'CRX GIF rich copy toast must match userscript wording');
-  assert(gmCompat.includes('APNG 已按富文本图片复制到剪贴板'), 'CRX APNG rich copy toast must match userscript wording');
+  assert(gmCompat.includes('top:10px;left:50%'), 'Extension toast must use the shared top-center position');
+  assert(gmCompat.includes('GIF 已按富文本图片复制到剪贴板'), 'Extension GIF rich copy toast must match userscript wording');
+  assert(gmCompat.includes('APNG 已按富文本图片复制到剪贴板'), 'Extension APNG rich copy toast must match userscript wording');
 }
 
 function testUserscriptAnimatedRichCopyToastWording() {
@@ -90,7 +95,7 @@ function testUserscriptAnimatedRichCopyToastWording() {
   assert(!userscript.includes("toast('APNG 已复制到剪贴板');"), 'userscript APNG web rich copy toast must not use generic wording');
 }
 
-testUserscriptSkipsCustomMenuInCrx();
+testUserscriptSkipsCustomMenuInExtension();
 testNativeAnimatedMenuContract();
 testAnimatedDetectionContract();
 testOffscreenAnimatedClipboardContract();

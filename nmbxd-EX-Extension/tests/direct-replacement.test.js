@@ -39,8 +39,8 @@ function resolveUpstreamUserscriptPath() {
 
 function testDirectUserscriptCopy() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
-  const crxCopy = read('src/content/nmbxd-EX-for-edit.user.js');
-  assert(crxCopy === upstream, 'CRX userscript copy must be byte-for-byte replaceable from upstream');
+  const extensionCopy = read('src/content/nmbxd-EX-for-edit.user.js');
+  assert(extensionCopy === upstream, 'Extension userscript copy must be byte-for-byte replaceable from upstream');
 }
 
 async function testGifsiclePreload() {
@@ -75,7 +75,7 @@ function testManifestBridgeOrder() {
   const contentScript = manifest.content_scripts.find((entry) =>
     Array.isArray(entry.js) && entry.js.includes('src/content/nmbxd-EX-for-edit.user.js')
   );
-  assert(contentScript, 'manifest must load CRX userscript copy');
+  assert(contentScript, 'manifest must load Extension userscript copy');
   const js = contentScript.js;
   const gmIndex = js.indexOf('src/content/gm-compat.js');
   const gifsicleIndex = js.indexOf('src/content/gifsicle-loader.js');
@@ -89,7 +89,7 @@ function testManifestBridgeOrder() {
   assert(bridgeIndex < scriptIndex, 'userscript bridge must execute before direct userscript copy');
 }
 
-function testCrxRuntimeDescriptor() {
+function testExtensionRuntimeDescriptor() {
   const code = read('src/content/gm-compat.js');
   const storageListeners = [];
   const context = {
@@ -125,12 +125,12 @@ function testCrxRuntimeDescriptor() {
   context.globalThis = context;
   context.window = context;
   vm.runInNewContext(code, context, { filename: 'gm-compat.js' });
-  assert(context.__xdexRuntime, 'GM compatibility must expose a CRX runtime descriptor before userscript execution');
-  assert(context.__xdexRuntime.kind === 'crx', 'CRX runtime descriptor must identify the crx runtime');
-  assert(context.__xdexRuntime.gmCompat === true, 'CRX runtime descriptor must declare GM compatibility');
-  assert(context.__xdexRuntime.cookieBridge === true, 'CRX runtime descriptor must declare cookie bridge capability');
-  assert(context.__xdexRuntime.pageBridge === true, 'CRX runtime descriptor must declare page bridge capability');
-  assert(context.__xdexRuntime.packagedGifsicle === true, 'CRX runtime descriptor must declare packaged gifsicle capability');
+  assert(context.__xdexRuntime, 'GM compatibility must expose an Extension runtime descriptor before userscript execution');
+  assert(context.__xdexRuntime.kind === 'extension', 'Extension runtime descriptor must identify the extension runtime');
+  assert(context.__xdexRuntime.gmCompat === true, 'Extension runtime descriptor must declare GM compatibility');
+  assert(context.__xdexRuntime.cookieBridge === true, 'Extension runtime descriptor must declare cookie bridge capability');
+  assert(context.__xdexRuntime.pageBridge === true, 'Extension runtime descriptor must declare page bridge capability');
+  assert(context.__xdexRuntime.packagedGifsicle === true, 'Extension runtime descriptor must declare packaged gifsicle capability');
 }
 
 function testGmInfoMetadataMatchesUserscriptHeader() {
@@ -172,11 +172,11 @@ function testGmInfoMetadataMatchesUserscriptHeader() {
   vm.runInNewContext(code, context, { filename: 'gm-compat.js' });
 
   assert(context.GM_info, 'GM compatibility must expose GM_info');
-  assert(context.GM_info.scriptMetaStr === userscriptHeader, 'GM_info.scriptMetaStr must match CRX userscript header');
+  assert(context.GM_info.scriptMetaStr === userscriptHeader, 'GM_info.scriptMetaStr must match Extension userscript header');
   assert(context.GM_info.script.name === readMetaValue(userscriptHeader, 'name'), 'GM_info script name must match userscript @name');
   assert(context.GM_info.script.version === readMetaValue(userscriptHeader, 'version'), 'GM_info script version must match userscript @version');
   assert(context.GM_info.scriptMetaStr.includes('// @changelog'), 'GM_info script metadata must include userscript @changelog');
-  assert(!context.GM_info.scriptMetaStr.includes('Chrome/Edge MV3 migration prototype'), 'GM_info script metadata must not use the CRX prototype placeholder changelog');
+  assert(!context.GM_info.scriptMetaStr.includes('Chrome/Edge MV3 migration prototype'), 'GM_info script metadata must not use the Extension prototype placeholder changelog');
 }
 
 function testManifestVersionMatchesUserscriptHeader() {
@@ -316,7 +316,7 @@ async function testGmCompatSameOriginFetchFallback() {
 function testUserscriptRuntimeLogHelper() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
   assert(upstream.includes('function getXDexRuntimeInfo()'), 'upstream userscript must include runtime detection helper');
-  assert(upstream.includes("declared.kind === 'crx'"), 'runtime helper must honor the CRX declared runtime');
+  assert(upstream.includes("declared.kind === 'extension'"), 'runtime helper must honor the Extension declared runtime');
   assert(upstream.includes("kind: 'userscript'"), 'runtime helper must fall back to userscript runtime');
   assert(upstream.includes("console.log('[runtime]:'"), 'userscript must log the detected runtime during startup');
 }
@@ -338,13 +338,13 @@ function testSingletonStartupGuard() {
 
   assert(upstream.includes("const XDEX_SINGLETON_OWNER_DATASET_KEY = 'xdexSingletonOwner';"), 'userscript must define the shared singleton owner dataset key');
   assert(upstream.includes('function shouldExitForXDexSingleton(runtimeInfo)'), 'userscript must include a singleton startup guard');
-  assert(upstream.includes("owner === 'crx'"), 'singleton guard must recognize CRX ownership');
-  assert(upstream.includes("runtimeInfo.kind !== 'crx'"), 'singleton guard must allow the CRX runtime to continue');
-  assert(waitIndex !== -1, 'userscript must define a bounded CRX marker wait window for cross-extension races');
+  assert(upstream.includes("owner === 'extension'"), 'singleton guard must recognize Extension ownership');
+  assert(upstream.includes("runtimeInfo.kind !== 'extension'"), 'singleton guard must allow the Extension runtime to continue');
+  assert(waitIndex !== -1, 'userscript must define a bounded Extension marker wait window for cross-extension races');
   assert(startupFunctionIndex !== -1, 'userscript must wrap real startup in a callable startup function');
   assert(scheduleFunctionIndex !== -1, 'userscript must schedule startup through the singleton arbitrator');
   assert(scheduleCallIndex !== -1, 'userscript must call the singleton startup scheduler exactly once after startup body definition');
-  assert(delayedGuardIndex !== -1, 'userscript must re-check CRX ownership after the bounded wait before startup');
+  assert(delayedGuardIndex !== -1, 'userscript must re-check Extension ownership after the bounded wait before startup');
   assert(runtimeIndex !== -1, 'userscript must compute runtime before singleton guard');
   assert(guardIndex !== -1, 'userscript must call the singleton startup guard');
   assert(runtimeIndex < guardIndex, 'singleton guard must run after runtime detection');
@@ -387,12 +387,12 @@ function testPageBridgeDeclaresSingletonOwner() {
   const document = createSharedDocument();
   const context = createBridgeContext(document);
 
-  assert(markerIndex !== -1, 'page bridge must declare the CRX singleton owner marker');
+  assert(markerIndex !== -1, 'page bridge must declare the Extension singleton owner marker');
   assert(markerIndex < bridgeEventIndex, 'page bridge must declare singleton ownership before bridge setup');
 
   vm.runInNewContext(code, context, { filename: 'page-bridge.js' });
-  assert(document.documentElement.dataset.xdexSingletonOwner === 'crx', 'page bridge must mark CRX as singleton owner on the shared DOM');
-  assert(document.documentElement.dataset.xdexSingletonSource === 'crx-main', 'page bridge must identify the CRX MAIN world as singleton source');
+  assert(document.documentElement.dataset.xdexSingletonOwner === 'extension', 'page bridge must mark Extension as singleton owner on the shared DOM');
+  assert(document.documentElement.dataset.xdexSingletonSource === 'extension-main', 'page bridge must identify the Extension MAIN world as singleton source');
 }
 
 function createBridgeContext(document) {
@@ -554,7 +554,7 @@ async function testUserscriptBridgeWrapsInitContent() {
 
 (async function run() {
   testDirectUserscriptCopy();
-  testCrxRuntimeDescriptor();
+  testExtensionRuntimeDescriptor();
   testGmInfoMetadataMatchesUserscriptHeader();
   testManifestVersionMatchesUserscriptHeader();
   testGmCompatLocalStorageSyncBridge();
