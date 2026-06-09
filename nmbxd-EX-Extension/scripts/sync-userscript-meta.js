@@ -78,4 +78,4 @@ const nextGmCompat = replaceGeneratedBlock(read(gmCompatPath), header);
 fs.writeFileSync(gmCompatPath, nextGmCompat, 'utf8');
 fs.writeFileSync(manifestPath, syncManifestVersion(read(manifestPath), version), 'utf8');
 
-console.log('CRX userscript metadata and manifest version synced');
+console.log('Extension userscript metadata and manifest version synced');

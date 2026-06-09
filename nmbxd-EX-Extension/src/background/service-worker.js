@@ -5,7 +5,7 @@ const IMAGE_MENU_COPY_ANIMATED = 'xdex-copy-gif-apng';
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen/offscreen.html';
 
 chrome.runtime.onInstalled.addListener((details) => {
-  console.info('[X岛-EX CRX] installed', details.reason);
+  console.info('[X岛-EX Extension] installed', details.reason);
   createImageContextMenus();
 });
 
@@ -77,7 +77,7 @@ async function copyGifOrApngToClipboard(info, tab) {
     logImageMenuStage('fetched', { url, contentType: image.contentType, bytes: image.buffer ? image.buffer.byteLength : 0 }, tabId);
     const animated = detectAnimatedImage(image.buffer, image.contentType, url);
     if (!animated) {
-      console.info('[X岛-EX CRX] skipped static image copy; use browser native Copy image', url);
+      console.info('[X岛-EX Extension] skipped static image copy; use browser native Copy image', url);
       logImageMenuStage('skipped-static', { url, contentType: image.contentType }, tabId);
       return;
     }
@@ -94,7 +94,7 @@ async function copyGifOrApngToClipboard(info, tab) {
     }
     logImageMenuStage('copy-succeeded', { url, format: animated.format, method: result.method || '' }, tabId);
   } catch (err) {
-    console.warn('[X岛-EX CRX] animated image copy failed', err);
+    console.warn('[X岛-EX Extension] animated image copy failed', err);
     logImageMenuStage('copy-failed', { url, error: err && err.message ? err.message : String(err) }, tabId);
   }
 }
@@ -131,7 +131,7 @@ async function copyGifOrApngToClipboard(info, tab) {
 
 function logImageMenuStage(stage, detail, tabId) {
   const payload = { type: 'xdex:image-menu-log', stage, detail: detail || {} };
-  console.log('[X岛-EX CRX 图片菜单]', stage, detail || {});
+  console.log('[X岛-EX Extension 图片菜单]', stage, detail || {});
   if (!tabId || !chrome.tabs || !chrome.tabs.sendMessage) return;
   chrome.tabs.sendMessage(tabId, payload, () => {
     const ignored = chrome.runtime && chrome.runtime.lastError;
