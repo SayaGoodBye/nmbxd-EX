@@ -206,6 +206,46 @@
     '96': '版务',
     '60': '三百人委员会'
   });
+  const POST_HISTORY_FORUM_GROUP_MAP = Object.freeze({
+    '-1': '综合', '4': '综合', '98': '综合', '20': '综合', '121': '综合', '17': '综合', '110': '综合', '19': '综合', '81': '综合', '37': '综合', '30': '综合', '75': '综合', '118': '综合', '97': '综合', '106': '综合',
+    '14': '亚文化', '12': '亚文化', '53': '亚文化', '31': '亚文化', '116': '亚文化', '45': '亚文化', '9': '亚文化', '102': '亚文化', '39': '亚文化', '94': '亚文化', '6': '亚文化', '90': '亚文化', '5': '亚文化', '93': '亚文化',
+    '111': '创作', '57': '创作', '91': '创作', '11': '创作', '15': '创作', '103': '创作', '35': '创作', '27': '创作', '115': '创作', '112': '创作',
+    '2': '游戏', '3': '游戏', '25': '游戏', '22': '游戏', '23': '游戏', '124': '游戏', '70': '游戏', '28': '游戏', '68': '游戏', '47': '游戏', '34': '游戏', '10': '游戏',
+    '62': '生活', '113': '生活', '120': '生活', '32': '生活', '33': '生活', '56': '生活', '89': '生活',
+    '18': '管理', '117': '管理', '96': '管理', '60': '管理'
+  });
+  const POST_HISTORY_FORUM_SEARCH_META = Object.freeze({
+    '98': { rawName: 'DANGER_U', showName: 'DANGER/U/', groupName: '综合' },
+    '17': { rawName: '绘画', showName: '绘画(二创)', groupName: '综合' },
+    '110': { rawName: '社畜', showName: '社畜(校园)', groupName: '综合' },
+    '19': { rawName: '故事', showName: '故事(小说)', groupName: '综合' },
+    '81': { rawName: '都市怪谈', showName: '都市怪谈(灵异)', groupName: '综合' },
+    '30': { rawName: '技术宅', showName: '技术宅(代码)', groupName: '综合' },
+    '75': { rawName: '数码', showName: '数码(装机)', groupName: '综合' },
+    '97': { rawName: '女装2', showName: '女装(时尚)', groupName: '综合' },
+    '106': { rawName: '买买买', showName: '买买买(物品推荐)', groupName: '综合' },
+    '31': { rawName: '影视', showName: '电影/电视', groupName: '亚文化' },
+    '116': { rawName: '主播管人', showName: '主播管人(圈内)', groupName: '亚文化' },
+    '9': { rawName: '特摄', showName: '特摄(布袋戏)', groupName: '亚文化' },
+    '39': { rawName: '胶佬', showName: '胶佬(手办)', groupName: '亚文化' },
+    '94': { rawName: '铁道厨', showName: '铁道厨(车辆)', groupName: '亚文化' },
+    '90': { rawName: '小马', showName: '小马(美漫)', groupName: '亚文化' },
+    '11': { rawName: '海龟汤', showName: '海龟汤(推理)', groupName: '创作' },
+    '15': { rawName: '科学', showName: '科学(干货)', groupName: '创作' },
+    '103': { rawName: '文学', showName: '文学(推书)', groupName: '创作' },
+    '35': { rawName: '音乐', showName: '音乐(推歌)', groupName: '创作' },
+    '27': { rawName: 'AI', showName: 'AI(Chatgpt)', groupName: '创作' },
+    '115': { rawName: '摄影', showName: '摄影(cos)', groupName: '创作' },
+    '25': { rawName: '任天堂', showName: '任天堂NS', groupName: '游戏' },
+    '22': { rawName: '腾讯游戏', showName: '腾讯游戏(LOL)', groupName: '游戏' },
+    '124': { rawName: 'SE', showName: 'SE(FF14)', groupName: '游戏' },
+    '70': { rawName: 'V社', showName: 'V社(DOTA)', groupName: '游戏' },
+    '10': { rawName: '联机', showName: '联机(服务器发布）', groupName: '游戏' },
+    '32': { rawName: '料理', showName: '料理(美食)', groupName: '生活' },
+    '33': { rawName: '体育', showName: '体育(健身)', groupName: '生活' },
+    '89': { rawName: '日记', showName: '日记(树洞)', groupName: '生活' },
+    '60': { rawName: '百脑汇', showName: '三百人委员会', groupName: '管理' }
+  });
   const POST_HISTORY_TIMELINE_ID_MAP = Object.freeze({
     '1': '综合线',
     '2': '创作线',
@@ -215,6 +255,8 @@
     '6': '游戏线',
     '7': '生活线'
   });
+  const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：mode:po has:image 关键词';
+  const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、板块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定板块 ID\nforum:综合 模糊匹配板块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
 
   const threadHistoryDebugState = {
@@ -484,6 +526,23 @@
 
   function getPostHistoryForumNameByFid(fid) {
     return POST_HISTORY_FORUM_FID_MAP[normalizePostHistoryFid(fid)] || '';
+  }
+
+  function normalizeHistorySearchValue(value) {
+    return String(value == null ? '' : value).trim().toLowerCase();
+  }
+
+  function getPostHistoryForumSearchText(item) {
+    const fid = normalizePostHistoryFid(item && item.fid);
+    const meta = POST_HISTORY_FORUM_SEARCH_META[fid] || {};
+    return [
+      fid,
+      item && item.forumName,
+      getPostHistoryForumNameByFid(fid),
+      meta.rawName,
+      meta.showName,
+      meta.groupName || POST_HISTORY_FORUM_GROUP_MAP[fid]
+    ].join(' ').toLowerCase();
   }
 
   function getPostHistoryPostFid(post) {
@@ -809,15 +868,85 @@
   function searchPostHistory(query, type) {
     const store = getPostHistoryStore();
     const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
-    const tokens = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+    const { filters, tokens } = parsePostHistorySearchQuery(query);
     return (store.order || [])
       .map(key => ({ key, item: store.items[key] }))
       .filter(result => {
         const item = result.item || {};
         if (normalizePostHistoryType(item.type) !== selectedType) return false;
-        const text = [item.id, item.threadId, item.postId, item.fid, item.forumName, item.title, item.name, item.email, item.contentText, item.userHash, item.status].join(' ').toLowerCase();
+        if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
+        if (filters.fidFilters.length && !filters.fidFilters.includes(normalizePostHistoryFid(item.fid))) return false;
+        if (filters.forumFilters.length && !filters.forumFilters.every(value => getPostHistoryForumSearchText(item).includes(value))) return false;
+        if (filters.hasImage && !item.imageFile) return false;
+        if (filters.isGif && !/\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || ''))) return false;
+        if (filters.hasZeroWidth && !ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))) return false;
+        if (filters.fieldFilters.length && !filters.fieldFilters.every(filter => getPostHistorySearchFieldText(item, filter.field).includes(filter.value))) return false;
+        const text = buildPostHistorySearchText(item);
         return tokens.every(token => text.includes(token));
       });
+  }
+
+  function parsePostHistorySearchQuery(query) {
+    const filters = { statusFilters: [], fidFilters: [], forumFilters: [], fieldFilters: [], hasImage: false, isGif: false, hasZeroWidth: false };
+    const tokens = [];
+    String(query || '').split(/\s+/).filter(Boolean).forEach(rawToken => {
+      const token = normalizeHistorySearchValue(rawToken);
+      const pair = token.match(/^([a-z]+):(.+)$/);
+      if (!pair) {
+        tokens.push(token);
+        return;
+      }
+      const key = pair[1];
+      const value = normalizeHistorySearchValue(pair[2]);
+      if (!value) return;
+      if (key === 'status' && ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(value)) filters.statusFilters.push(value);
+      else if (key === 'fid') {
+        const fid = normalizePostHistoryFid(value);
+        if (fid) filters.fidFilters.push(fid);
+      } else if (key === 'forum') filters.forumFilters.push(value);
+      else if (key === 'has' && value === 'image') filters.hasImage = true;
+      else if (key === 'has' && value === 'gif') filters.isGif = true;
+      else if (key === 'has' && (value === 'zwsp' || value === 'zerowidth')) filters.hasZeroWidth = true;
+      else if (['id', 'thread', 'page', 'cookie', 'name', 'email'].includes(key)) filters.fieldFilters.push({ field: key, value });
+      else tokens.push(token);
+    });
+    return { filters, tokens };
+  }
+
+  function getPostHistorySearchFieldText(item, field) {
+    if (field === 'id') return normalizeHistorySearchValue([item.id, item.postId].join(' '));
+    if (field === 'thread') return normalizeHistorySearchValue([item.threadId, item.resto].join(' '));
+    if (field === 'page') return normalizeHistorySearchValue(item.page);
+    if (field === 'cookie') return normalizeHistorySearchValue(item.userHash);
+    if (field === 'name') return normalizeHistorySearchValue(item.name);
+    if (field === 'email') return normalizeHistorySearchValue(item.email);
+    return '';
+  }
+
+  function buildPostHistorySearchText(item) {
+    return [
+      item.id,
+      item.threadId,
+      item.postId,
+      item.resto,
+      item.fid,
+      item.forumName,
+      getPostHistoryForumSearchText(item),
+      item.title,
+      item.name,
+      item.email,
+      item.contentText,
+      item.contentRaw,
+      item.userHash,
+      item.status,
+      item.type,
+      item.page,
+      item.url,
+      item.sourceUrl,
+      item.imageFile,
+      item.imageImg,
+      item.imageExt
+    ].join(' ').toLowerCase();
   }
 
   function parseLastPostResponse(resp, context) {
@@ -1999,6 +2128,18 @@
     return buildThreadHistoryPageUrl(item && item.mode, threadId, page);
   }
 
+  function buildHistorySearchHelpMark(title) {
+    const mark = document.createElement('span');
+    mark.className = 'xdex-history-search-help';
+    mark.textContent = '?';
+    mark.title = title || '';
+    mark.style.textDecoration = 'underline';
+    mark.style.cursor = 'help';
+    mark.style.whiteSpace = 'nowrap';
+    mark.setAttribute('aria-label', title || '高级检索说明');
+    return mark;
+  }
+
   function getLatestThreadHistoryUrl(threadId) {
     const tid = String(threadId || '').trim();
     if (!isValidThreadId(tid)) return '';
@@ -2133,6 +2274,7 @@
     appendThreadHistoryText(footer, 'span', 'xdex-history-current-page', `最近查看：P${item.page || 1}`);
     if (item.mode === 'po') appendThreadHistoryText(footer, 'span', 'xdex-history-po-label', 'Po');
     main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
     markAllCookies(getFilterConfig().markedGroups || [], wrapper);
     return wrapper;
   }
@@ -2151,7 +2293,10 @@
     updateThreadHistoryDebugState({ lastRender: { query: effectiveQuery || '', sortMode, count: results.length, at: new Date().toISOString() } });
     logThreadHistory('render module', { query: effectiveQuery || '', sortMode, count: results.length });
     const count = document.getElementById('sp_history_count');
-    if (count) count.textContent = `${results.length} 条`;
+    if (count) {
+      count.textContent = `${results.length} 条 `;
+      count.appendChild(buildHistorySearchHelpMark(THREAD_HISTORY_SEARCH_HELP_TEXT));
+    }
     root.textContent = '';
     if (!results.length) {
       const empty = document.createElement('div');
@@ -2374,6 +2519,7 @@
     if (item.threadId) appendThreadHistoryText(footer, 'span', 'xdex-post-history-thread', `串号：${item.threadId}`);
     if (item.page) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${item.page}`);
     main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
     markAllCookies(getFilterConfig().markedGroups || [], wrapper);
     return wrapper;
   }
@@ -2386,7 +2532,10 @@
     const effectiveQuery = query == null && input ? input.value : query;
     const results = searchPostHistory(effectiveQuery || '', postHistoryActiveType);
     const count = document.getElementById('sp_posts_count');
-    if (count) count.textContent = `${results.length} 条`;
+    if (count) {
+      count.textContent = `${results.length} 条 `;
+      count.appendChild(buildHistorySearchHelpMark(POST_HISTORY_SEARCH_HELP_TEXT));
+    }
     root.textContent = '';
     if (!results.length) {
       const empty = document.createElement('div');
@@ -3937,9 +4086,17 @@ init() {
                           background:var(--xdex-sp-panel-bg);
                      }
 
-                  .xdex-history-toolbar .xdex-history-count {
-                          white-space:nowrap;
-                     }
+                   .xdex-history-toolbar .xdex-history-count {
+                           white-space:nowrap;
+                      }
+
+                   .xdex-history-toolbar .xdex-history-search-help {
+                           display:inline-block;
+                           margin-left:3px;
+                           text-decoration:underline;
+                           cursor:help;
+                           color:inherit;
+                      }
 
                    #sp_history_results {
                            display:block;
@@ -4377,7 +4534,7 @@ init() {
                       <span style="font-size:20px; font-weight:bold;">浏览历史</span>
                     </div>
                     <div class="xdex-history-toolbar">
-                      <input id="sp_history_search" type="search" autocomplete="off" placeholder="搜索串号、标题、饼干、正文；支持 mode:po has:image has:zwsp">
+                      <input id="sp_history_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
                       <span id="sp_history_count" class="xdex-history-count">0 条</span>
                       <select id="sp_history_sort" aria-label="浏览历史排序">
                         <option value="last-desc">最近访问优先</option>
@@ -4399,7 +4556,7 @@ init() {
                       <span style="font-size:20px; font-weight:bold;">我的发言</span>
                     </div>
                     <div class="xdex-history-toolbar">
-                      <input id="sp_posts_search" type="search" autocomplete="off" placeholder="搜索标题、名称、Email、正文、串号">
+                      <input id="sp_posts_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
                       <span id="sp_posts_count" class="xdex-history-count">0 条</span>
                       <button id="sp_posts_clear" type="button" style="padding:6px 10px;">清空</button>
                     </div>
@@ -5514,9 +5671,7 @@ init() {
       // ====== 1. 定义功能描述映射表 ======
 
       const spDescriptions = {
-
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
-
         sp_enablePaginationDuplication: '在串首页添加页码导航栏',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
@@ -11641,7 +11796,7 @@ init() {
   //引用格式拓展
   function extendQuote(root = document) {
     return startupPerfDebug.measure('extendQuote', () => {
-    const ROOT_SELECTOR = '.h-threads-content, .h-post-form-input';
+    const ROOT_SELECTOR = '.h-threads-content, .h-post-form-input, .xdex-post-history-thread';
     const QUOTE_COLOR = '#789922';
 
     // 在容器内遍历纯文本节点，避免破坏现有标签
