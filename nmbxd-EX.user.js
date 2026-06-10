@@ -142,6 +142,79 @@
   const POST_HISTORY_GET_LAST_POST_RETRY_DELAYS = [300, 800, 1500, 2500];
   const POST_HISTORY_REPLIES_PER_PAGE = 19;
   const POST_HISTORY_MATCH_TIME_WINDOW_MS = 45000;
+  const POST_HISTORY_FORUM_FID_MAP = Object.freeze({
+    '-1': '时间线',
+    '4': '综合版1',
+    '98': 'DANGER/U/',
+    '20': '欢乐恶搞',
+    '121': '速报2',
+    '17': '绘画(二创)',
+    '110': '社畜(校园)',
+    '19': '故事(小说)',
+    '81': '都市怪谈(灵异)',
+    '37': '军武',
+    '30': '技术宅(代码)',
+    '75': '数码(装机)',
+    '118': '宠物',
+    '97': '女装(时尚)',
+    '106': '买买买(物品推荐)',
+    '14': '动画综合',
+    '12': '漫画',
+    '53': '婆罗门一',
+    '31': '电影/电视',
+    '116': '主播管人(圈内)',
+    '45': '卡牌桌游',
+    '9': '特摄(布袋戏)',
+    '102': '战锤',
+    '39': '胶佬(手办)',
+    '94': '铁道厨(车辆)',
+    '6': 'VOCALOID',
+    '90': '小马(美漫)',
+    '5': '东方Project',
+    '93': '舰娘',
+    '111': '跑团',
+    '57': '创作茶水间',
+    '91': '规则怪谈',
+    '11': '海龟汤(推理)',
+    '15': '科学(干货)',
+    '103': '文学(推书)',
+    '35': '音乐(推歌)',
+    '27': 'AI(Chatgpt)',
+    '115': '摄影(cos)',
+    '112': 'ROLL点',
+    '2': '游戏综合',
+    '3': '手游专楼',
+    '25': '任天堂NS',
+    '22': '腾讯游戏(LOL)',
+    '23': '暴雪游戏',
+    '124': 'SE(FF14)',
+    '70': 'V社(DOTA)',
+    '28': '怪物猎人',
+    '68': '鹰角游戏',
+    '47': '米哈游',
+    '34': '音游打卡',
+    '10': '联机(服务器发布）',
+    '62': '露营',
+    '113': '育儿',
+    '120': '自救互助',
+    '32': '料理(美食)',
+    '33': '体育(健身)',
+    '56': '学业打卡',
+    '89': '日记(树洞)',
+    '18': '值班室',
+    '117': '技术支持',
+    '96': '版务',
+    '60': '三百人委员会'
+  });
+  const POST_HISTORY_TIMELINE_ID_MAP = Object.freeze({
+    '1': '综合线',
+    '2': '创作线',
+    '3': '非创作线',
+    '4': '亚文化线',
+    '5': '综合2线',
+    '6': '游戏线',
+    '7': '生活线'
+  });
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
 
   const threadHistoryDebugState = {
@@ -404,6 +477,37 @@
     return ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(status) ? status : 'pending';
   }
 
+  function normalizePostHistoryFid(fid) {
+    const value = String(fid == null ? '' : fid).trim();
+    return /^-?\d+$/.test(value) ? value : '';
+  }
+
+  function getPostHistoryForumNameByFid(fid) {
+    return POST_HISTORY_FORUM_FID_MAP[normalizePostHistoryFid(fid)] || '';
+  }
+
+  function getPostHistoryPostFid(post) {
+    if (!post || typeof post !== 'object') return '';
+    return normalizePostHistoryFid(post.fid || post.Fid || post.forum_id || post.forumId || post.forum);
+  }
+
+  function getCurrentPostHistoryFid() {
+    const path = String(location && location.pathname || '');
+    const forumMatch = path.match(/^\/f\/([^/?#]+)/);
+    if (!forumMatch) return '';
+    let forumName = '';
+    try {
+      forumName = decodeURIComponent(forumMatch[1] || '');
+    } catch (e) {
+      forumName = forumMatch[1] || '';
+    }
+    const normalizedName = forumName.replace(/\s+/g, '').toLowerCase();
+    return Object.keys(POST_HISTORY_FORUM_FID_MAP).find(fid => {
+      const name = String(POST_HISTORY_FORUM_FID_MAP[fid] || '').replace(/\s+/g, '').toLowerCase();
+      return name === normalizedName;
+    }) || '';
+  }
+
   function normalizePostHistoryText(text) {
     return String(text || '')
       .replace(/<br\s*\/?\s*>/gi, ' ')
@@ -416,6 +520,12 @@
       .replace(/\r/g, '\n')
       .replace(/[\s\u00a0]+/g, ' ')
       .trim();
+  }
+
+  function sanitizePostHistoryServerContentHtml(content) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = String(content || '');
+    return sanitizeThreadHistoryContentHtml(wrapper);
   }
 
   function hashPostHistoryText(text) {
@@ -502,6 +612,8 @@
       item.localId = item.localId || key;
       item.status = normalizePostHistoryStatus(item.status);
       item.type = normalizePostHistoryType(item.type);
+      item.fid = normalizePostHistoryFid(item.fid);
+      item.forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
       item.contentText = normalizePostHistoryText(item.contentText || item.contentRaw || '');
       item.contentHash = item.contentHash || hashPostHistoryText(item.contentText);
       item.page = Math.max(0, Number(item.page) || 0);
@@ -703,7 +815,7 @@
       .filter(result => {
         const item = result.item || {};
         if (normalizePostHistoryType(item.type) !== selectedType) return false;
-        const text = [item.id, item.threadId, item.postId, item.title, item.name, item.email, item.contentText, item.userHash, item.status].join(' ').toLowerCase();
+        const text = [item.id, item.threadId, item.postId, item.fid, item.forumName, item.title, item.name, item.email, item.contentText, item.userHash, item.status].join(' ').toLowerCase();
         return tokens.every(token => text.includes(token));
       });
   }
@@ -955,14 +1067,16 @@
     return Array.from(new Set(pages)).sort((a, b) => b - a);
   }
 
-  function buildPostHistoryThreadCandidate(reply, threadId, page) {
-    return Object.assign({}, reply || {}, { resto: String(threadId || '').trim(), page: Math.max(1, Number(page) || 1) });
+  function buildPostHistoryThreadCandidate(reply, thread, page) {
+    const threadId = String(thread && thread.id || '').trim();
+    const fid = getPostHistoryPostFid(reply) || getPostHistoryPostFid(thread);
+    return Object.assign({}, reply || {}, { fid, resto: threadId, page: Math.max(1, Number(page) || 1) });
   }
 
   function findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds) {
     const replies = Array.isArray(pageData && pageData.replies) ? pageData.replies : [];
     for (let i = replies.length - 1; i >= 0; i--) {
-      const candidate = buildPostHistoryThreadCandidate(replies[i], snapshot && snapshot.resto, pageData && pageData.page);
+      const candidate = buildPostHistoryThreadCandidate(replies[i], pageData && pageData.thread || { id: snapshot && snapshot.resto, fid: snapshot && snapshot.fid }, pageData && pageData.page);
       if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
     }
     return null;
@@ -1010,7 +1124,14 @@
     if (type !== snapshot.type) return reject('type-mismatch', { expectedType: snapshot.type, actualType: type });
     if (type === 'reply' && String(snapshot.resto || '').trim() && String(snapshot.resto || '').trim() !== resto) return reject('reply-resto-mismatch', { expectedResto: String(snapshot.resto || '').trim(), actualResto: resto });
     const postText = normalizePostHistoryText(post.content || '');
-    if (postText && snapshot.contentHash && hashPostHistoryText(postText) !== snapshot.contentHash && postText !== snapshot.contentText) return reject('content-mismatch', { expectedHash: snapshot.contentHash, actualHash: hashPostHistoryText(postText) });
+    if (postText && snapshot.contentHash && hashPostHistoryText(postText) !== snapshot.contentHash && postText !== snapshot.contentText) {
+      logPostHistory('server content differs', {
+        snapshot: summarizePostHistorySnapshot(snapshot),
+        candidate: summarizePostHistoryCandidate(post),
+        expectedHash: snapshot.contentHash,
+        actualHash: hashPostHistoryText(postText)
+      });
+    }
     const postTs = Date.parse(post.now || '');
     if (!postTs) return reject('missing-time');
     const timeDiff = Math.abs(postTs - Number(snapshot.submittedAt || Date.now()));
@@ -1031,6 +1152,9 @@
     const existing = getPostHistoryStore().items[localId] || {};
     const existingPage = type === 'thread' ? (Number(existing.page) || 0) : 0;
     const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+    const serverContentRaw = post.content || '';
+    const serverContentText = normalizePostHistoryText(serverContentRaw);
+    const fid = getPostHistoryPostFid(post) || normalizePostHistoryFid(existing.fid);
     const update = {
       status: 'confirmed',
       type,
@@ -1039,11 +1163,14 @@
       threadId: type === 'reply' ? resto : id,
       postId: id,
       page: Math.max(0, Number(post.page) || existingPage || (type === 'thread' ? 1 : 0)),
+      fid,
+      forumName: getPostHistoryForumNameByFid(fid),
       title: post.title || '',
       email: post.email || '',
-      contentRaw: post.content || '',
-      contentText: normalizePostHistoryText(post.content || ''),
-      contentHash: hashPostHistoryText(post.content || ''),
+      contentRaw: serverContentRaw,
+      contentText: serverContentText,
+      contentHash: hashPostHistoryText(serverContentText),
+      contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
       userHash: post.user_hash || post.userHash || '',
       confirmedAt: Date.now(),
       url
@@ -1100,6 +1227,7 @@
     const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
     const contentText = normalizePostHistoryText(contentRaw);
     const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
+    const fallbackFid = getCurrentPostHistoryFid();
     const localId = `local-${submittedAt}-${Math.random().toString(36).slice(2, 8)}`;
     const parsedSource = parseThreadHistoryUrl(location.href);
     const snapshot = {
@@ -1111,6 +1239,8 @@
       threadId: type === 'reply' ? resto : '',
       postId: '',
       page: type === 'thread' ? (parsedSource ? parsedSource.page : 1) : 0,
+      fid: fallbackFid,
+      forumName: getPostHistoryForumNameByFid(fallbackFid),
       title: fd && fd.get ? String(fd.get('title') || '') : '',
       name: fd && fd.get ? String(fd.get('name') || '') : '',
       email: fd && fd.get ? String(fd.get('email') || '') : '',
@@ -2230,13 +2360,16 @@
 
     const content = document.createElement('div');
     content.className = 'h-threads-content';
-    content.textContent = item.contentText || item.contentRaw || '';
+    if (item.contentHtml) content.innerHTML = item.contentHtml;
+    else content.textContent = item.contentText || item.contentRaw || '';
     main.appendChild(content);
     enhanceHistoryRenderedContent(content);
 
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer xdex-post-history-footer';
     if (item.status !== 'confirmed') appendThreadHistoryText(footer, 'span', 'xdex-post-history-status', item.status === 'pending' ? '确认中' : item.status === 'failed' ? '失败' : '未确认');
+    const forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
+    if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', `${forumName}`);
     appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', item.type === 'reply' ? '回复' : '主题');
     if (item.threadId) appendThreadHistoryText(footer, 'span', 'xdex-post-history-thread', `串号：${item.threadId}`);
     if (item.page) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${item.page}`);
