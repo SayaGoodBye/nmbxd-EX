@@ -15,7 +15,20 @@
 // @grant        GM_listValues
 // @grant        GM_addStyle
 // @grant        unsafeWindow
+// @connect      nmbxd1.com
+// @connect      www.nmbxd1.com
+// @connect      nmbxd.com
+// @connect      www.nmbxd.com
+// @connect      nmb-search.166666666.xyz
 // @connect      image.nmb.best
+// @connect      api.nmb.best
+// @connect      raw.githubusercontent.com
+// @connect      cdn.jsdelivr.net
+// @connect      fastly.jsdelivr.net
+// @connect      update.greasyfork.org
+// @connect      scriptcat.org
+// @connect      code.jquery.com
+// @connect      unpkg.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
 // @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
@@ -119,6 +132,16 @@
   const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
   const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
   const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
+  const POST_HISTORY_STORAGE_KEY = 'xdex_post_history';
+  const POST_HISTORY_STORE_VERSION = 1;
+  const POST_HISTORY_LIMIT = 500;
+  const POST_HISTORY_SYNC_EVENT = 'xdex:post-history-changed';
+  const POST_HISTORY_API_BASE = `${location.origin}/Api`;
+  const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
+  const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
+  const POST_HISTORY_GET_LAST_POST_RETRY_DELAYS = [300, 800, 1500, 2500];
+  const POST_HISTORY_REPLIES_PER_PAGE = 19;
+  const POST_HISTORY_MATCH_TIME_WINDOW_MS = 45000;
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
 
   const threadHistoryDebugState = {
@@ -139,6 +162,12 @@
   let threadHistoryDwellTimer = 0;
   let threadHistoryVisibleSince = 0;
   let threadHistoryVisibleSessionCounted = false;
+  let postHistoryLiveSyncBound = false;
+  let postHistoryLiveRenderTimer = 0;
+  let postHistoryLiveRenderFirstAt = 0;
+  let postHistoryLiveRenderPendingCount = 0;
+  let postHistoryLiveRenderDirty = false;
+  let postHistoryActiveType = 'reply';
 
   function updateThreadHistoryDebugState(patch) {
     Object.assign(threadHistoryDebugState, patch || {});
@@ -356,6 +385,748 @@
       const detail = event && event.detail || {};
       scheduleThreadHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
     });
+  }
+
+  function createDefaultPostHistoryStore() {
+    return {
+      version: POST_HISTORY_STORE_VERSION,
+      limit: POST_HISTORY_LIMIT,
+      items: {},
+      order: []
+    };
+  }
+
+  function normalizePostHistoryType(type) {
+    return type === 'reply' ? 'reply' : 'thread';
+  }
+
+  function normalizePostHistoryStatus(status) {
+    return ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(status) ? status : 'pending';
+  }
+
+  function normalizePostHistoryText(text) {
+    return String(text || '')
+      .replace(/<br\s*\/?\s*>/gi, ' ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&gt;/gi, '>')
+      .replace(/&lt;/gi, '<')
+      .replace(/&amp;/gi, '&')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/[\s\u00a0]+/g, ' ')
+      .trim();
+  }
+
+  function hashPostHistoryText(text) {
+    const normalized = normalizePostHistoryText(text);
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0;
+    }
+    return String(hash >>> 0);
+  }
+
+  const postHistoryDebugState = window.__xdexPostHistoryDebug = window.__xdexPostHistoryDebug || { events: [] };
+
+  function summarizePostHistoryText(text) {
+    const normalized = normalizePostHistoryText(text);
+    return {
+      length: normalized.length,
+      hash: hashPostHistoryText(normalized),
+      preview: normalized.slice(0, 40)
+    };
+  }
+
+  function summarizePostHistoryCandidate(post) {
+    if (!post) return null;
+    const resto = String(post.resto || '0').trim();
+    return {
+      id: String(post.id || '').trim(),
+      resto,
+      type: Number(resto) === 0 ? 'thread' : 'reply',
+      now: post.now || '',
+      img: post.img || '',
+      ext: post.ext || '',
+      content: summarizePostHistoryText(post.content || '')
+    };
+  }
+
+  function summarizePostHistorySnapshot(snapshot) {
+    if (!snapshot) return null;
+    return {
+      localId: snapshot.localId || '',
+      type: snapshot.type || '',
+      resto: snapshot.resto || '',
+      contentHash: snapshot.contentHash || '',
+      submittedAt: snapshot.submittedAt || 0,
+      sourceUrl: snapshot.sourceUrl || ''
+    };
+  }
+
+  function logPostHistory(stage, data, level = 'log') {
+    const detail = Object.assign({ stage, at: Date.now() }, data || {});
+    try {
+      postHistoryDebugState.events.push(detail);
+      if (postHistoryDebugState.events.length > 80) postHistoryDebugState.events.shift();
+      postHistoryDebugState.last = detail;
+    } catch (e) {}
+    const method = console[level] ? level : 'log';
+    console[method]('[post-history] ' + stage, detail);
+  }
+
+  window.__xdexGetPostHistoryDebug = function getPostHistoryDebug() {
+    return postHistoryDebugState;
+  };
+
+  window.__xdexClearPostHistoryDebug = function clearPostHistoryDebug() {
+    postHistoryDebugState.events = [];
+    postHistoryDebugState.last = null;
+    return postHistoryDebugState;
+  };
+
+  function normalizePostHistoryStore(rawStore) {
+    const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
+    store.version = POST_HISTORY_STORE_VERSION;
+    store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
+    store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    const seen = new Set();
+    store.order = (Array.isArray(store.order) ? store.order : [])
+      .filter(key => {
+        if (!store.items[key] || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    Object.keys(store.items).forEach(key => {
+      const item = store.items[key] || {};
+      item.localId = item.localId || key;
+      item.status = normalizePostHistoryStatus(item.status);
+      item.type = normalizePostHistoryType(item.type);
+      item.contentText = normalizePostHistoryText(item.contentText || item.contentRaw || '');
+      item.contentHash = item.contentHash || hashPostHistoryText(item.contentText);
+      item.page = Math.max(0, Number(item.page) || 0);
+      store.items[key] = item;
+      if (!seen.has(key)) {
+        seen.add(key);
+        store.order.push(key);
+      }
+    });
+    store.order.sort((a, b) => {
+      const av = Number(store.items[a] && store.items[a].submittedAt) || 0;
+      const bv = Number(store.items[b] && store.items[b].submittedAt) || 0;
+      return bv - av;
+    });
+    while (store.order.length > store.limit) {
+      const key = store.order.pop();
+      delete store.items[key];
+    }
+    return store;
+  }
+
+  function getPostHistoryStore() {
+    try {
+      return normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+    } catch (e) {
+      return createDefaultPostHistoryStore();
+    }
+  }
+
+  function isPostHistoryPanelOpen() {
+    const cover = document.getElementById('sp_cover');
+    const module = document.getElementById('sp_module_posts');
+    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
+  }
+
+  function schedulePostHistoryLiveRender(source, remote) {
+    const active = isPostHistoryPanelOpen();
+    const renderable = !!document.getElementById('sp_posts_results');
+    const now = Date.now();
+    if (!postHistoryLiveRenderFirstAt) postHistoryLiveRenderFirstAt = now;
+    postHistoryLiveRenderPendingCount += 1;
+    postHistoryLiveRenderDirty = true;
+    logPostHistory('live sync', {
+      source,
+      remote: !!remote,
+      active,
+      renderable,
+      pendingCount: postHistoryLiveRenderPendingCount,
+      firstAt: postHistoryLiveRenderFirstAt
+    });
+    if (!renderable) {
+      if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
+      postHistoryLiveRenderTimer = 0;
+      postHistoryLiveRenderFirstAt = 0;
+      postHistoryLiveRenderPendingCount = 0;
+      return;
+    }
+    const run = () => {
+      postHistoryLiveRenderTimer = 0;
+      postHistoryLiveRenderFirstAt = 0;
+      postHistoryLiveRenderPendingCount = 0;
+      postHistoryLiveRenderDirty = false;
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderPostHistoryModule());
+      else renderPostHistoryModule();
+    };
+    if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
+    const elapsed = now - postHistoryLiveRenderFirstAt;
+    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
+      ? 0
+      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
+    postHistoryLiveRenderTimer = setTimeout(run, delay);
+  }
+
+  function notifyPostHistoryStoreChanged(source, remote) {
+    try {
+      window.dispatchEvent(new CustomEvent(POST_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
+    } catch (e) {}
+    logPostHistory('store notify', { source, remote: !!remote });
+    schedulePostHistoryLiveRender(source, remote);
+  }
+
+  function setPostHistoryStore(store) {
+    const normalized = normalizePostHistoryStore(store);
+    GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
+    notifyPostHistoryStoreChanged('local-write', false);
+    return normalized;
+  }
+
+  function bindPostHistoryLiveSync() {
+    if (postHistoryLiveSyncBound) return;
+    postHistoryLiveSyncBound = true;
+    if (typeof GM_addValueChangeListener === 'function') {
+      try {
+        GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          schedulePostHistoryLiveRender('gm-value-change', remote);
+        });
+      } catch (e) {
+        logPostHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
+      }
+    }
+    window.addEventListener(POST_HISTORY_SYNC_EVENT, (event) => {
+      const detail = event && event.detail || {};
+      schedulePostHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
+    });
+  }
+
+  function buildCanonicalReplyUrl(threadId, replyId) {
+    const tid = String(threadId || '').trim();
+    const rid = String(replyId || '').trim();
+    if (!tid || !rid) return '';
+    return `${location.origin}/t/${tid}?r=${rid}`;
+  }
+
+  function buildPostHistoryUrl(type, id, resto) {
+    const postId = String(id || '').trim();
+    const threadId = String(type === 'reply' ? resto : id || '').trim();
+    if (!postId && !threadId) return '';
+    if (type === 'reply') return buildCanonicalReplyUrl(threadId, postId);
+    return buildCanonicalReplyUrl(threadId, threadId);
+  }
+
+  function buildPostHistoryReplyActionUrl(type, id, resto, page) {
+    const postId = String(id || '').trim();
+    const threadId = String(type === 'reply' ? resto : id || '').trim();
+    const pageNum = Math.max(0, Number(page) || 0);
+    if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
+    return buildPostHistoryUrl(type, postId, threadId);
+  }
+
+  function getConfirmedPostHistoryIds(store) {
+    const ids = new Set();
+    Object.keys(store.items || {}).forEach(key => {
+      const item = store.items[key];
+      if (item && item.status === 'confirmed' && item.id) ids.add(String(item.id));
+    });
+    return ids;
+  }
+
+  function upsertPostHistoryRecord(record) {
+    if (!record || !record.localId) return getPostHistoryStore();
+    const store = getPostHistoryStore();
+    const old = store.items[record.localId] || {};
+    const merged = Object.assign({}, old, record, {
+      localId: record.localId,
+      status: normalizePostHistoryStatus(record.status),
+      type: normalizePostHistoryType(record.type),
+      contentText: normalizePostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
+      contentHash: record.contentHash || old.contentHash || hashPostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
+      submittedAt: Number(record.submittedAt || old.submittedAt) || Date.now()
+    });
+    store.items[merged.localId] = merged;
+    store.order = [merged.localId].concat((store.order || []).filter(key => key !== merged.localId));
+    logPostHistory('store upsert', {
+      localId: merged.localId,
+      status: merged.status,
+      type: merged.type,
+      contentHash: merged.contentHash,
+      submittedAt: merged.submittedAt,
+      total: store.order.length
+    });
+    return setPostHistoryStore(store);
+  }
+
+  function updatePostHistoryRecord(localId, patch) {
+    const store = getPostHistoryStore();
+    if (!store.items[localId]) {
+      logPostHistory('store update skipped', { localId, patch: patch || {} }, 'warn');
+      return store;
+    }
+    store.items[localId] = Object.assign({}, store.items[localId], patch || {});
+    logPostHistory('store update', {
+      localId,
+      patch: patch || {},
+      status: store.items[localId].status,
+      type: store.items[localId].type,
+      id: store.items[localId].id || '',
+      resto: store.items[localId].resto || ''
+    });
+    return setPostHistoryStore(store);
+  }
+
+  function deletePostHistoryItem(localId) {
+    const store = getPostHistoryStore();
+    delete store.items[localId];
+    store.order = (store.order || []).filter(key => key !== localId);
+    return setPostHistoryStore(store);
+  }
+
+  function clearPostHistory() {
+    return setPostHistoryStore(createDefaultPostHistoryStore());
+  }
+
+  function searchPostHistory(query, type) {
+    const store = getPostHistoryStore();
+    const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
+    const tokens = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+    return (store.order || [])
+      .map(key => ({ key, item: store.items[key] }))
+      .filter(result => {
+        const item = result.item || {};
+        if (normalizePostHistoryType(item.type) !== selectedType) return false;
+        const text = [item.id, item.threadId, item.postId, item.title, item.name, item.email, item.contentText, item.userHash, item.status].join(' ').toLowerCase();
+        return tokens.every(token => text.includes(token));
+      });
+  }
+
+  function parseLastPostResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      const data = json && (json.data || json.post || json);
+      const post = Array.isArray(data) ? (data[0] || null) : data;
+      if (!post) {
+        logPostHistory('getLastPost empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
+        return null;
+      }
+      logPostHistory('getLastPost parse', Object.assign({}, context || {}, { candidate: summarizePostHistoryCandidate(post) }));
+      return post;
+    } catch (e) {
+      logPostHistory('getLastPost parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+
+  function fetchPostHistorySameOriginText(url, context, stage) {
+    const label = stage || 'post history api';
+    logPostHistory(label + ' request', Object.assign({}, context || {}, { url }));
+    return fetch(url, { credentials: 'include', cache: 'no-store' }).then(resp => {
+      return resp.text().then(text => {
+        logPostHistory(label + ' response', Object.assign({}, context || {}, {
+          status: resp.status,
+          responseLength: String(text || '').length
+        }));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} ${url}`);
+        return {
+          status: resp.status,
+          statusText: resp.statusText,
+          responseText: text,
+          response: text,
+          finalUrl: resp.url || url
+        };
+      });
+    }).catch(e => {
+      logPostHistory(label + ' error', Object.assign({}, context || {}, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+
+  function fetchLastPostHistoryPost(context) {
+    const url = `${POST_HISTORY_API_BASE}/getLastPost`;
+    return fetchPostHistorySameOriginText(url, context, 'getLastPost').then(resp => parseLastPostResponse(resp, context));
+  }
+
+  function getPostHistoryApiCookieHeaders() {
+    const userhash = getCurrentBrowserUserhash();
+    return userhash ? { Cookie: `userhash=${userhash}` } : null;
+  }
+
+  function buildPostHistoryImageFile(img, ext) {
+    const base = String(img || '').trim();
+    const extValue = String(ext || '').trim();
+    if (!base) return '';
+    const suffix = extValue ? (extValue[0] === '.' ? extValue : `.${extValue}`) : '';
+    if (!suffix) return base;
+    return base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : base + suffix;
+  }
+
+  function parsePostHistoryRefResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      const data = json && (json.data || json.post || json);
+      const refPost = data && !Array.isArray(data) ? data : null;
+      if (refPost && refPost.success === false) throw new Error(refPost.error || 'ref api error');
+      if (!refPost) {
+        logPostHistory('ref empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
+        return null;
+      }
+      logPostHistory('ref parse', Object.assign({}, context || {}, {
+        id: refPost.id || '',
+        imageFile: buildPostHistoryImageFile(refPost.img, refPost.ext)
+      }));
+      return refPost;
+    } catch (e) {
+      logPostHistory('ref parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+
+  function postHistoryRefPostHasImage(refPost) {
+    return !!buildPostHistoryImageFile(refPost && refPost.img, refPost && refPost.ext);
+  }
+
+  function parsePostHistoryRefHtmlResponse(resp, context) {
+    const html = resp && (resp.responseText || resp.response) || '';
+    try {
+      const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+      const root = doc.querySelector('.h-threads-img-box') || doc.querySelector('.h-threads-item-main') || doc.body;
+      let imageFile = extractThreadHistoryImageFile(root);
+      if (!imageFile) {
+        const imageNode = doc.querySelector('.h-threads-img-a[href], img.h-threads-image, img.h-threads-img, a[href*="/image/"], a[href*="/thumb/"]');
+        const imageAnchor = imageNode && imageNode.closest ? imageNode.closest('a[href]') : imageNode;
+        imageFile = normalizeThreadHistoryImageFile(
+          (imageAnchor && imageAnchor.getAttribute && imageAnchor.getAttribute('href')) ||
+          (imageNode && imageNode.getAttribute && (imageNode.getAttribute('data-src') || imageNode.getAttribute('src')))
+        );
+      }
+      if (!imageFile) {
+        logPostHistory('ref html empty', Object.assign({}, context || {}, { responseLength: String(html || '').length }));
+        return null;
+      }
+      logPostHistory('ref html parse', Object.assign({}, context || {}, { imageFile }));
+      return { img: imageFile, ext: '', imageFile };
+    } catch (e) {
+      logPostHistory('ref html parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(html || '').length,
+        preview: String(html || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+
+  function fetchPostHistoryRefPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const detail = Object.assign({}, context || {}, { id: postId });
+    return fetchPostHistoryRefApiPost(postId, detail)
+      .then(refPost => {
+        if (postHistoryRefPostHasImage(refPost)) return refPost;
+        return fetchPostHistorySameOriginRefPost(postId, detail);
+      })
+      .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
+  }
+
+  function fetchPostHistoryRefApiPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `${POST_HISTORY_REF_API_FALLBACK_BASE}/ref?id=${encodeURIComponent(postId)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { id: postId, api: true, authenticated: !!headers });
+    logPostHistory('ref api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('ref api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      const refPost = parsePostHistoryRefResponse(resp, detail);
+      return postHistoryRefPostHasImage(refPost) ? refPost : null;
+    }).catch(e => {
+      logPostHistory('ref api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+
+  function fetchPostHistorySameOriginRefPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
+    const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
+    return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
+      .then(resp => {
+        const refPost = parsePostHistoryRefResponse(resp, detail);
+        if (postHistoryRefPostHasImage(refPost)) return refPost;
+        return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
+      })
+      .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
+  }
+
+  function fetchPostHistoryRefHtmlFallbackPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
+    const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
+    return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
+      .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
+  }
+
+  function enrichPostHistoryRefImage(localId, postId) {
+    fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
+      const imageFile = refPost ? buildPostHistoryImageFile(refPost.img, refPost.ext) : '';
+      if (!imageFile) return;
+      updatePostHistoryRecord(localId, { imageFile, imageImg: refPost.img || '', imageExt: refPost.ext || '' });
+    }).catch(e => {
+      logPostHistory('ref image error', { localId, id: postId, error: e && e.message ? e.message : String(e) }, 'warn');
+    });
+  }
+
+  function parsePostHistoryThreadResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const thread = typeof text === 'string' ? JSON.parse(text) : text;
+      if (thread && thread.success === false) throw new Error(thread.error || 'thread api error');
+      const replies = Array.isArray(thread && thread.Replies) ? thread.Replies : [];
+      const replyCount = Number(thread && (thread.ReplyCount || thread.replyCount || thread.reply_count)) || replies.length;
+      logPostHistory('thread fallback parse', Object.assign({}, context || {}, { replyCount, replies: replies.length }));
+      return { thread, replies, replyCount, page: Math.max(1, Number(context && context.page) || 1) };
+    } catch (e) {
+      logPostHistory('thread fallback parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      throw e;
+    }
+  }
+
+  function fetchPostHistoryThreadPage(threadId, page, context) {
+    const detail = Object.assign({}, context || {}, { threadId, page });
+    return fetchPostHistoryThreadApiPage(threadId, page, detail)
+      .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
+  }
+
+  function fetchPostHistoryThreadApiPage(threadId, page, context) {
+    const url = `${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { threadId, page, api: true, authenticated: !!headers });
+    logPostHistory('thread api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('thread api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      return parsePostHistoryThreadResponse(resp, detail);
+    }).catch(e => {
+      logPostHistory('thread api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+
+  function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
+    const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+    const detail = Object.assign({}, context || {}, { threadId, page });
+    return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
+  }
+
+  function getPostHistoryThreadFallbackPages(replyCount) {
+    const total = Number(replyCount) || 0;
+    const tailPage = Math.max(1, Math.ceil(total / POST_HISTORY_REPLIES_PER_PAGE));
+    const pages = [tailPage, tailPage - 1]
+      .filter(page => page >= 1)
+      .map(page => Math.max(1, Number(page) || 1));
+    return Array.from(new Set(pages)).sort((a, b) => b - a);
+  }
+
+  function buildPostHistoryThreadCandidate(reply, threadId, page) {
+    return Object.assign({}, reply || {}, { resto: String(threadId || '').trim(), page: Math.max(1, Number(page) || 1) });
+  }
+
+  function findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds) {
+    const replies = Array.isArray(pageData && pageData.replies) ? pageData.replies : [];
+    for (let i = replies.length - 1; i >= 0; i--) {
+      const candidate = buildPostHistoryThreadCandidate(replies[i], snapshot && snapshot.resto, pageData && pageData.page);
+      if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
+    }
+    return null;
+  }
+
+  async function completePostHistoryFromThreadFallback(localId, snapshot) {
+    if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
+      logPostHistory('thread fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    }
+    const threadId = String(snapshot.resto || '').trim();
+    const firstPage = await fetchPostHistoryThreadPage(threadId, 1, { localId, phase: 'count' });
+    const pages = getPostHistoryThreadFallbackPages(firstPage.replyCount);
+    const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
+    for (const page of pages) {
+      const pageData = page === 1 ? firstPage : await fetchPostHistoryThreadPage(threadId, page, { localId, phase: 'scan' });
+      const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
+      if (post) {
+        logPostHistory('thread fallback confirmed', { localId, page, candidate: summarizePostHistoryCandidate(post) });
+        confirmPostHistorySnapshot(localId, post);
+        return true;
+      }
+    }
+    logPostHistory('thread fallback exhausted', { localId, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+    return false;
+  }
+
+  function postHistoryMatchesSnapshot(post, snapshot, usedIds) {
+    const reject = (reason, extra) => {
+      logPostHistory('match rejected', Object.assign({
+        reason,
+        snapshot: summarizePostHistorySnapshot(snapshot),
+        candidate: summarizePostHistoryCandidate(post)
+      }, extra || {}));
+      return false;
+    };
+    if (!post || !snapshot) return reject('missing-post-or-snapshot');
+    const id = String(post.id || '').trim();
+    if (!id) return reject('missing-id');
+    const expectedId = String(snapshot.id || snapshot.postId || '').trim();
+    if (expectedId && id !== expectedId) return reject('id-mismatch', { expectedId, actualId: id });
+    if (usedIds.has(id) && id !== expectedId) return reject('duplicate-confirmed-id', { id });
+    const resto = String(post.resto || '0').trim();
+    const type = Number(resto) === 0 ? 'thread' : 'reply';
+    if (type !== snapshot.type) return reject('type-mismatch', { expectedType: snapshot.type, actualType: type });
+    if (type === 'reply' && String(snapshot.resto || '').trim() && String(snapshot.resto || '').trim() !== resto) return reject('reply-resto-mismatch', { expectedResto: String(snapshot.resto || '').trim(), actualResto: resto });
+    const postText = normalizePostHistoryText(post.content || '');
+    if (postText && snapshot.contentHash && hashPostHistoryText(postText) !== snapshot.contentHash && postText !== snapshot.contentText) return reject('content-mismatch', { expectedHash: snapshot.contentHash, actualHash: hashPostHistoryText(postText) });
+    const postTs = Date.parse(post.now || '');
+    if (!postTs) return reject('missing-time');
+    const timeDiff = Math.abs(postTs - Number(snapshot.submittedAt || Date.now()));
+    if (timeDiff > POST_HISTORY_MATCH_TIME_WINDOW_MS) return reject('time-window-mismatch', { postTs, submittedAt: Number(snapshot.submittedAt || Date.now()), timeDiff });
+    logPostHistory('match accepted', {
+      snapshot: summarizePostHistorySnapshot(snapshot),
+      candidate: summarizePostHistoryCandidate(post),
+      timeDiff
+    });
+    return true;
+  }
+
+  function confirmPostHistorySnapshot(localId, post) {
+    const resto = String(post.resto || '0').trim();
+    const type = Number(resto) === 0 ? 'thread' : 'reply';
+    const id = String(post.id || '').trim();
+    const url = buildPostHistoryUrl(type, id, resto);
+    const existing = getPostHistoryStore().items[localId] || {};
+    const existingPage = type === 'thread' ? (Number(existing.page) || 0) : 0;
+    const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+    const update = {
+      status: 'confirmed',
+      type,
+      id,
+      resto,
+      threadId: type === 'reply' ? resto : id,
+      postId: id,
+      page: Math.max(0, Number(post.page) || existingPage || (type === 'thread' ? 1 : 0)),
+      title: post.title || '',
+      email: post.email || '',
+      contentRaw: post.content || '',
+      contentText: normalizePostHistoryText(post.content || ''),
+      contentHash: hashPostHistoryText(post.content || ''),
+      userHash: post.user_hash || post.userHash || '',
+      confirmedAt: Date.now(),
+      url
+    };
+    if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+    logPostHistory('confirmed', { localId, type, id, resto, url });
+    updatePostHistoryRecord(localId, update);
+    if (!imageFile) enrichPostHistoryRefImage(localId, id);
+  }
+
+  function completePostHistorySnapshot(localId, snapshot, attempt = 0) {
+    const delay = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS[attempt];
+    if (delay == null) {
+      logPostHistory('completion exhausted', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      completePostHistoryFromThreadFallback(localId, snapshot).then(confirmed => {
+        if (confirmed) return;
+        logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+        updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+      }).catch(e => {
+        logPostHistory('thread fallback error', { localId, error: e && e.message ? e.message : String(e) }, 'warn');
+        logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+        updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+      });
+      return;
+    }
+    logPostHistory('completion scheduled', { localId, attempt, delay, snapshot: summarizePostHistorySnapshot(snapshot) });
+    setTimeout(() => {
+      fetchLastPostHistoryPost({ localId, attempt }).then(post => {
+        const store = getPostHistoryStore();
+        if (!postHistoryMatchesSnapshot(post, snapshot, getConfirmedPostHistoryIds(store))) {
+          logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1 });
+          completePostHistorySnapshot(localId, snapshot, attempt + 1);
+          return;
+        }
+        const id = String(post.id || '').trim();
+        const confirmedResto = String(post.resto || snapshot.resto || '').trim();
+        const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });
+        confirmPostHistorySnapshot(localId, post);
+        if (confirmedSnapshot.type === 'reply') {
+          completePostHistoryFromThreadFallback(localId, confirmedSnapshot).catch(e => {
+            logPostHistory('thread page verify error', { localId, id, error: e && e.message ? e.message : String(e) }, 'warn');
+          });
+        }
+      }).catch(e => {
+        logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
+        completePostHistorySnapshot(localId, snapshot, attempt + 1);
+      });
+    }, delay);
+  }
+
+  function snapshotSubmittedPostHistory(fd, options) {
+    const type = options && options.isReply ? 'reply' : 'thread';
+    const submittedAt = Date.now();
+    const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
+    const contentText = normalizePostHistoryText(contentRaw);
+    const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
+    const localId = `local-${submittedAt}-${Math.random().toString(36).slice(2, 8)}`;
+    const parsedSource = parseThreadHistoryUrl(location.href);
+    const snapshot = {
+      status: 'pending',
+      type,
+      localId,
+      id: '',
+      resto,
+      threadId: type === 'reply' ? resto : '',
+      postId: '',
+      page: type === 'thread' ? (parsedSource ? parsedSource.page : 1) : 0,
+      title: fd && fd.get ? String(fd.get('title') || '') : '',
+      name: fd && fd.get ? String(fd.get('name') || '') : '',
+      email: fd && fd.get ? String(fd.get('email') || '') : '',
+      contentRaw,
+      contentText,
+      contentHash: hashPostHistoryText(contentText),
+      userHash: '',
+      submittedAt,
+      confirmedAt: 0,
+      sourceUrl: location.href,
+      url: ''
+    };
+    logPostHistory('snapshot', { snapshot: summarizePostHistorySnapshot(snapshot), content: summarizePostHistoryText(contentText) });
+    upsertPostHistoryRecord(snapshot);
+    completePostHistorySnapshot(localId, snapshot, 0);
+    return snapshot;
   }
 
   function parseThreadHistoryUrl(inputUrl) {
@@ -1070,6 +1841,20 @@
     return `${y}-${m}-${day} ${hh}:${mm}`;
   }
 
+  function formatRelativeTimeMachineTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const weekday = '日一二三四五六'[d.getDay()];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${y}-${m}-${day}(${weekday})${hh}:${mm}:${ss}`;
+  }
+
   function buildThreadHistoryImageUrl(imageFile, full) {
     if (!imageFile) return '';
     const path = /\.gif$/i.test(imageFile) || full ? 'image' : 'thumb';
@@ -1155,10 +1940,11 @@
       if (cookieSpan && cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
     }
 
-    const historyUrl = buildThreadHistoryItemUrl(item);
+    const historyReplyUrl = buildCanonicalReplyUrl(item.threadId, item.threadId);
+    const historyReplyActionUrl = buildThreadHistoryItemUrl(item);
     const replyLink = document.createElement('a');
     replyLink.className = 'h-threads-info-id xdex-history-thread-id';
-    replyLink.href = historyUrl;
+    replyLink.href = historyReplyUrl;
     replyLink.textContent = `No.${item.threadId || ''}`;
     infoMain.appendChild(replyLink);
 
@@ -1166,7 +1952,7 @@
     replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
     const replyActionLink = document.createElement('a');
     replyActionLink.className = 'xdex-history-reply-action';
-    replyActionLink.href = historyUrl;
+    replyActionLink.href = historyReplyActionUrl;
     replyActionLink.target = '_blank';
     replyActionLink.rel = 'noopener';
     replyActionLink.textContent = '回应';
@@ -1187,6 +1973,7 @@
       const imageLink = document.createElement('a');
       imageLink.className = 'h-threads-img-a xdex-history-image';
       imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
+      imageLink.dataset.historyQuoteId = item.threadId || '';
       imageLink.target = '_blank';
       imageLink.rel = 'noopener';
       const img = document.createElement('img');
@@ -1206,6 +1993,7 @@
       appendThreadHistoryTruncationMarker(content);
     }
     main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
 
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -1291,6 +2079,34 @@
     setTimeout(() => renderThreadHistoryModule(query), 0);
   }
 
+  function openHistoryImageQuotePreview(tid) {
+    const quoteId = String(tid || '').trim();
+    if (!/^\d+$/.test(quoteId) || quoteId === '9999999') return false;
+    try {
+      if (typeof window.__xdexOpenQuoteByTid !== 'function' && typeof enableQuotePreview === 'function') {
+        enableQuotePreview();
+      }
+      if (typeof window.__xdexOpenQuoteByTid !== 'function') return false;
+      const ret = window.__xdexOpenQuoteByTid(quoteId, { fromPOImage: true });
+      if (ret && typeof ret.then === 'function') ret.catch(() => {});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function enhanceHistoryRenderedContent(root) {
+    if (!root) return;
+    try { renderHiddenTextContent(root); } catch (e) {}
+    try { if (typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
+    try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
+    try {
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      if (cfg && cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', root);
+      if (cfg && cfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root);
+    } catch (e) {}
+  }
+
   function bindThreadHistoryModuleEvents() {
     $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
       renderThreadHistoryModule(this.value || '');
@@ -1309,6 +2125,14 @@
       }
       window.open(url, '_blank', 'noopener');
     });
+    $('#sp_history_results').off('click.xdex-history-image-quote', '.xdex-history-image').on('click.xdex-history-image-quote', '.xdex-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
     $('#sp_history_results').off('click.xdex-history-delete', '.xdex-history-delete').on('click.xdex-history-delete', '.xdex-history-delete', function (e) {
       e.preventDefault();
       const key = this.dataset.historyKey || '';
@@ -1319,9 +2143,186 @@
     });
     $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
       e.preventDefault();
+      if (!window.confirm('确定要清空全部浏览历史吗？')) return;
       clearThreadHistory();
       renderThreadHistoryModule();
       toast('已清空浏览历史');
+    });
+  }
+
+  function buildPostHistoryItemElement(result) {
+    const item = result.item || {};
+    const wrapper = document.createElement('div');
+    wrapper.className = 'xdex-history-item xdex-post-history-item';
+    wrapper.dataset.postHistoryKey = result.key;
+
+    const main = document.createElement('div');
+    main.className = 'h-threads-item-main';
+    wrapper.appendChild(main);
+
+    const info = document.createElement('div');
+    info.className = 'h-threads-info xdex-history-info xdex-post-history-info';
+    main.appendChild(info);
+
+    const infoMain = document.createElement('span');
+    infoMain.className = 'xdex-history-info-main';
+    info.appendChild(infoMain);
+
+    if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
+    if (shouldRenderThreadHistoryAuthor(item.name)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.name);
+    if (item.email) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.email);
+    const submittedAtText = formatRelativeTimeMachineTime(item.submittedAt);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', submittedAtText);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = submittedAtText;
+      createdAtNode.title = submittedAtText;
+    }
+    if (item.userHash) appendThreadHistoryInfoText(infoMain, 'h-threads-info-uid', `ID:${item.userHash}`);
+
+    const displayPostId = item.postId || item.id || (item.type === 'reply' ? '' : item.threadId);
+    const postUrl = buildPostHistoryUrl(item.type, displayPostId, item.resto || item.threadId);
+    const postReplyActionUrl = buildPostHistoryReplyActionUrl(item.type, displayPostId, item.resto || item.threadId, item.page);
+    if (postUrl) {
+      const postLink = document.createElement('a');
+      postLink.className = 'h-threads-info-id xdex-post-history-thread-id';
+      postLink.href = postUrl;
+      postLink.textContent = `No.${displayPostId}`;
+      infoMain.appendChild(postLink);
+
+      const replyAction = document.createElement('span');
+      replyAction.className = 'h-threads-info-reply-btn xdex-post-history-reply-label';
+      const replyActionLink = document.createElement('a');
+      replyActionLink.className = 'xdex-post-history-reply-action';
+      replyActionLink.href = postReplyActionUrl;
+      replyActionLink.target = '_blank';
+      replyActionLink.rel = 'noopener';
+      replyActionLink.textContent = '回应';
+      replyAction.appendChild(document.createTextNode('['));
+      replyAction.appendChild(replyActionLink);
+      replyAction.appendChild(document.createTextNode(']'));
+      infoMain.appendChild(replyAction);
+    } else {
+      appendThreadHistoryInfoText(infoMain, 'h-threads-info-id xdex-post-history-thread-id', '未确认');
+    }
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'xdex-post-history-delete';
+    deleteButton.dataset.postHistoryKey = result.key;
+    deleteButton.title = '删除';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
+
+    if (item.imageFile) {
+      const imageLink = document.createElement('a');
+      imageLink.className = 'h-threads-img-a xdex-post-history-image';
+      imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
+      imageLink.dataset.postHistoryQuoteId = displayPostId || item.threadId || '';
+      imageLink.target = '_blank';
+      imageLink.rel = 'noopener';
+      const image = document.createElement('img');
+      image.className = 'h-threads-img';
+      image.src = buildThreadHistoryImageUrl(item.imageFile, false);
+      image.alt = item.imageFile;
+      imageLink.appendChild(image);
+      main.appendChild(imageLink);
+    }
+
+    const content = document.createElement('div');
+    content.className = 'h-threads-content';
+    content.textContent = item.contentText || item.contentRaw || '';
+    main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
+
+    const footer = document.createElement('div');
+    footer.className = 'xdex-history-footer xdex-post-history-footer';
+    if (item.status !== 'confirmed') appendThreadHistoryText(footer, 'span', 'xdex-post-history-status', item.status === 'pending' ? '确认中' : item.status === 'failed' ? '失败' : '未确认');
+    appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', item.type === 'reply' ? '回复' : '主题');
+    if (item.threadId) appendThreadHistoryText(footer, 'span', 'xdex-post-history-thread', `串号：${item.threadId}`);
+    if (item.page) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${item.page}`);
+    main.appendChild(footer);
+    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    return wrapper;
+  }
+
+  function renderPostHistoryModule(query) {
+    const root = document.getElementById('sp_posts_results');
+    if (!root) return;
+    postHistoryLiveRenderDirty = false;
+    const input = document.getElementById('sp_posts_search');
+    const effectiveQuery = query == null && input ? input.value : query;
+    const results = searchPostHistory(effectiveQuery || '', postHistoryActiveType);
+    const count = document.getElementById('sp_posts_count');
+    if (count) count.textContent = `${results.length} 条`;
+    root.textContent = '';
+    if (!results.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-history-empty xdex-post-history-empty';
+      empty.textContent = effectiveQuery ? '没有匹配的我的发言' : (postHistoryActiveType === 'reply' ? '暂无我的回复' : '暂无我的主题');
+      root.appendChild(empty);
+      return;
+    }
+    results.forEach(result => root.appendChild(buildPostHistoryItemElement(result)));
+  }
+
+  function renderPostHistoryModuleSoon(query) {
+    postHistoryLiveRenderDirty = false;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => renderPostHistoryModule(query));
+      return;
+    }
+    setTimeout(() => renderPostHistoryModule(query), 0);
+  }
+
+  function setPostHistoryType(type) {
+    postHistoryActiveType = normalizePostHistoryType(type);
+    $('#sp_posts_type_buttons [data-post-history-type]').removeClass('active')
+      .filter(`[data-post-history-type="${postHistoryActiveType}"]`).addClass('active');
+    renderPostHistoryModule();
+  }
+
+  function bindPostHistoryModuleEvents() {
+    $('#sp_posts_search').off('input.xdex-post-history').on('input.xdex-post-history', function () {
+      renderPostHistoryModule(this.value || '');
+    });
+    $('#sp_posts_type_buttons').off('click.xdex-post-history', '[data-post-history-type]').on('click.xdex-post-history', '[data-post-history-type]', function (e) {
+      e.preventDefault();
+      setPostHistoryType(this.dataset.postHistoryType || 'thread');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-reply', '.xdex-post-history-reply-action').on('click.xdex-post-history-reply', '.xdex-post-history-reply-action', function (e) {
+      if (e.button !== 0) return;
+      const url = this.href || '';
+      if (!url) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        window.location.href = url;
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-image-quote', '.xdex-post-history-image').on('click.xdex-post-history-image-quote', '.xdex-post-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.postHistoryQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-delete', '.xdex-post-history-delete').on('click.xdex-post-history-delete', '.xdex-post-history-delete', function (e) {
+      e.preventDefault();
+      const key = this.dataset.postHistoryKey || '';
+      if (!key) return;
+      if (!window.confirm('确定要删除这条发言记录吗？')) return;
+      deletePostHistoryItem(key);
+      renderPostHistoryModule();
+      toast('已删除发言记录');
+    });
+    $('#sp_posts_clear').off('click.xdex-post-history').on('click.xdex-post-history', function (e) {
+      e.preventDefault();
+      if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
+      clearPostHistory();
+      renderPostHistoryModule();
+      toast('已清空我的发言');
     });
   }
 
@@ -1353,9 +2354,9 @@
     return 0;
   }
 
-  function gmRequest(url, responseType = 'text') {
+  function gmRequest(url, responseType = 'text', headers = null) {
     return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
+      const request = {
         method: 'GET',
         url,
         responseType,
@@ -1368,7 +2369,9 @@
         },
         onerror: () => reject(new Error(`Request failed: ${url}`)),
         ontimeout: () => reject(new Error(`Request timeout: ${url}`))
-      });
+      };
+      if (headers) request.headers = headers;
+      GM_xmlhttpRequest(request);
     });
   }
 
@@ -2696,8 +3699,13 @@ init() {
                     }
 
                   #sp_panel_tab_slot .sp_panel_tab[data-sp-module="history"] {
-                         --sp-panel-tab-bg:#0080FF;
-                    }
+                          --sp-panel-tab-bg:#0080FF;
+                     }
+
+                  #sp_panel_tab_slot .sp_panel_tab[data-sp-module="posts"] {
+                          --sp-panel-tab-bg:#FFFF00;
+                          color:#332200;
+                     }
 
                   #sp_panel_tab_slot .sp_panel_tab.active,
                   #sp_panel_tab_slot .sp_panel_tab:hover,
@@ -2749,11 +3757,12 @@ init() {
                         min-height:0;
                   }
 
-                  #sp_module_history.sp_panel_module.active {
-                        display:flex;
-                        flex-direction:column;
-                        flex:1;
-                        min-height:0;
+                  #sp_module_history.sp_panel_module.active,
+                  #sp_module_posts.sp_panel_module.active {
+                         display:flex;
+                         flex-direction:column;
+                         flex:1;
+                         min-height:0;
                   }
 
                   .sp_panel_module:not(.active) {
@@ -2800,11 +3809,39 @@ init() {
                      }
 
                    #sp_history_results {
-                          display:block;
-                          min-height:40px;
-                          padding-top:8px;
-                          color:inherit;
+                           display:block;
+                           min-height:40px;
+                           padding-top:8px;
+                           color:inherit;
+                      }
+
+                   #sp_posts_results {
+                           display:block;
+                           min-height:40px;
+                           padding-top:8px;
+                           color:inherit;
+                      }
+
+                   .xdex-post-history-type-buttons {
+                          display:flex;
+                          gap:8px;
+                          margin:0 0 10px;
                      }
+
+                   .xdex-post-history-type-buttons button {
+                          flex:1;
+                          padding:6px 8px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                     }
+
+                   .xdex-post-history-type-buttons button.active {
+                           background:#F0E0D6;
+                           color:#332200;
+                           font-weight:bold;
+                      }
 
                    .xdex-history-item {
                            display:block !important;
@@ -2864,6 +3901,7 @@ init() {
                        }
 
                     .xdex-history-delete,
+                    .xdex-post-history-delete,
                     .xdex-history-reply-action {
                            text-decoration:none;
                            border:0;
@@ -2874,6 +3912,7 @@ init() {
                       }
 
                     .xdex-history-delete:hover,
+                    .xdex-post-history-delete:hover,
                     .xdex-history-reply-action:hover {
                            text-decoration:underline;
                       }
@@ -2886,10 +3925,11 @@ init() {
                            color:#059;
                       }
 
-                     .xdex-history-delete {
-                            position:absolute;
-                            top:-9px;
-                            right:10px;
+                     .xdex-history-delete,
+                     .xdex-post-history-delete {
+                             position:absolute;
+                             top:-9px;
+                             right:10px;
                             width:20px;
                             height:20px;
                             border:1px solid #a98f7a;
@@ -2934,19 +3974,21 @@ init() {
                          font-size:12px;
                     }
 
-                  .xdex-history-image {
-                         display:block;
-                         width:112px;
-                         max-height:112px;
+                  .xdex-history-image,
+                  .xdex-post-history-image {
+                          display:block;
+                          width:112px;
+                          max-height:112px;
                          margin:6px 10px 6px 0;
                          overflow:hidden;
                          float:left;
                     }
 
-                  .xdex-history-image img {
-                         max-width:112px;
-                         max-height:112px;
-                         object-fit:contain;
+                  .xdex-history-image img,
+                  .xdex-post-history-image img {
+                          max-width:112px;
+                          max-height:112px;
+                          object-fit:contain;
                     }
 
                    .xdex-history-footer,
@@ -3020,6 +4062,7 @@ init() {
             <div id="sp_panel_tab_slot" aria-label="设置面板模块">
               <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span></button>
               <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon">言</span><span class="sp_panel_tab_label">我的发言</span></button>
             </div>
             <div id="sp_panel_views">
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
@@ -3216,6 +4259,25 @@ init() {
                   </div>
                 </div>
               </div>
+              <div id="sp_module_posts" class="sp_panel_module" data-sp-module-view="posts">
+                <div class="sp_panel_content">
+                  <div id="sp_posts_content">
+                    <div id="sp_posts_title" style="margin:0 0 10px; position:relative; text-align:center;">
+                      <span style="font-size:20px; font-weight:bold;">我的发言</span>
+                    </div>
+                    <div class="xdex-history-toolbar">
+                      <input id="sp_posts_search" type="search" autocomplete="off" placeholder="搜索标题、名称、Email、正文、串号">
+                      <span id="sp_posts_count" class="xdex-history-count">0 条</span>
+                      <button id="sp_posts_clear" type="button" style="padding:6px 10px;">清空</button>
+                    </div>
+                    <div id="sp_posts_type_buttons" class="xdex-post-history-type-buttons">
+                      <button type="button" data-post-history-type="thread">我的主题</button>
+                      <button type="button" data-post-history-type="reply" class="active">我的回复</button>
+                    </div>
+                    <div id="sp_posts_results"></div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
@@ -3245,11 +4307,11 @@ init() {
         const $activeModule = $('#sp_panel_views .sp_panel_module')
           .filter(`[data-sp-module-view="${nextModule}"]`)
           .addClass('active')
-          .css({ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: nextModule === 'history' ? '300px' : '0' });
-        if (nextModule === 'history') {
+          .css({ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: (nextModule === 'history' || nextModule === 'posts') ? '300px' : '0' });
+        if (nextModule === 'history' || nextModule === 'posts') {
           $activeModule.find('.sp_panel_content').css({ display: 'block', flex: '1 1 auto', minHeight: '300px', overflowY: 'auto', boxSizing: 'border-box' });
-          $activeModule.find('#sp_history_content').css({ display: 'block' });
-          $activeModule.find('#sp_history_results').css({ display: 'block', minHeight: '40px' });
+          $activeModule.find('#sp_history_content,#sp_posts_content').css({ display: 'block' });
+          $activeModule.find('#sp_history_results,#sp_posts_results').css({ display: 'block', minHeight: '40px' });
         }
         $('#sp_panel_footer .sp_panel_links').show();
         $('#sp_panel_footer .sp_panel_links a').toggle(nextModule === 'settings');
@@ -3278,6 +4340,7 @@ init() {
         logThreadHistory('panel tab clicked', { module: $(e.currentTarget).data('spModule') });
         setSettingsPanelModule($(e.currentTarget).data('spModule'));
         if ($(e.currentTarget).data('spModule') === 'history') renderThreadHistoryModuleSoon();
+        if ($(e.currentTarget).data('spModule') === 'posts') renderPostHistoryModuleSoon();
       });
       $('#sp_panel_tab_slot').off('mouseenter mouseleave', '.sp_panel_tab')
         .on('mouseenter', '.sp_panel_tab', (e) => { $(e.currentTarget).addClass('is-hover'); })
@@ -3285,7 +4348,10 @@ init() {
       setSettingsPanelModule('settings');
       bindThreadHistoryModuleEvents();
       bindThreadHistoryLiveSync();
+      bindPostHistoryModuleEvents();
+      bindPostHistoryLiveSync();
       renderThreadHistoryModule();
+      renderPostHistoryModule();
 
       // 折叠头：统一控制
       $('.sp_fold_head').off('click').on('click', function(){
@@ -8727,8 +9793,15 @@ init() {
   hdImageDebugTarget.__xdexClearHDImageTiming = clearHDImageTiming;
   hdImageDebugTarget.__xdexReportHDImageConcurrency = reportHDImageConcurrency;
 
+  function isSettingsPanelImageEnhancementRoot(root) {
+    if (!root || root === document) return false;
+    const node = root.nodeType === 1 ? root : root.parentElement;
+    return !!(node && node.closest && node.closest('#sp_panel'));
+  }
+
   function enableHDImageAndLayoutFix(root = document) {
     return startupPerfDebug.measure('enableHDImageAndLayoutFix', () => {
+    if (isSettingsPanelImageEnhancementRoot(root)) return;
     const isDocumentRoot = root === document;
     if (isDocumentRoot && enableHDImageAndLayoutFix.__documentProcessed) {
       handlePendingHDImageAndLayoutFix(document);
@@ -9566,6 +10639,7 @@ init() {
         mutations.forEach(mutation => {
           mutation.addedNodes.forEach(node => {
             if (node.nodeType !== 1 || !node.dataset) return;
+            if (node.closest && node.closest('#sp_panel')) return;
             const isRelevant = node.matches?.('.h-threads-img-box, .h-threads-img-a, .h-threads-img, .h-threads-content, .h-preview-box')
               || node.querySelector?.('.h-threads-img-box, .h-threads-img-a, .h-threads-img, .h-threads-content, .h-preview-box');
             if (isRelevant) node.dataset.xdexHdLayoutPending = '1';
@@ -12695,6 +13769,7 @@ init() {
 
           if (successMsg) {
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'));
+            snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
 
             // 清空输入框
             const textarea = form.querySelector('textarea[name="content"]');
@@ -12807,6 +13882,7 @@ init() {
               try {
                 refreshRepliesWithSeamlessPaging(() => {
                   // 刷新完成（翻页逻辑已在内部处理）
+                  recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
                   console.log('回复区刷新完成');
                 });
               } catch (err) {
@@ -18668,6 +19744,8 @@ init() {
       }                                                              //折叠版规-发串-回复
     //if (cfg.updateReplyNumbers)          updateReplyNumbers();     //添加回复编号
     if (cfg.enableSeamlessPaging)        initSeamlessPaging();       //自动-手动无缝翻页
+    bindThreadHistoryLiveSync();
+    bindPostHistoryLiveSync();
     if (cfg.enableUpdateCheck) {
       initializeUpdateReminderUI();                                   //检查更新UI状态初始化
       scheduleDailyUpdateCheck();                                     //每日检查更新
