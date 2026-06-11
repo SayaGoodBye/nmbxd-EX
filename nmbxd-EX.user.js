@@ -2279,6 +2279,84 @@
     return wrapper;
   }
 
+  const HISTORY_RENDER_INITIAL_COUNT = 50;
+  const HISTORY_RENDER_BATCH_SIZE = 20;
+  const HISTORY_RENDER_BATCH_THRESHOLD = 400;
+  const historyRenderQueues = new Map();
+
+  function findHistoryScrollContainer(element) {
+    let el = element;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const style = window.getComputedStyle(el);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflow === 'auto' || style.overflow === 'scroll') {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return element;
+  }
+
+  function batchRenderHistoryItems(root, results, buildFn, queueId) {
+    const prev = historyRenderQueues.get(queueId);
+    if (prev) {
+      prev.cancelled = true;
+      if (prev.scrollHandler && prev.scrollContainer) {
+        prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
+      }
+    }
+    if (!root) return;
+
+    const total = results.length;
+    if (total <= 0) return;
+
+    let cursor = 0;
+    const state = { cancelled: false };
+    const scrollContainer = findHistoryScrollContainer(root);
+    historyRenderQueues.set(queueId, state);
+
+    function appendBatch(count) {
+      if (state.cancelled) return;
+      const slice = results.slice(cursor, cursor + count);
+      const fragment = document.createDocumentFragment();
+      slice.forEach(r => fragment.appendChild(buildFn(r)));
+      root.appendChild(fragment);
+      cursor += slice.length;
+    }
+
+    function maybeLoadMore() {
+      if (state.cancelled || cursor >= total) return;
+      const nearBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - HISTORY_RENDER_BATCH_THRESHOLD;
+      if (nearBottom) {
+        appendBatch(HISTORY_RENDER_BATCH_SIZE);
+        requestAnimationFrame(() => {
+          if (!state.cancelled) maybeLoadMore();
+        });
+      }
+    }
+
+    const scrollHandler = () => {
+      if (state.cancelled) return;
+      if (cursor >= total) return;
+      requestAnimationFrame(() => {
+        if (state.cancelled) return;
+        maybeLoadMore();
+      });
+    };
+
+    state.scrollHandler = scrollHandler;
+    state.scrollContainer = scrollContainer;
+    scrollContainer.addEventListener('scroll', scrollHandler, { passive: true });
+
+    appendBatch(HISTORY_RENDER_INITIAL_COUNT);
+
+    if (cursor < total) {
+      requestAnimationFrame(() => {
+        if (state.cancelled) return;
+        maybeLoadMore();
+      });
+    }
+  }
+
   function renderThreadHistoryModule(query) {
     const root = document.getElementById('sp_history_results');
     if (!root) {
@@ -2305,7 +2383,7 @@
       root.appendChild(empty);
       return;
     }
-    results.forEach(result => root.appendChild(buildThreadHistoryItemElement(result)));
+    batchRenderHistoryItems(root, results, buildThreadHistoryItemElement, 'threadHistory');
     const reportThreadHistoryRenderDom = () => {
       const cover = document.getElementById('sp_cover');
       const panel = document.getElementById('sp_panel');
@@ -2544,7 +2622,7 @@
       root.appendChild(empty);
       return;
     }
-    results.forEach(result => root.appendChild(buildPostHistoryItemElement(result)));
+    batchRenderHistoryItems(root, results, buildPostHistoryItemElement, 'postHistory');
   }
 
   function renderPostHistoryModuleSoon(query) {
@@ -20013,41 +20091,23 @@ init() {
     menu.classList.add('uk-nav-parent-icon');
     ensureFavoriteThreadsMenuStyle();
     const old = document.getElementById('xdex-favorite-threads-menu');
-
     const oldThreadHistory = document.getElementById('xdex-thread-history-menu');
-
     const oldPostHistory = document.getElementById('xdex-post-history-menu');
-
     const wasOpen = !!(old && old.classList.contains('uk-open'));
-
     if (old) old.remove();
-
     if (oldThreadHistory) oldThreadHistory.remove();
-
     if (oldPostHistory) oldPostHistory.remove();
 
-
-
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
-
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
-
     const threadHistoryNode = createThreadHistoryMenuNode();
-
     const postHistoryNode = createPostHistoryMenuNode();
-
     const timeline = Array.from(menu.children).find((li) => {
-
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
-
       return header && (header.textContent || '').trim() === '时间线';
-
     });
-
     menu.insertBefore(node, timeline || menu.firstChild);
-
     menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
-
     menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
   }
 
