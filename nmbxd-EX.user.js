@@ -19743,7 +19743,7 @@ init() {
   }
 
   /* --------------------------------------------------
-   * tag 24. 常用串
+   * tag 24. 常用串/浏览历史/发言历史
    * -------------------------------------------------- */
   function getFavoriteThreadsConfig() {
     try {
@@ -19816,6 +19816,36 @@ init() {
     } catch (e) {
       console.warn('[thread-history] open settings failed:', e);
     }
+  }
+
+  function openPostHistorySettingsPanel() {
+    try {
+      if (!$('#sp_btn').length) SettingPanel.init();
+      $('#sp_btn').trigger('click');
+      window.setTimeout(() => {
+        $('#sp_panel_tab_slot [data-sp-module="posts"]').trigger('click');
+      }, 0);
+    } catch (e) {
+      console.warn('[post-history] open settings failed:', e);
+    }
+  }
+
+  function createPostHistoryMenuNode() {
+    const li = document.createElement('li');
+    li.id = 'xdex-post-history-menu';
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
+    link.setAttribute('achecked', '1');
+    link.textContent = '我的发言(EX)';
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPostHistorySettingsPanel();
+      return false;
+    };
+    li.appendChild(link);
+    return li;
   }
 
   function addCurrentThreadToFavoriteThreads() {
@@ -19983,20 +20013,42 @@ init() {
     menu.classList.add('uk-nav-parent-icon');
     ensureFavoriteThreadsMenuStyle();
     const old = document.getElementById('xdex-favorite-threads-menu');
-    const oldHistory = document.getElementById('xdex-thread-history-menu');
+
+    const oldThreadHistory = document.getElementById('xdex-thread-history-menu');
+
+    const oldPostHistory = document.getElementById('xdex-post-history-menu');
+
     const wasOpen = !!(old && old.classList.contains('uk-open'));
+
     if (old) old.remove();
-    if (oldHistory) oldHistory.remove();
+
+    if (oldThreadHistory) oldThreadHistory.remove();
+
+    if (oldPostHistory) oldPostHistory.remove();
+
+
 
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
+
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
-    const historyNode = createThreadHistoryMenuNode();
+
+    const threadHistoryNode = createThreadHistoryMenuNode();
+
+    const postHistoryNode = createPostHistoryMenuNode();
+
     const timeline = Array.from(menu.children).find((li) => {
+
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
+
       return header && (header.textContent || '').trim() === '时间线';
+
     });
+
     menu.insertBefore(node, timeline || menu.firstChild);
-    menu.insertBefore(historyNode, timeline || node.nextSibling);
+
+    menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
+
+    menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
   }
 
   /* --------------------------------------------------
