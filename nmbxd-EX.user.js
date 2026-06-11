@@ -795,7 +795,8 @@
     const threadId = String(type === 'reply' ? resto : id || '').trim();
     if (!postId && !threadId) return '';
     if (type === 'reply') return buildCanonicalReplyUrl(threadId, postId);
-    return buildCanonicalReplyUrl(threadId, threadId);
+    // 发串直接返回串页链接，不附加 ?r=
+    return `${location.origin}/t/${threadId}`;
   }
 
   function buildPostHistoryReplyActionUrl(type, id, resto, page) {
@@ -1134,12 +1135,14 @@
   }
 
   function enrichPostHistoryRefImage(localId, postId) {
-    fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
+    return fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
       const imageFile = refPost ? buildPostHistoryImageFile(refPost.img, refPost.ext) : '';
-      if (!imageFile) return;
+      if (!imageFile) return false;
       updatePostHistoryRecord(localId, { imageFile, imageImg: refPost.img || '', imageExt: refPost.ext || '' });
+      return true;
     }).catch(e => {
       logPostHistory('ref image error', { localId, id: postId, error: e && e.message ? e.message : String(e) }, 'warn');
+      return false;
     });
   }
 
@@ -1310,43 +1313,42 @@
     };
     if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
     logPostHistory('confirmed', { localId, type, id, resto, url });
-
     updatePostHistoryRecord(localId, update);
-
-    // 通知等待者：确认完成，可获取 URL
 
     const resolver = postHistoryConfirmationMap.get(localId);
 
-    if (resolver) {
-
-      resolver(Object.assign({ localId }, update));
-
-      postHistoryConfirmationMap.delete(localId);
-
+    if (!imageFile) {
+      // 没有图片，异步获取后再通知等待者
+      enrichPostHistoryRefImage(localId, id).then(() => {
+        if (resolver) {
+          resolver(Object.assign({ localId }, update));
+          postHistoryConfirmationMap.delete(localId);
+        }
+      }).catch(() => {
+        if (resolver) {
+          resolver(Object.assign({ localId }, update));
+          postHistoryConfirmationMap.delete(localId);
+        }
+      });
+    } else {
+      // 已有图片，直接通知等待者
+      if (resolver) {
+        resolver(Object.assign({ localId }, update));
+        postHistoryConfirmationMap.delete(localId);
+      }
     }
-
-    if (!imageFile) enrichPostHistoryRefImage(localId, id);
-
   }
 
   function completePostHistorySnapshot(localId, snapshot, attempt = 0) {
     const delay = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS[attempt];
     if (delay == null) {
-
       logPostHistory('completion exhausted', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-
       // 清理等待者（确认失败或超时）
-
       const resolver = postHistoryConfirmationMap.get(localId);
-
       if (resolver) {
-
         resolver(null);
-
         postHistoryConfirmationMap.delete(localId);
-
       }
-
       completePostHistoryFromThreadFallback(localId, snapshot).then(confirmed => {
         if (confirmed) return;
         logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
@@ -1386,83 +1388,45 @@
   function snapshotSubmittedPostHistory(fd, options) {
 
     const type = options && options.isReply ? 'reply' : 'thread';
-
     const submittedAt = Date.now();
-
     const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
-
     const contentText = normalizePostHistoryText(contentRaw);
-
     const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
-
     const fallbackFid = getCurrentPostHistoryFid();
-
     const localId = `local-${submittedAt}-${Math.random().toString(36).slice(2, 8)}`;
-
     const parsedSource = parseThreadHistoryUrl(location.href);
-
     const snapshot = {
-
       status: 'pending',
-
       type,
-
       localId,
-
       id: '',
-
       resto,
-
       threadId: type === 'reply' ? resto : '',
-
       postId: '',
-
       page: type === 'thread' ? (parsedSource ? parsedSource.page : 1) : 0,
-
       fid: fallbackFid,
-
       forumName: getPostHistoryForumNameByFid(fallbackFid),
-
       title: fd && fd.get ? String(fd.get('title') || '') : '',
-
       name: fd && fd.get ? String(fd.get('name') || '') : '',
-
       email: fd && fd.get ? String(fd.get('email') || '') : '',
-
       contentRaw,
-
       contentText,
-
       contentHash: hashPostHistoryText(contentText),
-
       userHash: '',
-
       submittedAt,
-
       confirmedAt: 0,
-
       sourceUrl: location.href,
-
       url: ''
-
     };
 
     // 为发串创建一个可等待的 Promise，用于确认后跳转
-
     let confirmResolver;
-
     const confirmPromise = new Promise(res => { confirmResolver = res; });
-
     postHistoryConfirmationMap.set(localId, confirmResolver);
-
     logPostHistory('snapshot', { snapshot: summarizePostHistorySnapshot(snapshot), content: summarizePostHistoryText(contentText) });
-
     upsertPostHistoryRecord(snapshot);
-
     completePostHistorySnapshot(localId, snapshot, 0);
-
     return { snapshot, localId, confirmPromise };
-
   }
 
   function parseThreadHistoryUrl(inputUrl) {
@@ -3760,6 +3724,7 @@ ${markedSwatchHtml}
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
+      postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       threadCookieWhitelistGroups: [],
       threadCookieWhitelistDisplayMode: 'fold', // 只看饼干：fold | hide | column
       poAnnotationSideDisplayMode: 'collapse', // 分栏侧栏：collapse | expand
@@ -3767,13 +3732,9 @@ ${markedSwatchHtml}
       replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
       markedGroups: [],
       blockedCookies: [],
-
       blockedKeywords: [],
-
       favoriteThreads: [],
-
       blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
-
     },
     state: {},
 
@@ -3921,65 +3882,70 @@ ${markedSwatchHtml}
         expandSelect.value = enabled ? 'expand' : 'collapse';
       }
       const timeDisplaySelect = document.getElementById('sp_timeDisplayMode');
+
       if (timeDisplaySelect) {
         timeDisplaySelect.value = (this.state && this.state.timeDisplayMode === 'exact') ? 'exact' : 'relative';
       }
+      const postAfterSelect = document.getElementById('sp_postAfterAction');
+      if (postAfterSelect) {
+        postAfterSelect.value = (this.state && this.state.postAfterAction === 'refresh') ? 'refresh' : 'jump';
+      }
     },
 
-init() {
-  const saved = GM_getValue(this.key, {});
-  const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
-  
-  console.log('init读取的原始数据:', JSON.stringify(saved));
-      this.state = Object.assign({}, this.defaults, saved);
-      if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
-  // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
-  this.state.enableImageHideMode = true;
-  console.log('init合并后的state:', JSON.stringify(this.state));
-  
-  // 兼容迁移：屏蔽饼干到组结构
-  this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
-  this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
-  this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
-  this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
-  this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
-  
-  // 清理废弃字段
-  const validKeys = Object.keys(this.defaults);
-  let needCleanup = false;
-  Object.keys(this.state).forEach(key => {
-    if (!validKeys.includes(key)) {
-      delete this.state[key];
-      needCleanup = true;
-    }
-  });
-  
-  console.log('init清理后的state:', JSON.stringify(this.state));
-  
-  // 只在首次初始化或需要清理废弃字段时才保存
-  if (isFirstInit || needCleanup) {
-    console.log('首次初始化或需要清理，执行保存');
-    GM_setValue(this.key, this.state);
-  }
-
-  this.render();
-  GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
-    if(remote){
-      this.state = Object.assign({}, this.defaults, nv);
+    init() {
+      const saved = GM_getValue(this.key, {});
+      const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
+      
+      console.log('init读取的原始数据:', JSON.stringify(saved));
+          this.state = Object.assign({}, this.defaults, saved);
+          if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
+      // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
+      this.state.enableImageHideMode = true;
+      console.log('init合并后的state:', JSON.stringify(this.state));
+      
+      // 兼容迁移：屏蔽饼干到组结构
       this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
       this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
       this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
       this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
       this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
-      if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
-      this.syncInputs();
-      this.syncAuxiliaryControls();
-      try { renderFavoriteThreadsMenu(); } catch (e) {}
-      try { refreshFilterDisplay(this.state); } catch (e) {}
-      try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
-    }
-  });
-},
+      
+      // 清理废弃字段
+      const validKeys = Object.keys(this.defaults);
+      let needCleanup = false;
+      Object.keys(this.state).forEach(key => {
+        if (!validKeys.includes(key)) {
+          delete this.state[key];
+          needCleanup = true;
+        }
+      });
+      
+      console.log('init清理后的state:', JSON.stringify(this.state));
+      
+      // 只在首次初始化或需要清理废弃字段时才保存
+      if (isFirstInit || needCleanup) {
+        console.log('首次初始化或需要清理，执行保存');
+        GM_setValue(this.key, this.state);
+      }
+
+      this.render();
+      GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
+        if(remote){
+          this.state = Object.assign({}, this.defaults, nv);
+          this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
+          this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+          this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
+          this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
+          this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
+          if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
+          this.syncInputs();
+          this.syncAuxiliaryControls();
+          try { renderFavoriteThreadsMenu(); } catch (e) {}
+          try { refreshFilterDisplay(this.state); } catch (e) {}
+          try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
+        }
+      });
+    },
 
     render() {
       if (!$('#xdex-setting-style').length) {
@@ -4562,7 +4528,8 @@ init() {
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
+
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -4950,6 +4917,19 @@ init() {
 
               try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
               toast(nextState ? '已展开长串' : '已折叠长串');
+          });
+      })();
+
+      (function initPostAfterActionSelect() {
+          const sel = document.getElementById('sp_postAfterAction');
+          if (!sel) return;
+          sel.value = (SettingPanel.state && SettingPanel.state.postAfterAction) || 'jump';
+          sel.addEventListener('change', (e) => {
+              e.stopPropagation();
+              const action = (sel.value || 'jump') === 'jump' ? 'jump' : 'refresh';
+              SettingPanel.state.postAfterAction = action;
+              try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
+              toast(action === 'jump' ? '已切换为：发串后新标签页打开' : '已切换为：发串后刷新页面回顶部');
           });
       })();
 
@@ -5866,6 +5846,7 @@ init() {
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
+        sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
       };
 
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
@@ -14326,67 +14307,54 @@ init() {
             //   location.reload();
             // }
             if (isReply) {
-
               try {
-
                 refreshRepliesWithSeamlessPaging(() => {
-
                   // 刷新完成（翻页逻辑已在内部处理）
-
                   recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
-
                   console.log('回复区刷新完成');
-
                 });
-
               } catch (err) {
-
                 console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
-
               }
-
             } else {
-
-              // 发串：等待发言历史确认完成后，在新标签页打开新串
-
-              if (confirmPromise) {
-
+              // 发串：根据设置决定行为
+              const cfg = (typeof SettingPanel !== 'undefined' && SettingPanel.state) ? SettingPanel.state : {};
+              const postAction = cfg.postAfterAction === 'refresh' ? 'refresh' : 'jump';
+              if (postAction === 'jump' && confirmPromise) {
                 toast('新串发送成功，正在确认地址……');
-
                 Promise.race([
-
                   confirmPromise,
-
                   new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
-
                 ]).then(confirmed => {
-
                   if (confirmed && confirmed.url) {
-
                     window.open(confirmed.url, '_blank');
-
                     toast('已在新标签页打开新串');
-
                   } else {
-
                     toast('新串已发送，但未能确认地址');
-
                   }
-
                 }).catch(() => {
-
                   toast('新串已发送，确认地址超时');
-
                 });
-
+              } else if (postAction === 'refresh' && confirmPromise) {
+                // refresh 模式：等待发言历史确认后，跳转板块第一页顶部
+                toast('新串发布成功，正在确认地址……');
+                Promise.race([
+                  confirmPromise,
+                  new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
+                ]).then(() => {
+                  const boardPage1 = location.origin + location.pathname + '?page=1';
+                  toast('正在转版块第一页……');
+                  window.location.href = boardPage1;
+                }).catch(() => {
+                  const boardPage1 = location.origin + location.pathname + '?page=1';
+                  toast('确认地址超时，正在转版块第一页……');
+                  window.location.href = boardPage1;
+                });
               } else {
-
+                // jump 模式但无 confirmPromise：直接刷新页面
                 location.reload();
-
               }
-
             }
-
           } else if (errorMsg) {
             const msg = errorMsg.textContent.trim() || '提交失败';
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
