@@ -2,7 +2,7 @@
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
 // @version      3.0.0
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 。
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -140,6 +140,9 @@
   const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
   const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
   const POST_HISTORY_GET_LAST_POST_RETRY_DELAYS = [300, 800, 1500, 2500];
+
+  const POST_HISTORY_CONFIRM_TIMEOUT_MS = 10000;
+
   const POST_HISTORY_REPLIES_PER_PAGE = 19;
   const POST_HISTORY_MATCH_TIME_WINDOW_MS = 45000;
   const POST_HISTORY_FORUM_FID_MAP = Object.freeze({
@@ -256,6 +259,7 @@
     '7': '生活线'
   });
   const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：mode:po has:image 关键词';
+  const postHistoryConfirmationMap = new Map(); // 等待发串确认后跳转的 Promise 存储器 { localId -> resolver }
   const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、板块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定板块 ID\nforum:综合 模糊匹配板块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
 
@@ -1306,14 +1310,43 @@
     };
     if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
     logPostHistory('confirmed', { localId, type, id, resto, url });
+
     updatePostHistoryRecord(localId, update);
+
+    // 通知等待者：确认完成，可获取 URL
+
+    const resolver = postHistoryConfirmationMap.get(localId);
+
+    if (resolver) {
+
+      resolver(Object.assign({ localId }, update));
+
+      postHistoryConfirmationMap.delete(localId);
+
+    }
+
     if (!imageFile) enrichPostHistoryRefImage(localId, id);
+
   }
 
   function completePostHistorySnapshot(localId, snapshot, attempt = 0) {
     const delay = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS[attempt];
     if (delay == null) {
+
       logPostHistory('completion exhausted', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+
+      // 清理等待者（确认失败或超时）
+
+      const resolver = postHistoryConfirmationMap.get(localId);
+
+      if (resolver) {
+
+        resolver(null);
+
+        postHistoryConfirmationMap.delete(localId);
+
+      }
+
       completePostHistoryFromThreadFallback(localId, snapshot).then(confirmed => {
         if (confirmed) return;
         logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
@@ -1351,41 +1384,85 @@
   }
 
   function snapshotSubmittedPostHistory(fd, options) {
+
     const type = options && options.isReply ? 'reply' : 'thread';
+
     const submittedAt = Date.now();
+
     const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
+
     const contentText = normalizePostHistoryText(contentRaw);
+
     const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
+
     const fallbackFid = getCurrentPostHistoryFid();
+
     const localId = `local-${submittedAt}-${Math.random().toString(36).slice(2, 8)}`;
+
     const parsedSource = parseThreadHistoryUrl(location.href);
+
     const snapshot = {
+
       status: 'pending',
+
       type,
+
       localId,
+
       id: '',
+
       resto,
+
       threadId: type === 'reply' ? resto : '',
+
       postId: '',
+
       page: type === 'thread' ? (parsedSource ? parsedSource.page : 1) : 0,
+
       fid: fallbackFid,
+
       forumName: getPostHistoryForumNameByFid(fallbackFid),
+
       title: fd && fd.get ? String(fd.get('title') || '') : '',
+
       name: fd && fd.get ? String(fd.get('name') || '') : '',
+
       email: fd && fd.get ? String(fd.get('email') || '') : '',
+
       contentRaw,
+
       contentText,
+
       contentHash: hashPostHistoryText(contentText),
+
       userHash: '',
+
       submittedAt,
+
       confirmedAt: 0,
+
       sourceUrl: location.href,
+
       url: ''
+
     };
+
+    // 为发串创建一个可等待的 Promise，用于确认后跳转
+
+    let confirmResolver;
+
+    const confirmPromise = new Promise(res => { confirmResolver = res; });
+
+    postHistoryConfirmationMap.set(localId, confirmResolver);
+
     logPostHistory('snapshot', { snapshot: summarizePostHistorySnapshot(snapshot), content: summarizePostHistoryText(contentText) });
+
     upsertPostHistoryRecord(snapshot);
+
     completePostHistorySnapshot(localId, snapshot, 0);
-    return snapshot;
+
+    return { snapshot, localId, confirmPromise };
+
   }
 
   function parseThreadHistoryUrl(inputUrl) {
@@ -4485,6 +4562,7 @@ init() {
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -5787,6 +5865,7 @@ init() {
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
+        sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
       };
 
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
@@ -14134,8 +14213,10 @@ init() {
           }
 
           if (successMsg) {
+
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'));
-            snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
+
+            const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
 
             // 清空输入框
             const textarea = form.querySelector('textarea[name="content"]');
@@ -14245,17 +14326,65 @@ init() {
             //   location.reload();
             // }
             if (isReply) {
+
               try {
+
                 refreshRepliesWithSeamlessPaging(() => {
+
                   // 刷新完成（翻页逻辑已在内部处理）
+
                   recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
+
                   console.log('回复区刷新完成');
+
                 });
+
               } catch (err) {
+
                 console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
+
               }
+
             } else {
-              location.reload();
+
+              // 发串：等待发言历史确认完成后，在新标签页打开新串
+
+              if (confirmPromise) {
+
+                toast('新串发送成功，正在确认地址……');
+
+                Promise.race([
+
+                  confirmPromise,
+
+                  new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
+
+                ]).then(confirmed => {
+
+                  if (confirmed && confirmed.url) {
+
+                    window.open(confirmed.url, '_blank');
+
+                    toast('已在新标签页打开新串');
+
+                  } else {
+
+                    toast('新串已发送，但未能确认地址');
+
+                  }
+
+                }).catch(() => {
+
+                  toast('新串已发送，确认地址超时');
+
+                });
+
+              } else {
+
+                location.reload();
+
+              }
+
             }
 
           } else if (errorMsg) {
