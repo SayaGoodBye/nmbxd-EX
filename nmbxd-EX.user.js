@@ -134,7 +134,9 @@
   const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
   const POST_HISTORY_STORAGE_KEY = 'xdex_post_history';
   const POST_HISTORY_STORE_VERSION = 1;
-  const POST_HISTORY_LIMIT = 500;
+  // const POST_HISTORY_LIMIT = 500;
+  const POST_HISTORY_THREAD_LIMIT = Infinity;
+  const POST_HISTORY_REPLY_LIMIT = Infinity;
   const POST_HISTORY_SYNC_EVENT = 'xdex:post-history-changed';
   const POST_HISTORY_API_BASE = `${location.origin}/Api`;
   const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
@@ -509,7 +511,7 @@
   function createDefaultPostHistoryStore() {
     return {
       version: POST_HISTORY_STORE_VERSION,
-      limit: POST_HISTORY_LIMIT,
+      // limit: POST_HISTORY_LIMIT,
       items: {},
       order: []
     };
@@ -661,7 +663,7 @@
   function normalizePostHistoryStore(rawStore) {
     const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
     store.version = POST_HISTORY_STORE_VERSION;
-    store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
+    // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
     const seen = new Set();
     store.order = (Array.isArray(store.order) ? store.order : [])
@@ -691,9 +693,31 @@
       const bv = Number(store.items[b] && store.items[b].submittedAt) || 0;
       return bv - av;
     });
-    while (store.order.length > store.limit) {
-      const key = store.order.pop();
-      delete store.items[key];
+
+    // 旧：全局共享 limit 清理
+    // while (store.order.length > store.limit) {
+    //   const key = store.order.pop();
+    //   delete store.items[key];
+    // }
+
+    // 新增：按类型分别清理（仅在 limit !== Infinity 时生效）
+    const shouldCleanThread = POST_HISTORY_THREAD_LIMIT !== Infinity;
+    const shouldCleanReply = POST_HISTORY_REPLY_LIMIT !== Infinity;
+    if (shouldCleanThread || shouldCleanReply) {
+      const typeOrders = { thread: [], reply: [] };
+      store.order.forEach(key => {
+        const type = normalizePostHistoryType(store.items[key]?.type);
+        typeOrders[type].push(key);
+      });
+      while (shouldCleanThread && typeOrders.thread.length > POST_HISTORY_THREAD_LIMIT) {
+        const key = typeOrders.thread.pop();
+        delete store.items[key];
+      }
+      while (shouldCleanReply && typeOrders.reply.length > POST_HISTORY_REPLY_LIMIT) {
+        const key = typeOrders.reply.pop();
+        delete store.items[key];
+      }
+      store.order = store.order.filter(key => store.items[key]);
     }
     return store;
   }
@@ -842,13 +866,21 @@
     });
     store.items[merged.localId] = merged;
     store.order = [merged.localId].concat((store.order || []).filter(key => key !== merged.localId));
+    const typeCounts = { thread: 0, reply: 0 };
+    store.order.forEach(key => {
+      const type = normalizePostHistoryType(store.items[key]?.type);
+      typeCounts[type]++;
+    });
+
     logPostHistory('store upsert', {
       localId: merged.localId,
       status: merged.status,
       type: merged.type,
       contentHash: merged.contentHash,
       submittedAt: merged.submittedAt,
-      total: store.order.length
+      total: store.order.length,
+      threadCount: typeCounts.thread,
+      replyCount: typeCounts.reply
     });
     return setPostHistoryStore(store);
   }
