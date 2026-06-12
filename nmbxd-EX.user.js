@@ -795,15 +795,27 @@
     const threadId = String(type === 'reply' ? resto : id || '').trim();
     if (!postId && !threadId) return '';
     if (type === 'reply') return buildCanonicalReplyUrl(threadId, postId);
-    // 发串直接返回串页链接，不附加 ?r=
-    return `${location.origin}/t/${threadId}`;
+
+    // 主题也使用 ?r=threadId 格式
+    // return `${location.origin}/t/${threadId}`;
+    return `${location.origin}/t/${threadId}?r=${threadId}`;
   }
 
   function buildPostHistoryReplyActionUrl(type, id, resto, page) {
     const postId = String(id || '').trim();
     const threadId = String(type === 'reply' ? resto : id || '').trim();
     const pageNum = Math.max(0, Number(page) || 0);
-    if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
+    // reply 类型保持原来的行为：有 page 就用 ?page=N，否则回退到 ?r=replyId
+    if (type === 'reply') {
+      if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
+      return buildPostHistoryUrl(type, postId, threadId);
+    }
+    // thread 类型优先从浏览历史获取最新页面（动态更新）
+    const historyUrl = getLatestThreadHistoryUrl(threadId);
+    if (historyUrl) return historyUrl;
+    // 没有浏览历史，回退到发言历史记录的页面
+    const fallbackPage = Math.max(1, Number(page) || 1);
+    if (threadId) return `${location.origin}/t/${threadId}?page=${fallbackPage}`;
     return buildPostHistoryUrl(type, postId, threadId);
   }
 
@@ -2636,7 +2648,17 @@
     if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', `${forumName}`);
     appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', item.type === 'reply' ? '回复' : '主题');
     if (item.threadId) appendThreadHistoryText(footer, 'span', 'xdex-post-history-thread', `串号：${item.threadId}`);
-    if (item.page) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${item.page}`);
+    // 优先从浏览历史获取最近浏览页（仅 thread 类型），否则回退到记录中的 page
+    // const displayPage = item.page;
+    let displayPage = item.page;
+    if (item.type === 'thread' && item.threadId) {
+      const historyUrl = getLatestThreadHistoryUrl(item.threadId);
+      if (historyUrl) {
+        const parsed = parseThreadHistoryUrl(historyUrl);
+        if (parsed && parsed.page) displayPage = parsed.page;
+      }
+    }
+    if (displayPage) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${displayPage}`);
     main.appendChild(footer);
     enhanceHistoryRenderedContent(footer);
     markAllCookies(getFilterConfig().markedGroups || [], wrapper);
@@ -14684,14 +14706,26 @@ ${markedSwatchHtml}
         return;
       }
 
-      const targetReplies = targetPage
+      let targetReplies = targetPage
         ? list.querySelector(`.h-threads-item-replies[data-cloned-page="${targetPage}"]`)
         : list.querySelector('.h-threads-item-replies:not([data-cloned-page])');
 
+      // 如果没有找到回复区（无回复时只有主串），自动创建回复区容器
       if (!targetReplies) {
-        toast('未找到目标回复区');
-        if (typeof done === 'function') done();
-        return;
+        const threadItem = list.querySelector('.h-threads-item');
+        if (threadItem) {
+          targetReplies = document.createElement('div');
+          targetReplies.className = 'h-threads-item-replies';
+          if (targetPage) {
+            targetReplies.setAttribute('data-cloned-page', String(targetPage));
+          }
+          threadItem.appendChild(targetReplies);
+          console.log('[refreshRepliesWithSeamlessPaging] 已创建空的回复区容器');
+        } else {
+          toast('未找到目标回复区');
+          if (typeof done === 'function') done();
+          return;
+        }
       }
 
       let fetchUrl;
