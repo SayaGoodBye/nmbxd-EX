@@ -870,6 +870,7 @@
     store.order.forEach(key => {
       const type = normalizePostHistoryType(store.items[key]?.type);
       typeCounts[type]++;
+
     });
 
     logPostHistory('store upsert', {
@@ -15373,36 +15374,29 @@ ${markedSwatchHtml}
             function insertAtCaret(textarea, text, selStart, selEnd) {
                 // 记录插入前的滚动位置
                 const prevScrollTop = textarea.scrollTop;
-
                 // 确定插入位置
                 let start = Number.isInteger(selStart) ? selStart : textarea.selectionStart;
                 let end   = Number.isInteger(selEnd)   ? selEnd   : textarea.selectionEnd;
                 if (!Number.isInteger(start) || !Number.isInteger(end)) {
                     start = end = textarea.value.length;
                 }
-
-                // 拼接新内容
-                const before = textarea.value.slice(0, start);
-                const after  = textarea.value.slice(end);
-                textarea.value = before + text + after;
-
-                // 插入后的光标位置
-                const newPos = start + text.length;
-
-                // 关键：重新 focus 并设置光标位置
+                // 优先用 execCommand 插入（保留浏览器撤销历史，支持 Ctrl+Z）
                 textarea.focus();
-                textarea.setSelectionRange(newPos, newPos);
-
-                // 延迟触发 input 事件，避免与原生逻辑冲突
-                setTimeout(() => {
+                textarea.setSelectionRange(start, end);
+                const success = document.execCommand('insertText', false, text);
+                if (!success) {
+                    // 回退：execCommand 不可用时走原逻辑
+                    const before = textarea.value.slice(0, start);
+                    const after  = textarea.value.slice(end);
+                    textarea.value = before + text + after;
+                    const newPos = start + text.length;
+                    textarea.setSelectionRange(newPos, newPos);
                     textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }, 0);
-
+                }
                 // 恢复滚动条位置
                 textarea.scrollTop = prevScrollTop;
-
-                // 更新记忆位置
-                lastStart = lastEnd = newPos;
+                // 更新记忆位置（execCommand 后光标自动在插入文本末尾）
+                lastStart = lastEnd = textarea.selectionStart;
             }
         });
     }
