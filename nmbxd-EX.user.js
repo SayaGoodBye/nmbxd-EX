@@ -12554,6 +12554,7 @@ ${markedSwatchHtml}
     return startupPerfDebug.measure('initExtendedContent', () => {
     const $root = $(root || document);
     ensureRefViewLayoutStyle();
+    try { injectSubscriptionExButton(root || document); } catch (e) {}
 
     // —— 在捕获阶段接管原生引用浮窗，避免原站先显示未处理内容 ——
     $root.find("font[color='#789922']").add($root.filter("font[color='#789922']"))
@@ -20777,6 +20778,102 @@ ${markedSwatchHtml}
     menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
     menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
     menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
+  }
+
+  // ─── 页面内「订阅EX」快捷按钮 ─────────────────────────────────────────────────────────
+  function ensureSubscriptionExButtonStyle() {
+    if (document.getElementById('xdex-subscription-ex-btn-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-subscription-ex-btn-style';
+    style.textContent = `
+      .xdex-sub-ex-btn { color: #c00; font-weight: normal; }
+      .xdex-sub-ex-btn .xdex-sidebar-ex-badge {
+        color: darkorange;
+        font-weight: bold;
+        font-size: 10px;
+        line-height: 1;
+        margin-left: 1px;
+      }
+      .xdex-sub-ex-btn:hover { text-decoration: underline; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function getCurrentSubscriptionFeedLabel() {
+    const uuid = subscriptionFeedCurrentUuid || '';
+    if (!uuid) return '';
+    try {
+      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+      const feed = feeds.find((f) => f.uuid === uuid);
+      return feed && feed.desc ? feed.desc : uuid;
+    } catch (e) {
+      return uuid;
+    }
+  }
+
+  function resolveSubscriptionFeedUuid() {
+    const uuid = subscriptionFeedCurrentUuid || getActiveSubscriptionFeedUuid() || '';
+    if (uuid) return uuid;
+    const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+    return feeds.length ? feeds[0].uuid : '';
+  }
+
+  function injectSubscriptionExButton(root) {
+    ensureSubscriptionExButtonStyle();
+    const scope = root || document;
+    const reportBtns = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-info-report-btn') : [];
+    reportBtns.forEach((btn) => {
+      if (btn.__xdexSubExBound) return;
+      const link = btn.querySelector('a');
+      if (!link || (link.textContent || '').trim() !== '订阅') return;
+      btn.__xdexSubExBound = true;
+      const container = btn.closest('[data-threads-id]');
+      if (!container) return;
+      const sep = document.createTextNode(' ');
+      const span = document.createElement('span');
+      span.className = 'h-threads-info-report-btn';
+      const a = document.createElement('a');
+      a.href = 'javascript:void(0)';
+      a.className = 'xdex-sub-ex-btn';
+      a.appendChild(document.createTextNode('订阅'));
+      const badge = document.createElement('sub');
+      badge.className = 'xdex-sidebar-ex-badge';
+      badge.style.cssText = 'color: darkorange; font-weight: bold;';
+      badge.setAttribute('aria-hidden', 'true');
+      badge.textContent = 'EX';
+      a.appendChild(badge);
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const tid = container.getAttribute('data-threads-id') || '';
+        if (!tid) return;
+        const uuid = resolveSubscriptionFeedUuid();
+        if (!uuid) {
+          toast('请先在设置中添加一个订阅号');
+          return;
+        }
+        const label = getCurrentSubscriptionFeedLabel() || uuid;
+        if (!window.confirm(`确定要订阅 No.${tid} 到「${label}」吗？`)) return;
+        GM_xmlhttpRequest({
+          method: 'POST',
+          url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
+          onload: (resp) => {
+            if (resp.status >= 200 && resp.status < 300) {
+              toast(`已订阅 No.${tid} 到「${label}」`);
+            } else {
+              toast(`订阅失败 (${resp.status})`);
+            }
+          },
+          onerror: () => toast('订阅失败，网络错误')
+        });
+      });
+      span.appendChild(document.createTextNode('['));
+      span.appendChild(a);
+      span.appendChild(document.createTextNode(']'));
+      btn.after(sep, span);
+    });
   }
 
   /* --------------------------------------------------
