@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.1.0
+// @version      3.2.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增"我的发言"，分为“我的主题/我的的回复”，提供更完整的信息（内容、图片、版块、所在页面），并支持侧边栏一键跳转发言历史面板，支持高级搜索。\n\n优化\n1.板块页发串可选"发串后跳转"或"发串后刷新刷新"，前者可以直接跳转发布的新串详情，后者则回到板块页首页。\n2.对浏览历史/我的发言面板进行分批渲染，避免卡顿。\n3."我的主题"中串号链接使用 ?r=threadId 格式，所在页优先从浏览历史同步最新页面，避免每次都从第一页进入。\n\n修复\n1.修复颜文字插入后无法 Ctrl+Z 撤销的问题。\n2.修复无回复串内回复时先创建空容器再局部刷新，避免回复后无法完成页面的更新。\n
+// @changelog    新增\n1.新增"我的订阅"，可使用订阅号与移动端订阅互通，提供更完整的信息（内容、图片、版块），并支持侧边栏一键跳转订阅面板，支持添加多个订阅号。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -20882,14 +20882,12 @@ ${markedSwatchHtml}
   function injectSubscriptionExButton(root) {
     ensureSubscriptionExButtonStyle();
     const scope = root || document;
-    const reportBtns = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-info-report-btn') : [];
-    reportBtns.forEach((btn) => {
-      if (btn.__xdexSubExBound) return;
-      const link = btn.querySelector('a');
-      if (!link || (link.textContent || '').trim() !== '订阅') return;
-      btn.__xdexSubExBound = true;
-      const container = btn.closest('[data-threads-id]');
-      if (!container) return;
+    const containers = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-item[data-threads-id] > .h-threads-item-main') : [];
+    containers.forEach((container) => {
+      // 找到 No.xxx 链接作为插入锚点（板块页和串内页都有）
+      const anchor = container.querySelector('a.h-threads-info-id');
+      if (!anchor || anchor.__xdexSubExBound) return;
+      anchor.__xdexSubExBound = true;
       const sep = document.createTextNode(' ');
       const span = document.createElement('span');
       span.className = 'h-threads-info-report-btn';
@@ -20933,10 +20931,9 @@ ${markedSwatchHtml}
       span.appendChild(document.createTextNode('['));
       span.appendChild(a);
       span.appendChild(document.createTextNode(']'));
-      btn.after(sep, span);
+      anchor.before(span, sep);
     });
   }
-
   /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
