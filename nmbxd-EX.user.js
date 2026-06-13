@@ -2730,6 +2730,330 @@
     setTimeout(() => renderPostHistoryModule(query), 0);
   }
 
+  // ─── 订阅 Feed 渲染 ──────────────────────────────────────────────────────
+  const SUBSCRIPTION_FEED_API_BASE = 'https://api.nmb.best/api';
+  let subscriptionFeedCurrentPage = 1;
+  let subscriptionFeedCurrentUuid = '';
+  let subscriptionFeedLoading = false;
+  let subscriptionFeedAllItems = [];
+  let subscriptionFeedHasMore = true;
+
+  const ACTIVE_FEED_STORAGE_KEY = 'xdex_active_subscription_feed_uuid';
+
+  function getActiveSubscriptionFeedUuid() {
+    try { return GM_getValue(ACTIVE_FEED_STORAGE_KEY, ''); } catch (e) { return ''; }
+  }
+
+  function setActiveSubscriptionFeedUuid(uuid) {
+    try { GM_setValue(ACTIVE_FEED_STORAGE_KEY, uuid || ''); } catch (e) {}
+  }
+
+  function populateSubscriptionFeedSelector() {
+    const $sel = $('#sp_feeds_selector').empty();
+    const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+    if (!feeds.length) {
+      $sel.append('<option value="">（请先在设置中添加订阅号）</option>');
+      return '';
+    }
+    feeds.forEach((f, i) => {
+      const label = f.desc ? `${f.desc}：${f.uuid}` : f.uuid;
+      $sel.append(`<option value="${Utils.escapeHTML ? Utils.escapeHTML(f.uuid) : f.uuid}">${Utils.escapeHTML ? Utils.escapeHTML(label) : label}</option>`);
+    });
+    // 恢复上次选中的订阅号
+    const saved = getActiveSubscriptionFeedUuid();
+    const match = feeds.find(f => f.uuid === saved);
+    const selected = match ? match.uuid : feeds[0].uuid;
+    $sel.val(selected);
+    return selected;
+  }
+  
+  function buildSubscriptionFeedItemElement(item) {
+    const threadId = Number(item.id) || 0;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'xdex-history-item';
+    wrapper.dataset.feedThreadId = String(threadId);
+    const main = document.createElement('div');
+    main.className = 'h-threads-item-main';
+    wrapper.appendChild(main);
+    const info = document.createElement('div');
+    info.className = 'h-threads-info xdex-history-info';
+    main.appendChild(info);
+    const infoMain = document.createElement('span');
+    infoMain.className = 'xdex-history-info-main';
+    info.appendChild(infoMain);
+        const title = String(item.title || '');
+    const email = String(item.email || '');
+    const now = String(item.now || '');
+    const userHash = String(item.user_hash || '');
+    if (title && title !== '无标题') appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', title);
+    if (email) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', email);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', now);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = now;
+      createdAtNode.title = now;
+    }
+    if (userHash) {
+      const cookieSpan = appendThreadHistoryText(infoMain, 'span', 'h-threads-info-uid', `ID:${userHash}`);
+      if (cookieSpan) cookieSpan.setAttribute('data-xdex-cookie-id', userHash);
+    }
+    const replyLink = document.createElement('a');
+    replyLink.className = 'h-threads-info-id xdex-history-thread-id';
+    replyLink.href = `${location.origin}/t/${threadId}`;
+    replyLink.textContent = `No.${threadId}`;
+    infoMain.appendChild(replyLink);
+    
+    const replyCount = Number(item.reply_count) || 0;
+    if (replyCount > 0) {
+      appendThreadHistoryText(infoMain, 'span', 'xdex-history-visit-count', `${replyCount} 回`);
+    }
+
+    // 从浏览历史查找最近查看页
+    const tid = String(threadId || '').trim();
+    const histStore = getThreadHistoryStore();
+    const histCandidates = ['normal', 'po']
+      .map((mode) => histStore.items[getThreadHistoryKey(mode, tid)])
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
+    const histItem = histCandidates[0] || null;
+    const histPage = histItem ? (Number(histItem.page) || 1) : 1;
+    const histMaxPage = histItem ? (Number(histItem.maxVisitedPage) || histPage) : 1;
+    // [回应] 链接
+    const replyAction = document.createElement('span');
+    replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
+    const replyActionLink = document.createElement('a');
+    replyActionLink.className = 'xdex-history-reply-action';
+    replyActionLink.href = `${location.origin}/t/${tid}?page=${histPage}`;
+    replyActionLink.target = '_blank';
+    replyActionLink.rel = 'noopener';
+    replyActionLink.textContent = '回应';
+    replyAction.appendChild(document.createTextNode('['));
+    replyAction.appendChild(replyActionLink);
+    replyAction.appendChild(document.createTextNode(']'));
+    infoMain.appendChild(replyAction);
+
+    // 取消订阅按钮
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'xdex-post-history-delete';
+    deleteButton.dataset.feedThreadId = String(threadId);
+    deleteButton.title = '取消订阅';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
+    
+    // 图片
+    const imgRaw = String(item.img || '');
+    const extRaw = String(item.ext || '');
+    if (imgRaw) {
+      const suffix = extRaw ? (extRaw[0] === '.' ? extRaw : `.${extRaw}`) : '';
+      const imageFile = suffix && imgRaw.toLowerCase().endsWith(suffix.toLowerCase()) ? imgRaw : imgRaw + suffix;
+      const imageLink = document.createElement('a');
+      imageLink.className = 'h-threads-img-a xdex-history-image';
+      imageLink.href = buildThreadHistoryImageUrl(imageFile, true);
+      imageLink.target = '_blank';
+      imageLink.rel = 'noopener';
+      const img = document.createElement('img');
+      img.className = 'h-threads-img';
+      img.src = buildThreadHistoryImageUrl(imageFile, false);
+      img.alt = imageFile;
+      imageLink.appendChild(img);
+      main.appendChild(imageLink);
+    }
+    
+    // 正文
+    const content = document.createElement('div');
+    content.className = 'h-threads-content';
+    const contentHtml = String(item.content || '');
+    if (contentHtml) content.innerHTML = contentHtml;
+    else content.textContent = '';
+    main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
+    
+    // 脚注
+    const footer = document.createElement('div');
+    footer.className = 'xdex-history-footer';
+    const fid = String(item.fid || '');
+    const forumName = fid ? (POST_HISTORY_FORUM_FID_MAP[fid] || '') : '';
+    if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', forumName);
+    appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', '订阅');
+    appendThreadHistoryText(footer, 'span', 'xdex-history-time', now);
+    main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
+    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    return wrapper;
+  }
+  
+  async function fetchSubscriptionFeedPage(uuid, page) {
+    const url = `${SUBSCRIPTION_FEED_API_BASE}/feed?uuid=${encodeURIComponent(uuid)}&page=${encodeURIComponent(page)}`;
+    const resp = await gmRequest(url, 'json');
+    const data = resp.response || resp.responseText;
+    if (Array.isArray(data)) return data;
+    try { return JSON.parse(typeof data === 'string' ? data : '[]'); } catch (e) { return []; }
+  }
+  
+  function renderSubscriptionFeedModule() {
+    const $results = $('#sp_feeds_results').empty();
+    const uuid = populateSubscriptionFeedSelector();
+    if (!uuid) {
+      $results.html('<div style="text-align:center;color:#999;padding:40px 0;">请先在设置中添加订阅号</div>');
+      subscriptionFeedCurrentUuid = '';
+      subscriptionFeedHasMore = false;
+      return;
+    }
+    subscriptionFeedCurrentUuid = uuid;
+    subscriptionFeedCurrentPage = 1;
+    subscriptionFeedAllItems = [];
+    subscriptionFeedHasMore = true;
+    loadSubscriptionFeedPage(uuid, 1, true);
+  }
+
+  
+
+  async function loadSubscriptionFeedPage(uuid, page, replace) {
+
+    subscriptionFeedLoading = true;
+    const $results = $('#sp_feeds_results');
+
+    if (replace) $results.empty();
+
+    try {
+
+      const items = await fetchSubscriptionFeedPage(uuid, page);
+      if (uuid !== subscriptionFeedCurrentUuid) return;
+      if (!items.length) {
+
+        subscriptionFeedHasMore = false;
+
+        if (replace) {
+
+          $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
+
+        }
+
+        return;
+
+      }
+
+      // 页码分隔线：只在下一页实际有内容时显示，避免未满页触底后留下空的“第N页”提示
+
+      if (!replace) {
+
+        const sep = document.createElement('div');
+
+        sep.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px 0;border-top:1px dashed #ddd;margin-top:8px;';
+
+        sep.textContent = `——第${page}页——`;
+
+        $results[0].appendChild(sep);
+
+      }
+
+      subscriptionFeedAllItems = subscriptionFeedAllItems.concat(items);
+      subscriptionFeedCurrentPage = page;
+      $('#sp_feeds_page_label').text(`第${page}页`);
+      items.forEach(item => {
+        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
+      });
+    } catch (err) {
+      console.error('[subscription-feed] load error', err);
+      if (replace) {
+        $results.html(`<div style="text-align:center;color:#c00;padding:40px 0;">加载失败：${Utils.escapeHTML ? Utils.escapeHTML(err.message) : err.message}</div>`);
+      }
+    } finally {
+      subscriptionFeedLoading = false;
+    }
+  }
+  
+  function bindSubscriptionFeedModuleEvents() {
+    // 订阅号切换
+    $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
+      subscriptionFeedCurrentUuid = $(this).val() || '';
+      if (subscriptionFeedCurrentUuid) {
+        setActiveSubscriptionFeedUuid(subscriptionFeedCurrentUuid);
+        subscriptionFeedCurrentPage = 1;
+        subscriptionFeedAllItems = [];
+        subscriptionFeedHasMore = true;
+        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, 1, true);
+      }
+    });
+
+    // 跨页面同步：其他标签页切换订阅号时自动刷新
+    if (typeof GM_addValueChangeListener === 'function') {
+      GM_addValueChangeListener(ACTIVE_FEED_STORAGE_KEY, (_key, _oldVal, newVal, remote) => {
+        if (!remote) return;
+        const uuid = String(newVal || '');
+        if (uuid && uuid !== subscriptionFeedCurrentUuid) {
+          subscriptionFeedCurrentUuid = uuid;
+          subscriptionFeedCurrentPage = 1;
+          subscriptionFeedAllItems = [];
+          subscriptionFeedHasMore = true;
+          $('#sp_feeds_selector').val(uuid);
+          loadSubscriptionFeedPage(uuid, 1, true);
+        }
+      });
+    }
+
+    // 跳转
+    $('#sp_feeds_page_jump').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
+      e.preventDefault();
+      const page = parseInt($('#sp_feeds_page_input').val(), 10);
+      if (!page || page < 1 || !subscriptionFeedCurrentUuid) return;
+      subscriptionFeedCurrentPage = page;
+      subscriptionFeedAllItems = [];
+      subscriptionFeedHasMore = true;
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, page, true);
+    });
+
+    // 滚动加载下一页
+    const $scrollContainer = $('#sp_module_feeds .sp_panel_content');
+    $scrollContainer.off('scroll.subscriptionFeed').on('scroll.subscriptionFeed', function () {
+      if (subscriptionFeedLoading || !subscriptionFeedHasMore || !subscriptionFeedCurrentUuid) return;
+      const el = this;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
+        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage + 1, false);
+      }
+    });
+
+
+
+    // 上一页
+    $('#sp_feeds_prev').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
+      e.preventDefault();
+      if (subscriptionFeedCurrentPage <= 1 || !subscriptionFeedCurrentUuid) return;
+      subscriptionFeedCurrentPage--;
+      subscriptionFeedAllItems = [];
+      subscriptionFeedHasMore = true;
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage, true);
+    });
+    // 下一页
+    $('#sp_feeds_next').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
+      e.preventDefault();
+      if (!subscriptionFeedCurrentUuid) return;
+      subscriptionFeedCurrentPage++;
+      subscriptionFeedAllItems = [];
+      subscriptionFeedHasMore = true;
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage, true);
+    });
+
+    // 取消订阅
+    $('#sp_feeds_results').off('click.xdex-feed-delete', '.xdex-post-history-delete').on('click.xdex-feed-delete', '.xdex-post-history-delete', function (e) {
+      e.preventDefault();
+      const tid = this.dataset.feedThreadId || '';
+      if (!tid || !subscriptionFeedCurrentUuid) return;
+      if (!window.confirm('确定要取消订阅这个串吗？')) return;
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: `${SUBSCRIPTION_FEED_API_BASE}/delFeed`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: `uuid=${encodeURIComponent(subscriptionFeedCurrentUuid)}&tid=${encodeURIComponent(tid)}`,
+        onload: () => {
+          toast('已取消订阅');
+          renderSubscriptionFeedModule();
+        },
+        onerror: () => toast('取消订阅失败')
+      });
+    });
+  }
+
   function setPostHistoryType(type) {
     postHistoryActiveType = normalizePostHistoryType(type);
     $('#sp_posts_type_buttons [data-post-history-type]').removeClass('active')
@@ -3425,6 +3749,30 @@
     });
   }
 
+  function collectSubscriptionFeedsFromPanel() {
+    const parsed = [];
+    const seen = new Map();
+    let valid = true;
+    $('#subscription-feed-inputs-container .subscription-feed-row').each((idx, el) => {
+      const $row = $(el);
+      const desc = ($row.find('.subscription-feed-desc-input').val() || '').trim();
+      const uuid = ($row.find('.subscription-feed-uuid-input').val() || '').trim();
+      if (!desc && !uuid) return;
+      if (!isValidDesc(desc)) { toast(`第${idx + 1}组备注过长`); valid = false; return false; }
+      if (!uuid) { toast(`第${idx + 1}组未指定订阅号`); valid = false; return false; }
+      if (seen.has(uuid)) {
+        const first = seen.get(uuid);
+        const suffix = first.desc ? `（${first.desc}）` : '';
+        toast(`第${idx + 1}组与第${first.index}组${suffix}订阅号重复`);
+        valid = false;
+        return false;
+      }
+      seen.set(uuid, { index: idx + 1, desc });
+      parsed.push({ desc, uuid });
+    });
+    return valid ? parsed : null;
+  }
+
   function collectFavoriteThreadsFromPanel() {
     const parsed = [];
     const seen = new Map();
@@ -3461,6 +3809,20 @@
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="8位串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
+        </div>
+      </div>`;
+  }
+
+  function buildSubscriptionFeedRowHtml(index, item = {}) {
+    const desc = item.desc || '';
+    const uuid = item.uuid || '';
+    return `
+      <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
         </div>
       </div>`;
   }
@@ -3789,6 +4151,7 @@ ${markedSwatchHtml}
       blockedCookies: [],
       blockedKeywords: [],
       favoriteThreads: [],
+      subscriptionFeeds: [],    // [{desc, uuid}, ...]
       blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
     },
     state: {},
@@ -4165,6 +4528,11 @@ ${markedSwatchHtml}
                           color:#332200;
                      }
 
+                  #sp_panel_tab_slot .sp_panel_tab[data-sp-module="feeds"] {
+                          --sp-panel-tab-bg:#39C5BB;
+                          color:#440022;
+                     }
+
                   #sp_panel_tab_slot .sp_panel_tab.active,
                   #sp_panel_tab_slot .sp_panel_tab:hover,
                   #sp_panel_tab_slot .sp_panel_tab:focus,
@@ -4216,7 +4584,8 @@ ${markedSwatchHtml}
                   }
 
                   #sp_module_history.sp_panel_module.active,
-                  #sp_module_posts.sp_panel_module.active {
+                  #sp_module_posts.sp_panel_module.active,
+                  #sp_module_feeds.sp_panel_module.active {
                          display:flex;
                          flex-direction:column;
                          flex:1;
@@ -4529,6 +4898,7 @@ ${markedSwatchHtml}
               <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span></button>
               <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span></button>
               <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon">言</span><span class="sp_panel_tab_label">我的发言</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="feeds"><span class="sp_panel_tab_icon">订</span><span class="sp_panel_tab_label">我的订阅</span></button>
             </div>
             <div id="sp_panel_views">
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
@@ -4681,6 +5051,20 @@ ${markedSwatchHtml}
                   </div>
                 </div>
 
+                <!-- 我的订阅 -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_subscriptionFeeds,#btn_group_subscriptionFeeds"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>我的订阅</span>
+                    <button id="btn_group_subscriptionFeeds" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加订阅号</button>
+                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-inv" data-id="sp_subscriptionFeeds"
+                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div id="subscription-feed-inputs-container"></div>
+                  </div>
+                </div>
+
                 <!-- 导入/导出配置 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
@@ -4746,6 +5130,21 @@ ${markedSwatchHtml}
                   </div>
                 </div>
               </div>
+              <div id="sp_module_feeds" class="sp_panel_module" data-sp-module-view="feeds">
+                <div class="sp_panel_content">
+                  <div id="sp_feeds_content">
+                    <div id="sp_feeds_title" style="margin:0 0 10px; position:relative; text-align:center;">
+                      <span style="font-size:20px; font-weight:bold;">我的订阅</span>
+                    </div>
+                    <div class="xdex-history-toolbar" style="flex-wrap:wrap;gap:6px;">
+                      <select id="sp_feeds_selector" aria-label="选择订阅号" style="flex:1 1 auto;min-width:0;"></select>
+                      <input id="sp_feeds_page_input" type="number" min="1" placeholder="页码" size="4" style="flex:0 0 auto;width:4em;padding:4px 6px;">
+                      <button id="sp_feeds_page_jump" type="button" style="padding:4px 8px;">跳转</button>
+                    </div>
+                    <div id="sp_feeds_results"></div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
@@ -4755,6 +5154,11 @@ ${markedSwatchHtml}
                 <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
                 <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener">ScriptCat</a>
                 <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
+              </div>
+              <div id="sp_feeds_pager" style="display:none;align-items:center;gap:8px;">
+                <button id="sp_feeds_prev" type="button" style="padding:4px 10px;">上一页</button>
+                <span id="sp_feeds_page_label" style="font-size:12px;color:#666;">第1页</span>
+                <button id="sp_feeds_next" type="button" style="padding:4px 10px;">下一页</button>
               </div>
               <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
                 <button id="sp_apply" style="padding:6px 10px;">保存并刷新</button>
@@ -4775,15 +5179,16 @@ ${markedSwatchHtml}
         const $activeModule = $('#sp_panel_views .sp_panel_module')
           .filter(`[data-sp-module-view="${nextModule}"]`)
           .addClass('active')
-          .css({ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: (nextModule === 'history' || nextModule === 'posts') ? '300px' : '0' });
-        if (nextModule === 'history' || nextModule === 'posts') {
+          .css({ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: (nextModule === 'history' || nextModule === 'posts' || nextModule === 'feeds') ? '300px' : '0' });
+        if (nextModule === 'history' || nextModule === 'posts' || nextModule === 'feeds') {
           $activeModule.find('.sp_panel_content').css({ display: 'block', flex: '1 1 auto', minHeight: '300px', overflowY: 'auto', boxSizing: 'border-box' });
-          $activeModule.find('#sp_history_content,#sp_posts_content').css({ display: 'block' });
-          $activeModule.find('#sp_history_results,#sp_posts_results').css({ display: 'block', minHeight: '40px' });
+          $activeModule.find('#sp_history_content,#sp_posts_content,#sp_feeds_content').css({ display: 'block' });
+          $activeModule.find('#sp_history_results,#sp_posts_results,#sp_feeds_results').css({ display: 'block', minHeight: '40px' });
         }
         $('#sp_panel_footer .sp_panel_links').show();
         $('#sp_panel_footer .sp_panel_links a').toggle(nextModule === 'settings');
         $('#sp_apply').toggle(nextModule === 'settings');
+        $('#sp_feeds_pager').toggle(nextModule === 'feeds');
         updateThreadHistoryDebugState({
           lastPanelModule: nextModule,
           lastPanelState: {
@@ -4808,7 +5213,10 @@ ${markedSwatchHtml}
         logThreadHistory('panel tab clicked', { module: $(e.currentTarget).data('spModule') });
         setSettingsPanelModule($(e.currentTarget).data('spModule'));
         if ($(e.currentTarget).data('spModule') === 'history') renderThreadHistoryModuleSoon();
+
         if ($(e.currentTarget).data('spModule') === 'posts') renderPostHistoryModuleSoon();
+
+        if ($(e.currentTarget).data('spModule') === 'feeds') renderSubscriptionFeedModule();
       });
       $('#sp_panel_tab_slot').off('mouseenter mouseleave', '.sp_panel_tab')
         .on('mouseenter', '.sp_panel_tab', (e) => { $(e.currentTarget).addClass('is-hover'); })
@@ -4818,6 +5226,7 @@ ${markedSwatchHtml}
       bindThreadHistoryLiveSync();
       bindPostHistoryModuleEvents();
       bindPostHistoryLiveSync();
+      bindSubscriptionFeedModuleEvents();
       renderThreadHistoryModule();
       renderPostHistoryModule();
 
@@ -5056,11 +5465,30 @@ ${markedSwatchHtml}
       });
 
       $('#btn_group_favoriteThreads').off('click').on('click', e=>{
+
         e.stopPropagation();
+
         const nextIndex = $('#favorite-thread-inputs-container .favorite-thread-row').length + 1;
+
         $('#favorite-thread-inputs-container').append(buildFavoriteThreadRowHtml(nextIndex));
+
         $('#favorite-thread-inputs-container .favorite-thread-row').last().find('.favorite-thread-desc-input').focus();
+
       });
+
+      $('#btn_group_subscriptionFeeds').off('click').on('click', e=>{
+
+        e.stopPropagation();
+
+        const nextIndex = $('#subscription-feed-inputs-container .subscription-feed-row').length + 1;
+
+        $('#subscription-feed-inputs-container').append(buildSubscriptionFeedRowHtml(nextIndex));
+
+        $('#subscription-feed-inputs-container .subscription-feed-row').last().find('.subscription-feed-desc-input').focus();
+
+      });
+
+
 
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
         const parsed = collectMarkedGroupsFromPanel();
@@ -5217,6 +5645,28 @@ ${markedSwatchHtml}
       $('#btn_sp_favoriteThreads').off('click').on('click', e=>{
         e.stopPropagation();
         saveFavoriteThreads();
+      });
+
+      $('#subscription-feed-inputs-container').off('click', '.subscription-feed-delete').on('click', '.subscription-feed-delete', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $(e.currentTarget).closest('.subscription-feed-row').remove();
+        saveSubscriptionFeeds({ fromDelete: true });
+        return false;
+      });
+      // 订阅号：保存
+      const saveSubscriptionFeeds = ({ fromDelete = false } = {}) => {
+        const parsed = collectSubscriptionFeedsFromPanel();
+        if (!parsed) return false;
+        this.state.subscriptionFeeds = parsed;
+        GM_setValue(this.key, this.state);
+        this.syncInputs();
+        toast(fromDelete ? '已删除订阅号' : '订阅号已保存');
+        return true;
+      };
+      $('#btn_sp_subscriptionFeeds').off('click').on('click', e=>{
+        e.stopPropagation();
+        saveSubscriptionFeeds();
       });
 
       $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
@@ -5902,6 +6352,7 @@ ${markedSwatchHtml}
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
+        sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
       };
 
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
@@ -6106,12 +6557,18 @@ ${markedSwatchHtml}
         $favoriteThreads.append(buildFavoriteThreadRowHtml(idx + 1, item));
       });
 
+      const subscriptionFeeds = Array.isArray(this.state.subscriptionFeeds) ? this.state.subscriptionFeeds : [];
+      const $feeds = $('#subscription-feed-inputs-container').empty();
+      (subscriptionFeeds.length ? subscriptionFeeds : [{desc:'', uuid:''}]).forEach((item, idx)=>{
+        $feeds.append(buildSubscriptionFeedRowHtml(idx + 1, item));
+      });
+
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
 
       // 初始折叠与按钮隐藏
       $('.sp_fold_body').hide();
-      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads').addClass('xdex-inv');
+      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads,#btn_group_subscriptionFeeds,#btn_sp_subscriptionFeeds').addClass('xdex-inv');
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
@@ -19978,7 +20435,7 @@ ${markedSwatchHtml}
   }
 
   /* --------------------------------------------------
-   * tag 24. 常用串/浏览历史/发言历史
+   * tag 24. 常用串/浏览历史/发言历史/移动端订阅
    * -------------------------------------------------- */
   function getFavoriteThreadsConfig() {
     try {
@@ -20065,6 +20522,30 @@ ${markedSwatchHtml}
     }
   }
 
+  function openSubscriptionFeedSettingsPanel() {
+    try {
+      if (!$('#sp_btn').length) SettingPanel.init();
+      $('#sp_btn').trigger('click');
+      window.setTimeout(() => {
+        $('#sp_panel_tab_slot [data-sp-module="feeds"]').trigger('click');
+      }, 0);
+    } catch (e) {
+      console.warn('[subscription-feed] open settings failed:', e);
+    }
+  }
+
+  function setXDexSidebarExLabel(link, label) {
+    link.classList.add('xdex-sidebar-ex-link');
+    link.textContent = '';
+    link.appendChild(document.createTextNode(label));
+    const badge = document.createElement('sub');
+    badge.className = 'xdex-sidebar-ex-badge';
+    badge.style.cssText = 'color: darkorange; font-weight: bold;';
+    badge.setAttribute('aria-hidden', 'true');
+    badge.textContent = 'EX';
+    link.appendChild(badge);
+  }
+
   function createPostHistoryMenuNode() {
     const li = document.createElement('li');
     li.id = 'xdex-post-history-menu';
@@ -20072,11 +20553,29 @@ ${markedSwatchHtml}
     link.href = '#';
     link.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
     link.setAttribute('achecked', '1');
-    link.textContent = '我的发言(EX)';
+    setXDexSidebarExLabel(link, '我的发言');
     link.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
       openPostHistorySettingsPanel();
+      return false;
+    };
+    li.appendChild(link);
+    return li;
+  }
+
+  function createSubscriptionFeedMenuNode() {
+    const li = document.createElement('li');
+    li.id = 'xdex-subscription-feed-menu';
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
+    link.setAttribute('achecked', '1');
+    setXDexSidebarExLabel(link, '我的订阅');
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openSubscriptionFeedSettingsPanel();
       return false;
     };
     li.appendChild(link);
@@ -20117,8 +20616,15 @@ ${markedSwatchHtml}
     const style = document.createElement('style');
     style.id = 'xdex-favorite-threads-menu-style';
     style.textContent = `
+      #h-menu-content .xdex-sidebar-ex-badge {
+        color: darkorange;
+        font-weight: bold;
+        font-size: 10px;
+        line-height: 1;
+        margin-left: 1px;
+      }
       #h-menu-content.uk-nav-parent-icon > #xdex-favorite-threads-menu > a::after {
-        content: "\\f104";
+        content: "\f104";
         width: 20px;
         margin-right: -10px;
         float: right;
@@ -20126,7 +20632,7 @@ ${markedSwatchHtml}
         text-align: center;
       }
       #h-menu-content.uk-nav-parent-icon > #xdex-favorite-threads-menu.uk-open > a::after {
-        content: "\\f107";
+        content: "\f107";
       }
       #xdex-favorite-threads-menu .xdex-favorite-add-current {
         text-decoration: underline;
@@ -20146,7 +20652,7 @@ ${markedSwatchHtml}
     header.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
     header.setAttribute('achecked', '1');
     header.setAttribute('onclick', 'return false;');
-    header.textContent = '常用串';
+    setXDexSidebarExLabel(header, '常用串');
     li.appendChild(header);
 
     const wrapper = document.createElement('div');
@@ -20231,7 +20737,7 @@ ${markedSwatchHtml}
     link.href = '#';
     link.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
     link.setAttribute('achecked', '1');
-    link.textContent = '浏览历史';
+    setXDexSidebarExLabel(link, '浏览历史');
     link.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -20250,15 +20756,19 @@ ${markedSwatchHtml}
     const old = document.getElementById('xdex-favorite-threads-menu');
     const oldThreadHistory = document.getElementById('xdex-thread-history-menu');
     const oldPostHistory = document.getElementById('xdex-post-history-menu');
+    const oldSubscriptionFeed = document.getElementById('xdex-subscription-feed-menu');
     const wasOpen = !!(old && old.classList.contains('uk-open'));
+
     if (old) old.remove();
     if (oldThreadHistory) oldThreadHistory.remove();
     if (oldPostHistory) oldPostHistory.remove();
+    if (oldSubscriptionFeed) oldSubscriptionFeed.remove();
 
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
     const threadHistoryNode = createThreadHistoryMenuNode();
     const postHistoryNode = createPostHistoryMenuNode();
+    const subscriptionFeedNode = createSubscriptionFeedMenuNode();
     const timeline = Array.from(menu.children).find((li) => {
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
       return header && (header.textContent || '').trim() === '时间线';
@@ -20266,6 +20776,7 @@ ${markedSwatchHtml}
     menu.insertBefore(node, timeline || menu.firstChild);
     menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
     menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
+    menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
   }
 
   /* --------------------------------------------------
