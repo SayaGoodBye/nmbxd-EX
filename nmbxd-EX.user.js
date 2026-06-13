@@ -2808,20 +2808,33 @@
   }
   function populateSubscriptionFeedSelector() {
     const $sel = $('#sp_feeds_selector').empty();
+    const $display = $('#sp_feeds_selector_display');
+    const $dropdown = $('#sp_feeds_selector_dropdown').empty().hide();
+    const $desc = $display.find('.xdex-feed-display-desc');
+    const $uuid = $display.find('.xdex-feed-display-uuid');
     const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
     if (!feeds.length) {
-      $sel.append('<option value="">（请先在设置中添加订阅号）</option>');
+      $sel.append('<option value="">(请先添加订阅号)</option>');
+      $desc.text('请先在设置中添加订阅号');
+      $uuid.text('');
       return '';
     }
     feeds.forEach((f, i) => {
       const label = f.desc ? `${f.desc}：${f.uuid}` : f.uuid;
       $sel.append(`<option value="${Utils.escapeHTML ? Utils.escapeHTML(f.uuid) : f.uuid}">${Utils.escapeHTML ? Utils.escapeHTML(label) : label}</option>`);
+      const $opt = $('<div class="xdex-feed-option" role="option"></div>')
+        .attr('data-uuid', f.uuid)
+        .text(label);
+      $dropdown.append($opt);
     });
-    // 恢复上次选中的订阅号
     const saved = getActiveSubscriptionFeedUuid();
     const match = feeds.find(f => f.uuid === saved);
     const selected = match ? match.uuid : feeds[0].uuid;
     $sel.val(selected);
+    const activeFeed = feeds.find(f => f.uuid === selected);
+    $desc.text(activeFeed && activeFeed.desc ? activeFeed.desc : '');
+    $uuid.text(activeFeed && activeFeed.desc ? activeFeed.uuid : '');
+    $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
     return selected;
   }
   
@@ -3026,6 +3039,38 @@
   
   function bindSubscriptionFeedModuleEvents() {
     // 订阅号切换
+    // 自定义下拉菜单交互
+    const $wrap = $('.xdex-feed-selector-wrap');
+    const $display = $('#sp_feeds_selector_display');
+    const $dropdown = $('#sp_feeds_selector_dropdown');
+
+    $display.off('click.feedDropdown').on('click.feedDropdown', (e) => {
+      e.stopPropagation();
+      const isOpen = $dropdown.is(':visible');
+      $dropdown.toggle(!isOpen);
+      $display.attr('aria-expanded', String(!isOpen));
+    });
+
+    $dropdown.off('click.feedOption', '.xdex-feed-option').on('click.feedOption', '.xdex-feed-option', function (e) {
+      e.stopPropagation();
+      const uuid = $(this).data('uuid') || '';
+      if (!uuid) return;
+      $('#sp_feeds_selector').val(uuid).trigger('change.subscriptionFeed');
+      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+      const feed = feeds.find(f => f.uuid === uuid);
+      $display.find('.xdex-feed-display-desc').text(feed && feed.desc ? feed.desc : '');
+      $display.find('.xdex-feed-display-uuid').text(feed && feed.desc ? feed.uuid : '');
+      $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
+      $dropdown.hide();
+      $display.attr('aria-expanded', 'false');
+    });
+
+    $(document).off('click.feedDropdownClose').on('click.feedDropdownClose', () => {
+      $dropdown.hide();
+      $display.attr('aria-expanded', 'false');
+    });
+
+
     $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
       subscriptionFeedCurrentUuid = $(this).val() || '';
       if (subscriptionFeedCurrentUuid) {
@@ -5198,7 +5243,14 @@ ${markedSwatchHtml}
                       <span style="font-size:20px; font-weight:bold;">我的订阅</span>
                     </div>
                     <div class="xdex-history-toolbar" style="flex-wrap:wrap;gap:6px;">
-                      <select id="sp_feeds_selector" aria-label="选择订阅号" style="flex:1 1 auto;min-width:0;"></select>
+                      <div class="xdex-feed-selector-wrap" style="flex:1 1 auto;min-width:0;position:relative;">
+                      <select id="sp_feeds_selector" aria-hidden="true" tabindex="-1" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;"></select>
+                      <div id="sp_feeds_selector_display" class="xdex-feed-selector-display" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="xdex-feed-display-desc"></span>
+                        <span class="xdex-feed-display-uuid"></span>
+                      </div>
+                      <div id="sp_feeds_selector_dropdown" class="xdex-feed-selector-dropdown" role="listbox" style="display:none;"></div>
+                    </div>
                       <input id="sp_feeds_page_input" type="number" min="1" placeholder="页码" size="4" style="flex:0 0 auto;width:4em;padding:4px 6px;">
                       <button id="sp_feeds_page_jump" type="button" style="padding:4px 8px;">跳转</button>
                     </div>
@@ -5208,7 +5260,7 @@ ${markedSwatchHtml}
               </div>
             </div>
 
-            <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #eee;background:#FFFFEE;">
+            <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;position:relative;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
                 <a data-update-channel="thread" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
                 <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">GreasyFork</a>
@@ -5216,9 +5268,9 @@ ${markedSwatchHtml}
                 <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener">ScriptCat</a>
                 <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
               </div>
-              <div id="sp_feeds_pager" style="display:none;align-items:center;gap:8px;">
+              <div id="sp_feeds_pager" style="display:none;position:absolute;left:50%;transform:translateX(-50%);align-items:center;gap:8px;">
                 <button id="sp_feeds_prev" type="button" style="padding:4px 10px;">上一页</button>
-                <span id="sp_feeds_page_label" style="font-size:12px;color:#666;">第1页</span>
+                <span id="sp_feeds_page_label" style="font-size:18px;color:#666;">第1页</span>
                 <button id="sp_feeds_next" type="button" style="padding:4px 10px;">下一页</button>
               </div>
               <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
@@ -20856,6 +20908,50 @@ ${markedSwatchHtml}
         margin-left: 1px;
       }
       .xdex-sub-ex-btn:hover { text-decoration: underline; }
+      .xdex-feed-selector-display {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 8px;
+        border: 1px solid var(--xdex-sp-border, #bfa58f);
+        border-radius: 8px;
+        background: var(--xdex-sp-panel-bg, #FFFFEE);
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1.4;
+        min-height: 1.4em;
+        user-select: none;
+        overflow: hidden;
+      }
+      .xdex-feed-display-desc {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .xdex-feed-display-uuid {
+        font-size: 12px; color: #888;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        filter: blur(4px);
+        transition: filter 0.15s;
+      }
+      .xdex-feed-display-uuid:empty { display: none; }
+      .xdex-feed-selector-wrap:hover .xdex-feed-display-uuid {
+        filter: none;
+      }
+      .xdex-feed-selector-dropdown {
+        position: absolute; top: 100%; left: 0; right: 0;
+        margin-top: 2px;
+        border: 1px solid var(--xdex-sp-border, #bfa58f);
+        border-radius: 8px;
+        background: #FFFFEE;
+        box-shadow: 0 2px 8px rgba(0,0,0,.15);
+        z-index: 100;
+        max-height: 200px; overflow-y: auto;
+      }
+      .xdex-feed-option {
+        padding: 6px 8px;
+        cursor: pointer;
+        font-size: 13px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .xdex-feed-option:hover { background: #F0E0D6; }
+      .xdex-feed-option.active { background: #e8d5c0; font-weight: bold; }
     `;
     document.head.appendChild(style);
   }
