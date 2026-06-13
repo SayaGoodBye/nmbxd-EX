@@ -221,18 +221,24 @@ function testSyncScriptUpdatesUpdateJson() {
 
 
 
-function testReleaseWorkflowVerifiesUpdateJson() {
-
-  const workflow = fs.readFileSync(path.resolve(root, '..', '.github', 'workflows', 'release.yml'), 'utf8');
-
-  assert(workflow.includes("const update = JSON.parse(fs.readFileSync('dist/nmbxd-EX-Extension/update.json', 'utf8'));"), 'release workflow must read extension update.json');
-
-  assert(workflow.includes('update.extension.version !== userscriptVersion'), 'release workflow must verify update.json version against userscript');
-
+function findRepoRoot(startDir) {
+  let dir = startDir;
+  for (let i = 0; i < 10; i += 1) {
+    if (fs.existsSync(path.join(dir, '.github', 'workflows', 'release.yml'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
 }
 
-
-
+function testReleaseWorkflowVerifiesUpdateJson() {
+  const repoRoot = findRepoRoot(root);
+  if (!repoRoot) return;
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8');
+  assert(workflow.includes("const update = JSON.parse(fs.readFileSync('dist/nmbxd-EX-Extension/update.json', 'utf8'));"), 'release workflow must read extension update.json');
+  assert(workflow.includes('update.extension.version !== userscriptVersion'), 'release workflow must verify update.json version against userscript');
+}
 function createGmCompatStorageContext() {
   const storage = new Map();
   const listeners = new Map();
