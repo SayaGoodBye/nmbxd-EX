@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.0.0
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 。
+// @version      3.1.0
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -15,14 +15,27 @@
 // @grant        GM_listValues
 // @grant        GM_addStyle
 // @grant        unsafeWindow
+// @connect      nmbxd1.com
+// @connect      www.nmbxd1.com
+// @connect      nmbxd.com
+// @connect      www.nmbxd.com
+// @connect      nmb-search.166666666.xyz
 // @connect      image.nmb.best
+// @connect      api.nmb.best
+// @connect      raw.githubusercontent.com
+// @connect      cdn.jsdelivr.net
+// @connect      fastly.jsdelivr.net
+// @connect      update.greasyfork.org
+// @connect      scriptcat.org
+// @connect      code.jquery.com
+// @connect      unpkg.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
 // @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n0.浏览器拓展版发布，完整迁移目前脚本版全部功能。\n注意事项：\n1)本浏览器拓展适配Chrome、Edge等Chromium内核浏览器，**Firefox浏览器无法使用**；\n2)拓展版与脚本版共同开启时默认作用前者，由于二者数据不互通，请先导出脚本版设置后再开启拓展版;\n3)提示：拓展版稳定性略优于脚本版，“图片菜单”功能二者作用方式不一致，建议优先选择拓展版。\n安装方法：\n1) 打开浏览器拓展页面\n2) 开启“开发者模式”\n3) 点击“加载解压缩的拓展”\n4) 选择通过[GitHub release](https://github.com/SayaGoodBye/nmbxd-EX/releases/latest)或者[百度网盘](https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf)下载的拓展压缩包（nmbxd-EX-Extension-version.zip）解压后的文件夹\n5) 安装成功\( ﾟ∀。)/\n\n1.侧边栏/设置面板新增浏览历史，当前上限500条，支持搜索，支持多种排序方式。\n2.侧边栏新增常用串，支持串内一键添加，并支持直接跳转“浏览历史”中记录的最近浏览位置。\n\n优化\n1.更新设置面板UI，当前在“设置面板/浏览历史”中切换，设置项修改为即时保存，刷新后作用。\n2.支持鼠标右键直接复制颜文字；颜文字面板中可使用空格/Enter选择颜文字。\n\n致谢：\n本项目Icon由9HrD12x设计并绘制。\n你们怎么知道这是9Hr给我画的无偿 Y(`ε´ )
+// @changelog    新增\n1.新增"我的发言"，分为“我的主题/我的的回复”，提供更完整的信息（内容、图片、版块、所在页面），并支持侧边栏一键跳转发言历史面板，支持高级搜索。\n\n优化\n1.板块页发串可选"发串后跳转"或"发串后刷新刷新"，前者可以直接跳转发布的新串详情，后者则回到板块页首页。\n2.对浏览历史/我的发言面板进行分批渲染，避免卡顿。\n3."我的主题"中串号链接使用 ?r=threadId 格式，所在页优先从浏览历史同步最新页面，避免每次都从第一页进入。\n\n修复\n1.修复颜文字插入后无法 Ctrl+Z 撤销的问题。\n2.修复无回复串内回复时先创建空容器再局部刷新，避免回复后无法完成页面的更新。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -119,6 +132,137 @@
   const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
   const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
   const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
+  const POST_HISTORY_STORAGE_KEY = 'xdex_post_history';
+  const POST_HISTORY_STORE_VERSION = 1;
+  // const POST_HISTORY_LIMIT = 500;
+  const POST_HISTORY_THREAD_LIMIT = Infinity;
+  const POST_HISTORY_REPLY_LIMIT = Infinity;
+  const POST_HISTORY_SYNC_EVENT = 'xdex:post-history-changed';
+  const POST_HISTORY_API_BASE = `${location.origin}/Api`;
+  const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
+  const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
+  const POST_HISTORY_GET_LAST_POST_RETRY_DELAYS = [300, 800, 1500, 2500];
+
+  const POST_HISTORY_CONFIRM_TIMEOUT_MS = 10000;
+
+  const POST_HISTORY_REPLIES_PER_PAGE = 19;
+  const POST_HISTORY_MATCH_TIME_WINDOW_MS = 45000;
+  const POST_HISTORY_FORUM_FID_MAP = Object.freeze({
+    '-1': '时间线',
+    '4': '综合版1',
+    '98': 'DANGER/U/',
+    '20': '欢乐恶搞',
+    '121': '速报2',
+    '17': '绘画(二创)',
+    '110': '社畜(校园)',
+    '19': '故事(小说)',
+    '81': '都市怪谈(灵异)',
+    '37': '军武',
+    '30': '技术宅(代码)',
+    '75': '数码(装机)',
+    '118': '宠物',
+    '97': '女装(时尚)',
+    '106': '买买买(物品推荐)',
+    '14': '动画综合',
+    '12': '漫画',
+    '53': '婆罗门一',
+    '31': '电影/电视',
+    '116': '主播管人(圈内)',
+    '45': '卡牌桌游',
+    '9': '特摄(布袋戏)',
+    '102': '战锤',
+    '39': '胶佬(手办)',
+    '94': '铁道厨(车辆)',
+    '6': 'VOCALOID',
+    '90': '小马(美漫)',
+    '5': '东方Project',
+    '93': '舰娘',
+    '111': '跑团',
+    '57': '创作茶水间',
+    '91': '规则怪谈',
+    '11': '海龟汤(推理)',
+    '15': '科学(干货)',
+    '103': '文学(推书)',
+    '35': '音乐(推歌)',
+    '27': 'AI(Chatgpt)',
+    '115': '摄影(cos)',
+    '112': 'ROLL点',
+    '2': '游戏综合',
+    '3': '手游专楼',
+    '25': '任天堂NS',
+    '22': '腾讯游戏(LOL)',
+    '23': '暴雪游戏',
+    '124': 'SE(FF14)',
+    '70': 'V社(DOTA)',
+    '28': '怪物猎人',
+    '68': '鹰角游戏',
+    '47': '米哈游',
+    '34': '音游打卡',
+    '10': '联机(服务器发布）',
+    '62': '露营',
+    '113': '育儿',
+    '120': '自救互助',
+    '32': '料理(美食)',
+    '33': '体育(健身)',
+    '56': '学业打卡',
+    '89': '日记(树洞)',
+    '18': '值班室',
+    '117': '技术支持',
+    '96': '版务',
+    '60': '三百人委员会'
+  });
+  const POST_HISTORY_FORUM_GROUP_MAP = Object.freeze({
+    '-1': '综合', '4': '综合', '98': '综合', '20': '综合', '121': '综合', '17': '综合', '110': '综合', '19': '综合', '81': '综合', '37': '综合', '30': '综合', '75': '综合', '118': '综合', '97': '综合', '106': '综合',
+    '14': '亚文化', '12': '亚文化', '53': '亚文化', '31': '亚文化', '116': '亚文化', '45': '亚文化', '9': '亚文化', '102': '亚文化', '39': '亚文化', '94': '亚文化', '6': '亚文化', '90': '亚文化', '5': '亚文化', '93': '亚文化',
+    '111': '创作', '57': '创作', '91': '创作', '11': '创作', '15': '创作', '103': '创作', '35': '创作', '27': '创作', '115': '创作', '112': '创作',
+    '2': '游戏', '3': '游戏', '25': '游戏', '22': '游戏', '23': '游戏', '124': '游戏', '70': '游戏', '28': '游戏', '68': '游戏', '47': '游戏', '34': '游戏', '10': '游戏',
+    '62': '生活', '113': '生活', '120': '生活', '32': '生活', '33': '生活', '56': '生活', '89': '生活',
+    '18': '管理', '117': '管理', '96': '管理', '60': '管理'
+  });
+  const POST_HISTORY_FORUM_SEARCH_META = Object.freeze({
+    '98': { rawName: 'DANGER_U', showName: 'DANGER/U/', groupName: '综合' },
+    '17': { rawName: '绘画', showName: '绘画(二创)', groupName: '综合' },
+    '110': { rawName: '社畜', showName: '社畜(校园)', groupName: '综合' },
+    '19': { rawName: '故事', showName: '故事(小说)', groupName: '综合' },
+    '81': { rawName: '都市怪谈', showName: '都市怪谈(灵异)', groupName: '综合' },
+    '30': { rawName: '技术宅', showName: '技术宅(代码)', groupName: '综合' },
+    '75': { rawName: '数码', showName: '数码(装机)', groupName: '综合' },
+    '97': { rawName: '女装2', showName: '女装(时尚)', groupName: '综合' },
+    '106': { rawName: '买买买', showName: '买买买(物品推荐)', groupName: '综合' },
+    '31': { rawName: '影视', showName: '电影/电视', groupName: '亚文化' },
+    '116': { rawName: '主播管人', showName: '主播管人(圈内)', groupName: '亚文化' },
+    '9': { rawName: '特摄', showName: '特摄(布袋戏)', groupName: '亚文化' },
+    '39': { rawName: '胶佬', showName: '胶佬(手办)', groupName: '亚文化' },
+    '94': { rawName: '铁道厨', showName: '铁道厨(车辆)', groupName: '亚文化' },
+    '90': { rawName: '小马', showName: '小马(美漫)', groupName: '亚文化' },
+    '11': { rawName: '海龟汤', showName: '海龟汤(推理)', groupName: '创作' },
+    '15': { rawName: '科学', showName: '科学(干货)', groupName: '创作' },
+    '103': { rawName: '文学', showName: '文学(推书)', groupName: '创作' },
+    '35': { rawName: '音乐', showName: '音乐(推歌)', groupName: '创作' },
+    '27': { rawName: 'AI', showName: 'AI(Chatgpt)', groupName: '创作' },
+    '115': { rawName: '摄影', showName: '摄影(cos)', groupName: '创作' },
+    '25': { rawName: '任天堂', showName: '任天堂NS', groupName: '游戏' },
+    '22': { rawName: '腾讯游戏', showName: '腾讯游戏(LOL)', groupName: '游戏' },
+    '124': { rawName: 'SE', showName: 'SE(FF14)', groupName: '游戏' },
+    '70': { rawName: 'V社', showName: 'V社(DOTA)', groupName: '游戏' },
+    '10': { rawName: '联机', showName: '联机(服务器发布）', groupName: '游戏' },
+    '32': { rawName: '料理', showName: '料理(美食)', groupName: '生活' },
+    '33': { rawName: '体育', showName: '体育(健身)', groupName: '生活' },
+    '89': { rawName: '日记', showName: '日记(树洞)', groupName: '生活' },
+    '60': { rawName: '百脑汇', showName: '三百人委员会', groupName: '管理' }
+  });
+  const POST_HISTORY_TIMELINE_ID_MAP = Object.freeze({
+    '1': '综合线',
+    '2': '创作线',
+    '3': '非创作线',
+    '4': '亚文化线',
+    '5': '综合2线',
+    '6': '游戏线',
+    '7': '生活线'
+  });
+  const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：mode:po has:image 关键词';
+  const postHistoryConfirmationMap = new Map(); // 等待发串确认后跳转的 Promise 存储器 { localId -> resolver }
+  const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、板块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定板块 ID\nforum:综合 模糊匹配板块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
 
   const threadHistoryDebugState = {
@@ -139,6 +283,12 @@
   let threadHistoryDwellTimer = 0;
   let threadHistoryVisibleSince = 0;
   let threadHistoryVisibleSessionCounted = false;
+  let postHistoryLiveSyncBound = false;
+  let postHistoryLiveRenderTimer = 0;
+  let postHistoryLiveRenderFirstAt = 0;
+  let postHistoryLiveRenderPendingCount = 0;
+  let postHistoryLiveRenderDirty = false;
+  let postHistoryActiveType = 'reply';
 
   function updateThreadHistoryDebugState(patch) {
     Object.assign(threadHistoryDebugState, patch || {});
@@ -356,6 +506,972 @@
       const detail = event && event.detail || {};
       scheduleThreadHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
     });
+  }
+
+  function createDefaultPostHistoryStore() {
+    return {
+      version: POST_HISTORY_STORE_VERSION,
+      // limit: POST_HISTORY_LIMIT,
+      items: {},
+      order: []
+    };
+  }
+
+  function normalizePostHistoryType(type) {
+    return type === 'reply' ? 'reply' : 'thread';
+  }
+
+  function normalizePostHistoryStatus(status) {
+    return ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(status) ? status : 'pending';
+  }
+
+  function normalizePostHistoryFid(fid) {
+    const value = String(fid == null ? '' : fid).trim();
+    return /^-?\d+$/.test(value) ? value : '';
+  }
+
+  function getPostHistoryForumNameByFid(fid) {
+    return POST_HISTORY_FORUM_FID_MAP[normalizePostHistoryFid(fid)] || '';
+  }
+
+  function normalizeHistorySearchValue(value) {
+    return String(value == null ? '' : value).trim().toLowerCase();
+  }
+
+  function getPostHistoryForumSearchText(item) {
+    const fid = normalizePostHistoryFid(item && item.fid);
+    const meta = POST_HISTORY_FORUM_SEARCH_META[fid] || {};
+    return [
+      fid,
+      item && item.forumName,
+      getPostHistoryForumNameByFid(fid),
+      meta.rawName,
+      meta.showName,
+      meta.groupName || POST_HISTORY_FORUM_GROUP_MAP[fid]
+    ].join(' ').toLowerCase();
+  }
+
+  function getPostHistoryPostFid(post) {
+    if (!post || typeof post !== 'object') return '';
+    return normalizePostHistoryFid(post.fid || post.Fid || post.forum_id || post.forumId || post.forum);
+  }
+
+  function getCurrentPostHistoryFid() {
+    const path = String(location && location.pathname || '');
+    const forumMatch = path.match(/^\/f\/([^/?#]+)/);
+    if (!forumMatch) return '';
+    let forumName = '';
+    try {
+      forumName = decodeURIComponent(forumMatch[1] || '');
+    } catch (e) {
+      forumName = forumMatch[1] || '';
+    }
+    const normalizedName = forumName.replace(/\s+/g, '').toLowerCase();
+    return Object.keys(POST_HISTORY_FORUM_FID_MAP).find(fid => {
+      const name = String(POST_HISTORY_FORUM_FID_MAP[fid] || '').replace(/\s+/g, '').toLowerCase();
+      return name === normalizedName;
+    }) || '';
+  }
+
+  function normalizePostHistoryText(text) {
+    return String(text || '')
+      .replace(/<br\s*\/?\s*>/gi, ' ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&gt;/gi, '>')
+      .replace(/&lt;/gi, '<')
+      .replace(/&amp;/gi, '&')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/[\s\u00a0]+/g, ' ')
+      .trim();
+  }
+
+  function sanitizePostHistoryServerContentHtml(content) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = String(content || '');
+    return sanitizeThreadHistoryContentHtml(wrapper);
+  }
+
+  function hashPostHistoryText(text) {
+    const normalized = normalizePostHistoryText(text);
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0;
+    }
+    return String(hash >>> 0);
+  }
+
+  const postHistoryDebugState = window.__xdexPostHistoryDebug = window.__xdexPostHistoryDebug || { events: [] };
+
+  function summarizePostHistoryText(text) {
+    const normalized = normalizePostHistoryText(text);
+    return {
+      length: normalized.length,
+      hash: hashPostHistoryText(normalized),
+      preview: normalized.slice(0, 40)
+    };
+  }
+
+  function summarizePostHistoryCandidate(post) {
+    if (!post) return null;
+    const resto = String(post.resto || '0').trim();
+    return {
+      id: String(post.id || '').trim(),
+      resto,
+      type: Number(resto) === 0 ? 'thread' : 'reply',
+      now: post.now || '',
+      img: post.img || '',
+      ext: post.ext || '',
+      content: summarizePostHistoryText(post.content || '')
+    };
+  }
+
+  function summarizePostHistorySnapshot(snapshot) {
+    if (!snapshot) return null;
+    return {
+      localId: snapshot.localId || '',
+      type: snapshot.type || '',
+      resto: snapshot.resto || '',
+      contentHash: snapshot.contentHash || '',
+      submittedAt: snapshot.submittedAt || 0,
+      sourceUrl: snapshot.sourceUrl || ''
+    };
+  }
+
+  function logPostHistory(stage, data, level = 'log') {
+    const detail = Object.assign({ stage, at: Date.now() }, data || {});
+    try {
+      postHistoryDebugState.events.push(detail);
+      if (postHistoryDebugState.events.length > 80) postHistoryDebugState.events.shift();
+      postHistoryDebugState.last = detail;
+    } catch (e) {}
+    const method = console[level] ? level : 'log';
+    console[method]('[post-history] ' + stage, detail);
+  }
+
+  window.__xdexGetPostHistoryDebug = function getPostHistoryDebug() {
+    return postHistoryDebugState;
+  };
+
+  window.__xdexClearPostHistoryDebug = function clearPostHistoryDebug() {
+    postHistoryDebugState.events = [];
+    postHistoryDebugState.last = null;
+    return postHistoryDebugState;
+  };
+
+  function normalizePostHistoryStore(rawStore) {
+    const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
+    store.version = POST_HISTORY_STORE_VERSION;
+    // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
+    store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    const seen = new Set();
+    store.order = (Array.isArray(store.order) ? store.order : [])
+      .filter(key => {
+        if (!store.items[key] || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    Object.keys(store.items).forEach(key => {
+      const item = store.items[key] || {};
+      item.localId = item.localId || key;
+      item.status = normalizePostHistoryStatus(item.status);
+      item.type = normalizePostHistoryType(item.type);
+      item.fid = normalizePostHistoryFid(item.fid);
+      item.forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
+      item.contentText = normalizePostHistoryText(item.contentText || item.contentRaw || '');
+      item.contentHash = item.contentHash || hashPostHistoryText(item.contentText);
+      item.page = Math.max(0, Number(item.page) || 0);
+      store.items[key] = item;
+      if (!seen.has(key)) {
+        seen.add(key);
+        store.order.push(key);
+      }
+    });
+    store.order.sort((a, b) => {
+      const av = Number(store.items[a] && store.items[a].submittedAt) || 0;
+      const bv = Number(store.items[b] && store.items[b].submittedAt) || 0;
+      return bv - av;
+    });
+
+    // 旧：全局共享 limit 清理
+    // while (store.order.length > store.limit) {
+    //   const key = store.order.pop();
+    //   delete store.items[key];
+    // }
+
+    // 新增：按类型分别清理（仅在 limit !== Infinity 时生效）
+    const shouldCleanThread = POST_HISTORY_THREAD_LIMIT !== Infinity;
+    const shouldCleanReply = POST_HISTORY_REPLY_LIMIT !== Infinity;
+    if (shouldCleanThread || shouldCleanReply) {
+      const typeOrders = { thread: [], reply: [] };
+      store.order.forEach(key => {
+        const type = normalizePostHistoryType(store.items[key]?.type);
+        typeOrders[type].push(key);
+      });
+      while (shouldCleanThread && typeOrders.thread.length > POST_HISTORY_THREAD_LIMIT) {
+        const key = typeOrders.thread.pop();
+        delete store.items[key];
+      }
+      while (shouldCleanReply && typeOrders.reply.length > POST_HISTORY_REPLY_LIMIT) {
+        const key = typeOrders.reply.pop();
+        delete store.items[key];
+      }
+      store.order = store.order.filter(key => store.items[key]);
+    }
+    return store;
+  }
+
+  function getPostHistoryStore() {
+    try {
+      return normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+    } catch (e) {
+      return createDefaultPostHistoryStore();
+    }
+  }
+
+  function isPostHistoryPanelOpen() {
+    const cover = document.getElementById('sp_cover');
+    const module = document.getElementById('sp_module_posts');
+    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
+  }
+
+  function schedulePostHistoryLiveRender(source, remote) {
+    const active = isPostHistoryPanelOpen();
+    const renderable = !!document.getElementById('sp_posts_results');
+    const now = Date.now();
+    if (!postHistoryLiveRenderFirstAt) postHistoryLiveRenderFirstAt = now;
+    postHistoryLiveRenderPendingCount += 1;
+    postHistoryLiveRenderDirty = true;
+    logPostHistory('live sync', {
+      source,
+      remote: !!remote,
+      active,
+      renderable,
+      pendingCount: postHistoryLiveRenderPendingCount,
+      firstAt: postHistoryLiveRenderFirstAt
+    });
+    if (!renderable) {
+      if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
+      postHistoryLiveRenderTimer = 0;
+      postHistoryLiveRenderFirstAt = 0;
+      postHistoryLiveRenderPendingCount = 0;
+      return;
+    }
+    const run = () => {
+      postHistoryLiveRenderTimer = 0;
+      postHistoryLiveRenderFirstAt = 0;
+      postHistoryLiveRenderPendingCount = 0;
+      postHistoryLiveRenderDirty = false;
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderPostHistoryModule());
+      else renderPostHistoryModule();
+    };
+    if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
+    const elapsed = now - postHistoryLiveRenderFirstAt;
+    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
+      ? 0
+      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
+    postHistoryLiveRenderTimer = setTimeout(run, delay);
+  }
+
+  function notifyPostHistoryStoreChanged(source, remote) {
+    try {
+      window.dispatchEvent(new CustomEvent(POST_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
+    } catch (e) {}
+    logPostHistory('store notify', { source, remote: !!remote });
+    schedulePostHistoryLiveRender(source, remote);
+  }
+
+  function setPostHistoryStore(store) {
+    const normalized = normalizePostHistoryStore(store);
+    GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
+    notifyPostHistoryStoreChanged('local-write', false);
+    return normalized;
+  }
+
+  function bindPostHistoryLiveSync() {
+    if (postHistoryLiveSyncBound) return;
+    postHistoryLiveSyncBound = true;
+    if (typeof GM_addValueChangeListener === 'function') {
+      try {
+        GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          schedulePostHistoryLiveRender('gm-value-change', remote);
+        });
+      } catch (e) {
+        logPostHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
+      }
+    }
+    window.addEventListener(POST_HISTORY_SYNC_EVENT, (event) => {
+      const detail = event && event.detail || {};
+      schedulePostHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
+    });
+  }
+
+  function buildCanonicalReplyUrl(threadId, replyId) {
+    const tid = String(threadId || '').trim();
+    const rid = String(replyId || '').trim();
+    if (!tid || !rid) return '';
+    return `${location.origin}/t/${tid}?r=${rid}`;
+  }
+
+  function buildPostHistoryUrl(type, id, resto) {
+    const postId = String(id || '').trim();
+    const threadId = String(type === 'reply' ? resto : id || '').trim();
+    if (!postId && !threadId) return '';
+    if (type === 'reply') return buildCanonicalReplyUrl(threadId, postId);
+
+    // 主题也使用 ?r=threadId 格式
+    // return `${location.origin}/t/${threadId}`;
+    return `${location.origin}/t/${threadId}?r=${threadId}`;
+  }
+
+  function buildPostHistoryReplyActionUrl(type, id, resto, page) {
+    const postId = String(id || '').trim();
+    const threadId = String(type === 'reply' ? resto : id || '').trim();
+    const pageNum = Math.max(0, Number(page) || 0);
+    // reply 类型保持原来的行为：有 page 就用 ?page=N，否则回退到 ?r=replyId
+    if (type === 'reply') {
+      if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
+      return buildPostHistoryUrl(type, postId, threadId);
+    }
+    // thread 类型优先从浏览历史获取最新页面（动态更新）
+    const historyUrl = getLatestThreadHistoryUrl(threadId);
+    if (historyUrl) return historyUrl;
+    // 没有浏览历史，回退到发言历史记录的页面
+    const fallbackPage = Math.max(1, Number(page) || 1);
+    if (threadId) return `${location.origin}/t/${threadId}?page=${fallbackPage}`;
+    return buildPostHistoryUrl(type, postId, threadId);
+  }
+
+  function getConfirmedPostHistoryIds(store) {
+    const ids = new Set();
+    Object.keys(store.items || {}).forEach(key => {
+      const item = store.items[key];
+      if (item && item.status === 'confirmed' && item.id) ids.add(String(item.id));
+    });
+    return ids;
+  }
+
+  function upsertPostHistoryRecord(record) {
+    if (!record || !record.localId) return getPostHistoryStore();
+    const store = getPostHistoryStore();
+    const old = store.items[record.localId] || {};
+    const merged = Object.assign({}, old, record, {
+      localId: record.localId,
+      status: normalizePostHistoryStatus(record.status),
+      type: normalizePostHistoryType(record.type),
+      contentText: normalizePostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
+      contentHash: record.contentHash || old.contentHash || hashPostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
+      submittedAt: Number(record.submittedAt || old.submittedAt) || Date.now()
+    });
+    store.items[merged.localId] = merged;
+    store.order = [merged.localId].concat((store.order || []).filter(key => key !== merged.localId));
+    const typeCounts = { thread: 0, reply: 0 };
+    store.order.forEach(key => {
+      const type = normalizePostHistoryType(store.items[key]?.type);
+      typeCounts[type]++;
+
+    });
+
+    logPostHistory('store upsert', {
+      localId: merged.localId,
+      status: merged.status,
+      type: merged.type,
+      contentHash: merged.contentHash,
+      submittedAt: merged.submittedAt,
+      total: store.order.length,
+      threadCount: typeCounts.thread,
+      replyCount: typeCounts.reply
+    });
+    return setPostHistoryStore(store);
+  }
+
+  function updatePostHistoryRecord(localId, patch) {
+    const store = getPostHistoryStore();
+    if (!store.items[localId]) {
+      logPostHistory('store update skipped', { localId, patch: patch || {} }, 'warn');
+      return store;
+    }
+    store.items[localId] = Object.assign({}, store.items[localId], patch || {});
+    logPostHistory('store update', {
+      localId,
+      patch: patch || {},
+      status: store.items[localId].status,
+      type: store.items[localId].type,
+      id: store.items[localId].id || '',
+      resto: store.items[localId].resto || ''
+    });
+    return setPostHistoryStore(store);
+  }
+
+  function deletePostHistoryItem(localId) {
+    const store = getPostHistoryStore();
+    delete store.items[localId];
+    store.order = (store.order || []).filter(key => key !== localId);
+    return setPostHistoryStore(store);
+  }
+
+  function clearPostHistory() {
+    return setPostHistoryStore(createDefaultPostHistoryStore());
+  }
+
+  function searchPostHistory(query, type) {
+    const store = getPostHistoryStore();
+    const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
+    const { filters, tokens } = parsePostHistorySearchQuery(query);
+    return (store.order || [])
+      .map(key => ({ key, item: store.items[key] }))
+      .filter(result => {
+        const item = result.item || {};
+        if (normalizePostHistoryType(item.type) !== selectedType) return false;
+        if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
+        if (filters.fidFilters.length && !filters.fidFilters.includes(normalizePostHistoryFid(item.fid))) return false;
+        if (filters.forumFilters.length && !filters.forumFilters.every(value => getPostHistoryForumSearchText(item).includes(value))) return false;
+        if (filters.hasImage && !item.imageFile) return false;
+        if (filters.isGif && !/\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || ''))) return false;
+        if (filters.hasZeroWidth && !ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))) return false;
+        if (filters.fieldFilters.length && !filters.fieldFilters.every(filter => getPostHistorySearchFieldText(item, filter.field).includes(filter.value))) return false;
+        const text = buildPostHistorySearchText(item);
+        return tokens.every(token => text.includes(token));
+      });
+  }
+
+  function parsePostHistorySearchQuery(query) {
+    const filters = { statusFilters: [], fidFilters: [], forumFilters: [], fieldFilters: [], hasImage: false, isGif: false, hasZeroWidth: false };
+    const tokens = [];
+    String(query || '').split(/\s+/).filter(Boolean).forEach(rawToken => {
+      const token = normalizeHistorySearchValue(rawToken);
+      const pair = token.match(/^([a-z]+):(.+)$/);
+      if (!pair) {
+        tokens.push(token);
+        return;
+      }
+      const key = pair[1];
+      const value = normalizeHistorySearchValue(pair[2]);
+      if (!value) return;
+      if (key === 'status' && ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(value)) filters.statusFilters.push(value);
+      else if (key === 'fid') {
+        const fid = normalizePostHistoryFid(value);
+        if (fid) filters.fidFilters.push(fid);
+      } else if (key === 'forum') filters.forumFilters.push(value);
+      else if (key === 'has' && value === 'image') filters.hasImage = true;
+      else if (key === 'has' && value === 'gif') filters.isGif = true;
+      else if (key === 'has' && (value === 'zwsp' || value === 'zerowidth')) filters.hasZeroWidth = true;
+      else if (['id', 'thread', 'page', 'cookie', 'name', 'email'].includes(key)) filters.fieldFilters.push({ field: key, value });
+      else tokens.push(token);
+    });
+    return { filters, tokens };
+  }
+
+  function getPostHistorySearchFieldText(item, field) {
+    if (field === 'id') return normalizeHistorySearchValue([item.id, item.postId].join(' '));
+    if (field === 'thread') return normalizeHistorySearchValue([item.threadId, item.resto].join(' '));
+    if (field === 'page') return normalizeHistorySearchValue(item.page);
+    if (field === 'cookie') return normalizeHistorySearchValue(item.userHash);
+    if (field === 'name') return normalizeHistorySearchValue(item.name);
+    if (field === 'email') return normalizeHistorySearchValue(item.email);
+    return '';
+  }
+
+  function buildPostHistorySearchText(item) {
+    return [
+      item.id,
+      item.threadId,
+      item.postId,
+      item.resto,
+      item.fid,
+      item.forumName,
+      getPostHistoryForumSearchText(item),
+      item.title,
+      item.name,
+      item.email,
+      item.contentText,
+      item.contentRaw,
+      item.userHash,
+      item.status,
+      item.type,
+      item.page,
+      item.url,
+      item.sourceUrl,
+      item.imageFile,
+      item.imageImg,
+      item.imageExt
+    ].join(' ').toLowerCase();
+  }
+
+  function parseLastPostResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      const data = json && (json.data || json.post || json);
+      const post = Array.isArray(data) ? (data[0] || null) : data;
+      if (!post) {
+        logPostHistory('getLastPost empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
+        return null;
+      }
+      logPostHistory('getLastPost parse', Object.assign({}, context || {}, { candidate: summarizePostHistoryCandidate(post) }));
+      return post;
+    } catch (e) {
+      logPostHistory('getLastPost parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+
+  function fetchPostHistorySameOriginText(url, context, stage) {
+    const label = stage || 'post history api';
+    logPostHistory(label + ' request', Object.assign({}, context || {}, { url }));
+    return fetch(url, { credentials: 'include', cache: 'no-store' }).then(resp => {
+      return resp.text().then(text => {
+        logPostHistory(label + ' response', Object.assign({}, context || {}, {
+          status: resp.status,
+          responseLength: String(text || '').length
+        }));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} ${url}`);
+        return {
+          status: resp.status,
+          statusText: resp.statusText,
+          responseText: text,
+          response: text,
+          finalUrl: resp.url || url
+        };
+      });
+    }).catch(e => {
+      logPostHistory(label + ' error', Object.assign({}, context || {}, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+
+  function fetchLastPostHistoryPost(context) {
+    const url = `${POST_HISTORY_API_BASE}/getLastPost`;
+    return fetchPostHistorySameOriginText(url, context, 'getLastPost').then(resp => parseLastPostResponse(resp, context));
+  }
+
+  function getPostHistoryApiCookieHeaders() {
+    const userhash = getCurrentBrowserUserhash();
+    return userhash ? { Cookie: `userhash=${userhash}` } : null;
+  }
+
+  function buildPostHistoryImageFile(img, ext) {
+    const base = String(img || '').trim();
+    const extValue = String(ext || '').trim();
+    if (!base) return '';
+    const suffix = extValue ? (extValue[0] === '.' ? extValue : `.${extValue}`) : '';
+    if (!suffix) return base;
+    return base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : base + suffix;
+  }
+
+  function parsePostHistoryRefResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      const data = json && (json.data || json.post || json);
+      const refPost = data && !Array.isArray(data) ? data : null;
+      if (refPost && refPost.success === false) throw new Error(refPost.error || 'ref api error');
+      if (!refPost) {
+        logPostHistory('ref empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
+        return null;
+      }
+      logPostHistory('ref parse', Object.assign({}, context || {}, {
+        id: refPost.id || '',
+        imageFile: buildPostHistoryImageFile(refPost.img, refPost.ext)
+      }));
+      return refPost;
+    } catch (e) {
+      logPostHistory('ref parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+
+  function postHistoryRefPostHasImage(refPost) {
+    return !!buildPostHistoryImageFile(refPost && refPost.img, refPost && refPost.ext);
+  }
+
+  function parsePostHistoryRefHtmlResponse(resp, context) {
+    const html = resp && (resp.responseText || resp.response) || '';
+    try {
+      const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+      const root = doc.querySelector('.h-threads-img-box') || doc.querySelector('.h-threads-item-main') || doc.body;
+      let imageFile = extractThreadHistoryImageFile(root);
+      if (!imageFile) {
+        const imageNode = doc.querySelector('.h-threads-img-a[href], img.h-threads-image, img.h-threads-img, a[href*="/image/"], a[href*="/thumb/"]');
+        const imageAnchor = imageNode && imageNode.closest ? imageNode.closest('a[href]') : imageNode;
+        imageFile = normalizeThreadHistoryImageFile(
+          (imageAnchor && imageAnchor.getAttribute && imageAnchor.getAttribute('href')) ||
+          (imageNode && imageNode.getAttribute && (imageNode.getAttribute('data-src') || imageNode.getAttribute('src')))
+        );
+      }
+      if (!imageFile) {
+        logPostHistory('ref html empty', Object.assign({}, context || {}, { responseLength: String(html || '').length }));
+        return null;
+      }
+      logPostHistory('ref html parse', Object.assign({}, context || {}, { imageFile }));
+      return { img: imageFile, ext: '', imageFile };
+    } catch (e) {
+      logPostHistory('ref html parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(html || '').length,
+        preview: String(html || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+
+  function fetchPostHistoryRefPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const detail = Object.assign({}, context || {}, { id: postId });
+    return fetchPostHistoryRefApiPost(postId, detail)
+      .then(refPost => {
+        if (postHistoryRefPostHasImage(refPost)) return refPost;
+        return fetchPostHistorySameOriginRefPost(postId, detail);
+      })
+      .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
+  }
+
+  function fetchPostHistoryRefApiPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `${POST_HISTORY_REF_API_FALLBACK_BASE}/ref?id=${encodeURIComponent(postId)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { id: postId, api: true, authenticated: !!headers });
+    logPostHistory('ref api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('ref api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      const refPost = parsePostHistoryRefResponse(resp, detail);
+      return postHistoryRefPostHasImage(refPost) ? refPost : null;
+    }).catch(e => {
+      logPostHistory('ref api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+
+  function fetchPostHistorySameOriginRefPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
+    const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
+    return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
+      .then(resp => {
+        const refPost = parsePostHistoryRefResponse(resp, detail);
+        if (postHistoryRefPostHasImage(refPost)) return refPost;
+        return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
+      })
+      .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
+  }
+
+  function fetchPostHistoryRefHtmlFallbackPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
+    const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
+    return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
+      .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
+  }
+
+  function enrichPostHistoryRefImage(localId, postId) {
+    return fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
+      const imageFile = refPost ? buildPostHistoryImageFile(refPost.img, refPost.ext) : '';
+      if (!imageFile) return false;
+      updatePostHistoryRecord(localId, { imageFile, imageImg: refPost.img || '', imageExt: refPost.ext || '' });
+      return true;
+    }).catch(e => {
+      logPostHistory('ref image error', { localId, id: postId, error: e && e.message ? e.message : String(e) }, 'warn');
+      return false;
+    });
+  }
+
+  function parsePostHistoryThreadResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const thread = typeof text === 'string' ? JSON.parse(text) : text;
+      if (thread && thread.success === false) throw new Error(thread.error || 'thread api error');
+      const replies = Array.isArray(thread && thread.Replies) ? thread.Replies : [];
+      const replyCount = Number(thread && (thread.ReplyCount || thread.replyCount || thread.reply_count)) || replies.length;
+      logPostHistory('thread fallback parse', Object.assign({}, context || {}, { replyCount, replies: replies.length }));
+      return { thread, replies, replyCount, page: Math.max(1, Number(context && context.page) || 1) };
+    } catch (e) {
+      logPostHistory('thread fallback parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      throw e;
+    }
+  }
+
+  function fetchPostHistoryThreadPage(threadId, page, context) {
+    const detail = Object.assign({}, context || {}, { threadId, page });
+    return fetchPostHistoryThreadApiPage(threadId, page, detail)
+      .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
+  }
+
+  function fetchPostHistoryThreadApiPage(threadId, page, context) {
+    const url = `${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { threadId, page, api: true, authenticated: !!headers });
+    logPostHistory('thread api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('thread api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      return parsePostHistoryThreadResponse(resp, detail);
+    }).catch(e => {
+      logPostHistory('thread api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+
+  function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
+    const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+    const detail = Object.assign({}, context || {}, { threadId, page });
+    return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
+  }
+
+  function getPostHistoryThreadFallbackPages(replyCount) {
+    const total = Number(replyCount) || 0;
+    const tailPage = Math.max(1, Math.ceil(total / POST_HISTORY_REPLIES_PER_PAGE));
+    const pages = [tailPage, tailPage - 1]
+      .filter(page => page >= 1)
+      .map(page => Math.max(1, Number(page) || 1));
+    return Array.from(new Set(pages)).sort((a, b) => b - a);
+  }
+
+  function buildPostHistoryThreadCandidate(reply, thread, page) {
+    const threadId = String(thread && thread.id || '').trim();
+    const fid = getPostHistoryPostFid(reply) || getPostHistoryPostFid(thread);
+    return Object.assign({}, reply || {}, { fid, resto: threadId, page: Math.max(1, Number(page) || 1) });
+  }
+
+  function findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds) {
+    const replies = Array.isArray(pageData && pageData.replies) ? pageData.replies : [];
+    for (let i = replies.length - 1; i >= 0; i--) {
+      const candidate = buildPostHistoryThreadCandidate(replies[i], pageData && pageData.thread || { id: snapshot && snapshot.resto, fid: snapshot && snapshot.fid }, pageData && pageData.page);
+      if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
+    }
+    return null;
+  }
+
+  async function completePostHistoryFromThreadFallback(localId, snapshot) {
+    if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
+      logPostHistory('thread fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    }
+    const threadId = String(snapshot.resto || '').trim();
+    const firstPage = await fetchPostHistoryThreadPage(threadId, 1, { localId, phase: 'count' });
+    const pages = getPostHistoryThreadFallbackPages(firstPage.replyCount);
+    const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
+    for (const page of pages) {
+      const pageData = page === 1 ? firstPage : await fetchPostHistoryThreadPage(threadId, page, { localId, phase: 'scan' });
+      const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
+      if (post) {
+        logPostHistory('thread fallback confirmed', { localId, page, candidate: summarizePostHistoryCandidate(post) });
+        confirmPostHistorySnapshot(localId, post);
+        return true;
+      }
+    }
+    logPostHistory('thread fallback exhausted', { localId, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+    return false;
+  }
+
+  function postHistoryMatchesSnapshot(post, snapshot, usedIds) {
+    const reject = (reason, extra) => {
+      logPostHistory('match rejected', Object.assign({
+        reason,
+        snapshot: summarizePostHistorySnapshot(snapshot),
+        candidate: summarizePostHistoryCandidate(post)
+      }, extra || {}));
+      return false;
+    };
+    if (!post || !snapshot) return reject('missing-post-or-snapshot');
+    const id = String(post.id || '').trim();
+    if (!id) return reject('missing-id');
+    const expectedId = String(snapshot.id || snapshot.postId || '').trim();
+    if (expectedId && id !== expectedId) return reject('id-mismatch', { expectedId, actualId: id });
+    if (usedIds.has(id) && id !== expectedId) return reject('duplicate-confirmed-id', { id });
+    const resto = String(post.resto || '0').trim();
+    const type = Number(resto) === 0 ? 'thread' : 'reply';
+    if (type !== snapshot.type) return reject('type-mismatch', { expectedType: snapshot.type, actualType: type });
+    if (type === 'reply' && String(snapshot.resto || '').trim() && String(snapshot.resto || '').trim() !== resto) return reject('reply-resto-mismatch', { expectedResto: String(snapshot.resto || '').trim(), actualResto: resto });
+    const postText = normalizePostHistoryText(post.content || '');
+    if (postText && snapshot.contentHash && hashPostHistoryText(postText) !== snapshot.contentHash && postText !== snapshot.contentText) {
+      logPostHistory('server content differs', {
+        snapshot: summarizePostHistorySnapshot(snapshot),
+        candidate: summarizePostHistoryCandidate(post),
+        expectedHash: snapshot.contentHash,
+        actualHash: hashPostHistoryText(postText)
+      });
+    }
+    const postTs = Date.parse(post.now || '');
+    if (!postTs) return reject('missing-time');
+    const timeDiff = Math.abs(postTs - Number(snapshot.submittedAt || Date.now()));
+    if (timeDiff > POST_HISTORY_MATCH_TIME_WINDOW_MS) return reject('time-window-mismatch', { postTs, submittedAt: Number(snapshot.submittedAt || Date.now()), timeDiff });
+    logPostHistory('match accepted', {
+      snapshot: summarizePostHistorySnapshot(snapshot),
+      candidate: summarizePostHistoryCandidate(post),
+      timeDiff
+    });
+    return true;
+  }
+
+  function confirmPostHistorySnapshot(localId, post) {
+    const resto = String(post.resto || '0').trim();
+    const type = Number(resto) === 0 ? 'thread' : 'reply';
+    const id = String(post.id || '').trim();
+    const url = buildPostHistoryUrl(type, id, resto);
+    const existing = getPostHistoryStore().items[localId] || {};
+    const existingPage = type === 'thread' ? (Number(existing.page) || 0) : 0;
+    const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+    const serverContentRaw = post.content || '';
+    const serverContentText = normalizePostHistoryText(serverContentRaw);
+    const fid = getPostHistoryPostFid(post) || normalizePostHistoryFid(existing.fid);
+    const update = {
+      status: 'confirmed',
+      type,
+      id,
+      resto,
+      threadId: type === 'reply' ? resto : id,
+      postId: id,
+      page: Math.max(0, Number(post.page) || existingPage || (type === 'thread' ? 1 : 0)),
+      fid,
+      forumName: getPostHistoryForumNameByFid(fid),
+      title: post.title || '',
+      email: post.email || '',
+      contentRaw: serverContentRaw,
+      contentText: serverContentText,
+      contentHash: hashPostHistoryText(serverContentText),
+      contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
+      userHash: post.user_hash || post.userHash || '',
+      confirmedAt: Date.now(),
+      url
+    };
+    if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+    logPostHistory('confirmed', { localId, type, id, resto, url });
+    updatePostHistoryRecord(localId, update);
+
+    const resolver = postHistoryConfirmationMap.get(localId);
+
+    if (!imageFile) {
+      // 没有图片，异步获取后再通知等待者
+      enrichPostHistoryRefImage(localId, id).then(() => {
+        if (resolver) {
+          resolver(Object.assign({ localId }, update));
+          postHistoryConfirmationMap.delete(localId);
+        }
+      }).catch(() => {
+        if (resolver) {
+          resolver(Object.assign({ localId }, update));
+          postHistoryConfirmationMap.delete(localId);
+        }
+      });
+    } else {
+      // 已有图片，直接通知等待者
+      if (resolver) {
+        resolver(Object.assign({ localId }, update));
+        postHistoryConfirmationMap.delete(localId);
+      }
+    }
+  }
+
+  function completePostHistorySnapshot(localId, snapshot, attempt = 0) {
+    const delay = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS[attempt];
+    if (delay == null) {
+      logPostHistory('completion exhausted', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      // 清理等待者（确认失败或超时）
+      const resolver = postHistoryConfirmationMap.get(localId);
+      if (resolver) {
+        resolver(null);
+        postHistoryConfirmationMap.delete(localId);
+      }
+      completePostHistoryFromThreadFallback(localId, snapshot).then(confirmed => {
+        if (confirmed) return;
+        logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+        updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+      }).catch(e => {
+        logPostHistory('thread fallback error', { localId, error: e && e.message ? e.message : String(e) }, 'warn');
+        logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+        updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+      });
+      return;
+    }
+    logPostHistory('completion scheduled', { localId, attempt, delay, snapshot: summarizePostHistorySnapshot(snapshot) });
+    setTimeout(() => {
+      fetchLastPostHistoryPost({ localId, attempt }).then(post => {
+        const store = getPostHistoryStore();
+        if (!postHistoryMatchesSnapshot(post, snapshot, getConfirmedPostHistoryIds(store))) {
+          logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1 });
+          completePostHistorySnapshot(localId, snapshot, attempt + 1);
+          return;
+        }
+        const id = String(post.id || '').trim();
+        const confirmedResto = String(post.resto || snapshot.resto || '').trim();
+        const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });
+        confirmPostHistorySnapshot(localId, post);
+        if (confirmedSnapshot.type === 'reply') {
+          completePostHistoryFromThreadFallback(localId, confirmedSnapshot).catch(e => {
+            logPostHistory('thread page verify error', { localId, id, error: e && e.message ? e.message : String(e) }, 'warn');
+          });
+        }
+      }).catch(e => {
+        logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
+        completePostHistorySnapshot(localId, snapshot, attempt + 1);
+      });
+    }, delay);
+  }
+
+  function snapshotSubmittedPostHistory(fd, options) {
+
+    const type = options && options.isReply ? 'reply' : 'thread';
+    const submittedAt = Date.now();
+    const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
+    const contentText = normalizePostHistoryText(contentRaw);
+    const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
+    const fallbackFid = getCurrentPostHistoryFid();
+    const localId = `local-${submittedAt}-${Math.random().toString(36).slice(2, 8)}`;
+    const parsedSource = parseThreadHistoryUrl(location.href);
+    const snapshot = {
+      status: 'pending',
+      type,
+      localId,
+      id: '',
+      resto,
+      threadId: type === 'reply' ? resto : '',
+      postId: '',
+      page: type === 'thread' ? (parsedSource ? parsedSource.page : 1) : 0,
+      fid: fallbackFid,
+      forumName: getPostHistoryForumNameByFid(fallbackFid),
+      title: fd && fd.get ? String(fd.get('title') || '') : '',
+      name: fd && fd.get ? String(fd.get('name') || '') : '',
+      email: fd && fd.get ? String(fd.get('email') || '') : '',
+      contentRaw,
+      contentText,
+      contentHash: hashPostHistoryText(contentText),
+      userHash: '',
+      submittedAt,
+      confirmedAt: 0,
+      sourceUrl: location.href,
+      url: ''
+    };
+
+    // 为发串创建一个可等待的 Promise，用于确认后跳转
+    let confirmResolver;
+    const confirmPromise = new Promise(res => { confirmResolver = res; });
+    postHistoryConfirmationMap.set(localId, confirmResolver);
+    logPostHistory('snapshot', { snapshot: summarizePostHistorySnapshot(snapshot), content: summarizePostHistoryText(contentText) });
+    upsertPostHistoryRecord(snapshot);
+    completePostHistorySnapshot(localId, snapshot, 0);
+    return { snapshot, localId, confirmPromise };
   }
 
   function parseThreadHistoryUrl(inputUrl) {
@@ -1070,6 +2186,20 @@
     return `${y}-${m}-${day} ${hh}:${mm}`;
   }
 
+  function formatRelativeTimeMachineTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const weekday = '日一二三四五六'[d.getDay()];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${y}-${m}-${day}(${weekday})${hh}:${mm}:${ss}`;
+  }
+
   function buildThreadHistoryImageUrl(imageFile, full) {
     if (!imageFile) return '';
     const path = /\.gif$/i.test(imageFile) || full ? 'image' : 'thumb';
@@ -1082,6 +2212,18 @@
     const threadId = item && item.threadId ? item.threadId : '';
     const page = item && item.page ? item.page : 1;
     return buildThreadHistoryPageUrl(item && item.mode, threadId, page);
+  }
+
+  function buildHistorySearchHelpMark(title) {
+    const mark = document.createElement('span');
+    mark.className = 'xdex-history-search-help';
+    mark.textContent = '?';
+    mark.title = title || '';
+    mark.style.textDecoration = 'underline';
+    mark.style.cursor = 'help';
+    mark.style.whiteSpace = 'nowrap';
+    mark.setAttribute('aria-label', title || '高级检索说明');
+    return mark;
   }
 
   function getLatestThreadHistoryUrl(threadId) {
@@ -1155,10 +2297,11 @@
       if (cookieSpan && cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
     }
 
-    const historyUrl = buildThreadHistoryItemUrl(item);
+    const historyReplyUrl = buildCanonicalReplyUrl(item.threadId, item.threadId);
+    const historyReplyActionUrl = buildThreadHistoryItemUrl(item);
     const replyLink = document.createElement('a');
     replyLink.className = 'h-threads-info-id xdex-history-thread-id';
-    replyLink.href = historyUrl;
+    replyLink.href = historyReplyUrl;
     replyLink.textContent = `No.${item.threadId || ''}`;
     infoMain.appendChild(replyLink);
 
@@ -1166,7 +2309,7 @@
     replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
     const replyActionLink = document.createElement('a');
     replyActionLink.className = 'xdex-history-reply-action';
-    replyActionLink.href = historyUrl;
+    replyActionLink.href = historyReplyActionUrl;
     replyActionLink.target = '_blank';
     replyActionLink.rel = 'noopener';
     replyActionLink.textContent = '回应';
@@ -1187,6 +2330,7 @@
       const imageLink = document.createElement('a');
       imageLink.className = 'h-threads-img-a xdex-history-image';
       imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
+      imageLink.dataset.historyQuoteId = item.threadId || '';
       imageLink.target = '_blank';
       imageLink.rel = 'noopener';
       const img = document.createElement('img');
@@ -1206,6 +2350,7 @@
       appendThreadHistoryTruncationMarker(content);
     }
     main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
 
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -1215,8 +2360,87 @@
     appendThreadHistoryText(footer, 'span', 'xdex-history-current-page', `最近查看：P${item.page || 1}`);
     if (item.mode === 'po') appendThreadHistoryText(footer, 'span', 'xdex-history-po-label', 'Po');
     main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
     markAllCookies(getFilterConfig().markedGroups || [], wrapper);
     return wrapper;
+  }
+
+  const HISTORY_RENDER_INITIAL_COUNT = 50;
+  const HISTORY_RENDER_BATCH_SIZE = 20;
+  const HISTORY_RENDER_BATCH_THRESHOLD = 400;
+  const historyRenderQueues = new Map();
+
+  function findHistoryScrollContainer(element) {
+    let el = element;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const style = window.getComputedStyle(el);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflow === 'auto' || style.overflow === 'scroll') {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return element;
+  }
+
+  function batchRenderHistoryItems(root, results, buildFn, queueId) {
+    const prev = historyRenderQueues.get(queueId);
+    if (prev) {
+      prev.cancelled = true;
+      if (prev.scrollHandler && prev.scrollContainer) {
+        prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
+      }
+    }
+    if (!root) return;
+
+    const total = results.length;
+    if (total <= 0) return;
+
+    let cursor = 0;
+    const state = { cancelled: false };
+    const scrollContainer = findHistoryScrollContainer(root);
+    historyRenderQueues.set(queueId, state);
+
+    function appendBatch(count) {
+      if (state.cancelled) return;
+      const slice = results.slice(cursor, cursor + count);
+      const fragment = document.createDocumentFragment();
+      slice.forEach(r => fragment.appendChild(buildFn(r)));
+      root.appendChild(fragment);
+      cursor += slice.length;
+    }
+
+    function maybeLoadMore() {
+      if (state.cancelled || cursor >= total) return;
+      const nearBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - HISTORY_RENDER_BATCH_THRESHOLD;
+      if (nearBottom) {
+        appendBatch(HISTORY_RENDER_BATCH_SIZE);
+        requestAnimationFrame(() => {
+          if (!state.cancelled) maybeLoadMore();
+        });
+      }
+    }
+
+    const scrollHandler = () => {
+      if (state.cancelled) return;
+      if (cursor >= total) return;
+      requestAnimationFrame(() => {
+        if (state.cancelled) return;
+        maybeLoadMore();
+      });
+    };
+
+    state.scrollHandler = scrollHandler;
+    state.scrollContainer = scrollContainer;
+    scrollContainer.addEventListener('scroll', scrollHandler, { passive: true });
+
+    appendBatch(HISTORY_RENDER_INITIAL_COUNT);
+
+    if (cursor < total) {
+      requestAnimationFrame(() => {
+        if (state.cancelled) return;
+        maybeLoadMore();
+      });
+    }
   }
 
   function renderThreadHistoryModule(query) {
@@ -1233,7 +2457,10 @@
     updateThreadHistoryDebugState({ lastRender: { query: effectiveQuery || '', sortMode, count: results.length, at: new Date().toISOString() } });
     logThreadHistory('render module', { query: effectiveQuery || '', sortMode, count: results.length });
     const count = document.getElementById('sp_history_count');
-    if (count) count.textContent = `${results.length} 条`;
+    if (count) {
+      count.textContent = `${results.length} 条 `;
+      count.appendChild(buildHistorySearchHelpMark(THREAD_HISTORY_SEARCH_HELP_TEXT));
+    }
     root.textContent = '';
     if (!results.length) {
       const empty = document.createElement('div');
@@ -1242,7 +2469,7 @@
       root.appendChild(empty);
       return;
     }
-    results.forEach(result => root.appendChild(buildThreadHistoryItemElement(result)));
+    batchRenderHistoryItems(root, results, buildThreadHistoryItemElement, 'threadHistory');
     const reportThreadHistoryRenderDom = () => {
       const cover = document.getElementById('sp_cover');
       const panel = document.getElementById('sp_panel');
@@ -1291,6 +2518,34 @@
     setTimeout(() => renderThreadHistoryModule(query), 0);
   }
 
+  function openHistoryImageQuotePreview(tid) {
+    const quoteId = String(tid || '').trim();
+    if (!/^\d+$/.test(quoteId) || quoteId === '9999999') return false;
+    try {
+      if (typeof window.__xdexOpenQuoteByTid !== 'function' && typeof enableQuotePreview === 'function') {
+        enableQuotePreview();
+      }
+      if (typeof window.__xdexOpenQuoteByTid !== 'function') return false;
+      const ret = window.__xdexOpenQuoteByTid(quoteId, { fromPOImage: true });
+      if (ret && typeof ret.then === 'function') ret.catch(() => {});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function enhanceHistoryRenderedContent(root) {
+    if (!root) return;
+    try { renderHiddenTextContent(root); } catch (e) {}
+    try { if (typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
+    try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
+    try {
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      if (cfg && cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', root);
+      if (cfg && cfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root);
+    } catch (e) {}
+  }
+
   function bindThreadHistoryModuleEvents() {
     $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
       renderThreadHistoryModule(this.value || '');
@@ -1309,6 +2564,14 @@
       }
       window.open(url, '_blank', 'noopener');
     });
+    $('#sp_history_results').off('click.xdex-history-image-quote', '.xdex-history-image').on('click.xdex-history-image-quote', '.xdex-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
     $('#sp_history_results').off('click.xdex-history-delete', '.xdex-history-delete').on('click.xdex-history-delete', '.xdex-history-delete', function (e) {
       e.preventDefault();
       const key = this.dataset.historyKey || '';
@@ -1319,9 +2582,203 @@
     });
     $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
       e.preventDefault();
+      if (!window.confirm('确定要清空全部浏览历史吗？')) return;
       clearThreadHistory();
       renderThreadHistoryModule();
       toast('已清空浏览历史');
+    });
+  }
+
+  function buildPostHistoryItemElement(result) {
+    const item = result.item || {};
+    const wrapper = document.createElement('div');
+    wrapper.className = 'xdex-history-item xdex-post-history-item';
+    wrapper.dataset.postHistoryKey = result.key;
+
+    const main = document.createElement('div');
+    main.className = 'h-threads-item-main';
+    wrapper.appendChild(main);
+
+    const info = document.createElement('div');
+    info.className = 'h-threads-info xdex-history-info xdex-post-history-info';
+    main.appendChild(info);
+
+    const infoMain = document.createElement('span');
+    infoMain.className = 'xdex-history-info-main';
+    info.appendChild(infoMain);
+
+    if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
+    if (shouldRenderThreadHistoryAuthor(item.name)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.name);
+    if (item.email) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.email);
+    const submittedAtText = formatRelativeTimeMachineTime(item.submittedAt);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', submittedAtText);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = submittedAtText;
+      createdAtNode.title = submittedAtText;
+    }
+    if (item.userHash) appendThreadHistoryInfoText(infoMain, 'h-threads-info-uid', `ID:${item.userHash}`);
+
+    const displayPostId = item.postId || item.id || (item.type === 'reply' ? '' : item.threadId);
+    const postUrl = buildPostHistoryUrl(item.type, displayPostId, item.resto || item.threadId);
+    const postReplyActionUrl = buildPostHistoryReplyActionUrl(item.type, displayPostId, item.resto || item.threadId, item.page);
+    if (postUrl) {
+      const postLink = document.createElement('a');
+      postLink.className = 'h-threads-info-id xdex-post-history-thread-id';
+      postLink.href = postUrl;
+      postLink.textContent = `No.${displayPostId}`;
+      infoMain.appendChild(postLink);
+
+      const replyAction = document.createElement('span');
+      replyAction.className = 'h-threads-info-reply-btn xdex-post-history-reply-label';
+      const replyActionLink = document.createElement('a');
+      replyActionLink.className = 'xdex-post-history-reply-action';
+      replyActionLink.href = postReplyActionUrl;
+      replyActionLink.target = '_blank';
+      replyActionLink.rel = 'noopener';
+      replyActionLink.textContent = '回应';
+      replyAction.appendChild(document.createTextNode('['));
+      replyAction.appendChild(replyActionLink);
+      replyAction.appendChild(document.createTextNode(']'));
+      infoMain.appendChild(replyAction);
+    } else {
+      appendThreadHistoryInfoText(infoMain, 'h-threads-info-id xdex-post-history-thread-id', '未确认');
+    }
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'xdex-post-history-delete';
+    deleteButton.dataset.postHistoryKey = result.key;
+    deleteButton.title = '删除';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
+
+    if (item.imageFile) {
+      const imageLink = document.createElement('a');
+      imageLink.className = 'h-threads-img-a xdex-post-history-image';
+      imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
+      imageLink.dataset.postHistoryQuoteId = displayPostId || item.threadId || '';
+      imageLink.target = '_blank';
+      imageLink.rel = 'noopener';
+      const image = document.createElement('img');
+      image.className = 'h-threads-img';
+      image.src = buildThreadHistoryImageUrl(item.imageFile, false);
+      image.alt = item.imageFile;
+      imageLink.appendChild(image);
+      main.appendChild(imageLink);
+    }
+
+    const content = document.createElement('div');
+    content.className = 'h-threads-content';
+    if (item.contentHtml) content.innerHTML = item.contentHtml;
+    else content.textContent = item.contentText || item.contentRaw || '';
+    main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
+
+    const footer = document.createElement('div');
+    footer.className = 'xdex-history-footer xdex-post-history-footer';
+    if (item.status !== 'confirmed') appendThreadHistoryText(footer, 'span', 'xdex-post-history-status', item.status === 'pending' ? '确认中' : item.status === 'failed' ? '失败' : '未确认');
+    const forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
+    if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', `${forumName}`);
+    appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', item.type === 'reply' ? '回复' : '主题');
+    if (item.threadId) appendThreadHistoryText(footer, 'span', 'xdex-post-history-thread', `串号：${item.threadId}`);
+    // 优先从浏览历史获取最近浏览页（仅 thread 类型），否则回退到记录中的 page
+    // const displayPage = item.page;
+    let displayPage = item.page;
+    if (item.type === 'thread' && item.threadId) {
+      const historyUrl = getLatestThreadHistoryUrl(item.threadId);
+      if (historyUrl) {
+        const parsed = parseThreadHistoryUrl(historyUrl);
+        if (parsed && parsed.page) displayPage = parsed.page;
+      }
+    }
+    if (displayPage) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${displayPage}`);
+    main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
+    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    return wrapper;
+  }
+
+  function renderPostHistoryModule(query) {
+    const root = document.getElementById('sp_posts_results');
+    if (!root) return;
+    postHistoryLiveRenderDirty = false;
+    const input = document.getElementById('sp_posts_search');
+    const effectiveQuery = query == null && input ? input.value : query;
+    const results = searchPostHistory(effectiveQuery || '', postHistoryActiveType);
+    const count = document.getElementById('sp_posts_count');
+    if (count) {
+      count.textContent = `${results.length} 条 `;
+      count.appendChild(buildHistorySearchHelpMark(POST_HISTORY_SEARCH_HELP_TEXT));
+    }
+    root.textContent = '';
+    if (!results.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-history-empty xdex-post-history-empty';
+      empty.textContent = effectiveQuery ? '没有匹配的我的发言' : (postHistoryActiveType === 'reply' ? '暂无我的回复' : '暂无我的主题');
+      root.appendChild(empty);
+      return;
+    }
+    batchRenderHistoryItems(root, results, buildPostHistoryItemElement, 'postHistory');
+  }
+
+  function renderPostHistoryModuleSoon(query) {
+    postHistoryLiveRenderDirty = false;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => renderPostHistoryModule(query));
+      return;
+    }
+    setTimeout(() => renderPostHistoryModule(query), 0);
+  }
+
+  function setPostHistoryType(type) {
+    postHistoryActiveType = normalizePostHistoryType(type);
+    $('#sp_posts_type_buttons [data-post-history-type]').removeClass('active')
+      .filter(`[data-post-history-type="${postHistoryActiveType}"]`).addClass('active');
+    renderPostHistoryModule();
+  }
+
+  function bindPostHistoryModuleEvents() {
+    $('#sp_posts_search').off('input.xdex-post-history').on('input.xdex-post-history', function () {
+      renderPostHistoryModule(this.value || '');
+    });
+    $('#sp_posts_type_buttons').off('click.xdex-post-history', '[data-post-history-type]').on('click.xdex-post-history', '[data-post-history-type]', function (e) {
+      e.preventDefault();
+      setPostHistoryType(this.dataset.postHistoryType || 'thread');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-reply', '.xdex-post-history-reply-action').on('click.xdex-post-history-reply', '.xdex-post-history-reply-action', function (e) {
+      if (e.button !== 0) return;
+      const url = this.href || '';
+      if (!url) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        window.location.href = url;
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-image-quote', '.xdex-post-history-image').on('click.xdex-post-history-image-quote', '.xdex-post-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.postHistoryQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-delete', '.xdex-post-history-delete').on('click.xdex-post-history-delete', '.xdex-post-history-delete', function (e) {
+      e.preventDefault();
+      const key = this.dataset.postHistoryKey || '';
+      if (!key) return;
+      if (!window.confirm('确定要删除这条发言记录吗？')) return;
+      deletePostHistoryItem(key);
+      renderPostHistoryModule();
+      toast('已删除发言记录');
+    });
+    $('#sp_posts_clear').off('click.xdex-post-history').on('click.xdex-post-history', function (e) {
+      e.preventDefault();
+      if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
+      clearPostHistory();
+      renderPostHistoryModule();
+      toast('已清空我的发言');
     });
   }
 
@@ -1353,9 +2810,9 @@
     return 0;
   }
 
-  function gmRequest(url, responseType = 'text') {
+  function gmRequest(url, responseType = 'text', headers = null) {
     return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
+      const request = {
         method: 'GET',
         url,
         responseType,
@@ -1368,7 +2825,9 @@
         },
         onerror: () => reject(new Error(`Request failed: ${url}`)),
         ontimeout: () => reject(new Error(`Request timeout: ${url}`))
-      });
+      };
+      if (headers) request.headers = headers;
+      GM_xmlhttpRequest(request);
     });
   }
 
@@ -2320,6 +3779,7 @@ ${markedSwatchHtml}
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
+      postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       threadCookieWhitelistGroups: [],
       threadCookieWhitelistDisplayMode: 'fold', // 只看饼干：fold | hide | column
       poAnnotationSideDisplayMode: 'collapse', // 分栏侧栏：collapse | expand
@@ -2327,13 +3787,9 @@ ${markedSwatchHtml}
       replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
       markedGroups: [],
       blockedCookies: [],
-
       blockedKeywords: [],
-
       favoriteThreads: [],
-
       blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
-
     },
     state: {},
 
@@ -2481,65 +3937,70 @@ ${markedSwatchHtml}
         expandSelect.value = enabled ? 'expand' : 'collapse';
       }
       const timeDisplaySelect = document.getElementById('sp_timeDisplayMode');
+
       if (timeDisplaySelect) {
         timeDisplaySelect.value = (this.state && this.state.timeDisplayMode === 'exact') ? 'exact' : 'relative';
       }
+      const postAfterSelect = document.getElementById('sp_postAfterAction');
+      if (postAfterSelect) {
+        postAfterSelect.value = (this.state && this.state.postAfterAction === 'refresh') ? 'refresh' : 'jump';
+      }
     },
 
-init() {
-  const saved = GM_getValue(this.key, {});
-  const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
-  
-  console.log('init读取的原始数据:', JSON.stringify(saved));
-      this.state = Object.assign({}, this.defaults, saved);
-      if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
-  // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
-  this.state.enableImageHideMode = true;
-  console.log('init合并后的state:', JSON.stringify(this.state));
-  
-  // 兼容迁移：屏蔽饼干到组结构
-  this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
-  this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
-  this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
-  this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
-  this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
-  
-  // 清理废弃字段
-  const validKeys = Object.keys(this.defaults);
-  let needCleanup = false;
-  Object.keys(this.state).forEach(key => {
-    if (!validKeys.includes(key)) {
-      delete this.state[key];
-      needCleanup = true;
-    }
-  });
-  
-  console.log('init清理后的state:', JSON.stringify(this.state));
-  
-  // 只在首次初始化或需要清理废弃字段时才保存
-  if (isFirstInit || needCleanup) {
-    console.log('首次初始化或需要清理，执行保存');
-    GM_setValue(this.key, this.state);
-  }
-
-  this.render();
-  GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
-    if(remote){
-      this.state = Object.assign({}, this.defaults, nv);
+    init() {
+      const saved = GM_getValue(this.key, {});
+      const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
+      
+      console.log('init读取的原始数据:', JSON.stringify(saved));
+          this.state = Object.assign({}, this.defaults, saved);
+          if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
+      // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
+      this.state.enableImageHideMode = true;
+      console.log('init合并后的state:', JSON.stringify(this.state));
+      
+      // 兼容迁移：屏蔽饼干到组结构
       this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
       this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
       this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
       this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
       this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
-      if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
-      this.syncInputs();
-      this.syncAuxiliaryControls();
-      try { renderFavoriteThreadsMenu(); } catch (e) {}
-      try { refreshFilterDisplay(this.state); } catch (e) {}
-      try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
-    }
-  });
-},
+      
+      // 清理废弃字段
+      const validKeys = Object.keys(this.defaults);
+      let needCleanup = false;
+      Object.keys(this.state).forEach(key => {
+        if (!validKeys.includes(key)) {
+          delete this.state[key];
+          needCleanup = true;
+        }
+      });
+      
+      console.log('init清理后的state:', JSON.stringify(this.state));
+      
+      // 只在首次初始化或需要清理废弃字段时才保存
+      if (isFirstInit || needCleanup) {
+        console.log('首次初始化或需要清理，执行保存');
+        GM_setValue(this.key, this.state);
+      }
+
+      this.render();
+      GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
+        if(remote){
+          this.state = Object.assign({}, this.defaults, nv);
+          this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
+          this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
+          this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
+          this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
+          this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
+          if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
+          this.syncInputs();
+          this.syncAuxiliaryControls();
+          try { renderFavoriteThreadsMenu(); } catch (e) {}
+          try { refreshFilterDisplay(this.state); } catch (e) {}
+          try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
+        }
+      });
+    },
 
     render() {
       if (!$('#xdex-setting-style').length) {
@@ -2696,8 +4157,13 @@ init() {
                     }
 
                   #sp_panel_tab_slot .sp_panel_tab[data-sp-module="history"] {
-                         --sp-panel-tab-bg:#0080FF;
-                    }
+                          --sp-panel-tab-bg:#0080FF;
+                     }
+
+                  #sp_panel_tab_slot .sp_panel_tab[data-sp-module="posts"] {
+                          --sp-panel-tab-bg:#FFFF00;
+                          color:#332200;
+                     }
 
                   #sp_panel_tab_slot .sp_panel_tab.active,
                   #sp_panel_tab_slot .sp_panel_tab:hover,
@@ -2749,11 +4215,12 @@ init() {
                         min-height:0;
                   }
 
-                  #sp_module_history.sp_panel_module.active {
-                        display:flex;
-                        flex-direction:column;
-                        flex:1;
-                        min-height:0;
+                  #sp_module_history.sp_panel_module.active,
+                  #sp_module_posts.sp_panel_module.active {
+                         display:flex;
+                         flex-direction:column;
+                         flex:1;
+                         min-height:0;
                   }
 
                   .sp_panel_module:not(.active) {
@@ -2795,16 +4262,52 @@ init() {
                           background:var(--xdex-sp-panel-bg);
                      }
 
-                  .xdex-history-toolbar .xdex-history-count {
-                          white-space:nowrap;
-                     }
+                   .xdex-history-toolbar .xdex-history-count {
+                           white-space:nowrap;
+                      }
+
+                   .xdex-history-toolbar .xdex-history-search-help {
+                           display:inline-block;
+                           margin-left:3px;
+                           text-decoration:underline;
+                           cursor:help;
+                           color:inherit;
+                      }
 
                    #sp_history_results {
-                          display:block;
-                          min-height:40px;
-                          padding-top:8px;
-                          color:inherit;
+                           display:block;
+                           min-height:40px;
+                           padding-top:8px;
+                           color:inherit;
+                      }
+
+                   #sp_posts_results {
+                           display:block;
+                           min-height:40px;
+                           padding-top:8px;
+                           color:inherit;
+                      }
+
+                   .xdex-post-history-type-buttons {
+                          display:flex;
+                          gap:8px;
+                          margin:0 0 10px;
                      }
+
+                   .xdex-post-history-type-buttons button {
+                          flex:1;
+                          padding:6px 8px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                     }
+
+                   .xdex-post-history-type-buttons button.active {
+                           background:#F0E0D6;
+                           color:#332200;
+                           font-weight:bold;
+                      }
 
                    .xdex-history-item {
                            display:block !important;
@@ -2864,6 +4367,7 @@ init() {
                        }
 
                     .xdex-history-delete,
+                    .xdex-post-history-delete,
                     .xdex-history-reply-action {
                            text-decoration:none;
                            border:0;
@@ -2874,6 +4378,7 @@ init() {
                       }
 
                     .xdex-history-delete:hover,
+                    .xdex-post-history-delete:hover,
                     .xdex-history-reply-action:hover {
                            text-decoration:underline;
                       }
@@ -2886,10 +4391,11 @@ init() {
                            color:#059;
                       }
 
-                     .xdex-history-delete {
-                            position:absolute;
-                            top:-9px;
-                            right:10px;
+                     .xdex-history-delete,
+                     .xdex-post-history-delete {
+                             position:absolute;
+                             top:-9px;
+                             right:10px;
                             width:20px;
                             height:20px;
                             border:1px solid #a98f7a;
@@ -2934,19 +4440,21 @@ init() {
                          font-size:12px;
                     }
 
-                  .xdex-history-image {
-                         display:block;
-                         width:112px;
-                         max-height:112px;
+                  .xdex-history-image,
+                  .xdex-post-history-image {
+                          display:block;
+                          width:112px;
+                          max-height:112px;
                          margin:6px 10px 6px 0;
                          overflow:hidden;
                          float:left;
                     }
 
-                  .xdex-history-image img {
-                         max-width:112px;
-                         max-height:112px;
-                         object-fit:contain;
+                  .xdex-history-image img,
+                  .xdex-post-history-image img {
+                          max-width:112px;
+                          max-height:112px;
+                          object-fit:contain;
                     }
 
                    .xdex-history-footer,
@@ -3020,6 +4528,7 @@ init() {
             <div id="sp_panel_tab_slot" aria-label="设置面板模块">
               <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span></button>
               <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon">言</span><span class="sp_panel_tab_label">我的发言</span></button>
             </div>
             <div id="sp_panel_views">
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
@@ -3074,6 +4583,8 @@ init() {
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
+
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -3201,7 +4712,7 @@ init() {
                       <span style="font-size:20px; font-weight:bold;">浏览历史</span>
                     </div>
                     <div class="xdex-history-toolbar">
-                      <input id="sp_history_search" type="search" autocomplete="off" placeholder="搜索串号、标题、饼干、正文；支持 mode:po has:image has:zwsp">
+                      <input id="sp_history_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
                       <span id="sp_history_count" class="xdex-history-count">0 条</span>
                       <select id="sp_history_sort" aria-label="浏览历史排序">
                         <option value="last-desc">最近访问优先</option>
@@ -3213,6 +4724,25 @@ init() {
                       <button id="sp_history_clear" type="button" style="padding:6px 10px;">清空</button>
                     </div>
                     <div id="sp_history_results"></div>
+                  </div>
+                </div>
+              </div>
+              <div id="sp_module_posts" class="sp_panel_module" data-sp-module-view="posts">
+                <div class="sp_panel_content">
+                  <div id="sp_posts_content">
+                    <div id="sp_posts_title" style="margin:0 0 10px; position:relative; text-align:center;">
+                      <span style="font-size:20px; font-weight:bold;">我的发言</span>
+                    </div>
+                    <div class="xdex-history-toolbar">
+                      <input id="sp_posts_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
+                      <span id="sp_posts_count" class="xdex-history-count">0 条</span>
+                      <button id="sp_posts_clear" type="button" style="padding:6px 10px;">清空</button>
+                    </div>
+                    <div id="sp_posts_type_buttons" class="xdex-post-history-type-buttons">
+                      <button type="button" data-post-history-type="thread">我的主题</button>
+                      <button type="button" data-post-history-type="reply" class="active">我的回复</button>
+                    </div>
+                    <div id="sp_posts_results"></div>
                   </div>
                 </div>
               </div>
@@ -3245,11 +4775,11 @@ init() {
         const $activeModule = $('#sp_panel_views .sp_panel_module')
           .filter(`[data-sp-module-view="${nextModule}"]`)
           .addClass('active')
-          .css({ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: nextModule === 'history' ? '300px' : '0' });
-        if (nextModule === 'history') {
+          .css({ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: (nextModule === 'history' || nextModule === 'posts') ? '300px' : '0' });
+        if (nextModule === 'history' || nextModule === 'posts') {
           $activeModule.find('.sp_panel_content').css({ display: 'block', flex: '1 1 auto', minHeight: '300px', overflowY: 'auto', boxSizing: 'border-box' });
-          $activeModule.find('#sp_history_content').css({ display: 'block' });
-          $activeModule.find('#sp_history_results').css({ display: 'block', minHeight: '40px' });
+          $activeModule.find('#sp_history_content,#sp_posts_content').css({ display: 'block' });
+          $activeModule.find('#sp_history_results,#sp_posts_results').css({ display: 'block', minHeight: '40px' });
         }
         $('#sp_panel_footer .sp_panel_links').show();
         $('#sp_panel_footer .sp_panel_links a').toggle(nextModule === 'settings');
@@ -3278,6 +4808,7 @@ init() {
         logThreadHistory('panel tab clicked', { module: $(e.currentTarget).data('spModule') });
         setSettingsPanelModule($(e.currentTarget).data('spModule'));
         if ($(e.currentTarget).data('spModule') === 'history') renderThreadHistoryModuleSoon();
+        if ($(e.currentTarget).data('spModule') === 'posts') renderPostHistoryModuleSoon();
       });
       $('#sp_panel_tab_slot').off('mouseenter mouseleave', '.sp_panel_tab')
         .on('mouseenter', '.sp_panel_tab', (e) => { $(e.currentTarget).addClass('is-hover'); })
@@ -3285,7 +4816,10 @@ init() {
       setSettingsPanelModule('settings');
       bindThreadHistoryModuleEvents();
       bindThreadHistoryLiveSync();
+      bindPostHistoryModuleEvents();
+      bindPostHistoryLiveSync();
       renderThreadHistoryModule();
+      renderPostHistoryModule();
 
       // 折叠头：统一控制
       $('.sp_fold_head').off('click').on('click', function(){
@@ -3438,6 +4972,19 @@ init() {
 
               try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
               toast(nextState ? '已展开长串' : '已折叠长串');
+          });
+      })();
+
+      (function initPostAfterActionSelect() {
+          const sel = document.getElementById('sp_postAfterAction');
+          if (!sel) return;
+          sel.value = (SettingPanel.state && SettingPanel.state.postAfterAction) || 'jump';
+          sel.addEventListener('change', (e) => {
+              e.stopPropagation();
+              const action = (sel.value || 'jump') === 'jump' ? 'jump' : 'refresh';
+              SettingPanel.state.postAfterAction = action;
+              try { GM_setValue(SettingPanel.key, SettingPanel.state); } catch (err) {}
+              toast(action === 'jump' ? '已切换为：发串后新标签页打开' : '已切换为：发串后刷新页面回顶部');
           });
       })();
 
@@ -4315,9 +5862,7 @@ init() {
       // ====== 1. 定义功能描述映射表 ======
 
       const spDescriptions = {
-
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
-
         sp_enablePaginationDuplication: '在串首页添加页码导航栏',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
@@ -4355,6 +5900,8 @@ init() {
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
+        sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
+        sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
       };
 
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
@@ -8727,8 +10274,15 @@ init() {
   hdImageDebugTarget.__xdexClearHDImageTiming = clearHDImageTiming;
   hdImageDebugTarget.__xdexReportHDImageConcurrency = reportHDImageConcurrency;
 
+  function isSettingsPanelImageEnhancementRoot(root) {
+    if (!root || root === document) return false;
+    const node = root.nodeType === 1 ? root : root.parentElement;
+    return !!(node && node.closest && node.closest('#sp_panel'));
+  }
+
   function enableHDImageAndLayoutFix(root = document) {
     return startupPerfDebug.measure('enableHDImageAndLayoutFix', () => {
+    if (isSettingsPanelImageEnhancementRoot(root)) return;
     const isDocumentRoot = root === document;
     if (isDocumentRoot && enableHDImageAndLayoutFix.__documentProcessed) {
       handlePendingHDImageAndLayoutFix(document);
@@ -9566,6 +11120,7 @@ init() {
         mutations.forEach(mutation => {
           mutation.addedNodes.forEach(node => {
             if (node.nodeType !== 1 || !node.dataset) return;
+            if (node.closest && node.closest('#sp_panel')) return;
             const isRelevant = node.matches?.('.h-threads-img-box, .h-threads-img-a, .h-threads-img, .h-threads-content, .h-preview-box')
               || node.querySelector?.('.h-threads-img-box, .h-threads-img-a, .h-threads-img, .h-threads-content, .h-preview-box');
             if (isRelevant) node.dataset.xdexHdLayoutPending = '1';
@@ -10434,7 +11989,7 @@ init() {
   //引用格式拓展
   function extendQuote(root = document) {
     return startupPerfDebug.measure('extendQuote', () => {
-    const ROOT_SELECTOR = '.h-threads-content, .h-post-form-input';
+    const ROOT_SELECTOR = '.h-threads-content, .h-post-form-input, .xdex-post-history-thread';
     const QUOTE_COLOR = '#789922';
 
     // 在容器内遍历纯文本节点，避免破坏现有标签
@@ -12694,7 +14249,10 @@ init() {
           }
 
           if (successMsg) {
+
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'));
+
+            const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
 
             // 清空输入框
             const textarea = form.querySelector('textarea[name="content"]');
@@ -12807,15 +14365,51 @@ init() {
               try {
                 refreshRepliesWithSeamlessPaging(() => {
                   // 刷新完成（翻页逻辑已在内部处理）
+                  recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
                   console.log('回复区刷新完成');
                 });
               } catch (err) {
                 console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
               }
             } else {
-              location.reload();
+              // 发串：根据设置决定行为
+              const cfg = (typeof SettingPanel !== 'undefined' && SettingPanel.state) ? SettingPanel.state : {};
+              const postAction = cfg.postAfterAction === 'refresh' ? 'refresh' : 'jump';
+              if (postAction === 'jump' && confirmPromise) {
+                toast('新串发送成功，正在确认地址……');
+                Promise.race([
+                  confirmPromise,
+                  new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
+                ]).then(confirmed => {
+                  if (confirmed && confirmed.url) {
+                    window.open(confirmed.url, '_blank');
+                    toast('已在新标签页打开新串');
+                  } else {
+                    toast('新串已发送，但未能确认地址');
+                  }
+                }).catch(() => {
+                  toast('新串已发送，确认地址超时');
+                });
+              } else if (postAction === 'refresh' && confirmPromise) {
+                // refresh 模式：等待发言历史确认后，跳转板块第一页顶部
+                toast('新串发布成功，正在确认地址……');
+                Promise.race([
+                  confirmPromise,
+                  new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
+                ]).then(() => {
+                  const boardPage1 = location.origin + location.pathname + '?page=1';
+                  toast('正在转版块第一页……');
+                  window.location.href = boardPage1;
+                }).catch(() => {
+                  const boardPage1 = location.origin + location.pathname + '?page=1';
+                  toast('确认地址超时，正在转版块第一页……');
+                  window.location.href = boardPage1;
+                });
+              } else {
+                // jump 模式但无 confirmPromise：直接刷新页面
+                location.reload();
+              }
             }
-
           } else if (errorMsg) {
             const msg = errorMsg.textContent.trim() || '提交失败';
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
@@ -13145,14 +14739,26 @@ init() {
         return;
       }
 
-      const targetReplies = targetPage
+      let targetReplies = targetPage
         ? list.querySelector(`.h-threads-item-replies[data-cloned-page="${targetPage}"]`)
         : list.querySelector('.h-threads-item-replies:not([data-cloned-page])');
 
+      // 如果没有找到回复区（无回复时只有主串），自动创建回复区容器
       if (!targetReplies) {
-        toast('未找到目标回复区');
-        if (typeof done === 'function') done();
-        return;
+        const threadItem = list.querySelector('.h-threads-item');
+        if (threadItem) {
+          targetReplies = document.createElement('div');
+          targetReplies.className = 'h-threads-item-replies';
+          if (targetPage) {
+            targetReplies.setAttribute('data-cloned-page', String(targetPage));
+          }
+          threadItem.appendChild(targetReplies);
+          console.log('[refreshRepliesWithSeamlessPaging] 已创建空的回复区容器');
+        } else {
+          toast('未找到目标回复区');
+          if (typeof done === 'function') done();
+          return;
+        }
       }
 
       let fetchUrl;
@@ -13768,36 +15374,29 @@ init() {
             function insertAtCaret(textarea, text, selStart, selEnd) {
                 // 记录插入前的滚动位置
                 const prevScrollTop = textarea.scrollTop;
-
                 // 确定插入位置
                 let start = Number.isInteger(selStart) ? selStart : textarea.selectionStart;
                 let end   = Number.isInteger(selEnd)   ? selEnd   : textarea.selectionEnd;
                 if (!Number.isInteger(start) || !Number.isInteger(end)) {
                     start = end = textarea.value.length;
                 }
-
-                // 拼接新内容
-                const before = textarea.value.slice(0, start);
-                const after  = textarea.value.slice(end);
-                textarea.value = before + text + after;
-
-                // 插入后的光标位置
-                const newPos = start + text.length;
-
-                // 关键：重新 focus 并设置光标位置
+                // 优先用 execCommand 插入（保留浏览器撤销历史，支持 Ctrl+Z）
                 textarea.focus();
-                textarea.setSelectionRange(newPos, newPos);
-
-                // 延迟触发 input 事件，避免与原生逻辑冲突
-                setTimeout(() => {
+                textarea.setSelectionRange(start, end);
+                const success = document.execCommand('insertText', false, text);
+                if (!success) {
+                    // 回退：execCommand 不可用时走原逻辑
+                    const before = textarea.value.slice(0, start);
+                    const after  = textarea.value.slice(end);
+                    textarea.value = before + text + after;
+                    const newPos = start + text.length;
+                    textarea.setSelectionRange(newPos, newPos);
                     textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }, 0);
-
+                }
                 // 恢复滚动条位置
                 textarea.scrollTop = prevScrollTop;
-
-                // 更新记忆位置
-                lastStart = lastEnd = newPos;
+                // 更新记忆位置（execCommand 后光标自动在插入文本末尾）
+                lastStart = lastEnd = textarea.selectionStart;
             }
         });
     }
@@ -18379,7 +19978,7 @@ init() {
   }
 
   /* --------------------------------------------------
-   * tag 24. 常用串
+   * tag 24. 常用串/浏览历史/发言历史
    * -------------------------------------------------- */
   function getFavoriteThreadsConfig() {
     try {
@@ -18452,6 +20051,36 @@ init() {
     } catch (e) {
       console.warn('[thread-history] open settings failed:', e);
     }
+  }
+
+  function openPostHistorySettingsPanel() {
+    try {
+      if (!$('#sp_btn').length) SettingPanel.init();
+      $('#sp_btn').trigger('click');
+      window.setTimeout(() => {
+        $('#sp_panel_tab_slot [data-sp-module="posts"]').trigger('click');
+      }, 0);
+    } catch (e) {
+      console.warn('[post-history] open settings failed:', e);
+    }
+  }
+
+  function createPostHistoryMenuNode() {
+    const li = document.createElement('li');
+    li.id = 'xdex-post-history-menu';
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'h-nav-parent-header fr-bold-33d0c43d3b0';
+    link.setAttribute('achecked', '1');
+    link.textContent = '我的发言(EX)';
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPostHistorySettingsPanel();
+      return false;
+    };
+    li.appendChild(link);
+    return li;
   }
 
   function addCurrentThreadToFavoriteThreads() {
@@ -18619,20 +20248,24 @@ init() {
     menu.classList.add('uk-nav-parent-icon');
     ensureFavoriteThreadsMenuStyle();
     const old = document.getElementById('xdex-favorite-threads-menu');
-    const oldHistory = document.getElementById('xdex-thread-history-menu');
+    const oldThreadHistory = document.getElementById('xdex-thread-history-menu');
+    const oldPostHistory = document.getElementById('xdex-post-history-menu');
     const wasOpen = !!(old && old.classList.contains('uk-open'));
     if (old) old.remove();
-    if (oldHistory) oldHistory.remove();
+    if (oldThreadHistory) oldThreadHistory.remove();
+    if (oldPostHistory) oldPostHistory.remove();
 
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
-    const historyNode = createThreadHistoryMenuNode();
+    const threadHistoryNode = createThreadHistoryMenuNode();
+    const postHistoryNode = createPostHistoryMenuNode();
     const timeline = Array.from(menu.children).find((li) => {
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
       return header && (header.textContent || '').trim() === '时间线';
     });
     menu.insertBefore(node, timeline || menu.firstChild);
-    menu.insertBefore(historyNode, timeline || node.nextSibling);
+    menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
+    menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
   }
 
   /* --------------------------------------------------
@@ -18668,6 +20301,8 @@ init() {
       }                                                              //折叠版规-发串-回复
     //if (cfg.updateReplyNumbers)          updateReplyNumbers();     //添加回复编号
     if (cfg.enableSeamlessPaging)        initSeamlessPaging();       //自动-手动无缝翻页
+    bindThreadHistoryLiveSync();
+    bindPostHistoryLiveSync();
     if (cfg.enableUpdateCheck) {
       initializeUpdateReminderUI();                                   //检查更新UI状态初始化
       scheduleDailyUpdateCheck();                                     //每日检查更新

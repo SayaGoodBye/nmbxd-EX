@@ -5,6 +5,9 @@ const root = path.resolve(__dirname, '..');
 const userscriptPath = path.join(root, 'src', 'content', 'nmbxd-EX-for-edit.user.js');
 const gmCompatPath = path.join(root, 'src', 'content', 'gm-compat.js');
 const manifestPath = path.join(root, 'manifest.json');
+const updateJsonPath = path.join(root, 'update.json');
+const githubReleaseUrl = 'https://github.com/SayaGoodBye/nmbxd-EX/releases/latest';
+const baiduPanUrl = 'https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf';
 
 function read(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -19,6 +22,20 @@ function extractUserscriptHeader(sourceText) {
 function readMetaValue(header, key) {
   const match = String(header || '').match(new RegExp('^//\\s*@' + key + '\\s+(.+)$', 'm'));
   return match ? String(match[1] || '').trim() : '';
+}
+
+function normalizeMetaChangelog(text) {
+  return String(text || '')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .trim();
+}
+
+function readMetaValues(header, key) {
+  return [...String(header || '').matchAll(new RegExp('^//\\s*@' + key + '\\s+(.+)$', 'gm'))]
+    .map((match) => String(match[1] || '').trim())
+    .filter(Boolean);
 }
 
 function toArrayLiteralLines(text) {
@@ -72,10 +89,27 @@ function syncManifestVersion(manifestText, version) {
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
+function buildUpdateJson(header) {
+  const version = readMetaValue(header, 'version');
+  const changelog = normalizeMetaChangelog(readMetaValues(header, 'changelog').join('\n'));
+  if (!version) throw new Error('Userscript @version not found');
+  return `${JSON.stringify({
+    extension: {
+      version,
+      changelog,
+      downloads: {
+        github: githubReleaseUrl,
+        baidupan: baiduPanUrl
+      }
+    }
+  }, null, 2)}\n`;
+}
+
 const header = extractUserscriptHeader(read(userscriptPath));
 const version = readMetaValue(header, 'version');
 const nextGmCompat = replaceGeneratedBlock(read(gmCompatPath), header);
 fs.writeFileSync(gmCompatPath, nextGmCompat, 'utf8');
 fs.writeFileSync(manifestPath, syncManifestVersion(read(manifestPath), version), 'utf8');
+fs.writeFileSync(updateJsonPath, buildUpdateJson(header), 'utf8');
 
-console.log('Extension userscript metadata and manifest version synced');
+console.log('Extension userscript metadata, manifest version, and update.json synced');

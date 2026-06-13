@@ -91,19 +91,29 @@ jobs:
           const fs = require('fs');
 
           const userscript = fs.readFileSync('dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js', 'utf8');
+
           const gmCompat = fs.readFileSync('dist/nmbxd-EX-Extension/src/content/gm-compat.js', 'utf8');
+
           const manifest = JSON.parse(fs.readFileSync('dist/nmbxd-EX-Extension/manifest.json', 'utf8'));
 
+          const update = JSON.parse(fs.readFileSync('dist/nmbxd-EX-Extension/update.json', 'utf8'));
+
+
+
           const userscriptVersion = userscript.match(/^\/\/\s*@version\s+(.+)$/m)?.[1]?.trim();
+
           const gmVersion = gmCompat.match(/version:\s*"([^"]+)"/)?.[1];
 
           if (!userscriptVersion) throw new Error('Missing userscript @version');
           if (gmVersion !== userscriptVersion) {
             throw new Error(`gm-compat version ${gmVersion} does not match userscript ${userscriptVersion}`);
           }
-          if (manifest.version !== userscriptVersion) {
-            throw new Error(`manifest version ${manifest.version} does not match userscript ${userscriptVersion}`);
-          }
+          if (manifest.version !== userscriptVersion) {
+            throw new Error(`manifest version ${manifest.version} does not match userscript ${userscriptVersion}`);
+          }
+          if (!update.extension || update.extension.version !== userscriptVersion) {
+            throw new Error(`update.json version ${update.extension && update.extension.version} does not match userscript ${userscriptVersion}`);
+          }
           if (!manifest.key) {
             throw new Error('Missing manifest key for stable unpacked extension ID');
           }
