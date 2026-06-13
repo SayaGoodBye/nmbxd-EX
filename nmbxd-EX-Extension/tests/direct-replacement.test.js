@@ -180,11 +180,58 @@ function testGmInfoMetadataMatchesUserscriptHeader() {
 }
 
 function testManifestVersionMatchesUserscriptHeader() {
+
   const manifest = JSON.parse(read('manifest.json'));
+
   const userscriptHeader = normalizeLineEndings(extractUserscriptHeader(read('src/content/nmbxd-EX-for-edit.user.js')));
+
   const userscriptVersion = readMetaValue(userscriptHeader, 'version');
+
   assert(manifest.version === userscriptVersion, 'manifest version must match userscript @version');
+
 }
+
+
+
+function testUpdateJsonVersionMatchesUserscriptHeader() {
+
+  const update = JSON.parse(read('update.json'));
+
+  const userscriptHeader = normalizeLineEndings(extractUserscriptHeader(read('src/content/nmbxd-EX-for-edit.user.js')));
+
+  const userscriptVersion = readMetaValue(userscriptHeader, 'version');
+
+  assert(update.extension && update.extension.version === userscriptVersion, 'update.json extension version must match userscript @version');
+
+}
+
+
+
+function testSyncScriptUpdatesUpdateJson() {
+
+  const syncScript = read('scripts/sync-userscript-meta.js');
+
+  assert(syncScript.includes('const updateJsonPath = path.join(root, \'update.json\')'), 'sync script must target update.json');
+
+  assert(syncScript.includes('function buildUpdateJson(header)'), 'sync script must build update.json from userscript metadata');
+
+  assert(syncScript.includes('fs.writeFileSync(updateJsonPath, buildUpdateJson(header), \'utf8\')'), 'sync script must write update.json during metadata sync');
+
+}
+
+
+
+function testReleaseWorkflowVerifiesUpdateJson() {
+
+  const workflow = fs.readFileSync(path.resolve(root, '..', '.github', 'workflows', 'release.yml'), 'utf8');
+
+  assert(workflow.includes("const update = JSON.parse(fs.readFileSync('dist/nmbxd-EX-Extension/update.json', 'utf8'));"), 'release workflow must read extension update.json');
+
+  assert(workflow.includes('update.extension.version !== userscriptVersion'), 'release workflow must verify update.json version against userscript');
+
+}
+
+
 
 function createGmCompatStorageContext() {
   const storage = new Map();
@@ -556,7 +603,10 @@ async function testUserscriptBridgeWrapsInitContent() {
   testDirectUserscriptCopy();
   testExtensionRuntimeDescriptor();
   testGmInfoMetadataMatchesUserscriptHeader();
-  testManifestVersionMatchesUserscriptHeader();
+  testManifestVersionMatchesUserscriptHeader();
+  testUpdateJsonVersionMatchesUserscriptHeader();
+  testSyncScriptUpdatesUpdateJson();
+  testReleaseWorkflowVerifiesUpdateJson();
   testGmCompatLocalStorageSyncBridge();
   await testGmCompatSameOriginFetchFallback();
   testUserscriptRuntimeLogHelper();
