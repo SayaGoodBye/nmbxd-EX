@@ -260,7 +260,7 @@
     '6': '游戏线',
     '7': '生活线'
   });
-  const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：mode:po has:image 关键词';
+  const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\nhas:sage 被 SAGE 的串\n可组合：mode:po has:image has:sage 关键词';
   const postHistoryConfirmationMap = new Map(); // 等待发串确认后跳转的 Promise 存储器 { localId -> resolver }
   const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、板块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定板块 ID\nforum:综合 模糊匹配板块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
@@ -1263,26 +1263,42 @@
     return null;
   }
 
-  async function completePostHistoryFromThreadFallback(localId, snapshot) {
+  const POST_HISTORY_THREAD_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
+
+  async function completePostHistoryFromThreadFallback(localId, snapshot, retryAttempt) {
     if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
       logPostHistory('thread fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
       return false;
     }
     const threadId = String(snapshot.resto || '').trim();
-    const firstPage = await fetchPostHistoryThreadPage(threadId, 1, { localId, phase: 'count' });
-    const pages = getPostHistoryThreadFallbackPages(firstPage.replyCount);
-    const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
-    for (const page of pages) {
-      const pageData = page === 1 ? firstPage : await fetchPostHistoryThreadPage(threadId, page, { localId, phase: 'scan' });
-      const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
-      if (post) {
-        logPostHistory('thread fallback confirmed', { localId, page, candidate: summarizePostHistoryCandidate(post) });
-        confirmPostHistorySnapshot(localId, post);
-        return true;
+    try {
+      const firstPage = await fetchPostHistoryThreadPage(threadId, 1, { localId, phase: 'count', retryAttempt: retryAttempt || 0 });
+      const pages = getPostHistoryThreadFallbackPages(firstPage.replyCount);
+      const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
+      for (const page of pages) {
+        const pageData = page === 1 ? firstPage : await fetchPostHistoryThreadPage(threadId, page, { localId, phase: 'scan' });
+        const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
+        if (post) {
+          logPostHistory('thread fallback confirmed', { localId, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
+          confirmPostHistorySnapshot(localId, post);
+          return true;
+        }
       }
+      logPostHistory('thread fallback exhausted', { localId, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    } catch (e) {
+      const attempt = retryAttempt || 0;
+      if (attempt < POST_HISTORY_THREAD_PAGE_RETRY_DELAYS.length) {
+        const delay = POST_HISTORY_THREAD_PAGE_RETRY_DELAYS[attempt];
+        logPostHistory('thread page verify retry scheduled', { localId, threadId, attempt, nextAttempt: attempt + 1, delay, error: e && e.message ? e.message : String(e) });
+        setTimeout(() => {
+          completePostHistoryFromThreadFallback(localId, snapshot, attempt + 1);
+        }, delay);
+        return false;
+      }
+      logPostHistory('thread page verify error', { localId, threadId, attempts: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
+      return false;
     }
-    logPostHistory('thread fallback exhausted', { localId, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-    return false;
   }
 
   function postHistoryMatchesSnapshot(post, snapshot, usedIds) {
@@ -1419,9 +1435,7 @@
         const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });
         confirmPostHistorySnapshot(localId, post);
         if (confirmedSnapshot.type === 'reply') {
-          completePostHistoryFromThreadFallback(localId, confirmedSnapshot).catch(e => {
-            logPostHistory('thread page verify error', { localId, id, error: e && e.message ? e.message : String(e) }, 'warn');
-          });
+          completePostHistoryFromThreadFallback(localId, confirmedSnapshot);
         }
       }).catch(e => {
         logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
@@ -1891,6 +1905,10 @@
     const cookieHtml = sanitizeThreadHistoryInlineHtml(cookieEl);
     const createdAtEl = mainEl.querySelector('.h-threads-info-createdat, .h-threads-info time');
     const createdAt = String(createdAtEl && (createdAtEl.getAttribute('title') || createdAtEl.getAttribute('datetime')) || getElementTextPreserveZeroWidth(createdAtEl)).trim();
+    const tipsEl = mainEl.querySelector('.h-threads-tips');
+    const sageHtml = (tipsEl && /SAGE/i.test(tipsEl.textContent || ''))
+      ? '<i class="uk-icon-thumbs-down"></i>&nbsp;本串已经被SAGE'
+      : '';
     return {
       key: getThreadHistoryKey(parsed.mode, parsed.threadId),
       mode: parsed.mode,
@@ -1908,7 +1926,8 @@
       excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
       imageFile,
       contentFlags: { hasVisibleText, hasWhitespaceOnly, hasZeroWidth },
-      lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
+      sageHtml,
+            lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
     };
   }
 
@@ -1933,6 +1952,7 @@
       hasZeroWidth: !!contentFlags.hasZeroWidth,
       hasVisibleText: !!contentFlags.hasVisibleText,
       hasWhitespaceOnly: !!contentFlags.hasWhitespaceOnly,
+      isSage: !!(item && item.sageHtml),
       lastVisitedAt: Number(item && item.lastVisitedAt) || 0
     };
   }
@@ -2026,7 +2046,7 @@
   }
 
   function parseThreadHistorySearchQuery(query) {
-    const filters = { mode: '', hasImage: false, isGif: false, hasZeroWidth: false };
+    const filters = { mode: '', hasImage: false, isGif: false, hasZeroWidth: false, isSage: false };
     const tokens = [];
     String(query || '').toLowerCase().split(/\s+/).filter(Boolean).forEach(token => {
       if (token === 'mode:po') filters.mode = 'po';
@@ -2034,6 +2054,7 @@
       else if (token === 'has:image') filters.hasImage = true;
       else if (token === 'has:gif') filters.isGif = true;
       else if (token === 'has:zwsp' || token === 'has:zerowidth') filters.hasZeroWidth = true;
+      else if (token === 'has:sage') filters.isSage = true;
       else tokens.push(token);
     });
     return { filters, tokens };
@@ -2078,6 +2099,7 @@
         if (filters.hasImage && !entry.hasImage) return false;
         if (filters.isGif && !entry.isGif) return false;
         if (filters.hasZeroWidth && !entry.hasZeroWidth) return false;
+        if (filters.isSage && !entry.isSage) return false;
         return tokens.every(token => entry.searchText.includes(token));
       })
       .map(key => ({ key, item: store.items[key], index: store.index[key] }))
@@ -2341,7 +2363,13 @@
       main.appendChild(imageLink);
     }
 
-    const content = document.createElement('div');
+    if (item.sageHtml) {
+      const sageDiv = document.createElement('div');
+      sageDiv.className = 'h-threads-tips uk-text-danger uk-text-bold';
+      sageDiv.innerHTML = item.sageHtml;
+      main.appendChild(sageDiv);
+    }
+        const content = document.createElement('div');
     content.className = 'h-threads-content';
     if (item.contentHtml) content.innerHTML = item.contentHtml;
     else content.textContent = item.contentText || item.excerpt || '';
