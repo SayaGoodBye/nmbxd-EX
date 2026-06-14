@@ -2760,11 +2760,21 @@
 
   // ─── 订阅 Feed 渲染 ──────────────────────────────────────────────────────
   const SUBSCRIPTION_FEED_API_BASE = 'https://api.nmb.best/api';
+  const SUBSCRIPTION_FEED_SESSION_STORE_KEY = 'xdex_subscription_feed_sessions_v3';
+  const SUBSCRIPTION_FEED_SESSION_VERSION = 3;
+  const SUBSCRIPTION_FEED_SESSION_TTL_MS = 2 * 60 * 1000;
+  const SUBSCRIPTION_FEED_SESSION_MAX_COUNT = 5;
   let subscriptionFeedCurrentPage = 1;
   let subscriptionFeedCurrentUuid = '';
   let subscriptionFeedLoading = false;
   let subscriptionFeedAllItems = [];
   let subscriptionFeedHasMore = true;
+  let subscriptionFeedRequestSeq = 0;
+  const subscriptionFeedInflightPages = Object.create(null);
+  let subscriptionFeedRenderedPages = Object.create(null);
+  let subscriptionFeedHighestRenderedPage = 0;
+  let subscriptionFeedCurrentDisplayPage = 1;
+  let subscriptionFeedCacheExpired = false;
 
   const ACTIVE_FEED_STORAGE_KEY = 'xdex_active_subscription_feed_uuid';
 
@@ -2774,6 +2784,358 @@
 
   function setActiveSubscriptionFeedUuid(uuid) {
     try { GM_setValue(ACTIVE_FEED_STORAGE_KEY, uuid || ''); } catch (e) {}
+  }
+
+  function createDefaultSubscriptionFeedSessionStore() {
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      sessions: {}
+    };
+  }
+
+  function normalizeSubscriptionFeedSessionStore(rawStore) {
+    const store = Object.assign(createDefaultSubscriptionFeedSessionStore(), rawStore || {});
+    store.version = SUBSCRIPTION_FEED_SESSION_VERSION;
+    store.sessions = store.sessions && typeof store.sessions === 'object' ? store.sessions : {};
+    return store;
+  }
+
+  function getSubscriptionFeedSessionStore() {
+    try {
+      return normalizeSubscriptionFeedSessionStore(GM_getValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, null));
+    } catch (e) {
+      return createDefaultSubscriptionFeedSessionStore();
+    }
+  }
+
+  function setSubscriptionFeedSessionStore(store) {
+    const normalized = normalizeSubscriptionFeedSessionStore(store);
+    GM_setValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, normalized);
+    return normalized;
+  }
+
+  function getSubscriptionFeedItemId(item) {
+    return String(Number(item && item.id) || 0);
+  }
+
+  function normalizeSubscriptionFeedPageItems(items) {
+    const list = Array.isArray(items) ? items : [];
+    const seen = new Set();
+    return list.filter((item) => {
+      const id = getSubscriptionFeedItemId(item);
+      if (!id || id === '0' || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+
+  function buildSubscriptionFeedPageEntry(page, items) {
+    const normalizedPage = Math.max(1, Number(page) || 1);
+    const normalizedItems = normalizeSubscriptionFeedPageItems(items);
+    return {
+      page: normalizedPage,
+      fetchedAt: Date.now(),
+      itemIds: normalizedItems.map(getSubscriptionFeedItemId),
+      items: normalizedItems
+    };
+  }
+
+  function computeHighestContiguousSubscriptionFeedPage(pages) {
+    let page = 1;
+    while (pages && pages[String(page)] && Number(pages[String(page)].page) === page) page++;
+    return page - 1;
+  }
+
+  function normalizeSubscriptionFeedSession(session) {
+    if (!session || typeof session !== 'object') return null;
+    const uuid = String(session.uuid || '').trim();
+    if (!uuid) return null;
+    const cachedPages = session.cachedPages && typeof session.cachedPages === 'object' ? session.cachedPages : {};
+    const normalizedPages = {};
+    Object.keys(cachedPages).forEach((key) => {
+      const entry = cachedPages[key] || {};
+      const page = Math.max(1, Number(entry.page || key) || 1);
+      const normalizedItems = normalizeSubscriptionFeedPageItems(entry.items);
+      normalizedPages[String(page)] = {
+        page,
+        fetchedAt: Number(entry.fetchedAt) || 0,
+        itemIds: normalizedItems.map(getSubscriptionFeedItemId),
+        items: normalizedItems
+      };
+    });
+    const highestCachedPage = computeHighestContiguousSubscriptionFeedPage(normalizedPages);
+    const createdAt = Number(session.createdAt) || 0;
+    const expiresAt = Number(session.expiresAt) || 0;
+    const lastAccessAt = Number(session.lastAccessAt) || createdAt || Date.now();
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      uuid,
+      createdAt,
+      expiresAt,
+      lastAccessAt,
+      highestCachedPage,
+      cachedPages: normalizedPages
+    };
+  }
+
+  function isSubscriptionFeedSessionExpired(session) {
+    return !session || !session.expiresAt || Date.now() > Number(session.expiresAt);
+  }
+
+  function isSubscriptionFeedSessionStructurallyValid(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return false;
+    if (!normalized.createdAt || !normalized.expiresAt) return false;
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry || Number(entry.page) !== page || !Array.isArray(entry.items)) return false;
+    }
+    return true;
+  }
+
+  function getSubscriptionFeedSession(uuid) {
+    const key = String(uuid || '').trim();
+    if (!key) return null;
+    const store = getSubscriptionFeedSessionStore();
+    return normalizeSubscriptionFeedSession(store.sessions[key]);
+  }
+
+  function saveSubscriptionFeedSession(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return null;
+    const store = getSubscriptionFeedSessionStore();
+    store.sessions[normalized.uuid] = normalized;
+    const ordered = Object.values(store.sessions)
+      .map(normalizeSubscriptionFeedSession)
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.lastAccessAt) || 0) - (Number(a.lastAccessAt) || 0));
+    const limited = ordered.slice(0, SUBSCRIPTION_FEED_SESSION_MAX_COUNT);
+    store.sessions = {};
+    limited.forEach((item) => {
+      store.sessions[item.uuid] = item;
+    });
+    setSubscriptionFeedSessionStore(store);
+    return normalized;
+  }
+
+  function deleteSubscriptionFeedSession(uuid) {
+    const key = String(uuid || '').trim();
+    if (!key) return;
+    const store = getSubscriptionFeedSessionStore();
+    if (!store.sessions[key]) return;
+    delete store.sessions[key];
+    setSubscriptionFeedSessionStore(store);
+  }
+
+  function pruneExpiredSubscriptionFeedSessions() {
+    const store = getSubscriptionFeedSessionStore();
+    let changed = false;
+    Object.keys(store.sessions).forEach((uuid) => {
+      const session = normalizeSubscriptionFeedSession(store.sessions[uuid]);
+      if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
+        delete store.sessions[uuid];
+        changed = true;
+        return;
+      }
+      store.sessions[uuid] = session;
+    });
+    if (changed) setSubscriptionFeedSessionStore(store);
+  }
+
+  function createSubscriptionFeedSession(uuid, firstPageEntry) {
+    const now = Date.now();
+    const normalizedUuid = String(uuid || '').trim();
+    const cachedPages = {};
+    let highestCachedPage = 0;
+    if (firstPageEntry && Array.isArray(firstPageEntry.items) && firstPageEntry.items.length) {
+      cachedPages[String(firstPageEntry.page)] = firstPageEntry;
+      highestCachedPage = firstPageEntry.page === 1 ? 1 : 0;
+    }
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      uuid: normalizedUuid,
+      createdAt: now,
+      expiresAt: now + SUBSCRIPTION_FEED_SESSION_TTL_MS,
+      lastAccessAt: now,
+      highestCachedPage,
+      cachedPages
+    };
+  }
+
+  function flattenSubscriptionFeedSessionItems(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized || normalized.highestCachedPage <= 0) return [];
+    const items = [];
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry || !Array.isArray(entry.items)) break;
+      items.push(...entry.items);
+    }
+    return items;
+  }
+
+  function resetSubscriptionFeedRuntimeState(uuid) {
+    subscriptionFeedCurrentUuid = String(uuid || '').trim();
+    subscriptionFeedCurrentPage = 0;
+    subscriptionFeedAllItems = [];
+    subscriptionFeedHasMore = true;
+    subscriptionFeedRenderedPages = Object.create(null);
+    subscriptionFeedHighestRenderedPage = 0;
+    subscriptionFeedCurrentDisplayPage = 1;
+    subscriptionFeedCacheExpired = false;
+  }
+
+  function rebuildSubscriptionFeedRuntimeList() {
+    const items = [];
+    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
+      const entry = subscriptionFeedRenderedPages[String(page)];
+      if (!entry || !Array.isArray(entry.items)) break;
+      items.push(...entry.items);
+    }
+    subscriptionFeedAllItems = items;
+    subscriptionFeedCurrentPage = subscriptionFeedHighestRenderedPage;
+  }
+
+  function applySubscriptionFeedSessionToRuntime(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return false;
+    subscriptionFeedCurrentUuid = normalized.uuid;
+    subscriptionFeedRenderedPages = Object.create(null);
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry) break;
+      subscriptionFeedRenderedPages[String(page)] = entry;
+    }
+    subscriptionFeedHighestRenderedPage = normalized.highestCachedPage;
+    subscriptionFeedCurrentDisplayPage = normalized.highestCachedPage > 0 ? 1 : 0;
+    rebuildSubscriptionFeedRuntimeList();
+    subscriptionFeedHasMore = true;
+    subscriptionFeedCacheExpired = false;
+    return true;
+  }
+
+  function appendSubscriptionFeedRenderedPage(pageEntry) {
+    if (!pageEntry || !pageEntry.page || !Array.isArray(pageEntry.items)) return false;
+    const page = Math.max(1, Number(pageEntry.page) || 1);
+    if (page !== subscriptionFeedHighestRenderedPage + 1) return false;
+    subscriptionFeedRenderedPages[String(page)] = pageEntry;
+    subscriptionFeedHighestRenderedPage = page;
+    subscriptionFeedCurrentDisplayPage = page;
+    rebuildSubscriptionFeedRuntimeList();
+    return true;
+  }
+
+  function getSubscriptionFeedNextRenderPage() {
+
+    return Math.max(0, Number(subscriptionFeedHighestRenderedPage) || 0) + 1;
+
+  }
+
+
+  function appendSubscriptionFeedPageSeparator(root, page) {
+    if (!root || !page || page <= 1) return;
+    const sep = document.createElement('div');
+    sep.className = 'xdex-feed-page-separator';
+    sep.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px 0;border-top:1px dashed #ddd;margin-top:8px;';
+    sep.textContent = `——第${page}页——`;
+    root.appendChild(sep);
+  }
+
+  function updateSubscriptionFeedDisplayPageFromScroll() {
+
+    const container = document.querySelector('#sp_module_feeds .sp_panel_content');
+
+    const results = document.getElementById('sp_feeds_results');
+
+    if (!container || !results || subscriptionFeedHighestRenderedPage <= 0) return;
+
+    const separators = Array.from(results.querySelectorAll('.xdex-feed-page-separator'));
+
+    let displayPage = 1;
+
+    const threshold = container.scrollTop + 4;
+
+    separators.forEach((sep) => {
+
+      const page = Number((sep.textContent || '').match(/第(\d+)页/)?.[1] || 0);
+
+      if (!page) return;
+
+      const top = sep.offsetTop;
+
+      if (threshold >= top) displayPage = page;
+
+    });
+
+    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
+
+    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
+
+  }
+
+
+
+  function renderSubscriptionFeedRenderedPages(options = {}) {
+
+    const $results = $('#sp_feeds_results').empty();
+
+    const displayPage = Math.max(0, Number(options.displayPage) || 0) || subscriptionFeedCurrentDisplayPage || subscriptionFeedHighestRenderedPage || 0;
+
+    if (subscriptionFeedHighestRenderedPage <= 0) {
+
+      $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
+
+      $('#sp_feeds_page_label').text('第0页');
+
+      return;
+
+    }
+
+    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
+
+      const entry = subscriptionFeedRenderedPages[String(page)];
+
+      if (!entry || !Array.isArray(entry.items)) break;
+
+      appendSubscriptionFeedPageSeparator($results[0], page);
+
+      entry.items.forEach((item) => {
+
+        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
+
+      });
+
+    }
+
+    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
+
+    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
+
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(updateSubscriptionFeedDisplayPageFromScroll);
+
+    else setTimeout(updateSubscriptionFeedDisplayPageFromScroll, 0);
+
+  }
+
+
+  function restoreSubscriptionFeedSession(uuid) {
+    const session = getSubscriptionFeedSession(uuid);
+    if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
+      if (session) deleteSubscriptionFeedSession(uuid);
+      return false;
+    }
+    const restored = Object.assign({}, session, { lastAccessAt: Date.now() });
+    saveSubscriptionFeedSession(restored);
+    applySubscriptionFeedSessionToRuntime(restored);
+    renderSubscriptionFeedRenderedPages({ displayPage: 1 });
+    return true;
+  }
+
+  function invalidateSubscriptionFeedSession(uuid, reason) {
+    const key = String(uuid || '').trim();
+    if (!key) return;
+    console.info('[subscription-feed] invalidate session', { uuid: key, reason: reason || '' });
+    deleteSubscriptionFeedSession(key);
   }
 
   function populateSubscriptionFeedSelector() {
@@ -2807,7 +3169,7 @@
     $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
     return selected;
   }
-  
+
   function buildSubscriptionFeedItemElement(item) {
     const threadId = Number(item.id) || 0;
     const wrapper = document.createElement('div');
@@ -2822,7 +3184,7 @@
     const infoMain = document.createElement('span');
     infoMain.className = 'xdex-history-info-main';
     info.appendChild(infoMain);
-        const title = String(item.title || '');
+    const title = String(item.title || '');
     const email = String(item.email || '');
     const now = String(item.now || '');
     const userHash = String(item.user_hash || '');
@@ -2842,7 +3204,6 @@
     replyLink.href = `${location.origin}/t/${threadId}`;
     replyLink.textContent = `No.${threadId}`;
     infoMain.appendChild(replyLink);
-    
     const replyCount = Number(item.reply_count) || 0;
     if (replyCount > 0) {
       appendThreadHistoryText(infoMain, 'span', 'xdex-history-visit-count', `${replyCount} 回`);
@@ -2857,7 +3218,7 @@
       .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
     const histItem = histCandidates[0] || null;
     const histPage = histItem ? (Number(histItem.page) || 1) : 1;
-    const histMaxPage = histItem ? (Number(histItem.maxVisitedPage) || histPage) : 1;
+
     // [回应] 链接
     const replyAction = document.createElement('span');
     replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
@@ -2880,7 +3241,7 @@
     deleteButton.title = '取消订阅';
     deleteButton.textContent = '×';
     main.appendChild(deleteButton);
-    
+
     // 图片
     const imgRaw = String(item.img || '');
     const extRaw = String(item.ext || '');
@@ -2900,7 +3261,7 @@
       imageLink.appendChild(img);
       main.appendChild(imageLink);
     }
-    
+
     // 正文
     const content = document.createElement('div');
     content.className = 'h-threads-content';
@@ -2909,7 +3270,7 @@
     else content.textContent = '';
     main.appendChild(content);
     enhanceHistoryRenderedContent(content);
-    
+
     // 脚注
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -2923,7 +3284,7 @@
     markAllCookies(getFilterConfig().markedGroups || [], wrapper);
     return wrapper;
   }
-  
+
   async function fetchSubscriptionFeedPage(uuid, page) {
     const url = `${SUBSCRIPTION_FEED_API_BASE}/feed?uuid=${encodeURIComponent(uuid)}&page=${encodeURIComponent(page)}`;
     const resp = await gmRequest(url, 'json');
@@ -2931,9 +3292,10 @@
     if (Array.isArray(data)) return data;
     try { return JSON.parse(typeof data === 'string' ? data : '[]'); } catch (e) { return []; }
   }
-  
+
   function renderSubscriptionFeedModule() {
     const $results = $('#sp_feeds_results').empty();
+    pruneExpiredSubscriptionFeedSessions();
     const uuid = populateSubscriptionFeedSelector();
     if (!uuid) {
       $results.html('<div style="text-align:center;color:#999;padding:40px 0;">请先在设置中添加订阅号</div>');
@@ -2942,55 +3304,75 @@
       return;
     }
     subscriptionFeedCurrentUuid = uuid;
-    subscriptionFeedCurrentPage = 1;
-    subscriptionFeedAllItems = [];
-    subscriptionFeedHasMore = true;
-            $results.html('<div style="text-align:center;color:#999;padding:40px 0;">正在获取订阅……</div>');
-    loadSubscriptionFeedPage(uuid, 1, true);
+    if (restoreSubscriptionFeedSession(uuid)) return;
+    resetSubscriptionFeedRuntimeState(uuid);
+    $results.html('<div style="text-align:center;color:#999;padding:40px 0;">正在获取订阅……</div>');
+    loadSubscriptionFeedPage(uuid, 1, { replace: true, source: 'init' });
   }
-  async function loadSubscriptionFeedPage(uuid, page, replace) {
 
-    subscriptionFeedLoading = true;
+  async function loadSubscriptionFeedPage(uuid, page, options = {}) {
+    const replace = !!options.replace;
+    if (!uuid || subscriptionFeedLoading) return;
+    const requestPage = Math.max(1, Number(page) || 1);
     const $results = $('#sp_feeds_results');
-
-    if (replace) $results.empty();
-
+    if (replace && subscriptionFeedHighestRenderedPage <= 0) {
+      resetSubscriptionFeedRuntimeState(uuid);
+      if ($results.length) $results.empty();
+    }
+    const expectedPage = getSubscriptionFeedNextRenderPage();
+    if (requestPage !== expectedPage) {
+      console.warn('[subscription-feed] reject non-contiguous page', {
+        uuid,
+        page: requestPage,
+        expectedPage,
+        source: options.source || '',
+        currentPage: subscriptionFeedCurrentPage,
+        highestRenderedPage: subscriptionFeedHighestRenderedPage,
+        allItems: subscriptionFeedAllItems.length,
+        cacheExpired: subscriptionFeedCacheExpired
+      });
+      return;
+    }
+    const session = getSubscriptionFeedSession(uuid);
+    if (session && isSubscriptionFeedSessionExpired(session)) subscriptionFeedCacheExpired = true;
+    subscriptionFeedLoading = true;
+    const seq = ++subscriptionFeedRequestSeq;
+    subscriptionFeedInflightPages[requestPage] = seq;
     try {
-
-      const items = await fetchSubscriptionFeedPage(uuid, page);
+      const items = normalizeSubscriptionFeedPageItems(await fetchSubscriptionFeedPage(uuid, requestPage));
+      if (subscriptionFeedInflightPages[requestPage] !== seq) return;
       if (uuid !== subscriptionFeedCurrentUuid) return;
       if (!items.length) {
-
         subscriptionFeedHasMore = false;
-
-        if (replace) {
-
-          $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
-
-        }
-
+        renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
         return;
-
       }
-
-      // 页码分隔线：只在下一页实际有内容时显示，避免未满页触底后留下空的“第N页”提示
-
-            subscriptionFeedAllItems = subscriptionFeedAllItems.concat(items);
-      subscriptionFeedCurrentPage = page;
-      $('#sp_feeds_page_label').text(`第${page}页`);
-      items.forEach(item => {
-        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
-      });
+      const pageEntry = buildSubscriptionFeedPageEntry(requestPage, items);
+      if (!appendSubscriptionFeedRenderedPage(pageEntry)) return;
+      subscriptionFeedHasMore = true;
+      renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
+      if (!subscriptionFeedCacheExpired) {
+        let nextSession = getSubscriptionFeedSession(uuid);
+        if (!nextSession || isSubscriptionFeedSessionExpired(nextSession) || !isSubscriptionFeedSessionStructurallyValid(nextSession)) {
+          nextSession = createSubscriptionFeedSession(uuid, pageEntry);
+        } else {
+          nextSession.cachedPages[String(requestPage)] = pageEntry;
+          nextSession.highestCachedPage = computeHighestContiguousSubscriptionFeedPage(nextSession.cachedPages);
+          nextSession.lastAccessAt = Date.now();
+        }
+        saveSubscriptionFeedSession(nextSession);
+      }
     } catch (err) {
       console.error('[subscription-feed] load error', err);
       if (replace) {
         $results.html(`<div style="text-align:center;color:#c00;padding:40px 0;">加载失败：${Utils.escapeHTML ? Utils.escapeHTML(err.message) : err.message}</div>`);
       }
     } finally {
+      if (subscriptionFeedInflightPages[requestPage] === seq) delete subscriptionFeedInflightPages[requestPage];
       subscriptionFeedLoading = false;
     }
   }
-  
+
   function bindSubscriptionFeedModuleEvents() {
     // 订阅号切换
     // 自定义下拉菜单交互
@@ -3024,18 +3406,13 @@
       $display.attr('aria-expanded', 'false');
     });
 
-
     $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
       subscriptionFeedCurrentUuid = $(this).val() || '';
       if (subscriptionFeedCurrentUuid) {
         setActiveSubscriptionFeedUuid(subscriptionFeedCurrentUuid);
-        subscriptionFeedCurrentPage = 1;
-        subscriptionFeedAllItems = [];
-        subscriptionFeedHasMore = true;
-        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, 1, true);
+        renderSubscriptionFeedModule();
       }
     });
-
     // 跨页面同步：其他标签页切换订阅号时自动刷新
     if (typeof GM_addValueChangeListener === 'function') {
       GM_addValueChangeListener(ACTIVE_FEED_STORAGE_KEY, (_key, _oldVal, newVal, remote) => {
@@ -3043,11 +3420,8 @@
         const uuid = String(newVal || '');
         if (uuid && uuid !== subscriptionFeedCurrentUuid) {
           subscriptionFeedCurrentUuid = uuid;
-          subscriptionFeedCurrentPage = 1;
-          subscriptionFeedAllItems = [];
-          subscriptionFeedHasMore = true;
           $('#sp_feeds_selector').val(uuid);
-          loadSubscriptionFeedPage(uuid, 1, true);
+          renderSubscriptionFeedModule();
         }
       });
     }
@@ -3057,41 +3431,38 @@
       e.preventDefault();
       const page = parseInt($('#sp_feeds_page_input').val(), 10);
       if (!page || page < 1 || !subscriptionFeedCurrentUuid) return;
-      subscriptionFeedCurrentPage = page;
-      subscriptionFeedAllItems = [];
-      subscriptionFeedHasMore = true;
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, page, true);
+      const expectedPage = getSubscriptionFeedNextRenderPage();
+      if (page !== expectedPage) {
+        toast(`当前缓存会话仅支持连续翻页，请先加载第${expectedPage}页`);
+        return;
+      }
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, page, { replace: false, source: 'jump' });
     });
 
     // 滚动加载下一页
     const $scrollContainer = $('#sp_module_feeds .sp_panel_content');
     $scrollContainer.off('scroll.subscriptionFeed').on('scroll.subscriptionFeed', function () {
+      updateSubscriptionFeedDisplayPageFromScroll();
       if (subscriptionFeedLoading || !subscriptionFeedHasMore || !subscriptionFeedCurrentUuid) return;
       const el = this;
       if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
-        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage + 1, false);
+        const nextPage = getSubscriptionFeedNextRenderPage();
+        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'scroll' });
       }
     });
-
-
 
     // 上一页
     $('#sp_feeds_prev').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
       e.preventDefault();
-      if (subscriptionFeedCurrentPage <= 1 || !subscriptionFeedCurrentUuid) return;
-      subscriptionFeedCurrentPage--;
-      subscriptionFeedAllItems = [];
-      subscriptionFeedHasMore = true;
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage, true);
+      toast('当前缓存会话仅支持向后连续翻页');
     });
+
     // 下一页
     $('#sp_feeds_next').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
       e.preventDefault();
       if (!subscriptionFeedCurrentUuid) return;
-      subscriptionFeedCurrentPage++;
-      subscriptionFeedAllItems = [];
-      subscriptionFeedHasMore = true;
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage, true);
+      const nextPage = getSubscriptionFeedNextRenderPage();
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'next-button' });
     });
 
     // 订阅面板图片点击 → 打开引用弹窗（图片激活态）
@@ -3103,6 +3474,7 @@
       e.stopPropagation();
       if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
     });
+
     // 取消订阅
     $('#sp_feeds_results').off('click.xdex-feed-delete', '.xdex-post-history-delete').on('click.xdex-feed-delete', '.xdex-post-history-delete', function (e) {
       e.preventDefault();
@@ -3113,8 +3485,10 @@
         method: 'POST',
         url: `${SUBSCRIPTION_FEED_API_BASE}/delFeed`,
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                data: `uuid=${encodeURIComponent(subscriptionFeedCurrentUuid)}&tid=${encodeURIComponent(tid)}`,
+        data: `uuid=${encodeURIComponent(subscriptionFeedCurrentUuid)}&tid=${encodeURIComponent(tid)}`,
         onload: () => {
+          invalidateSubscriptionFeedSession(subscriptionFeedCurrentUuid, 'delete-feed');
+          resetSubscriptionFeedRuntimeState(subscriptionFeedCurrentUuid);
           toast('已取消订阅');
           renderSubscriptionFeedModule();
         },
@@ -5023,7 +5397,7 @@ ${markedSwatchHtml}
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
-
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -6375,13 +6749,9 @@ ${markedSwatchHtml}
       });
 
       // 关闭面板
-
       $('#sp_close,#sp_cover').off('click').on('click', e=>{
-
         if (e.target.id==='sp_close' || e.target.id==='sp_cover')
-
           $('#sp_cover').fadeOut();
-
       });
 
       //鼠标悬浮在具体功能上显示提示
@@ -6427,6 +6797,7 @@ ${markedSwatchHtml}
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
+        sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
       };
@@ -20999,6 +21370,7 @@ ${markedSwatchHtml}
           data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
           onload: (resp) => {
             if (resp.status >= 200 && resp.status < 300) {
+              invalidateSubscriptionFeedSession(uuid, 'add-feed');
               toast(`已订阅 No.${tid} 到「${label}」`);
             } else {
               toast(`订阅失败 (${resp.status})`);
