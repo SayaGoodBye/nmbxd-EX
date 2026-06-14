@@ -5508,11 +5508,11 @@ ${markedSwatchHtml}
                   </div>
                 </div>
 
-                <!-- 导入/导出配置 -->
+                <!-- 设置导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
-                    <span>导入/导出配置</span>
+                    <span>设置导入/导出</span>
                     <button id="btn_sp_importExport" class="sp_save xdex-inv" data-id="sp_importExport"
 
                             style="margin-left:auto;padding:2px 8px;">应用</button>
@@ -5527,6 +5527,45 @@ ${markedSwatchHtml}
                       <button id="sp_exportFile" style="flex:1;padding:4px 8px;font-size:13px;cursor:pointer;">导出为文件</button>
                     </div>
                     <div style="font-size:12px;color:#888;text-align:center;">导入将覆盖当前全部配置，建议先导出备份</div>
+                  </div>
+                </div>
+
+                <!-- 完整数据导入/导出 -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>完整数据导入/导出</span>
+                    <button id="btn_sp_fullExport_reset" class="xdex-inv" style="margin-left:auto;padding:2px 8px;color:#c00;">重置所选项目</button>
+                    <button id="btn_sp_fullExport_export" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">导出为文件</button>
+                    <button id="btn_sp_fullExport_import" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">从文件导入</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div style="font-size:12px;color:#666;margin-bottom:6px;">
+                      用于备份或迁移脚本/扩展运行产生的数据，支持按类别导出与导入。默认全选。
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:6px;">
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_settings" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_settings">设置</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_threadHistory" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_threadHistory">浏览历史</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_postHistory" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_postHistory">发言历史</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_drafts" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_drafts">草稿</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_kaomojiStats" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_kaomojiStats">颜文字统计</label>
+                      </div>
+                    </div>
+                    <div id="sp_fullExport_import_preview" style="display:none;margin-top:8px;padding:6px 8px;border:1px dashed #aaa;border-radius:6px;background:#FFFFEE;"></div>
                   </div>
                 </div>
                 </div>
@@ -6494,6 +6533,383 @@ ${markedSwatchHtml}
         return val;
       }
 
+      // === 完整数据导入导出 ===
+      const FULL_EXPORT_SCHEMA_VERSION = 1;
+
+      const FULL_IMPORT_DIRECT_OVERRIDE_KEYS = [
+        'enableCookieSwitch', 'disableWatermark', 'enablePaginationDuplication',
+        'updatePreviewCookie', 'hideEmptyTitleEmail', 'enableExternalImagePreview',
+        'enableAutoCookieRefresh', 'enableAutoCookieRefreshToast',
+        'interceptReplyFormUnvcode', 'interceptReplyFormU200B',
+        'interceptReplyFormAutoCompress', 'enableSeamlessPaging',
+        'enableAutoSeamlessPaging', 'enableHDImageAndLayoutFix',
+        'enableLinkBlank', 'enableAutoUrlLinkify', 'enableQuotePreview',
+        'enableUpdateCheck', 'enableImageContextMenu', 'enableImageHideMode',
+        'applyImageHideMode', 'enableDraft', 'timeDisplayMode',
+        'extendQuote', 'kaomojiSort', 'toggleSidebar',
+        'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
+        'replyModeDefault', 'replyExtraDefault', 'blockDisplayMode',
+        'postAfterAction'
+      ];
+
+      function mergeFavoriteThreads(localItems, importedItems) {
+        const local = Array.isArray(localItems) ? normalizeFavoriteThreads(localItems) : [];
+        const imported = Array.isArray(importedItems) ? normalizeFavoriteThreads(importedItems) : [];
+        const seen = new Map();
+        local.forEach((item) => {
+          const key = String(item.threadId || '').trim();
+          if (key) seen.set(key, item);
+        });
+        imported.forEach((item) => {
+          const key = String(item.threadId || '').trim();
+          if (!key) return;
+          if (!seen.has(key)) {
+            seen.set(key, item);
+          } else {
+            const existing = seen.get(key);
+            if (!existing.desc && item.desc) existing.desc = item.desc;
+          }
+        });
+        return Array.from(seen.values());
+      }
+
+      function mergeSubscriptionFeeds(localItems, importedItems) {
+        const local = Array.isArray(localItems) ? localItems : [];
+        const imported = Array.isArray(importedItems) ? importedItems : [];
+        const seen = new Map();
+        local.forEach((item) => {
+          const key = String(item.uuid || '').trim();
+          if (key) seen.set(key, item);
+        });
+        imported.forEach((item) => {
+          const key = String(item.uuid || '').trim();
+          if (!key) return;
+          if (!seen.has(key)) {
+            seen.set(key, item);
+          } else {
+            const existing = seen.get(key);
+            if (!existing.desc && item.desc) existing.desc = item.desc;
+          }
+        });
+        return Array.from(seen.values());
+      }
+
+      function mergeMarkedGroups(localGroups, importedGroups) {
+        const local = Array.isArray(localGroups) ? localGroups : [];
+        const imported = Array.isArray(importedGroups) ? importedGroups : [];
+        const result = [];
+        const usedImported = new Set();
+
+        local.forEach((localGroup) => {
+          const localDesc = localGroup.desc || localGroup.name || '';
+          let matched = false;
+          for (let i = 0; i < imported.length; i++) {
+            if (usedImported.has(i)) continue;
+            const impGroup = imported[i];
+            const impDesc = impGroup.desc || impGroup.name || '';
+            if (localDesc && impDesc && localDesc === impDesc) {
+              matched = true;
+              usedImported.add(i);
+              const localCookies = Array.isArray(localGroup) ? localGroup : (localGroup.cookies || []);
+              const impCookies = Array.isArray(impGroup) ? impGroup : (impGroup.cookies || []);
+              const mergedCookies = Array.from(new Set([...localCookies, ...impCookies]));
+              if (Array.isArray(localGroup) && !localGroup.desc) {
+                result.push(mergedCookies);
+              } else {
+                result.push({ ...localGroup, ...impGroup, desc: impDesc || localDesc, cookies: mergedCookies });
+              }
+              break;
+            }
+          }
+          if (!matched) result.push(localGroup);
+        });
+        imported.forEach((impGroup, i) => { if (!usedImported.has(i)) result.push(impGroup); });
+        return result;
+      }
+
+      function mergeBlockedCookies(localGroups, importedGroups) {
+        return mergeMarkedGroups(localGroups, importedGroups);
+      }
+
+      function mergeWhitelistGroupsForImport(localGroups, importedGroups) {
+        const local = Array.isArray(localGroups) ? localGroups : [];
+        const imported = Array.isArray(importedGroups) ? importedGroups : [];
+        const result = [];
+        const usedImported = new Set();
+
+        local.forEach((localGroup) => {
+          const localDesc = String(localGroup.desc || '').trim();
+          let matched = false;
+          for (let i = 0; i < imported.length; i++) {
+            if (usedImported.has(i)) continue;
+            const impGroup = imported[i];
+
+            const impDesc = String(impGroup.desc || '').trim();
+            if (localDesc && impDesc && localDesc === impDesc) {
+              matched = true;
+              usedImported.add(i);
+              const mergedThreads = Array.from(new Set([...(localGroup.threads || []), ...(impGroup.threads || [])]));
+              const mergedCookies = Array.from(new Set([...(localGroup.cookies || []), ...(impGroup.cookies || [])]));
+              result.push({ ...localGroup, ...impGroup, desc: impDesc || localDesc, threads: mergedThreads, cookies: mergedCookies });
+              break;
+            }
+          }
+          if (!matched) result.push(localGroup);
+        });
+        imported.forEach((impGroup, i) => { if (!usedImported.has(i)) result.push(impGroup); });
+        return result;
+      }
+
+      function mergeBlockedKeywords(localValue, importedValue) {
+        const localGroups = normalizeBlockedKeywordGroups(localValue);
+        const importedGroups = normalizeBlockedKeywordGroups(importedValue);
+        const allLocalKws = new Set(flattenBlockedKeywords(localGroups));
+        const result = localGroups.map((g) => ({ value: g.value }));
+        importedGroups.forEach((impGroup) => {
+          const impKws = Utils.strToList(impGroup.value);
+          if (!impKws.length) return;
+          const hasNew = impKws.some((kw) => !allLocalKws.has(kw));
+          if (hasNew) result.push({ value: impGroup.value });
+        });
+        return result;
+      }
+
+      function mergeSettingsForFullImport(localSettings, importedSettings) {
+        const result = Object.assign({}, localSettings);
+        FULL_IMPORT_DIRECT_OVERRIDE_KEYS.forEach((key) => {
+          if (key in importedSettings) result[key] = importedSettings[key];
+        });
+        result.favoriteThreads = mergeFavoriteThreads(localSettings.favoriteThreads, importedSettings.favoriteThreads);
+        result.subscriptionFeeds = mergeSubscriptionFeeds(localSettings.subscriptionFeeds, importedSettings.subscriptionFeeds);
+        result.blockedKeywords = mergeBlockedKeywords(localSettings.blockedKeywords, importedSettings.blockedKeywords);
+        result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, importedSettings.markedGroups);
+        result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, importedSettings.blockedCookies);
+        result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
+        return result;
+      }
+
+      function mergeThreadHistoryStore(localStore, importedStore) {
+        const local = normalizeThreadHistoryStore(localStore);
+        const imported = normalizeThreadHistoryStore(importedStore);
+        const result = Object.assign({}, local);
+        result.items = Object.assign({}, local.items);
+        Object.keys(imported.items).forEach((key) => {
+          const impItem = imported.items[key];
+          if (!result.items[key]) {
+            result.items[key] = impItem;
+          } else {
+            const localItem = result.items[key];
+            result.items[key] = {
+              ...localItem,
+              ...impItem,
+              lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(impItem.lastVisitedAt) || 0),
+              page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
+              visitCount: Math.max(Number(localItem.visitCount) || 0, Number(impItem.visitCount) || 0),
+              title: impItem.title || localItem.title,
+              name: impItem.name || localItem.name,
+            };
+          }
+        });
+        result.order = Object.keys(result.items)
+          .sort((a, b) => (Number(result.items[b].lastVisitedAt) || 0) - (Number(result.items[a].lastVisitedAt) || 0));
+        return result;
+      }
+
+      function mergePostHistoryStore(localStore, importedStore) {
+        const local = normalizePostHistoryStore(localStore);
+        const imported = normalizePostHistoryStore(importedStore);
+        const result = Object.assign({}, local);
+        result.items = Object.assign({}, local.items);
+        const STATUS_PRIORITY = { confirmed: 3, unconfirmed: 2, pending: 1, failed: 0 };
+        Object.keys(imported.items).forEach((key) => {
+          const impItem = imported.items[key];
+          if (!result.items[key]) {
+            result.items[key] = impItem;
+          } else {
+            const localItem = result.items[key];
+            const localStatus = STATUS_PRIORITY[localItem.status] || 0;
+            const impStatus = STATUS_PRIORITY[impItem.status] || 0;
+            result.items[key] = {
+              ...localItem,
+              ...impItem,
+              status: impStatus >= localStatus ? impItem.status : localItem.status,
+              page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
+              submittedAt: Math.min(Number(localItem.submittedAt) || Infinity, Number(impItem.submittedAt) || Infinity),
+              contentText: impItem.contentText || localItem.contentText,
+              forumName: impItem.forumName || localItem.forumName,
+            };
+          }
+        });
+        result.order = Object.keys(result.items)
+          .sort((a, b) => (Number(result.items[b].submittedAt) || 0) - (Number(result.items[a].submittedAt) || 0));
+        return result;
+      }
+
+      function normalizeDraftExportText(text) {
+        return String(text || '')
+          .replace(/^\uFEFF/, '')
+          .replace(/[\u200B\u200C\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g, '')
+          .trim();
+      }
+
+      function collectDraftsForExport() {
+        const registry = getDraftRegistry();
+        const items = {};
+        registry.forEach((key) => {
+          const raw = readDraftValue(key);
+          const clean = normalizeDraftExportText(raw);
+          if (clean) items[key] = raw;
+        });
+        return { registry: Object.keys(items), items };
+      }
+
+      function applyDraftsFromImport(drafts) {
+        if (!drafts || typeof drafts !== 'object') return { imported: 0, overwritten: 0 };
+        const items = drafts.items || {};
+        let imported = 0;
+        let overwritten = 0;
+        const newRegistry = new Set(getDraftRegistry());
+        Object.keys(items).forEach((key) => {
+          const clean = normalizeDraftExportText(items[key]);
+          if (!clean) return;
+          const existing = readDraftValue(key);
+          if (existing === items[key]) return;
+          if (existing) overwritten++;
+          else imported++;
+          GM_setValue(key, items[key]);
+          newRegistry.add(key);
+        });
+        saveDraftRegistry(Array.from(newRegistry));
+        return { imported, overwritten };
+      }
+
+      function mergeKaomojiStats(localStats, importedStats) {
+        const local = (localStats && typeof localStats === 'object') ? localStats : {};
+        const imported = (importedStats && typeof importedStats === 'object') ? importedStats : {};
+        const result = Object.assign({}, local);
+        Object.keys(imported).forEach((key) => {
+          const impVal = imported[key];
+          const localVal = result[key];
+          if (!localVal) {
+            result[key] = impVal;
+          } else if (typeof impVal === 'object' && typeof localVal === 'object') {
+            const localCount = Number(localVal.count) || 0;
+            const impCount = Number(impVal.count) || 0;
+            const localLast = Number(localVal.lastUsed) || 0;
+            const impLast = Number(impVal.lastUsed) || 0;
+            result[key] = {
+              count: localCount + impCount,
+              lastUsed: Math.max(localLast, impLast)
+            };
+          }
+        });
+        return result;
+      }
+
+      function collectFullExportPayload(selection) {
+        const payload = {};
+        if (selection.settings) {
+          payload.myScriptSettings = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        }
+        if (selection.threadHistory) {
+          payload.threadHistory = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+        }
+        if (selection.postHistory) {
+          payload.postHistory = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+        }
+        if (selection.drafts) {
+          payload.drafts = collectDraftsForExport();
+        }
+        if (selection.kaomojiStats) {
+          payload.kaomojiStats = GM_getValue('kaomojiUsageStats', {});
+        }
+        return payload;
+      }
+
+      function buildFullExportFile(selection) {
+        const payload = collectFullExportPayload(selection);
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
+        const scriptVersion = typeof VERSION !== 'undefined' ? VERSION : (typeof GM_info !== 'undefined' ? GM_info.script.version : 'unknown');
+        const platform = typeof GM_info !== 'undefined' && GM_info.scriptHandler ? 'userscript' : 'extension';
+        return {
+          file: {
+            meta: { format: 'xdex-full-export', schemaVersion: FULL_EXPORT_SCHEMA_VERSION, exportedAt: now.toISOString(), source: 'nmbxd-EX', scriptVersion, platform },
+            selection,
+            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate' },
+            summary: {
+              threadHistoryCount: selection.threadHistory ? Object.keys((payload.threadHistory || {}).items || {}).length : 0,
+              postHistoryCount: selection.postHistory ? Object.keys((payload.postHistory || {}).items || {}).length : 0,
+              draftCount: selection.drafts ? (payload.drafts.registry || []).length : 0,
+              kaomojiStatsEntries: selection.kaomojiStats ? Object.keys(payload.kaomojiStats || {}).length : 0,
+            },
+            payload
+          },
+          filename: `x岛-ex-full-export-${timestamp}.json`
+        };
+      }
+
+      function downloadFullExportFile(fileData) {
+        const blob = new Blob([JSON.stringify(fileData.file, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileData.filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      function parseFullExportFile(text) {
+        let parsed;
+        try { parsed = JSON.parse(text); } catch (e) { return { valid: false, error: '文件格式错误，无法解析 JSON' }; }
+        if (!parsed || typeof parsed !== 'object') return { valid: false, error: '文件内容无效' };
+        const meta = parsed.meta || {};
+        if (meta.format !== 'xdex-full-export') return { valid: false, error: '不支持的文件格式，请使用 X岛-EX 完整数据导出文件' };
+        if (!meta.schemaVersion || meta.schemaVersion > FULL_EXPORT_SCHEMA_VERSION) return { valid: false, error: `不支持的 schema 版本: ${meta.schemaVersion}` };
+        if (!parsed.payload || typeof parsed.payload !== 'object') return { valid: false, error: '文件缺少 payload 数据' };
+        return { valid: true, data: parsed };
+      }
+
+      function applyFullImportPayload(importData) {
+        const payload = importData.payload;
+        const report = {};
+
+        if (payload.myScriptSettings) {
+          const local = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+          const merged = mergeSettingsForFullImport(local, payload.myScriptSettings);
+          GM_setValue(SettingPanel.key, merged);
+          report.settings = { mode: 'merge', changed: true };
+        }
+
+        if (payload.threadHistory) {
+          const local = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+          const merged = mergeThreadHistoryStore(local, payload.threadHistory);
+          GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+          report.threadHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
+        }
+
+        if (payload.postHistory) {
+          const local = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+          const merged = mergePostHistoryStore(local, payload.postHistory);
+          GM_setValue(POST_HISTORY_STORAGE_KEY, merged);
+          report.postHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
+        }
+
+        if (payload.drafts) {
+          const result = applyDraftsFromImport(payload.drafts);
+          report.drafts = { mode: 'override-imported', imported: result.imported, overwritten: result.overwritten };
+        }
+
+        if (payload.kaomojiStats) {
+          const local = GM_getValue('kaomojiUsageStats', {});
+          const merged = mergeKaomojiStats(local, payload.kaomojiStats);
+          GM_setValue('kaomojiUsageStats', merged);
+          report.kaomojiStats = { mode: 'accumulate', changed: true };
+        }
+
+        return report;
+      }
+      // === 完整数据导入导出 end ===
+
       function buildJSONC(state) {
         const filtered = {};
         for (const [k, v] of Object.entries(state)) {
@@ -6635,17 +7051,116 @@ ${markedSwatchHtml}
       const _origClose = $('#sp_close,#sp_cover').off.bind($('#sp_close,#sp_cover'), 'click');
       delete SettingPanel.__pendingImport;
 
+      // ── 完整数据导入导出 ──
+      $('#btn_sp_fullExport_reset').off('click').on('click', (e) => {
+        e.stopPropagation();
+        const selection = {
+          settings: $('#sp_fullExport_settings').is(':checked'),
+          threadHistory: $('#sp_fullExport_threadHistory').is(':checked'),
+          postHistory: $('#sp_fullExport_postHistory').is(':checked'),
+          drafts: $('#sp_fullExport_drafts').is(':checked'),
+          kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+        };
+        if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
+        const parts = [];
+        if (selection.settings) parts.push('设置（恢复默认）');
+        if (selection.threadHistory) parts.push('浏览历史');
+        if (selection.postHistory) parts.push('发言历史');
+        if (selection.drafts) parts.push('草稿');
+        if (selection.kaomojiStats) parts.push('颜文字统计');
+        if (!window.confirm(`确定要清除以下项目的全部内容吗？\n\n${parts.join('、')}\n\n清除后页面将自动刷新。`)) return;
+        try {
+          if (selection.settings) GM_setValue(SettingPanel.key, {});
+          if (selection.threadHistory) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(null));
+          if (selection.postHistory) GM_setValue(POST_HISTORY_STORAGE_KEY, normalizePostHistoryStore(null));
+          if (selection.drafts) {
+            getDraftRegistry().forEach((key) => { try { GM_deleteValue(key); } catch (_) {} });
+            saveDraftRegistry([]);
+          }
+          if (selection.kaomojiStats) GM_setValue('kaomojiUsageStats', {});
+          toast('已清除所选项目，即将刷新');
+          setTimeout(() => location.reload(), 800);
+        } catch (err) {
+          toast('清除失败: ' + (err.message || err));
+        }
+      });
+
+      $('#btn_sp_fullExport_export').off('click').on('click', (e) => {
+        e.stopPropagation();
+        const selection = {
+          settings: $('#sp_fullExport_settings').is(':checked'),
+          threadHistory: $('#sp_fullExport_threadHistory').is(':checked'),
+          postHistory: $('#sp_fullExport_postHistory').is(':checked'),
+          drafts: $('#sp_fullExport_drafts').is(':checked'),
+          kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+        };
+        if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
+        const fileData = buildFullExportFile(selection);
+        downloadFullExportFile(fileData);
+        toast('完整数据已导出');
+      });
+
+      $('#btn_sp_fullExport_import').off('click').on('click', (e) => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = parseFullExportFile(reader.result);
+            if (!result.valid) { toast(result.error); return; }
+            SettingPanel.__pendingFullImport = result.data;
+            renderFullImportPreview(result.data);
+          };
+          reader.readAsText(file);
+        };
+        input.click();
+      });
+
+      function renderFullImportPreview(data) {
+        const $preview = $('#sp_fullExport_import_preview').empty().show();
+        const meta = data.meta || {};
+        const summary = data.summary || {};
+        let html = '<div style="font-size:12px;color:#333;">';
+        html += `<div>来源版本: ${meta.scriptVersion || '?'} | 导出时间: ${meta.exportedAt ? new Date(meta.exportedAt).toLocaleString() : '?'}</div>`;
+        html += '<div style="margin-top:4px;">包含数据:</div><ul style="margin:2px 0;padding-left:20px;">';
+        if (summary.threadHistoryCount) html += `<li>浏览历史: ${summary.threadHistoryCount} 条</li>`;
+        if (summary.postHistoryCount) html += `<li>发言历史: ${summary.postHistoryCount} 条</li>`;
+        if (summary.draftCount) html += `<li>草稿: ${summary.draftCount} 条</li>`;
+        if (summary.kaomojiStatsEntries) html += `<li>颜文字统计: ${summary.kaomojiStatsEntries} 项</li>`;
+        if (data.selection && data.selection.settings) html += '<li>设置配置（合并导入）</li>';
+        html += '</ul>';
+        html += '<div style="color:#666;margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
+        html += '</div>';
+        const $btn = $('<button style="margin-top:6px;padding:4px 10px;">应用导入</button>');
+        $btn.on('click', () => {
+          if (!SettingPanel.__pendingFullImport) { toast('无可导入数据'); return; }
+          if (!window.confirm('确定要导入完整数据吗？\n导入完成后页面将自动刷新。')) return;
+          const report = applyFullImportPayload(SettingPanel.__pendingFullImport);
+          SettingPanel.__pendingFullImport = null;
+          $preview.hide();
+          const parts = [];
+          if (report.settings) parts.push('设置已合并');
+          if (report.threadHistory) parts.push(`浏览历史 ${report.threadHistory.count} 条`);
+          if (report.postHistory) parts.push(`发言历史 ${report.postHistory.count} 条`);
+          if (report.drafts) parts.push(`草稿 ${report.drafts.imported} 条导入${report.drafts.overwritten ? `, ${report.drafts.overwritten} 条覆盖` : ''}`);
+          if (report.kaomojiStats) parts.push('颜文字已累加');
+          toast(`完整数据导入完成: ${parts.join('、')}，即将刷新`);
+          setTimeout(() => location.reload(), 800);
+        });
+        $preview.html(html).append($btn);
+      }
+
       $('#sp_apply').off('click').on('click', ()=>{
         collectReloadRequiredSettingsFromPanel();
-
         let valid = true;
-
         this.state.blockedKeywords = collectBlockedKeywordGroupsFromPanel();
-
         const favoriteThreads = collectFavoriteThreadsFromPanel();
         if (!favoriteThreads) return;
         this.state.favoriteThreads = favoriteThreads;
-
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
@@ -7015,7 +7530,7 @@ ${markedSwatchHtml}
 
       // 初始折叠与按钮隐藏
       $('.sp_fold_body').hide();
-      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads,#btn_group_subscriptionFeeds,#btn_sp_subscriptionFeeds').addClass('xdex-inv');
+      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads,#btn_group_subscriptionFeeds,#btn_sp_subscriptionFeeds,#btn_sp_importExport,#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import').addClass('xdex-inv');
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
