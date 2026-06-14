@@ -2776,64 +2776,6 @@
     try { GM_setValue(ACTIVE_FEED_STORAGE_KEY, uuid || ''); } catch (e) {}
   }
 
-  const SUBSCRIPTION_FEED_STORAGE_KEY = 'xdex_subscription_feed';
-  const SUBSCRIPTION_FEED_STORE_VERSION = 1;
-
-  function normalizeSubscriptionFeedStore(input) {
-    const src = input && typeof input === 'object' ? input : {};
-    const items = src.items && typeof src.items === 'object' ? src.items : {};
-    const feeds = src.feeds && typeof src.feeds === 'object' ? src.feeds : {};
-    return { version: SUBSCRIPTION_FEED_STORE_VERSION, items, feeds };
-  }
-
-  function getSubscriptionFeedStore() {
-    try { return normalizeSubscriptionFeedStore(GM_getValue(SUBSCRIPTION_FEED_STORAGE_KEY, {})); } catch (e) { return normalizeSubscriptionFeedStore({}); }
-  }
-
-  function setSubscriptionFeedStore(store) {
-    try { GM_setValue(SUBSCRIPTION_FEED_STORAGE_KEY, store); } catch (e) {}
-  }
-
-  function mergeSubscriptionFeedItems(uuid, remoteItems) {
-    const store = getSubscriptionFeedStore();
-    const order = [];
-    (Array.isArray(remoteItems) ? remoteItems : []).forEach((raw) => {
-      const id = String(Number(raw.id) || 0);
-      if (!id || id === '0') return;
-      order.push(id);
-      const existing = store.items[id];
-      const replyCount = Number(raw.reply_count) || 0;
-      if (existing) {
-        existing.reply_count = replyCount;
-        if (raw.title && raw.title !== '无标题') existing.title = String(raw.title);
-        existing._at = Date.now();
-      } else {
-        store.items[id] = {
-          id: Number(raw.id) || 0,
-          title: String(raw.title || ''),
-          email: String(raw.email || ''),
-          now: String(raw.now || ''),
-          user_hash: String(raw.user_hash || ''),
-          reply_count: replyCount,
-          img: String(raw.img || ''),
-          ext: String(raw.ext || ''),
-          content: String(raw.content || ''),
-          fid: String(raw.fid || ''),
-          _at: Date.now()
-        };
-      }
-    });
-    store.feeds[uuid] = { order, lastSynced: Date.now() };
-    setSubscriptionFeedStore(store);
-    return store;
-  }
-
-  function buildSubscriptionFeedItemsFromCache(uuid) {
-    const store = getSubscriptionFeedStore();
-    const feed = store.feeds[uuid];
-    if (!feed || !Array.isArray(feed.order)) return [];
-    return feed.order.map((id) => store.items[id]).filter(Boolean);
-  }
   function populateSubscriptionFeedSelector() {
     const $sel = $('#sp_feeds_selector').empty();
     const $display = $('#sp_feeds_selector_display');
@@ -2947,6 +2889,7 @@
       const imageFile = suffix && imgRaw.toLowerCase().endsWith(suffix.toLowerCase()) ? imgRaw : imgRaw + suffix;
       const imageLink = document.createElement('a');
       imageLink.className = 'h-threads-img-a xdex-history-image';
+      imageLink.dataset.historyQuoteId = threadId;
       imageLink.href = buildThreadHistoryImageUrl(imageFile, true);
       imageLink.target = '_blank';
       imageLink.rel = 'noopener';
@@ -3002,14 +2945,8 @@
     subscriptionFeedCurrentPage = 1;
     subscriptionFeedAllItems = [];
     subscriptionFeedHasMore = true;
-    const cached = buildSubscriptionFeedItemsFromCache(uuid);
-    if (cached.length) {
-      subscriptionFeedAllItems = cached;
-      cached.forEach(item => { $results[0].appendChild(buildSubscriptionFeedItemElement(item)); });
-      loadSubscriptionFeedPage(uuid, 1, false);
-    } else {
-      loadSubscriptionFeedPage(uuid, 1, true);
-    }
+            $results.html('<div style="text-align:center;color:#999;padding:40px 0;">正在获取订阅……</div>');
+    loadSubscriptionFeedPage(uuid, 1, true);
   }
   async function loadSubscriptionFeedPage(uuid, page, replace) {
 
@@ -3038,21 +2975,10 @@
 
       // 页码分隔线：只在下一页实际有内容时显示，避免未满页触底后留下空的“第N页”提示
 
-            // 计算新增的串（去重：跳过已在缓存中渲染过的）
-      const existingIds = new Set((subscriptionFeedAllItems || []).map(it => String(Number(it.id) || 0)));
-      const newItems = items.filter(it => !existingIds.has(String(Number(it.id) || 0)));
-      // 页码分隔线：只在有新增串且非首次加载时显示
-      if (!replace && newItems.length && page > 1) {
-        const sep = document.createElement('div');
-        sep.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px 0;border-top:1px dashed #ddd;margin-top:8px;';
-        sep.textContent = `——第${page}页——`;
-        $results[0].appendChild(sep);
-      }
-      subscriptionFeedAllItems = subscriptionFeedAllItems.concat(items);
-      mergeSubscriptionFeedItems(uuid, items);
+            subscriptionFeedAllItems = subscriptionFeedAllItems.concat(items);
       subscriptionFeedCurrentPage = page;
       $('#sp_feeds_page_label').text(`第${page}页`);
-      newItems.forEach(item => {
+      items.forEach(item => {
         $results[0].appendChild(buildSubscriptionFeedItemElement(item));
       });
     } catch (err) {
@@ -3168,6 +3094,15 @@
       loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage, true);
     });
 
+    // 订阅面板图片点击 → 打开引用弹窗（图片激活态）
+    $('#sp_feeds_results').off('click.xdex-feed-image-quote', '.xdex-history-image').on('click.xdex-feed-image-quote', '.xdex-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
     // 取消订阅
     $('#sp_feeds_results').off('click.xdex-feed-delete', '.xdex-post-history-delete').on('click.xdex-feed-delete', '.xdex-post-history-delete', function (e) {
       e.preventDefault();
@@ -19426,6 +19361,7 @@ ${markedSwatchHtml}
           '#h-menu-top',
           '#h-preview-box',
           '.h-preview-box',
+          '#sp_btn',
           '.h-threads-item-reply[data-threads-id="9999999"]'
         ].join(', '));
       } catch (e) {
