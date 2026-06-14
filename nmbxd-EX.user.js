@@ -21008,7 +21008,7 @@ ${markedSwatchHtml}
     link.appendChild(document.createTextNode(label));
     const badge = document.createElement('sub');
     badge.className = 'xdex-sidebar-ex-badge';
-    badge.style.cssText = 'color: #66CCFF; font-weight: bold;';
+    badge.style.cssText = 'color: darkorange; font-weight: bold;';
     badge.setAttribute('aria-hidden', 'true');
     badge.textContent = 'EX';
     link.appendChild(badge);
