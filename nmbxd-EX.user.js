@@ -21008,7 +21008,7 @@ ${markedSwatchHtml}
     link.appendChild(document.createTextNode(label));
     const badge = document.createElement('sub');
     badge.className = 'xdex-sidebar-ex-badge';
-    badge.style.cssText = 'color: darkorange; font-weight: bold;';
+    badge.style.cssText = 'color: #66CCFF; font-weight: bold;';
     badge.setAttribute('aria-hidden', 'true');
     badge.textContent = 'EX';
     link.appendChild(badge);
@@ -21253,9 +21253,9 @@ ${markedSwatchHtml}
     const style = document.createElement('style');
     style.id = 'xdex-subscription-ex-btn-style';
     style.textContent = `
-      .xdex-sub-ex-btn { color: #c00; font-weight: normal; }
+      .xdex-sub-ex-btn { color: #00FFCC; font-weight: normal; }
       .xdex-sub-ex-btn .xdex-sidebar-ex-badge {
-        color: darkorange;
+        color: #66CCFF;
         font-weight: bold;
         font-size: 10px;
         line-height: 1;
@@ -21347,7 +21347,7 @@ ${markedSwatchHtml}
       a.appendChild(document.createTextNode('订阅'));
       const badge = document.createElement('sub');
       badge.className = 'xdex-sidebar-ex-badge';
-      badge.style.cssText = 'color: darkorange; font-weight: bold;';
+      badge.style.cssText = 'color: #66CCFF; font-weight: bold;';
       badge.setAttribute('aria-hidden', 'true');
       badge.textContent = 'EX';
       a.appendChild(badge);
