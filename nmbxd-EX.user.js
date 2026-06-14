@@ -19412,6 +19412,15 @@ ${markedSwatchHtml}
       img.onerror = null;
 
       delete img.dataset.xdexHideReplaceApplied;
+      // 恢复懒加载属性
+      if (img.dataset.xdexOrigHdSrc) {
+        img.dataset.xdexHdSrc = img.dataset.xdexOrigHdSrc;
+        delete img.dataset.xdexOrigHdSrc;
+      }
+      if (img.dataset.xdexOrigThumbSrc) {
+        img.dataset.xdexThumbSrc = img.dataset.xdexOrigThumbSrc;
+        delete img.dataset.xdexOrigThumbSrc;
+      }
       delete img.dataset.xdexOrigSrc;
       delete img.dataset.xdexOrigSrcset;
       delete img.dataset.xdexOrigSizes;
@@ -19535,6 +19544,16 @@ ${markedSwatchHtml}
       img.dataset.xdexLockHeight = lockH > 0 ? String(lockH) : '';
 
       img.dataset.xdexHideReplaceApplied = '1';
+      // 暂存并清除懒加载属性，防止懒加载器覆盖 tips 图
+      if (img.dataset.xdexHdSrc) {
+        img.dataset.xdexOrigHdSrc = img.dataset.xdexHdSrc;
+        delete img.dataset.xdexHdSrc;
+      }
+      if (img.dataset.xdexThumbSrc) {
+        img.dataset.xdexOrigThumbSrc = img.dataset.xdexThumbSrc;
+      }
+      delete img.dataset.xdexHdLoaded;
+      delete img.dataset.xdexHdLoading;
       if (box) box.dataset.xdexHideReplaceBox = '1';
 
       // 不预加载原图：仅保存原链接，点击恢复时再加载
