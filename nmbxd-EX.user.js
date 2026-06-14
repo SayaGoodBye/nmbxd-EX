@@ -18915,7 +18915,10 @@ ${markedSwatchHtml}
 
         // 优先使用事件 detail 中的 tid，否则用持久变量
         const tid = e.detail?.tid || currentReplyTid;
-        if (!tid) return;
+        if (!tid) {
+          toast('订阅失败：未识别到当前串号');
+          return;
+        }
 
         // 不同页面的第一页 URL 构造：
         // - 板块页（/f/）：使用 ?page=1
@@ -21323,6 +21326,10 @@ ${markedSwatchHtml}
   }
 
   function resolveSubscriptionFeedUuid() {
+    const panelSelectedUuid = String($('#sp_feeds_selector').val() || '').trim();
+    if (panelSelectedUuid) return panelSelectedUuid;
+    const dropdownSelectedUuid = String($('#sp_feeds_selector_dropdown .xdex-feed-option.active').data('uuid') || '').trim();
+    if (dropdownSelectedUuid) return dropdownSelectedUuid;
     const uuid = subscriptionFeedCurrentUuid || getActiveSubscriptionFeedUuid() || '';
     if (uuid) return uuid;
     const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
@@ -21342,7 +21349,8 @@ ${markedSwatchHtml}
       const span = document.createElement('span');
       span.className = 'h-threads-info-report-btn';
       const a = document.createElement('a');
-      a.href = 'javascript:void(0)';
+      a.href = '#';
+      a.title = '订阅到当前选中的订阅号';
       a.className = 'xdex-sub-ex-btn';
       a.appendChild(document.createTextNode('订阅'));
       const badge = document.createElement('sub');
@@ -21354,14 +21362,16 @@ ${markedSwatchHtml}
       a.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const tid = container.getAttribute('data-threads-id') || '';
+        const tid = String(container.getAttribute('data-threads-id') || anchor.closest('.h-threads-item')?.getAttribute('data-threads-id') || '').trim();
         if (!tid) return;
         const uuid = resolveSubscriptionFeedUuid();
         if (!uuid) {
           toast('请先在设置中添加一个订阅号');
           return;
         }
-        const label = getCurrentSubscriptionFeedLabel() || uuid;
+        const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+        const matchedFeed = feeds.find((f) => String(f.uuid || '').trim() === String(uuid || '').trim());
+        const label = matchedFeed && matchedFeed.desc ? matchedFeed.desc : (getCurrentSubscriptionFeedLabel() || uuid);
         if (!window.confirm(`确定要订阅 No.${tid} 到「${label}」吗？`)) return;
         GM_xmlhttpRequest({
           method: 'POST',
@@ -21385,6 +21395,7 @@ ${markedSwatchHtml}
       anchor.before(span, sep);
     });
   }
+
   /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
