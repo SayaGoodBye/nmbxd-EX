@@ -6632,32 +6632,8 @@ ${markedSwatchHtml}
       }
 
       function mergeWhitelistGroupsForImport(localGroups, importedGroups) {
-        const local = Array.isArray(localGroups) ? localGroups : [];
-        const imported = Array.isArray(importedGroups) ? importedGroups : [];
-        const result = [];
-        const usedImported = new Set();
-
-        local.forEach((localGroup) => {
-          const localDesc = String(localGroup.desc || '').trim();
-          let matched = false;
-          for (let i = 0; i < imported.length; i++) {
-            if (usedImported.has(i)) continue;
-            const impGroup = imported[i];
-
-            const impDesc = String(impGroup.desc || '').trim();
-            if (localDesc && impDesc && localDesc === impDesc) {
-              matched = true;
-              usedImported.add(i);
-              const mergedThreads = Array.from(new Set([...(localGroup.threads || []), ...(impGroup.threads || [])]));
-              const mergedCookies = Array.from(new Set([...(localGroup.cookies || []), ...(impGroup.cookies || [])]));
-              result.push({ ...localGroup, ...impGroup, desc: impDesc || localDesc, threads: mergedThreads, cookies: mergedCookies });
-              break;
-            }
-          }
-          if (!matched) result.push(localGroup);
-        });
-        imported.forEach((impGroup, i) => { if (!usedImported.has(i)) result.push(impGroup); });
-        return result;
+        const combined = [...(Array.isArray(localGroups) ? localGroups : []), ...(Array.isArray(importedGroups) ? importedGroups : [])];
+        return mergeThreadCookieWhitelistGroups(combined).groups;
       }
 
       function mergeBlockedKeywords(localValue, importedValue) {
