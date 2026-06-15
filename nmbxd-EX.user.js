@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增"我的订阅"，可使用订阅号与移动端订阅互通，提供更完整的信息（内容、图片、版块），并支持侧边栏一键跳转订阅面板，支持添加多个订阅号。\n\n优化：\n1.浏览历史支持显示被SAGE的串，高级检索支持“has:sage”。\n
+// @changelog    新增\n1.新增"我的订阅"，可使用订阅号与移动端订阅互通，提供更完整的信息（内容、图片、版块），并支持侧边栏一键跳转订阅面板，支持添加多个订阅号。\n\n优化：\n1.浏览历史支持显示被SAGE的串，高级检索支持“has:sage”。\n\n修复：\n1.修复图片隐藏模式对设置图标进行作用；修复修复图片懒加载下applyImageHideMode中Tips模式无法正常替换图片的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
