@@ -21846,7 +21846,10 @@ ${markedSwatchHtml}
     const dropdownSelectedUuid = String($('#sp_feeds_selector_dropdown .xdex-feed-option.active').data('uuid') || '').trim();
     if (dropdownSelectedUuid) return dropdownSelectedUuid;
     const uuid = subscriptionFeedCurrentUuid || getActiveSubscriptionFeedUuid() || '';
-    if (uuid) return uuid;
+    if (uuid) {
+      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+      if (feeds.some((f) => String(f.uuid || '').trim() === uuid)) return uuid;
+    }
     const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
     return feeds.length ? feeds[0].uuid : '';
   }
