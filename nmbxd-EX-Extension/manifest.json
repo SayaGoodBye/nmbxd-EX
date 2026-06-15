@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X岛-EX",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "X岛揭示板网页端增强，移动端般的浏览体验。Icon by 9HrD12x",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0rlmMNoMSy6mMfP7ZGqBIwTaUBX6P6j2fxXLG/kYE0LPxJSnX23Z6HUCucl97wRqjimw0xE3d2qvIHcKRFlRj8bx/wRcKHi18OSRSs+y1Nwc5qiqBA239PIR1eLSrV+eh74KEZpIt4tAsDV84Dp5j4By6KogJkX2Y0N4xREDMBqlLVIjjCz1xfm2FJitcYoqoEpceNCyfdpFz+YeKIIo4s4fkvsmXwlv7RwlrogJU9etmFYvmf9i/33dCcFt+ftdZ8EEQo0XmTSTA651USU7cvlpvVHhhgjtcnUh7YeHYBEaX3GB2msmbofNS7tRIpjLrg9mNZo3bq1NVwmF8t3rswIDAQAB",
   "icons": {
@@ -31,9 +31,15 @@
     "https://*.nmbxd1.com/*",
     "https://*.nmbxd.com/*",
     "https://nmb-search.166666666.xyz/*",
+    "https://api.nmb.best/*",
     "https://image.nmb.best/*",
+    "https://raw.githubusercontent.com/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://fastly.jsdelivr.net/*",
     "https://update.greasyfork.org/*",
-    "https://scriptcat.org/*"
+    "https://scriptcat.org/*",
+    "https://code.jquery.com/*",
+    "https://unpkg.com/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js"
