@@ -1,7 +1,7 @@
 {
   "extension": {
-    "version": "3.2.0",
-    "changelog": "新增\n1.新增\"我的订阅\"，可使用订阅号与移动端订阅互通，提供更完整的信息（内容、图片、版块），并支持侧边栏一键跳转订阅面板，支持添加多个订阅号。\n\n优化：\n1.浏览历史支持显示被SAGE的串，高级检索支持\"has:sage\"。\n\n修复：\n1.修复图片隐藏模式对设置图标进行作用；修复图片懒加载下图片隐藏模式中Tips模式无法正常替换图片的问题。",
+    "version": "3.3.0",
+    "changelog": "新增\n1.新增使用数据的导入导出，可选项目：设置/浏览历史/发言历史/草稿/颜文字统计",
     "downloads": {
       "github": "https://github.com/SayaGoodBye/nmbxd-EX/releases/latest",
       "baidupan": "https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf"

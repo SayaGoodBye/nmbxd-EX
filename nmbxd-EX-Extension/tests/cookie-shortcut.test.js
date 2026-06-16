@@ -2,11 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..', '..');
-const scriptPath = [
-  path.join(root, 'nmbxd-EX-for-edit.user.js'),
-  path.join(root, 'nmbxd-EX.user.js')
-].find((candidate) => fs.existsSync(candidate));
-if (!scriptPath) throw new Error('upstream userscript not found');
+const scriptPath = path.join(root, 'nmbxd-EX-for-edit.user.js');
 const script = fs.readFileSync(scriptPath, 'utf8');
 
 function assert(condition, message) {
@@ -21,7 +17,7 @@ function testExtensionStorageReadyBeforeStartup() {
   assert(readyIndex !== -1, 'userscript must read the Extension GM storage readiness promise before startup scheduling');
   assert(schedulerIndex !== -1, 'userscript must schedule startup through scheduleXDexStartup');
   assert(script.includes('function getXDexGmStorageReady()'), 'userscript must expose a helper for Extension GM storage readiness');
-  assert(script.includes('XDEX_GM_STORAGE_READY.then(() => {'), 'userscript startup scheduler must wait for GM storage readiness before startup');
+  assert(script.includes('XDEX_GM_STORAGE_READY.then(() => {'), 'userscript and Extension startup scheduler must wait for GM storage readiness before startup');
   assert(readyIndex < schedulerIndex, 'GM storage readiness must be captured before startup scheduling');
   assert(script.indexOf('XDEX_GM_STORAGE_READY.then(() => {') < gatedStartIndex, 'startup must be gated behind GM storage readiness');
 }

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.2.0
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 设置项导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 。
+// @version      3.3.0
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增"我的订阅"，可使用订阅号与移动端订阅互通，提供更完整的信息（内容、图片、版块），并支持侧边栏一键跳转订阅面板，支持添加多个订阅号。\n\n优化：\n1.浏览历史支持显示被SAGE的串，高级检索支持“has:sage”。\n\n修复：\n1.修复图片隐藏模式对设置图标进行作用；修复图片懒加载下图片隐藏模式中Tips模式无法正常替换图片的问题。\n
+// @changelog    新增\n1.新增使用数据的导入导出，可选项目：设置/浏览历史/发言历史/草稿/颜文字统计\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -2760,11 +2760,21 @@
 
   // ─── 订阅 Feed 渲染 ──────────────────────────────────────────────────────
   const SUBSCRIPTION_FEED_API_BASE = 'https://api.nmb.best/api';
+  const SUBSCRIPTION_FEED_SESSION_STORE_KEY = 'xdex_subscription_feed_sessions_v3';
+  const SUBSCRIPTION_FEED_SESSION_VERSION = 3;
+  const SUBSCRIPTION_FEED_SESSION_TTL_MS = 2 * 60 * 1000;
+  const SUBSCRIPTION_FEED_SESSION_MAX_COUNT = 5;
   let subscriptionFeedCurrentPage = 1;
   let subscriptionFeedCurrentUuid = '';
   let subscriptionFeedLoading = false;
   let subscriptionFeedAllItems = [];
   let subscriptionFeedHasMore = true;
+  let subscriptionFeedRequestSeq = 0;
+  const subscriptionFeedInflightPages = Object.create(null);
+  let subscriptionFeedRenderedPages = Object.create(null);
+  let subscriptionFeedHighestRenderedPage = 0;
+  let subscriptionFeedCurrentDisplayPage = 1;
+  let subscriptionFeedCacheExpired = false;
 
   const ACTIVE_FEED_STORAGE_KEY = 'xdex_active_subscription_feed_uuid';
 
@@ -2774,6 +2784,358 @@
 
   function setActiveSubscriptionFeedUuid(uuid) {
     try { GM_setValue(ACTIVE_FEED_STORAGE_KEY, uuid || ''); } catch (e) {}
+  }
+
+  function createDefaultSubscriptionFeedSessionStore() {
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      sessions: {}
+    };
+  }
+
+  function normalizeSubscriptionFeedSessionStore(rawStore) {
+    const store = Object.assign(createDefaultSubscriptionFeedSessionStore(), rawStore || {});
+    store.version = SUBSCRIPTION_FEED_SESSION_VERSION;
+    store.sessions = store.sessions && typeof store.sessions === 'object' ? store.sessions : {};
+    return store;
+  }
+
+  function getSubscriptionFeedSessionStore() {
+    try {
+      return normalizeSubscriptionFeedSessionStore(GM_getValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, null));
+    } catch (e) {
+      return createDefaultSubscriptionFeedSessionStore();
+    }
+  }
+
+  function setSubscriptionFeedSessionStore(store) {
+    const normalized = normalizeSubscriptionFeedSessionStore(store);
+    GM_setValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, normalized);
+    return normalized;
+  }
+
+  function getSubscriptionFeedItemId(item) {
+    return String(Number(item && item.id) || 0);
+  }
+
+  function normalizeSubscriptionFeedPageItems(items) {
+    const list = Array.isArray(items) ? items : [];
+    const seen = new Set();
+    return list.filter((item) => {
+      const id = getSubscriptionFeedItemId(item);
+      if (!id || id === '0' || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+
+  function buildSubscriptionFeedPageEntry(page, items) {
+    const normalizedPage = Math.max(1, Number(page) || 1);
+    const normalizedItems = normalizeSubscriptionFeedPageItems(items);
+    return {
+      page: normalizedPage,
+      fetchedAt: Date.now(),
+      itemIds: normalizedItems.map(getSubscriptionFeedItemId),
+      items: normalizedItems
+    };
+  }
+
+  function computeHighestContiguousSubscriptionFeedPage(pages) {
+    let page = 1;
+    while (pages && pages[String(page)] && Number(pages[String(page)].page) === page) page++;
+    return page - 1;
+  }
+
+  function normalizeSubscriptionFeedSession(session) {
+    if (!session || typeof session !== 'object') return null;
+    const uuid = String(session.uuid || '').trim();
+    if (!uuid) return null;
+    const cachedPages = session.cachedPages && typeof session.cachedPages === 'object' ? session.cachedPages : {};
+    const normalizedPages = {};
+    Object.keys(cachedPages).forEach((key) => {
+      const entry = cachedPages[key] || {};
+      const page = Math.max(1, Number(entry.page || key) || 1);
+      const normalizedItems = normalizeSubscriptionFeedPageItems(entry.items);
+      normalizedPages[String(page)] = {
+        page,
+        fetchedAt: Number(entry.fetchedAt) || 0,
+        itemIds: normalizedItems.map(getSubscriptionFeedItemId),
+        items: normalizedItems
+      };
+    });
+    const highestCachedPage = computeHighestContiguousSubscriptionFeedPage(normalizedPages);
+    const createdAt = Number(session.createdAt) || 0;
+    const expiresAt = Number(session.expiresAt) || 0;
+    const lastAccessAt = Number(session.lastAccessAt) || createdAt || Date.now();
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      uuid,
+      createdAt,
+      expiresAt,
+      lastAccessAt,
+      highestCachedPage,
+      cachedPages: normalizedPages
+    };
+  }
+
+  function isSubscriptionFeedSessionExpired(session) {
+    return !session || !session.expiresAt || Date.now() > Number(session.expiresAt);
+  }
+
+  function isSubscriptionFeedSessionStructurallyValid(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return false;
+    if (!normalized.createdAt || !normalized.expiresAt) return false;
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry || Number(entry.page) !== page || !Array.isArray(entry.items)) return false;
+    }
+    return true;
+  }
+
+  function getSubscriptionFeedSession(uuid) {
+    const key = String(uuid || '').trim();
+    if (!key) return null;
+    const store = getSubscriptionFeedSessionStore();
+    return normalizeSubscriptionFeedSession(store.sessions[key]);
+  }
+
+  function saveSubscriptionFeedSession(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return null;
+    const store = getSubscriptionFeedSessionStore();
+    store.sessions[normalized.uuid] = normalized;
+    const ordered = Object.values(store.sessions)
+      .map(normalizeSubscriptionFeedSession)
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.lastAccessAt) || 0) - (Number(a.lastAccessAt) || 0));
+    const limited = ordered.slice(0, SUBSCRIPTION_FEED_SESSION_MAX_COUNT);
+    store.sessions = {};
+    limited.forEach((item) => {
+      store.sessions[item.uuid] = item;
+    });
+    setSubscriptionFeedSessionStore(store);
+    return normalized;
+  }
+
+  function deleteSubscriptionFeedSession(uuid) {
+    const key = String(uuid || '').trim();
+    if (!key) return;
+    const store = getSubscriptionFeedSessionStore();
+    if (!store.sessions[key]) return;
+    delete store.sessions[key];
+    setSubscriptionFeedSessionStore(store);
+  }
+
+  function pruneExpiredSubscriptionFeedSessions() {
+    const store = getSubscriptionFeedSessionStore();
+    let changed = false;
+    Object.keys(store.sessions).forEach((uuid) => {
+      const session = normalizeSubscriptionFeedSession(store.sessions[uuid]);
+      if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
+        delete store.sessions[uuid];
+        changed = true;
+        return;
+      }
+      store.sessions[uuid] = session;
+    });
+    if (changed) setSubscriptionFeedSessionStore(store);
+  }
+
+  function createSubscriptionFeedSession(uuid, firstPageEntry) {
+    const now = Date.now();
+    const normalizedUuid = String(uuid || '').trim();
+    const cachedPages = {};
+    let highestCachedPage = 0;
+    if (firstPageEntry && Array.isArray(firstPageEntry.items) && firstPageEntry.items.length) {
+      cachedPages[String(firstPageEntry.page)] = firstPageEntry;
+      highestCachedPage = firstPageEntry.page === 1 ? 1 : 0;
+    }
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      uuid: normalizedUuid,
+      createdAt: now,
+      expiresAt: now + SUBSCRIPTION_FEED_SESSION_TTL_MS,
+      lastAccessAt: now,
+      highestCachedPage,
+      cachedPages
+    };
+  }
+
+  function flattenSubscriptionFeedSessionItems(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized || normalized.highestCachedPage <= 0) return [];
+    const items = [];
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry || !Array.isArray(entry.items)) break;
+      items.push(...entry.items);
+    }
+    return items;
+  }
+
+  function resetSubscriptionFeedRuntimeState(uuid) {
+    subscriptionFeedCurrentUuid = String(uuid || '').trim();
+    subscriptionFeedCurrentPage = 0;
+    subscriptionFeedAllItems = [];
+    subscriptionFeedHasMore = true;
+    subscriptionFeedRenderedPages = Object.create(null);
+    subscriptionFeedHighestRenderedPage = 0;
+    subscriptionFeedCurrentDisplayPage = 1;
+    subscriptionFeedCacheExpired = false;
+  }
+
+  function rebuildSubscriptionFeedRuntimeList() {
+    const items = [];
+    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
+      const entry = subscriptionFeedRenderedPages[String(page)];
+      if (!entry || !Array.isArray(entry.items)) break;
+      items.push(...entry.items);
+    }
+    subscriptionFeedAllItems = items;
+    subscriptionFeedCurrentPage = subscriptionFeedHighestRenderedPage;
+  }
+
+  function applySubscriptionFeedSessionToRuntime(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return false;
+    subscriptionFeedCurrentUuid = normalized.uuid;
+    subscriptionFeedRenderedPages = Object.create(null);
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry) break;
+      subscriptionFeedRenderedPages[String(page)] = entry;
+    }
+    subscriptionFeedHighestRenderedPage = normalized.highestCachedPage;
+    subscriptionFeedCurrentDisplayPage = normalized.highestCachedPage > 0 ? 1 : 0;
+    rebuildSubscriptionFeedRuntimeList();
+    subscriptionFeedHasMore = true;
+    subscriptionFeedCacheExpired = false;
+    return true;
+  }
+
+  function appendSubscriptionFeedRenderedPage(pageEntry) {
+    if (!pageEntry || !pageEntry.page || !Array.isArray(pageEntry.items)) return false;
+    const page = Math.max(1, Number(pageEntry.page) || 1);
+    if (page !== subscriptionFeedHighestRenderedPage + 1) return false;
+    subscriptionFeedRenderedPages[String(page)] = pageEntry;
+    subscriptionFeedHighestRenderedPage = page;
+    subscriptionFeedCurrentDisplayPage = page;
+    rebuildSubscriptionFeedRuntimeList();
+    return true;
+  }
+
+  function getSubscriptionFeedNextRenderPage() {
+
+    return Math.max(0, Number(subscriptionFeedHighestRenderedPage) || 0) + 1;
+
+  }
+
+
+  function appendSubscriptionFeedPageSeparator(root, page) {
+    if (!root || !page || page <= 1) return;
+    const sep = document.createElement('div');
+    sep.className = 'xdex-feed-page-separator';
+    sep.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px 0;border-top:1px dashed #ddd;margin-top:8px;';
+    sep.textContent = `——第${page}页——`;
+    root.appendChild(sep);
+  }
+
+  function updateSubscriptionFeedDisplayPageFromScroll() {
+
+    const container = document.querySelector('#sp_module_feeds .sp_panel_content');
+
+    const results = document.getElementById('sp_feeds_results');
+
+    if (!container || !results || subscriptionFeedHighestRenderedPage <= 0) return;
+
+    const separators = Array.from(results.querySelectorAll('.xdex-feed-page-separator'));
+
+    let displayPage = 1;
+
+    const threshold = container.scrollTop + 4;
+
+    separators.forEach((sep) => {
+
+      const page = Number((sep.textContent || '').match(/第(\d+)页/)?.[1] || 0);
+
+      if (!page) return;
+
+      const top = sep.offsetTop;
+
+      if (threshold >= top) displayPage = page;
+
+    });
+
+    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
+
+    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
+
+  }
+
+
+
+  function renderSubscriptionFeedRenderedPages(options = {}) {
+
+    const $results = $('#sp_feeds_results').empty();
+
+    const displayPage = Math.max(0, Number(options.displayPage) || 0) || subscriptionFeedCurrentDisplayPage || subscriptionFeedHighestRenderedPage || 0;
+
+    if (subscriptionFeedHighestRenderedPage <= 0) {
+
+      $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
+
+      $('#sp_feeds_page_label').text('第0页');
+
+      return;
+
+    }
+
+    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
+
+      const entry = subscriptionFeedRenderedPages[String(page)];
+
+      if (!entry || !Array.isArray(entry.items)) break;
+
+      appendSubscriptionFeedPageSeparator($results[0], page);
+
+      entry.items.forEach((item) => {
+
+        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
+
+      });
+
+    }
+
+    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
+
+    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
+
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(updateSubscriptionFeedDisplayPageFromScroll);
+
+    else setTimeout(updateSubscriptionFeedDisplayPageFromScroll, 0);
+
+  }
+
+
+  function restoreSubscriptionFeedSession(uuid) {
+    const session = getSubscriptionFeedSession(uuid);
+    if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
+      if (session) deleteSubscriptionFeedSession(uuid);
+      return false;
+    }
+    const restored = Object.assign({}, session, { lastAccessAt: Date.now() });
+    saveSubscriptionFeedSession(restored);
+    applySubscriptionFeedSessionToRuntime(restored);
+    renderSubscriptionFeedRenderedPages({ displayPage: 1 });
+    return true;
+  }
+
+  function invalidateSubscriptionFeedSession(uuid, reason) {
+    const key = String(uuid || '').trim();
+    if (!key) return;
+    console.info('[subscription-feed] invalidate session', { uuid: key, reason: reason || '' });
+    deleteSubscriptionFeedSession(key);
   }
 
   function populateSubscriptionFeedSelector() {
@@ -2807,7 +3169,7 @@
     $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
     return selected;
   }
-  
+
   function buildSubscriptionFeedItemElement(item) {
     const threadId = Number(item.id) || 0;
     const wrapper = document.createElement('div');
@@ -2822,7 +3184,7 @@
     const infoMain = document.createElement('span');
     infoMain.className = 'xdex-history-info-main';
     info.appendChild(infoMain);
-        const title = String(item.title || '');
+    const title = String(item.title || '');
     const email = String(item.email || '');
     const now = String(item.now || '');
     const userHash = String(item.user_hash || '');
@@ -2842,7 +3204,6 @@
     replyLink.href = `${location.origin}/t/${threadId}`;
     replyLink.textContent = `No.${threadId}`;
     infoMain.appendChild(replyLink);
-    
     const replyCount = Number(item.reply_count) || 0;
     if (replyCount > 0) {
       appendThreadHistoryText(infoMain, 'span', 'xdex-history-visit-count', `${replyCount} 回`);
@@ -2857,7 +3218,7 @@
       .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
     const histItem = histCandidates[0] || null;
     const histPage = histItem ? (Number(histItem.page) || 1) : 1;
-    const histMaxPage = histItem ? (Number(histItem.maxVisitedPage) || histPage) : 1;
+
     // [回应] 链接
     const replyAction = document.createElement('span');
     replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
@@ -2880,7 +3241,7 @@
     deleteButton.title = '取消订阅';
     deleteButton.textContent = '×';
     main.appendChild(deleteButton);
-    
+
     // 图片
     const imgRaw = String(item.img || '');
     const extRaw = String(item.ext || '');
@@ -2900,7 +3261,7 @@
       imageLink.appendChild(img);
       main.appendChild(imageLink);
     }
-    
+
     // 正文
     const content = document.createElement('div');
     content.className = 'h-threads-content';
@@ -2909,7 +3270,7 @@
     else content.textContent = '';
     main.appendChild(content);
     enhanceHistoryRenderedContent(content);
-    
+
     // 脚注
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -2923,7 +3284,7 @@
     markAllCookies(getFilterConfig().markedGroups || [], wrapper);
     return wrapper;
   }
-  
+
   async function fetchSubscriptionFeedPage(uuid, page) {
     const url = `${SUBSCRIPTION_FEED_API_BASE}/feed?uuid=${encodeURIComponent(uuid)}&page=${encodeURIComponent(page)}`;
     const resp = await gmRequest(url, 'json');
@@ -2931,9 +3292,10 @@
     if (Array.isArray(data)) return data;
     try { return JSON.parse(typeof data === 'string' ? data : '[]'); } catch (e) { return []; }
   }
-  
+
   function renderSubscriptionFeedModule() {
     const $results = $('#sp_feeds_results').empty();
+    pruneExpiredSubscriptionFeedSessions();
     const uuid = populateSubscriptionFeedSelector();
     if (!uuid) {
       $results.html('<div style="text-align:center;color:#999;padding:40px 0;">请先在设置中添加订阅号</div>');
@@ -2942,55 +3304,75 @@
       return;
     }
     subscriptionFeedCurrentUuid = uuid;
-    subscriptionFeedCurrentPage = 1;
-    subscriptionFeedAllItems = [];
-    subscriptionFeedHasMore = true;
-            $results.html('<div style="text-align:center;color:#999;padding:40px 0;">正在获取订阅……</div>');
-    loadSubscriptionFeedPage(uuid, 1, true);
+    if (restoreSubscriptionFeedSession(uuid)) return;
+    resetSubscriptionFeedRuntimeState(uuid);
+    $results.html('<div style="text-align:center;color:#999;padding:40px 0;">正在获取订阅……</div>');
+    loadSubscriptionFeedPage(uuid, 1, { replace: true, source: 'init' });
   }
-  async function loadSubscriptionFeedPage(uuid, page, replace) {
 
-    subscriptionFeedLoading = true;
+  async function loadSubscriptionFeedPage(uuid, page, options = {}) {
+    const replace = !!options.replace;
+    if (!uuid || subscriptionFeedLoading) return;
+    const requestPage = Math.max(1, Number(page) || 1);
     const $results = $('#sp_feeds_results');
-
-    if (replace) $results.empty();
-
+    if (replace && subscriptionFeedHighestRenderedPage <= 0) {
+      resetSubscriptionFeedRuntimeState(uuid);
+      if ($results.length) $results.empty();
+    }
+    const expectedPage = getSubscriptionFeedNextRenderPage();
+    if (requestPage !== expectedPage) {
+      console.warn('[subscription-feed] reject non-contiguous page', {
+        uuid,
+        page: requestPage,
+        expectedPage,
+        source: options.source || '',
+        currentPage: subscriptionFeedCurrentPage,
+        highestRenderedPage: subscriptionFeedHighestRenderedPage,
+        allItems: subscriptionFeedAllItems.length,
+        cacheExpired: subscriptionFeedCacheExpired
+      });
+      return;
+    }
+    const session = getSubscriptionFeedSession(uuid);
+    if (session && isSubscriptionFeedSessionExpired(session)) subscriptionFeedCacheExpired = true;
+    subscriptionFeedLoading = true;
+    const seq = ++subscriptionFeedRequestSeq;
+    subscriptionFeedInflightPages[requestPage] = seq;
     try {
-
-      const items = await fetchSubscriptionFeedPage(uuid, page);
+      const items = normalizeSubscriptionFeedPageItems(await fetchSubscriptionFeedPage(uuid, requestPage));
+      if (subscriptionFeedInflightPages[requestPage] !== seq) return;
       if (uuid !== subscriptionFeedCurrentUuid) return;
       if (!items.length) {
-
         subscriptionFeedHasMore = false;
-
-        if (replace) {
-
-          $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
-
-        }
-
+        renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
         return;
-
       }
-
-      // 页码分隔线：只在下一页实际有内容时显示，避免未满页触底后留下空的“第N页”提示
-
-            subscriptionFeedAllItems = subscriptionFeedAllItems.concat(items);
-      subscriptionFeedCurrentPage = page;
-      $('#sp_feeds_page_label').text(`第${page}页`);
-      items.forEach(item => {
-        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
-      });
+      const pageEntry = buildSubscriptionFeedPageEntry(requestPage, items);
+      if (!appendSubscriptionFeedRenderedPage(pageEntry)) return;
+      subscriptionFeedHasMore = true;
+      renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
+      if (!subscriptionFeedCacheExpired) {
+        let nextSession = getSubscriptionFeedSession(uuid);
+        if (!nextSession || isSubscriptionFeedSessionExpired(nextSession) || !isSubscriptionFeedSessionStructurallyValid(nextSession)) {
+          nextSession = createSubscriptionFeedSession(uuid, pageEntry);
+        } else {
+          nextSession.cachedPages[String(requestPage)] = pageEntry;
+          nextSession.highestCachedPage = computeHighestContiguousSubscriptionFeedPage(nextSession.cachedPages);
+          nextSession.lastAccessAt = Date.now();
+        }
+        saveSubscriptionFeedSession(nextSession);
+      }
     } catch (err) {
       console.error('[subscription-feed] load error', err);
       if (replace) {
         $results.html(`<div style="text-align:center;color:#c00;padding:40px 0;">加载失败：${Utils.escapeHTML ? Utils.escapeHTML(err.message) : err.message}</div>`);
       }
     } finally {
+      if (subscriptionFeedInflightPages[requestPage] === seq) delete subscriptionFeedInflightPages[requestPage];
       subscriptionFeedLoading = false;
     }
   }
-  
+
   function bindSubscriptionFeedModuleEvents() {
     // 订阅号切换
     // 自定义下拉菜单交互
@@ -3024,18 +3406,13 @@
       $display.attr('aria-expanded', 'false');
     });
 
-
     $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
       subscriptionFeedCurrentUuid = $(this).val() || '';
       if (subscriptionFeedCurrentUuid) {
         setActiveSubscriptionFeedUuid(subscriptionFeedCurrentUuid);
-        subscriptionFeedCurrentPage = 1;
-        subscriptionFeedAllItems = [];
-        subscriptionFeedHasMore = true;
-        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, 1, true);
+        renderSubscriptionFeedModule();
       }
     });
-
     // 跨页面同步：其他标签页切换订阅号时自动刷新
     if (typeof GM_addValueChangeListener === 'function') {
       GM_addValueChangeListener(ACTIVE_FEED_STORAGE_KEY, (_key, _oldVal, newVal, remote) => {
@@ -3043,11 +3420,8 @@
         const uuid = String(newVal || '');
         if (uuid && uuid !== subscriptionFeedCurrentUuid) {
           subscriptionFeedCurrentUuid = uuid;
-          subscriptionFeedCurrentPage = 1;
-          subscriptionFeedAllItems = [];
-          subscriptionFeedHasMore = true;
           $('#sp_feeds_selector').val(uuid);
-          loadSubscriptionFeedPage(uuid, 1, true);
+          renderSubscriptionFeedModule();
         }
       });
     }
@@ -3057,41 +3431,38 @@
       e.preventDefault();
       const page = parseInt($('#sp_feeds_page_input').val(), 10);
       if (!page || page < 1 || !subscriptionFeedCurrentUuid) return;
-      subscriptionFeedCurrentPage = page;
-      subscriptionFeedAllItems = [];
-      subscriptionFeedHasMore = true;
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, page, true);
+      const expectedPage = getSubscriptionFeedNextRenderPage();
+      if (page !== expectedPage) {
+        toast(`当前缓存会话仅支持连续翻页，请先加载第${expectedPage}页`);
+        return;
+      }
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, page, { replace: false, source: 'jump' });
     });
 
     // 滚动加载下一页
     const $scrollContainer = $('#sp_module_feeds .sp_panel_content');
     $scrollContainer.off('scroll.subscriptionFeed').on('scroll.subscriptionFeed', function () {
+      updateSubscriptionFeedDisplayPageFromScroll();
       if (subscriptionFeedLoading || !subscriptionFeedHasMore || !subscriptionFeedCurrentUuid) return;
       const el = this;
       if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
-        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage + 1, false);
+        const nextPage = getSubscriptionFeedNextRenderPage();
+        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'scroll' });
       }
     });
-
-
 
     // 上一页
     $('#sp_feeds_prev').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
       e.preventDefault();
-      if (subscriptionFeedCurrentPage <= 1 || !subscriptionFeedCurrentUuid) return;
-      subscriptionFeedCurrentPage--;
-      subscriptionFeedAllItems = [];
-      subscriptionFeedHasMore = true;
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage, true);
+      toast('当前缓存会话仅支持向后连续翻页');
     });
+
     // 下一页
     $('#sp_feeds_next').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
       e.preventDefault();
       if (!subscriptionFeedCurrentUuid) return;
-      subscriptionFeedCurrentPage++;
-      subscriptionFeedAllItems = [];
-      subscriptionFeedHasMore = true;
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, subscriptionFeedCurrentPage, true);
+      const nextPage = getSubscriptionFeedNextRenderPage();
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'next-button' });
     });
 
     // 订阅面板图片点击 → 打开引用弹窗（图片激活态）
@@ -3103,6 +3474,7 @@
       e.stopPropagation();
       if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
     });
+
     // 取消订阅
     $('#sp_feeds_results').off('click.xdex-feed-delete', '.xdex-post-history-delete').on('click.xdex-feed-delete', '.xdex-post-history-delete', function (e) {
       e.preventDefault();
@@ -3113,8 +3485,10 @@
         method: 'POST',
         url: `${SUBSCRIPTION_FEED_API_BASE}/delFeed`,
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                data: `uuid=${encodeURIComponent(subscriptionFeedCurrentUuid)}&tid=${encodeURIComponent(tid)}`,
+        data: `uuid=${encodeURIComponent(subscriptionFeedCurrentUuid)}&tid=${encodeURIComponent(tid)}`,
         onload: () => {
+          invalidateSubscriptionFeedSession(subscriptionFeedCurrentUuid, 'delete-feed');
+          resetSubscriptionFeedRuntimeState(subscriptionFeedCurrentUuid);
           toast('已取消订阅');
           renderSubscriptionFeedModule();
         },
@@ -5023,7 +5397,7 @@ ${markedSwatchHtml}
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
-
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -5134,11 +5508,11 @@ ${markedSwatchHtml}
                   </div>
                 </div>
 
-                <!-- 导入/导出配置 -->
+                <!-- 设置导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
-                    <span>导入/导出配置</span>
+                    <span>设置导入/导出</span>
                     <button id="btn_sp_importExport" class="sp_save xdex-inv" data-id="sp_importExport"
 
                             style="margin-left:auto;padding:2px 8px;">应用</button>
@@ -5153,6 +5527,45 @@ ${markedSwatchHtml}
                       <button id="sp_exportFile" style="flex:1;padding:4px 8px;font-size:13px;cursor:pointer;">导出为文件</button>
                     </div>
                     <div style="font-size:12px;color:#888;text-align:center;">导入将覆盖当前全部配置，建议先导出备份</div>
+                  </div>
+                </div>
+
+                <!-- 使用数据导入/导出 -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>使用数据导入/导出</span>
+                    <button id="btn_sp_fullExport_reset" class="xdex-inv" style="margin-left:auto;padding:2px 8px;color:#c00;">重置所选项目</button>
+                    <button id="btn_sp_fullExport_export" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">导出为文件</button>
+                    <button id="btn_sp_fullExport_import" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">从文件导入</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div style="font-size:12px;color:#666;margin-bottom:6px;">
+                      用于备份或迁移脚本/扩展运行产生的数据，支持按类别导出与导入。默认全选。
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:6px;">
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_settings" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_settings">设置</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_threadHistory" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_threadHistory">浏览历史</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_postHistory" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_postHistory">发言历史</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_drafts" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_drafts">草稿</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_kaomojiStats" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_kaomojiStats">颜文字统计</label>
+                      </div>
+                    </div>
+                    <div id="sp_fullExport_import_preview" style="display:none;margin-top:8px;padding:6px 8px;border:1px dashed #aaa;border-radius:6px;background:#FFFFEE;"></div>
                   </div>
                 </div>
                 </div>
@@ -6120,6 +6533,359 @@ ${markedSwatchHtml}
         return val;
       }
 
+      // === 使用数据导入导出 ===
+      const FULL_EXPORT_SCHEMA_VERSION = 1;
+
+      const FULL_IMPORT_DIRECT_OVERRIDE_KEYS = [
+        'enableCookieSwitch', 'disableWatermark', 'enablePaginationDuplication',
+        'updatePreviewCookie', 'hideEmptyTitleEmail', 'enableExternalImagePreview',
+        'enableAutoCookieRefresh', 'enableAutoCookieRefreshToast',
+        'interceptReplyFormUnvcode', 'interceptReplyFormU200B',
+        'interceptReplyFormAutoCompress', 'enableSeamlessPaging',
+        'enableAutoSeamlessPaging', 'enableHDImageAndLayoutFix',
+        'enableLinkBlank', 'enableAutoUrlLinkify', 'enableQuotePreview',
+        'enableUpdateCheck', 'enableImageContextMenu', 'enableImageHideMode',
+        'applyImageHideMode', 'enableDraft', 'timeDisplayMode',
+        'extendQuote', 'kaomojiSort', 'toggleSidebar',
+        'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
+        'replyModeDefault', 'replyExtraDefault', 'blockDisplayMode',
+        'postAfterAction'
+      ];
+
+      function mergeFavoriteThreads(localItems, importedItems) {
+        const local = Array.isArray(localItems) ? normalizeFavoriteThreads(localItems) : [];
+        const imported = Array.isArray(importedItems) ? normalizeFavoriteThreads(importedItems) : [];
+        const seen = new Map();
+        local.forEach((item) => {
+          const key = String(item.threadId || '').trim();
+          if (key) seen.set(key, item);
+        });
+        imported.forEach((item) => {
+          const key = String(item.threadId || '').trim();
+          if (!key) return;
+          if (!seen.has(key)) {
+            seen.set(key, item);
+          } else {
+            const existing = seen.get(key);
+            if (!existing.desc && item.desc) existing.desc = item.desc;
+          }
+        });
+        return Array.from(seen.values());
+      }
+
+      function mergeSubscriptionFeeds(localItems, importedItems) {
+        const local = Array.isArray(localItems) ? localItems : [];
+        const imported = Array.isArray(importedItems) ? importedItems : [];
+        const seen = new Map();
+        local.forEach((item) => {
+          const key = String(item.uuid || '').trim();
+          if (key) seen.set(key, item);
+        });
+        imported.forEach((item) => {
+          const key = String(item.uuid || '').trim();
+          if (!key) return;
+          if (!seen.has(key)) {
+            seen.set(key, item);
+          } else {
+            const existing = seen.get(key);
+            if (!existing.desc && item.desc) existing.desc = item.desc;
+          }
+        });
+        return Array.from(seen.values());
+      }
+
+      function mergeMarkedGroups(localGroups, importedGroups) {
+        const local = Array.isArray(localGroups) ? localGroups : [];
+        const imported = Array.isArray(importedGroups) ? importedGroups : [];
+        const result = [];
+        const usedImported = new Set();
+
+        local.forEach((localGroup) => {
+          const localDesc = localGroup.desc || localGroup.name || '';
+          let matched = false;
+          for (let i = 0; i < imported.length; i++) {
+            if (usedImported.has(i)) continue;
+            const impGroup = imported[i];
+            const impDesc = impGroup.desc || impGroup.name || '';
+            if (localDesc && impDesc && localDesc === impDesc) {
+              matched = true;
+              usedImported.add(i);
+              const localCookies = Array.isArray(localGroup) ? localGroup : (localGroup.cookies || []);
+              const impCookies = Array.isArray(impGroup) ? impGroup : (impGroup.cookies || []);
+              const mergedCookies = Array.from(new Set([...localCookies, ...impCookies]));
+              if (Array.isArray(localGroup) && !localGroup.desc) {
+                result.push(mergedCookies);
+              } else {
+                result.push({ ...localGroup, ...impGroup, desc: impDesc || localDesc, cookies: mergedCookies });
+              }
+              break;
+            }
+          }
+          if (!matched) result.push(localGroup);
+        });
+        imported.forEach((impGroup, i) => { if (!usedImported.has(i)) result.push(impGroup); });
+        return result;
+      }
+
+      function mergeBlockedCookies(localGroups, importedGroups) {
+        return mergeMarkedGroups(localGroups, importedGroups);
+      }
+
+      function mergeWhitelistGroupsForImport(localGroups, importedGroups) {
+        const combined = [...(Array.isArray(localGroups) ? localGroups : []), ...(Array.isArray(importedGroups) ? importedGroups : [])];
+        return mergeThreadCookieWhitelistGroups(combined).groups;
+      }
+
+      function mergeBlockedKeywords(localValue, importedValue) {
+        const localGroups = normalizeBlockedKeywordGroups(localValue);
+        const importedGroups = normalizeBlockedKeywordGroups(importedValue);
+        const allLocalKws = new Set(flattenBlockedKeywords(localGroups));
+        const result = localGroups.map((g) => ({ value: g.value }));
+        importedGroups.forEach((impGroup) => {
+          const impKws = Utils.strToList(impGroup.value);
+          if (!impKws.length) return;
+          const hasNew = impKws.some((kw) => !allLocalKws.has(kw));
+          if (hasNew) result.push({ value: impGroup.value });
+        });
+        return result;
+      }
+
+      function mergeSettingsForFullImport(localSettings, importedSettings) {
+        const result = Object.assign({}, localSettings);
+        FULL_IMPORT_DIRECT_OVERRIDE_KEYS.forEach((key) => {
+          if (key in importedSettings) result[key] = importedSettings[key];
+        });
+        result.favoriteThreads = mergeFavoriteThreads(localSettings.favoriteThreads, importedSettings.favoriteThreads);
+        result.subscriptionFeeds = mergeSubscriptionFeeds(localSettings.subscriptionFeeds, importedSettings.subscriptionFeeds);
+        result.blockedKeywords = mergeBlockedKeywords(localSettings.blockedKeywords, importedSettings.blockedKeywords);
+        result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, importedSettings.markedGroups);
+        result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, importedSettings.blockedCookies);
+        result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
+        return result;
+      }
+
+      function mergeThreadHistoryStore(localStore, importedStore) {
+        const local = normalizeThreadHistoryStore(localStore);
+        const imported = normalizeThreadHistoryStore(importedStore);
+        const result = Object.assign({}, local);
+        result.items = Object.assign({}, local.items);
+        Object.keys(imported.items).forEach((key) => {
+          const impItem = imported.items[key];
+          if (!result.items[key]) {
+            result.items[key] = impItem;
+          } else {
+            const localItem = result.items[key];
+            result.items[key] = {
+              ...localItem,
+              ...impItem,
+              lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(impItem.lastVisitedAt) || 0),
+              page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
+              visitCount: Math.max(Number(localItem.visitCount) || 0, Number(impItem.visitCount) || 0),
+              title: impItem.title || localItem.title,
+              name: impItem.name || localItem.name,
+            };
+          }
+        });
+        result.order = Object.keys(result.items)
+          .sort((a, b) => (Number(result.items[b].lastVisitedAt) || 0) - (Number(result.items[a].lastVisitedAt) || 0));
+        return result;
+      }
+
+      function mergePostHistoryStore(localStore, importedStore) {
+        const local = normalizePostHistoryStore(localStore);
+        const imported = normalizePostHistoryStore(importedStore);
+        const result = Object.assign({}, local);
+        result.items = Object.assign({}, local.items);
+        const STATUS_PRIORITY = { confirmed: 3, unconfirmed: 2, pending: 1, failed: 0 };
+        Object.keys(imported.items).forEach((key) => {
+          const impItem = imported.items[key];
+          if (!result.items[key]) {
+            result.items[key] = impItem;
+          } else {
+            const localItem = result.items[key];
+            const localStatus = STATUS_PRIORITY[localItem.status] || 0;
+            const impStatus = STATUS_PRIORITY[impItem.status] || 0;
+            result.items[key] = {
+              ...localItem,
+              ...impItem,
+              status: impStatus >= localStatus ? impItem.status : localItem.status,
+              page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
+              submittedAt: Math.min(Number(localItem.submittedAt) || Infinity, Number(impItem.submittedAt) || Infinity),
+              contentText: impItem.contentText || localItem.contentText,
+              forumName: impItem.forumName || localItem.forumName,
+            };
+          }
+        });
+        result.order = Object.keys(result.items)
+          .sort((a, b) => (Number(result.items[b].submittedAt) || 0) - (Number(result.items[a].submittedAt) || 0));
+        return result;
+      }
+
+      function normalizeDraftExportText(text) {
+        return String(text || '')
+          .replace(/^\uFEFF/, '')
+          .replace(/[\u200B\u200C\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g, '')
+          .trim();
+      }
+
+      function collectDraftsForExport() {
+        const registry = getDraftRegistry();
+        const items = {};
+        registry.forEach((key) => {
+          const raw = readDraftValue(key);
+          const clean = normalizeDraftExportText(raw);
+          if (clean) items[key] = raw;
+        });
+        return { registry: Object.keys(items), items };
+      }
+
+      function applyDraftsFromImport(drafts) {
+        if (!drafts || typeof drafts !== 'object') return { imported: 0, overwritten: 0 };
+        const items = drafts.items || {};
+        let imported = 0;
+        let overwritten = 0;
+        const newRegistry = new Set(getDraftRegistry());
+        Object.keys(items).forEach((key) => {
+          const clean = normalizeDraftExportText(items[key]);
+          if (!clean) return;
+          const existing = readDraftValue(key);
+          if (existing === items[key]) return;
+          if (existing) overwritten++;
+          else imported++;
+          GM_setValue(key, items[key]);
+          newRegistry.add(key);
+        });
+        saveDraftRegistry(Array.from(newRegistry));
+        return { imported, overwritten };
+      }
+
+      function mergeKaomojiStats(localStats, importedStats) {
+        const local = (localStats && typeof localStats === 'object') ? localStats : {};
+        const imported = (importedStats && typeof importedStats === 'object') ? importedStats : {};
+        const result = Object.assign({}, local);
+        Object.keys(imported).forEach((key) => {
+          const impVal = imported[key];
+          const localVal = result[key];
+          if (!localVal) {
+            result[key] = impVal;
+          } else if (typeof impVal === 'object' && typeof localVal === 'object') {
+            const localCount = Number(localVal.count) || 0;
+            const impCount = Number(impVal.count) || 0;
+            const localLast = Number(localVal.lastUsed) || 0;
+            const impLast = Number(impVal.lastUsed) || 0;
+            result[key] = {
+              count: localCount + impCount,
+              lastUsed: Math.max(localLast, impLast)
+            };
+          }
+        });
+        return result;
+      }
+
+      function collectFullExportPayload(selection) {
+        const payload = {};
+        if (selection.settings) {
+          payload.myScriptSettings = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        }
+        if (selection.threadHistory) {
+          payload.threadHistory = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+        }
+        if (selection.postHistory) {
+          payload.postHistory = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+        }
+        if (selection.drafts) {
+          payload.drafts = collectDraftsForExport();
+        }
+        if (selection.kaomojiStats) {
+          payload.kaomojiStats = GM_getValue('kaomojiUsageStats', {});
+        }
+        return payload;
+      }
+
+      function buildFullExportFile(selection) {
+        const payload = collectFullExportPayload(selection);
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
+        const scriptVersion = typeof VERSION !== 'undefined' ? VERSION : (typeof GM_info !== 'undefined' ? GM_info.script.version : 'unknown');
+        const platform = typeof GM_info !== 'undefined' && GM_info.scriptHandler ? 'userscript' : 'extension';
+        return {
+          file: {
+            meta: { format: 'xdex-full-export', schemaVersion: FULL_EXPORT_SCHEMA_VERSION, exportedAt: now.toISOString(), source: 'nmbxd-EX', scriptVersion, platform },
+            selection,
+            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate' },
+            summary: {
+              threadHistoryCount: selection.threadHistory ? Object.keys((payload.threadHistory || {}).items || {}).length : 0,
+              postHistoryCount: selection.postHistory ? Object.keys((payload.postHistory || {}).items || {}).length : 0,
+              draftCount: selection.drafts ? (payload.drafts.registry || []).length : 0,
+              kaomojiStatsEntries: selection.kaomojiStats ? Object.keys(payload.kaomojiStats || {}).length : 0,
+            },
+            payload
+          },
+          filename: `x岛-ex-full-export-${timestamp}.json`
+        };
+      }
+
+      function downloadFullExportFile(fileData) {
+        const blob = new Blob([JSON.stringify(fileData.file, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileData.filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      function parseFullExportFile(text) {
+        let parsed;
+        try { parsed = JSON.parse(text); } catch (e) { return { valid: false, error: '文件格式错误，无法解析 JSON' }; }
+        if (!parsed || typeof parsed !== 'object') return { valid: false, error: '文件内容无效' };
+        const meta = parsed.meta || {};
+        if (meta.format !== 'xdex-full-export') return { valid: false, error: '不支持的文件格式，请使用 X岛-EX 使用数据导出文件' };
+        if (!meta.schemaVersion || meta.schemaVersion > FULL_EXPORT_SCHEMA_VERSION) return { valid: false, error: `不支持的 schema 版本: ${meta.schemaVersion}` };
+        if (!parsed.payload || typeof parsed.payload !== 'object') return { valid: false, error: '文件缺少 payload 数据' };
+        return { valid: true, data: parsed };
+      }
+
+      function applyFullImportPayload(importData) {
+        const payload = importData.payload;
+        const report = {};
+
+        if (payload.myScriptSettings) {
+          const local = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+          const merged = mergeSettingsForFullImport(local, payload.myScriptSettings);
+          GM_setValue(SettingPanel.key, merged);
+          report.settings = { mode: 'merge', changed: true };
+        }
+
+        if (payload.threadHistory) {
+          const local = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+          const merged = mergeThreadHistoryStore(local, payload.threadHistory);
+          GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+          report.threadHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
+        }
+
+        if (payload.postHistory) {
+          const local = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+          const merged = mergePostHistoryStore(local, payload.postHistory);
+          GM_setValue(POST_HISTORY_STORAGE_KEY, merged);
+          report.postHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
+        }
+
+        if (payload.drafts) {
+          const result = applyDraftsFromImport(payload.drafts);
+          report.drafts = { mode: 'override-imported', imported: result.imported, overwritten: result.overwritten };
+        }
+
+        if (payload.kaomojiStats) {
+          const local = GM_getValue('kaomojiUsageStats', {});
+          const merged = mergeKaomojiStats(local, payload.kaomojiStats);
+          GM_setValue('kaomojiUsageStats', merged);
+          report.kaomojiStats = { mode: 'accumulate', changed: true };
+        }
+
+        return report;
+      }
+      // === 使用数据导入导出 end ===
+
       function buildJSONC(state) {
         const filtered = {};
         for (const [k, v] of Object.entries(state)) {
@@ -6261,17 +7027,116 @@ ${markedSwatchHtml}
       const _origClose = $('#sp_close,#sp_cover').off.bind($('#sp_close,#sp_cover'), 'click');
       delete SettingPanel.__pendingImport;
 
+      // ── 使用数据导入导出 ──
+      $('#btn_sp_fullExport_reset').off('click').on('click', (e) => {
+        e.stopPropagation();
+        const selection = {
+          settings: $('#sp_fullExport_settings').is(':checked'),
+          threadHistory: $('#sp_fullExport_threadHistory').is(':checked'),
+          postHistory: $('#sp_fullExport_postHistory').is(':checked'),
+          drafts: $('#sp_fullExport_drafts').is(':checked'),
+          kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+        };
+        if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
+        const parts = [];
+        if (selection.settings) parts.push('设置（恢复默认）');
+        if (selection.threadHistory) parts.push('浏览历史');
+        if (selection.postHistory) parts.push('发言历史');
+        if (selection.drafts) parts.push('草稿');
+        if (selection.kaomojiStats) parts.push('颜文字统计');
+        if (!window.confirm(`确定要清除以下项目的全部内容吗？\n\n${parts.join('、')}\n\n清除后页面将自动刷新。`)) return;
+        try {
+          if (selection.settings) GM_setValue(SettingPanel.key, {});
+          if (selection.threadHistory) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(null));
+          if (selection.postHistory) GM_setValue(POST_HISTORY_STORAGE_KEY, normalizePostHistoryStore(null));
+          if (selection.drafts) {
+            getDraftRegistry().forEach((key) => { try { GM_deleteValue(key); } catch (_) {} });
+            saveDraftRegistry([]);
+          }
+          if (selection.kaomojiStats) GM_setValue('kaomojiUsageStats', {});
+          toast('已清除所选项目，即将刷新');
+          setTimeout(() => location.reload(), 800);
+        } catch (err) {
+          toast('清除失败: ' + (err.message || err));
+        }
+      });
+
+      $('#btn_sp_fullExport_export').off('click').on('click', (e) => {
+        e.stopPropagation();
+        const selection = {
+          settings: $('#sp_fullExport_settings').is(':checked'),
+          threadHistory: $('#sp_fullExport_threadHistory').is(':checked'),
+          postHistory: $('#sp_fullExport_postHistory').is(':checked'),
+          drafts: $('#sp_fullExport_drafts').is(':checked'),
+          kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+        };
+        if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
+        const fileData = buildFullExportFile(selection);
+        downloadFullExportFile(fileData);
+        toast('使用数据已导出');
+      });
+
+      $('#btn_sp_fullExport_import').off('click').on('click', (e) => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = parseFullExportFile(reader.result);
+            if (!result.valid) { toast(result.error); return; }
+            SettingPanel.__pendingFullImport = result.data;
+            renderFullImportPreview(result.data);
+          };
+          reader.readAsText(file);
+        };
+        input.click();
+      });
+
+      function renderFullImportPreview(data) {
+        const $preview = $('#sp_fullExport_import_preview').empty().show();
+        const meta = data.meta || {};
+        const summary = data.summary || {};
+        let html = '<div style="font-size:12px;color:#333;">';
+        html += `<div>来源版本: ${meta.scriptVersion || '?'} | 导出时间: ${meta.exportedAt ? new Date(meta.exportedAt).toLocaleString() : '?'}</div>`;
+        html += '<div style="margin-top:4px;">包含数据:</div><ul style="margin:2px 0;padding-left:20px;">';
+        if (summary.threadHistoryCount) html += `<li>浏览历史: ${summary.threadHistoryCount} 条</li>`;
+        if (summary.postHistoryCount) html += `<li>发言历史: ${summary.postHistoryCount} 条</li>`;
+        if (summary.draftCount) html += `<li>草稿: ${summary.draftCount} 条</li>`;
+        if (summary.kaomojiStatsEntries) html += `<li>颜文字统计: ${summary.kaomojiStatsEntries} 项</li>`;
+        if (data.selection && data.selection.settings) html += '<li>设置配置（合并导入）</li>';
+        html += '</ul>';
+        html += '<div style="color:#666;margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
+        html += '</div>';
+        const $btn = $('<button style="margin-top:6px;padding:4px 10px;">应用导入</button>');
+        $btn.on('click', () => {
+          if (!SettingPanel.__pendingFullImport) { toast('无可导入数据'); return; }
+          if (!window.confirm('确定要导入使用数据吗？\n导入完成后页面将自动刷新。')) return;
+          const report = applyFullImportPayload(SettingPanel.__pendingFullImport);
+          SettingPanel.__pendingFullImport = null;
+          $preview.hide();
+          const parts = [];
+          if (report.settings) parts.push('设置已合并');
+          if (report.threadHistory) parts.push(`浏览历史 ${report.threadHistory.count} 条`);
+          if (report.postHistory) parts.push(`发言历史 ${report.postHistory.count} 条`);
+          if (report.drafts) parts.push(`草稿 ${report.drafts.imported} 条导入${report.drafts.overwritten ? `, ${report.drafts.overwritten} 条覆盖` : ''}`);
+          if (report.kaomojiStats) parts.push('颜文字已累加');
+          toast(`使用数据导入完成: ${parts.join('、')}，即将刷新`);
+          setTimeout(() => location.reload(), 800);
+        });
+        $preview.html(html).append($btn);
+      }
+
       $('#sp_apply').off('click').on('click', ()=>{
         collectReloadRequiredSettingsFromPanel();
-
         let valid = true;
-
         this.state.blockedKeywords = collectBlockedKeywordGroupsFromPanel();
-
         const favoriteThreads = collectFavoriteThreadsFromPanel();
         if (!favoriteThreads) return;
         this.state.favoriteThreads = favoriteThreads;
-
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
@@ -6375,13 +7240,9 @@ ${markedSwatchHtml}
       });
 
       // 关闭面板
-
       $('#sp_close,#sp_cover').off('click').on('click', e=>{
-
         if (e.target.id==='sp_close' || e.target.id==='sp_cover')
-
           $('#sp_cover').fadeOut();
-
       });
 
       //鼠标悬浮在具体功能上显示提示
@@ -6427,6 +7288,7 @@ ${markedSwatchHtml}
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
+        sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
       };
@@ -6644,7 +7506,7 @@ ${markedSwatchHtml}
 
       // 初始折叠与按钮隐藏
       $('.sp_fold_body').hide();
-      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads,#btn_group_subscriptionFeeds,#btn_sp_subscriptionFeeds').addClass('xdex-inv');
+      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads,#btn_group_subscriptionFeeds,#btn_sp_subscriptionFeeds,#btn_sp_importExport,#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import').addClass('xdex-inv');
 
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
@@ -8404,7 +9266,7 @@ ${markedSwatchHtml}
       url.startsWith("https://www.nmbxd1.com/Forum/timeline/")
     );
     if (!allowed) return; // 不在指定页面 → 直接退出
-
+    if (document.body && /429\s*Too Many Requests/i.test(document.body.textContent || '')) return; // 429 限流页面，不弹登录提示
     if (!force && (window.__loginPromptSuppressUntilRefresh || getLoginPromptSuppressAuto())) return; // 持久化“不再提醒”后，自动场景不再弹出
     if (!force && window.__loginPromptShown) return; // 自动触发只弹一次
     if ($('#login-modal-wrapper').length) return; // 避免重复插入
@@ -18544,7 +19406,10 @@ ${markedSwatchHtml}
 
         // 优先使用事件 detail 中的 tid，否则用持久变量
         const tid = e.detail?.tid || currentReplyTid;
-        if (!tid) return;
+        if (!tid) {
+          toast('订阅失败：未识别到当前串号');
+          return;
+        }
 
         // 不同页面的第一页 URL 构造：
         // - 板块页（/f/）：使用 ?page=1
@@ -20882,9 +21747,9 @@ ${markedSwatchHtml}
     const style = document.createElement('style');
     style.id = 'xdex-subscription-ex-btn-style';
     style.textContent = `
-      .xdex-sub-ex-btn { color: #c00; font-weight: normal; }
+      .xdex-sub-ex-btn { color: #00FFCC; font-weight: normal; }
       .xdex-sub-ex-btn .xdex-sidebar-ex-badge {
-        color: darkorange;
+        color: #66CCFF;
         font-weight: bold;
         font-size: 10px;
         line-height: 1;
@@ -20952,8 +21817,15 @@ ${markedSwatchHtml}
   }
 
   function resolveSubscriptionFeedUuid() {
+    const panelSelectedUuid = String($('#sp_feeds_selector').val() || '').trim();
+    if (panelSelectedUuid) return panelSelectedUuid;
+    const dropdownSelectedUuid = String($('#sp_feeds_selector_dropdown .xdex-feed-option.active').data('uuid') || '').trim();
+    if (dropdownSelectedUuid) return dropdownSelectedUuid;
     const uuid = subscriptionFeedCurrentUuid || getActiveSubscriptionFeedUuid() || '';
-    if (uuid) return uuid;
+    if (uuid) {
+      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+      if (feeds.some((f) => String(f.uuid || '').trim() === uuid)) return uuid;
+    }
     const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
     return feeds.length ? feeds[0].uuid : '';
   }
@@ -20971,26 +21843,29 @@ ${markedSwatchHtml}
       const span = document.createElement('span');
       span.className = 'h-threads-info-report-btn';
       const a = document.createElement('a');
-      a.href = 'javascript:void(0)';
+      a.href = '#';
+      a.title = '订阅到当前选中的订阅号';
       a.className = 'xdex-sub-ex-btn';
       a.appendChild(document.createTextNode('订阅'));
       const badge = document.createElement('sub');
       badge.className = 'xdex-sidebar-ex-badge';
-      badge.style.cssText = 'color: darkorange; font-weight: bold;';
+      badge.style.cssText = 'color: #66CCFF; font-weight: bold;';
       badge.setAttribute('aria-hidden', 'true');
       badge.textContent = 'EX';
       a.appendChild(badge);
       a.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const tid = container.getAttribute('data-threads-id') || '';
+        const tid = String(container.getAttribute('data-threads-id') || anchor.closest('.h-threads-item')?.getAttribute('data-threads-id') || '').trim();
         if (!tid) return;
         const uuid = resolveSubscriptionFeedUuid();
         if (!uuid) {
           toast('请先在设置中添加一个订阅号');
           return;
         }
-        const label = getCurrentSubscriptionFeedLabel() || uuid;
+        const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+        const matchedFeed = feeds.find((f) => String(f.uuid || '').trim() === String(uuid || '').trim());
+        const label = matchedFeed && matchedFeed.desc ? matchedFeed.desc : (getCurrentSubscriptionFeedLabel() || uuid);
         if (!window.confirm(`确定要订阅 No.${tid} 到「${label}」吗？`)) return;
         GM_xmlhttpRequest({
           method: 'POST',
@@ -20999,6 +21874,7 @@ ${markedSwatchHtml}
           data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
           onload: (resp) => {
             if (resp.status >= 200 && resp.status < 300) {
+              invalidateSubscriptionFeedSession(uuid, 'add-feed');
               toast(`已订阅 No.${tid} 到「${label}」`);
             } else {
               toast(`订阅失败 (${resp.status})`);
@@ -21013,6 +21889,7 @@ ${markedSwatchHtml}
       anchor.before(span, sep);
     });
   }
+
   /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
