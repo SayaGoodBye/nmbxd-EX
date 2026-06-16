@@ -4,12 +4,7 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const serviceWorker = fs.readFileSync(path.join(root, 'src', 'background', 'service-worker.js'), 'utf8');
 const offscreen = fs.readFileSync(path.join(root, 'offscreen', 'offscreen.js'), 'utf8');
-const userscriptPath = [
-  path.resolve(root, '..', 'nmbxd-EX-for-edit.user.js'),
-  path.resolve(root, '..', 'nmbxd-EX.user.js')
-].find((candidate) => fs.existsSync(candidate));
-if (!userscriptPath) throw new Error('upstream userscript not found');
-const userscript = fs.readFileSync(userscriptPath, 'utf8');
+const userscript = fs.readFileSync(path.resolve(root, '..', 'nmbxd-EX-for-edit.user.js'), 'utf8');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

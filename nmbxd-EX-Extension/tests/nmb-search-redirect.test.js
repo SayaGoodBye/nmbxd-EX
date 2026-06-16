@@ -2,11 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..', '..');
-const scriptPath = [
-  path.join(root, 'nmbxd-EX-for-edit.user.js'),
-  path.join(root, 'nmbxd-EX.user.js')
-].find((candidate) => fs.existsSync(candidate));
-if (!scriptPath) throw new Error('upstream userscript not found');
+const scriptPath = path.join(root, 'nmbxd-EX-for-edit.user.js');
 const manifestPath = path.join(root, 'nmbxd-EX-Extension', 'manifest.json');
 const script = fs.readFileSync(scriptPath, 'utf8');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));

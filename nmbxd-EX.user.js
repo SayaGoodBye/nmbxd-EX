@@ -9266,7 +9266,7 @@ ${markedSwatchHtml}
       url.startsWith("https://www.nmbxd1.com/Forum/timeline/")
     );
     if (!allowed) return; // 不在指定页面 → 直接退出
-
+    if (document.body && /429\s*Too Many Requests/i.test(document.body.textContent || '')) return; // 429 限流页面，不弹登录提示
     if (!force && (window.__loginPromptSuppressUntilRefresh || getLoginPromptSuppressAuto())) return; // 持久化“不再提醒”后，自动场景不再弹出
     if (!force && window.__loginPromptShown) return; // 自动触发只弹一次
     if ($('#login-modal-wrapper').length) return; // 避免重复插入

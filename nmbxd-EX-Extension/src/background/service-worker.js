@@ -17,7 +17,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== 'string') return false;
 
   if (message.type === 'xdex:gm-request') {
-    handleRequest(message.details)
+    handleRequest(message.details, sender)
       .then(sendResponse)
       .catch((err) => {
         sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
@@ -139,12 +139,13 @@ function logImageMenuStage(stage, detail, tabId) {
   });
 }
 
-async function handleRequest(details) {
+async function handleRequest(details, sender) {
   const method = details && details.method ? details.method : 'GET';
   const responseType = details && details.responseType ? details.responseType : 'text';
+  const headers = await buildRequestHeaders(details, sender);
   const response = await fetch(details.url, {
     method,
-    headers: details.headers || {},
+    headers,
     body: method.toUpperCase() === 'GET' ? undefined : details.data,
     credentials: 'include'
   });
@@ -174,6 +175,43 @@ async function handleRequest(details) {
     finalUrl: response.url,
     response: await response.text()
   };
+}
+
+async function buildRequestHeaders(details, sender) {
+  const headers = sanitizeRequestHeaders(details && details.headers);
+  if (!isApiNmbBestUrl(details && details.url)) return headers;
+  const userhash = await getUserhashForSender(sender);
+  if (userhash) await syncApiUserhashCookie(userhash);
+  return headers;
+}
+
+function sanitizeRequestHeaders(headers) {
+  const result = {};
+  Object.entries(headers || {}).forEach(([key, value]) => {
+    if (String(key).toLowerCase() === 'cookie') return;
+    result[key] = value;
+  });
+  return result;
+}
+
+function isApiNmbBestUrl(url) {
+  try {
+    return new URL(url).hostname === 'api.nmb.best';
+  } catch (_) {
+    return false;
+  }
+}
+
+async function getUserhashForSender(sender) {
+  if (!chrome.cookies) return '';
+  const pageUrl = getSenderPageUrl(sender);
+  if (!isAllowedXdaoUrl(pageUrl)) return '';
+  const cookie = await getCookie({ url: pageUrl, name: 'userhash' });
+  return cookie && cookie.value ? cookie.value : '';
+}
+
+async function syncApiUserhashCookie(userhash) {
+  await setCookie({ url: 'https://api.nmb.best/', name: 'userhash', value: userhash });
 }
 
 async function handleCookieMessage(message, sender) {

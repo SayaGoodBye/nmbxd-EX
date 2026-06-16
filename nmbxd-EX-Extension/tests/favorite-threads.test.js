@@ -39,12 +39,40 @@ function testThreadPagePatterns() {
 function testSettingsPanelFixedFavoriteThreadsItem() {
   assert(script.includes('id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled'), 'settings panel must show favorite threads as a fixed enabled switch');
   assert(script.includes('<label for="sp_enableFavoriteThreads"> 常用串</label>'), 'fixed favorite threads switch must use 常用串 label');
-  assert(script.includes("sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加'"), 'fixed favorite threads switch must have hover description');
+  assert(script.includes('id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled'), 'settings panel must show browsing history as a fixed enabled switch');
+  assert(script.includes('<label for="sp_enableThreadHistory"> 浏览历史</label>'), 'fixed browsing history switch must use 浏览历史 label');
+  assert(script.indexOf('id="sp_enableFavoriteThreads"') < script.indexOf('id="sp_enableThreadHistory"'), 'fixed browsing history switch must be placed after favorite threads');
+  assert(script.includes("sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页'"), 'fixed favorite threads switch must describe history-linked jumps');
+  assert(script.includes("sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式'"), 'fixed browsing history switch must have hover description');
   assert(!script.includes('id="sp_favoriteThreads" class="xdex-switch fixed-on"'), 'fixed favorite threads switch must not reuse sp_favoriteThreads data id');
   assert(!script.includes('name="sp_enableFavoriteThreads"'), 'display-only favorite threads switch must not add a hidden setting field');
+  assert(!script.includes('name="sp_enableThreadHistory"'), 'display-only browsing history switch must not add a hidden setting field');
+}
+
+function testFavoriteThreadsHistoryLinkage() {
+  assert(script.includes('function getLatestThreadHistoryUrl'), 'favorite threads must be able to look up latest browsing-history URL');
+  assert(script.includes("['normal', 'po']"), 'favorite history lookup must check both normal and PO history records');
+  assert(script.includes('getThreadHistoryKey(mode, tid)'), 'favorite history lookup must use stable history keys by mode/thread id');
+  assert(script.includes('buildThreadHistoryItemUrl(candidates[0])'), 'favorite history lookup must reuse the history URL builder for latest page jumps');
+  assert(script.includes('link.href = getLatestThreadHistoryUrl(item.threadId) || makeFavoriteThreadUrl(item.threadId);'), 'favorite thread links must prefer latest history URL and fall back to first page');
+}
+
+function testThreadHistoryMenuEntry() {
+  assert(script.includes('function openThreadHistorySettingsPanel()'), 'sidebar browsing history entry must have an opener function');
+  assert(script.includes('function createThreadHistoryMenuNode()'), 'sidebar browsing history entry must be rendered as a menu node');
+  assert(script.includes("li.id = 'xdex-thread-history-menu'"), 'sidebar browsing history entry must have a stable id');
+  assert(script.includes("setXDexSidebarExLabel(link, '浏览历史')"), 'sidebar browsing history entry must use 浏览历史 label with native EX sub badge');
+  assert(script.includes("setXDexSidebarExLabel(header, '常用串')"), 'favorite threads sidebar entry must use 常用串 label with native EX sub badge');
+  assert(script.includes("$('#sp_panel_tab_slot [data-sp-module=\"history\"]').trigger('click')"), 'sidebar browsing history entry must open the history settings module');
+  assert(script.includes("const oldThreadHistory = document.getElementById('xdex-thread-history-menu')"), 'rendering sidebar menu must remove the previous browsing history entry before inserting a new one');
+  assert(script.includes("const oldPostHistory = document.getElementById('xdex-post-history-menu')"), 'rendering sidebar menu must remove the previous post history entry before inserting a new one');
+  assert(script.indexOf('const node = createFavoriteThreadsMenuNode(items, wasOpen);') < script.indexOf('const threadHistoryNode = createThreadHistoryMenuNode();'), 'browsing history sidebar entry must be created after favorite threads');
+  assert(script.indexOf('menu.insertBefore(node, timeline || menu.firstChild);') < script.indexOf('menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);'), 'browsing history sidebar entry must be inserted after favorite threads and before timeline');
 }
 
 testAddCurrentThreadPageGate();
 testThreadPagePatterns();
 testSettingsPanelFixedFavoriteThreadsItem();
+testFavoriteThreadsHistoryLinkage();
+testThreadHistoryMenuEntry();
 console.log('favorite threads contract ok');
