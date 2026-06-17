@@ -4557,6 +4557,7 @@ ${markedSwatchHtml}
     key: 'myScriptSettings',
     defaults: {
       enableCookieSwitch: true,
+      enableCookieConfirm: false, // 发送前确认饼干
       disableWatermark: true,
       // note: `duplicatePagination` 已弃用，使用 `enablePaginationDuplication`
       enablePaginationDuplication: true,
@@ -5355,7 +5356,7 @@ ${markedSwatchHtml}
               </div>
 
                   <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label><span style="margin-left:8px;"></span><input type="checkbox" id="sp_enableCookieConfirm" class="xdex-switch" role="switch"><label for="sp_enableCookieConfirm"> 二次确认饼干</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication" class="xdex-switch" role="switch"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark" class="xdex-switch" role="switch"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_updatePreviewCookie" class="xdex-switch" role="switch"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
@@ -5732,6 +5733,7 @@ ${markedSwatchHtml}
 
       const reloadRequiredSettingKeys = [
         'enableCookieSwitch',
+        'enableCookieConfirm',
         'disableWatermark',
         'enablePaginationDuplication',
         'updatePreviewCookie',
@@ -6537,7 +6539,7 @@ ${markedSwatchHtml}
       const FULL_EXPORT_SCHEMA_VERSION = 1;
 
       const FULL_IMPORT_DIRECT_OVERRIDE_KEYS = [
-        'enableCookieSwitch', 'disableWatermark', 'enablePaginationDuplication',
+        'enableCookieSwitch', 'enableCookieConfirm', 'disableWatermark', 'enablePaginationDuplication',
         'updatePreviewCookie', 'hideEmptyTitleEmail', 'enableExternalImagePreview',
         'enableAutoCookieRefresh', 'enableAutoCookieRefreshToast',
         'interceptReplyFormUnvcode', 'interceptReplyFormU200B',
@@ -7250,6 +7252,7 @@ ${markedSwatchHtml}
 
       const spDescriptions = {
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
+        sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送。',
         sp_enablePaginationDuplication: '在串首页添加页码导航栏',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
@@ -7430,6 +7433,7 @@ ${markedSwatchHtml}
       // 勾选框
       [
         'enableCookieSwitch',
+        'enableCookieConfirm',
         'disableWatermark',
         'enablePaginationDuplication',
         'updatePreviewCookie',
@@ -7453,6 +7457,9 @@ ${markedSwatchHtml}
         'enablePostExpandAll',
         'toggleSidebar'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
+
+      // 二次确认饼干联动：快捷切换饼干关闭时禁用
+      $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
 
       // 固定启用项：始终显示为开启
       $('#sp_enableImageHideMode').prop('checked', true);
@@ -16049,6 +16056,28 @@ ${markedSwatchHtml}
       }
       form.__submitting = true;
 
+      // ── 发送前饼干二次确认 ──
+      const _cookieConfirmCfg = typeof getFilterConfig === "function" ? getFilterConfig() : {};
+      const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
+      if (_cookieConfirmEnabled) {
+        const _resto = (formData.get("resto") || "").toString().trim();
+        const _tidMatch = location.pathname.match(/\/t\/(\d{8,})/);
+        const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
+
+        // 跳过占位符和非真实串号
+        if (_threadId && _threadId !== '20011114' && /^\d{8,}$/.test(_threadId)) {
+          showCookieConfirmDialog(_threadId, () => {
+            resetIllegalRetryState({ clearOriginalContent: false });
+            const _ta = form.querySelector("textarea[name='content']");
+            form.__originalContent = _ta ? _ta.value : (formData.get("content") || "").toString();
+            toast("正在发送……");
+            doSubmit(formData, false).finally(() => { form.__submitting = false; });
+          }, () => { form.__submitting = false; });
+          return;
+        }
+      }
+
+
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
       resetIllegalRetryState({ clearOriginalContent: false });
       const textarea = form.querySelector('textarea[name="content"]');
@@ -21888,6 +21917,166 @@ ${markedSwatchHtml}
       span.appendChild(document.createTextNode(']'));
       anchor.before(span, sep);
     });
+  }
+
+  /* --------------------------------------------------
+   * tag 25. 发送前饼干二次确认
+   * -------------------------------------------------- */
+  function getThreadCookieStats(threadId) {
+    if (!threadId) return {};
+    const store = getPostHistoryStore();
+    const stats = {};
+    let lastUsedHash = '';
+    let lastUsedTs = 0;
+    store.order.forEach(key => {
+      const item = store.items[key];
+      if (!item) return;
+      const hash = String(item.userHash || '').trim();
+      if (!hash) return;
+      const itemThreadId = String(item.threadId || (item.type === 'reply' ? item.resto : item.id) || '');
+      if (itemThreadId !== threadId) return;
+      if (!stats[hash]) stats[hash] = { count: 0, lastUsed: 0 };
+      stats[hash].count++;
+      const ts = Number(item.confirmedAt || item.submittedAt) || 0;
+      if (ts > stats[hash].lastUsed) stats[hash].lastUsed = ts;
+      if (ts > lastUsedTs) { lastUsedTs = ts; lastUsedHash = hash; }
+    });
+    const cookieList = getCookiesList();
+    Object.keys(stats).forEach(hash => {
+      const cookie = cookieList[hash];
+      stats[hash].name = cookie ? abbreviateName(cookie.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim() : hash;
+      stats[hash].desc = cookie ? (cookie.desc || '') : '';
+      stats[hash].isLastUsed = (hash === lastUsedHash && lastUsedTs > 0);
+    });
+    return stats;
+  }
+
+  function showCookieConfirmDialog(threadId, onConfirm, onCancel) {
+    const stats = getThreadCookieStats(threadId);
+    const cookieList = getCookiesList();
+    const currentCookie = getCurrentCookie();
+    const currentId = currentCookie ? String(currentCookie.id) : '';
+    const allCookies = Object.values(cookieList);
+    allCookies.sort((a, b) => {
+      const aId = String(a.id), bId = String(b.id);
+      const aCur = aId === currentId ? 0 : 1, bCur = bId === currentId ? 0 : 1;
+      if (aCur !== bCur) return aCur - bCur;
+      const aHash = abbreviateName(a.name), bHash = abbreviateName(b.name); const aCnt = (stats[aHash] || {}).count || 0, bCnt = (stats[bHash] || {}).count || 0;
+      return bCnt - aCnt;
+    });
+    let selectedId = currentId;
+    const $m = $(
+      '<div id="cookie-confirm-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">' +
+        '<div class="cookie-confirm-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.4);"></div>' +
+        '<div class="cookie-confirm-dialog" style="position:relative;width:360px;max-height:80vh;background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow-y:auto;">' +
+          '<h3 style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);">确认饼干</h3>' +
+          '<p style="margin:0 0 10px;color:var(--muted-foreground, #666);font-size:13px;">当前串 <font color="#789922">No.' + threadId + '</font></p>' +
+          '<div id="cookie-confirm-list"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:12px;">' +
+            '<button id="cookie-confirm-ok" style="flex:1;padding:6px 10px;">使用当前饼干发送</button>' +
+            '<button id="cookie-confirm-cancel" style="padding:6px 10px;">取消</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+    const $list = $m.find('#cookie-confirm-list');
+    allCookies.forEach(cookie => {
+      const id = String(cookie.id);
+      const cookieHash = abbreviateName(cookie.name || '');
+      const st = stats[cookieHash];
+      const count = st ? st.count : 0;
+      const isCurrent = id === currentId;
+      const isLastUsed = st && st.isLastUsed;
+      const rawName = abbreviateName(cookie.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim();
+      const rawDesc = (cookie.desc || '').trim();
+      const hasDesc = rawDesc && !/^0{4}-0{2}-0{2}/.test(rawDesc);
+      const displayName = rawName + (hasDesc ? ' - ' + rawDesc : '');
+      let statsHtml = '';
+      if (isLastUsed && count > 0) {
+        statsHtml = '<span style="background:rgba(255,193,7,.18);color:#ffb300;padding:1px 5px;border-radius:3px;font-size:11px;">上次' + count + '</span>';
+      } else if (count > 0) {
+        statsHtml = '<span style="background:rgba(102,204,255,.15);color:#66CCFF;padding:1px 5px;border-radius:3px;font-size:11px;">用过' + count + '</span>';
+      } else {
+        statsHtml = '<span style="color:var(--muted-foreground, #888);font-size:12px;">无记录</span>';
+      }
+      const selectedBg = isCurrent ? 'background:rgba(0,184,148,.12);border-color:#00b894;' : '';
+      const $item = $(
+        '<div data-cookie-id="' + id + '" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin:4px 0;border:1px solid var(--xdex-sp-border, #ddd);border-radius:6px;cursor:pointer;color:var(--foreground, #333);' + selectedBg + '">' +
+          '<span class="h-threads-info-uid" data-xdex-cookie-id="' + cookieHash + '">' + displayName + '</span>' +
+          '<span>' + statsHtml + '</span>' +
+        '</div>'
+      );
+      $item.on('click', () => {
+        $list.find('[data-cookie-id]').css({ background: '', borderColor: 'var(--xdex-sp-border, #ddd)' });
+        $item.css({ background: 'rgba(0,184,148,.12)', borderColor: '#00b894' });
+        selectedId = id;
+        focusedIndex = $list.find('[data-cookie-id]').toArray().findIndex(el => el === $item[0]);
+        const btnText = id === currentId ? '使用当前饼干发送' : '切换到 ' + rawName + ' 并发送';
+        $m.find('#cookie-confirm-ok').text(btnText);
+      });
+      $list.append($item);
+    });
+    $m.find('#cookie-confirm-ok').on('click', () => {
+      if (selectedId === currentId) {
+        $m.remove();
+        onConfirm();
+      } else {
+        const targetCookie = cookieList[selectedId];
+        if (!targetCookie) { toast('饼干信息无效'); return; }
+        switch_cookie(targetCookie, {
+          silent: false,
+          onDone: () => { $m.remove(); onConfirm(); },
+          onFail: () => { toast('切换失败，未发送'); $m.remove(); onCancel(); }
+        });
+      }
+    });
+    $m.find('#cookie-confirm-cancel').on('click', () => { $m.remove(); onCancel(); });
+    $m.find('.cookie-confirm-backdrop').on('click', () => { $m.remove(); onCancel(); });
+    $('body').append($m);
+    $m[0].focus();
+    // 应用引用格式拓展和标记饼干
+    try { if (typeof initExtendedContent === "function") initExtendedContent($m[0]); } catch (e) {}
+    try { if (typeof markAllCookies === "function") markAllCookies(getFilterConfig().markedGroups || [], $m[0]); } catch (e) {}
+
+    // ── 键盘导航 ──
+    const $items = () => $list.find('[data-cookie-id]');
+    let focusedIndex = allCookies.findIndex(c => String(c.id) === currentId);
+    if (focusedIndex < 0) focusedIndex = 0;
+
+    function updateFocus(newIndex) {
+      const $all = $items();
+      if (!$all.length) return;
+      focusedIndex = Math.max(0, Math.min(newIndex, $all.length - 1));
+      $all.css('box-shadow', '');
+      $all.eq(focusedIndex).css('box-shadow', 'inset 0 0 0 2px rgba(102,204,255,.6)').get(0)?.scrollIntoView({ block: 'nearest' });
+    }
+    updateFocus(focusedIndex);
+    $m.on('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex - 1);
+      } else if (e.key === 'Enter' && !e.ctrlKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const $all = $items();
+        if ($all.eq(focusedIndex).length) $all.eq(focusedIndex).trigger('click');
+      } else if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        $m.find('#cookie-confirm-ok').trigger('click');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        $m.remove();
+        onCancel();
+      }
+    });
+
   }
 
   /* --------------------------------------------------
