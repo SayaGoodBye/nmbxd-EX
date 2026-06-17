@@ -3031,7 +3031,6 @@
 
   }
 
-
   function appendSubscriptionFeedPageSeparator(root, page) {
     if (!root || !page || page <= 1) return;
     const sep = document.createElement('div');
@@ -3072,8 +3071,6 @@
     $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
 
   }
-
-
 
   function renderSubscriptionFeedRenderedPages(options = {}) {
 
@@ -3116,7 +3113,6 @@
     else setTimeout(updateSubscriptionFeedDisplayPageFromScroll, 0);
 
   }
-
 
   function restoreSubscriptionFeedSession(uuid) {
     const session = getSubscriptionFeedSession(uuid);
@@ -3546,6 +3542,177 @@
       clearPostHistory();
       renderPostHistoryModule();
       toast('已清空我的发言');
+    });
+
+    // 手动添加发言历史
+    // 禁用浏览器自动填充
+    $('#sp_posts_manual_add_input').attr('autocomplete', 'off');
+    $('#sp_posts_manual_add_btn').off('click.xdex-post-history-manual').on('click.xdex-post-history-manual', function (e) {
+      e.preventDefault();
+      const raw = ($('#sp_posts_manual_add_input').val() || '').trim();
+      // 支持格式：No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23
+      let postId = '';
+      let replyId = '';
+      let inputPage = 0;
+      // 解析 URL 中的主题号、回复号、页码
+      const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{8,})(?:\?([^#]*))?(?:#.*)?$/i);
+      const simpleMatch = raw.match(/^(?:No\.)?(\d{8,})$/);
+      if (urlMatch) {
+        postId = urlMatch[1];
+        const qs = urlMatch[2] || '';
+        const rMatch = qs.match(/(?:^|&)r=(\d{8,})(?:&|$)/);
+        const pMatch = qs.match(/(?:^|&)page=(\d+)(?:&|$)/);
+        replyId = rMatch ? rMatch[1] : '';
+        inputPage = pMatch ? parseInt(pMatch[1], 10) : 0;
+      } else if (simpleMatch) {
+        postId = simpleMatch[1];
+      } else {
+        toast('格式错误，支持:No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23');
+        return;
+      }
+      // 前后号相同 → 直接当主题处理
+      if (replyId && replyId === postId) replyId = '';
+      const existingStore = getPostHistoryStore();
+      // 查找是否已存在匹配记录：有 replyId 时只匹配回复号，无 replyId 时匹配主题号
+      const existingMatch = replyId
+        ? Object.values(existingStore.items).find(item =>
+            String(item.id) === replyId || String(item.postId) === replyId
+          )
+        : Object.values(existingStore.items).find(item =>
+            String(item.id) === postId || String(item.postId) === postId
+          );
+      // 已存在且有完整信息 → 检查是否需要补充页码
+      if (existingMatch && existingMatch.resto && existingMatch.resto !== '0') {
+        if (inputPage && inputPage !== Number(existingMatch.page || 0)) {
+          // 有新页码且与已有记录不同 → 更新页码
+          updatePostHistoryRecord(existingMatch.localId, { page: inputPage });
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          toast('已更新 No.' + (replyId || postId) + ' 的页码为 ' + inputPage);
+        } else {
+          toast(replyId ? '回复 No.' + replyId + ' 已存在' : '主题 No.' + postId + ' 已存在');
+        }
+        return;
+      }
+      const $btn = $(this);
+      $btn.prop('disabled', true).text('获取中…');
+      // 有 replyId → 直接用 ref API 获取回复内容
+      // 无 replyId → 用 ref API 获取帖子内容，再用 thread API 判定类型
+      const refTarget = replyId || postId;
+      const refUrl = 'https://api.nmb.best/api/ref?id=' + encodeURIComponent(refTarget);
+      const refHeaders = getPostHistoryApiCookieHeaders();
+      const refDetail = { id: refTarget, source: 'manual-add', api: true };
+      gmRequest(refUrl, 'text', refHeaders).then(async (resp) => {
+        const post = parsePostHistoryRefResponse(resp, refDetail);
+        if (!post || !post.id) { toast('未找到该串/回复'); return; }
+
+        let type = 'thread';
+        let resto = '0';
+        let fid = getPostHistoryPostFid(post);
+
+        if (replyId) {
+          // 有 replyId → 明确是回复，resto = 主题号
+          type = 'reply';
+          resto = postId;
+          try {
+            const pageData = await fetchPostHistoryThreadPage(postId, 1, { source: 'manual-add-fid' });
+            if (!fid) fid = getPostHistoryPostFid(pageData && pageData.thread) || '';
+          } catch (e) {}
+        } else {
+          // 无 replyId → 用 thread API 判定类型
+          try {
+            const pageData = await fetchPostHistoryThreadPage(post.id, 1, { source: 'manual-add-type' });
+            const thread = pageData && pageData.thread;
+            if (thread && thread.id && String(thread.id) === String(post.id)) {
+              if (!fid) fid = getPostHistoryPostFid(thread) || '';
+            } else {
+              type = 'reply';
+              toast('该串号为回复，无法确定所属主题');
+            }
+          } catch (e) {
+            type = 'reply';
+            toast('该串号为回复，无法确定所属主题');
+          }
+        }
+
+        // 饼干校验
+        const userHash = String(post.user_hash || post.userHash || '').trim();
+        const cookieList = getCookiesList();
+        const matchedCookie = userHash
+          ? Object.values(cookieList).find(c => abbreviateName(c.name || '') === userHash)
+          : null;
+        if (userHash && !matchedCookie) {
+          if (!window.confirm('No.' + (replyId || postId) + ' 对应的饼干 ' + userHash + ' 不在当前列表之中，是否确认添加？')) {
+            $btn.prop('disabled', false).text('手动添加');
+            return;
+          }
+        }
+        const serverContentRaw = post.content || '';
+        const serverContentText = normalizePostHistoryText(serverContentRaw);
+        const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+        // 无主题号的回复 → url 留空，不构建跳转链接
+        const url = (type === 'reply' && resto === '0') ? '' : buildPostHistoryUrl(type, replyId || post.id, resto);
+
+        if (existingMatch) {
+          // 已存在但 resto=0 → 补充真实串号和相关信息
+          const patch = {};
+          if (type === 'reply' && resto !== '0') {
+            patch.resto = resto;
+            patch.threadId = resto;
+            patch.url = url;
+          }
+          if (fid && !existingMatch.fid) {
+            patch.fid = fid;
+            patch.forumName = getPostHistoryForumNameByFid(fid);
+          }
+          if (imageFile && !existingMatch.imageFile) {
+            Object.assign(patch, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+          }
+          updatePostHistoryRecord(existingMatch.localId, patch);
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          toast('已更新 No.' + (replyId || postId) + ' 的串号信息');
+        } else {
+          // 新记录
+          const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+          const record = {
+            status: 'confirmed',
+            type,
+            localId,
+            id: post.id,
+            resto,
+            threadId: type === 'reply' ? resto : post.id,
+            postId: post.id,
+            page: inputPage || Number(post.page) || (type === 'thread' ? 1 : 0),
+            fid,
+            forumName: getPostHistoryForumNameByFid(fid),
+            title: post.title || '',
+            name: post.name || '',
+            email: post.email || '',
+            contentRaw: serverContentRaw,
+            contentText: serverContentText,
+            contentHash: hashPostHistoryText(serverContentText),
+            contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
+            userHash,
+            submittedAt: Date.parse(post.now) || Date.now(),
+            confirmedAt: Date.now(),
+            sourceUrl: location.href,
+            url
+          };
+          if (imageFile) Object.assign(record, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+          upsertPostHistoryRecord(record);
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          toast(type === 'thread' ? '已添加主题 No.' + postId : '已添加回复 No.' + (replyId || postId));
+        }
+      }).catch(() => {
+        toast('获取失败，请检查串号或网络');
+      }).finally(() => {
+        $btn.prop('disabled', false).text('手动添加');
+      });
+    });
+    $('#sp_posts_manual_add_input').off('keydown.xdex-post-history-manual').on('keydown.xdex-post-history-manual', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); $('#sp_posts_manual_add_btn').trigger('click.xdex-post-history-manual'); }
     });
   }
 
@@ -5609,6 +5776,11 @@ ${markedSwatchHtml}
                       <button type="button" data-post-history-type="thread">我的主题</button>
                       <button type="button" data-post-history-type="reply" class="active">我的回复</button>
                     </div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                      <input id="sp_posts_manual_add_input" type="text" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <button id="sp_posts_manual_add_btn" type="button" style="padding:4px 10px;font-size:13px;">手动添加</button>
+                    </div>
+
                     <div id="sp_posts_results"></div>
                   </div>
                 </div>
@@ -5978,8 +6150,6 @@ ${markedSwatchHtml}
         $('#subscription-feed-inputs-container .subscription-feed-row').last().find('.subscription-feed-desc-input').focus();
 
       });
-
-
 
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
         const parsed = collectMarkedGroupsFromPanel();
@@ -16076,7 +16246,6 @@ ${markedSwatchHtml}
           return;
         }
       }
-
 
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
       resetIllegalRetryState({ clearOriginalContent: false });
