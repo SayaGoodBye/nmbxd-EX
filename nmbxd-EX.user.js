@@ -3026,9 +3026,7 @@
   }
 
   function getSubscriptionFeedNextRenderPage() {
-
     return Math.max(0, Number(subscriptionFeedHighestRenderedPage) || 0) + 1;
-
   }
 
   function appendSubscriptionFeedPageSeparator(root, page) {
@@ -3041,77 +3039,42 @@
   }
 
   function updateSubscriptionFeedDisplayPageFromScroll() {
-
     const container = document.querySelector('#sp_module_feeds .sp_panel_content');
-
     const results = document.getElementById('sp_feeds_results');
-
     if (!container || !results || subscriptionFeedHighestRenderedPage <= 0) return;
-
     const separators = Array.from(results.querySelectorAll('.xdex-feed-page-separator'));
-
     let displayPage = 1;
-
-    const threshold = container.scrollTop + 4;
-
+    const threshold = container.scrollTop + container.clientHeight / 2;
     separators.forEach((sep) => {
-
       const page = Number((sep.textContent || '').match(/第(\d+)页/)?.[1] || 0);
-
       if (!page) return;
-
       const top = sep.offsetTop;
-
       if (threshold >= top) displayPage = page;
-
     });
-
     subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
-
     $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
-
   }
 
   function renderSubscriptionFeedRenderedPages(options = {}) {
-
     const $results = $('#sp_feeds_results').empty();
-
     const displayPage = Math.max(0, Number(options.displayPage) || 0) || subscriptionFeedCurrentDisplayPage || subscriptionFeedHighestRenderedPage || 0;
-
     if (subscriptionFeedHighestRenderedPage <= 0) {
-
       $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
-
       $('#sp_feeds_page_label').text('第0页');
-
       return;
-
     }
-
     for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
-
       const entry = subscriptionFeedRenderedPages[String(page)];
-
       if (!entry || !Array.isArray(entry.items)) break;
-
       appendSubscriptionFeedPageSeparator($results[0], page);
-
       entry.items.forEach((item) => {
-
         $results[0].appendChild(buildSubscriptionFeedItemElement(item));
-
       });
-
     }
-
     subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
-
     $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
-
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(updateSubscriptionFeedDisplayPageFromScroll);
-
     else setTimeout(updateSubscriptionFeedDisplayPageFromScroll, 0);
-
   }
 
   function restoreSubscriptionFeedSession(uuid) {
@@ -3488,8 +3451,97 @@
           toast('已取消订阅');
           renderSubscriptionFeedModule();
         },
-        onerror: () => toast('取消订阅失败')
+          onerror: () => toast('取消订阅失败')
       });
+    });
+
+    // ── 批量添加订阅 ──
+    $('#sp_feeds_bulk_add_input').attr('autocomplete', 'off');
+    $('#sp_feeds_bulk_add_btn').off('click.subscriptionFeedBulkAdd').on('click.subscriptionFeedBulkAdd', (e) => {
+      e.preventDefault();
+      const uuid = subscriptionFeedCurrentUuid || resolveSubscriptionFeedUuid();
+      if (!uuid) { toast('请先在设置中添加一个订阅号'); return; }
+      const raw = ($('#sp_feeds_bulk_add_input').val() || '').trim();
+      if (!raw) { toast('请输入串号'); return; }
+      const tids = raw.split(/[,，\s]+/).map(s => s.replace(/^(?:No\.)/i, '').trim()).filter(s => /^\d{8,}$/.test(s));
+      if (!tids.length) { toast('未识别到有效串号'); return; }
+      const $btn = $(e.currentTarget);
+      $btn.prop('disabled', true).text('添加中…');
+      let success = 0, fail = 0, idx = 0;
+      const failedTids = [];
+      const BATCH_DELAY = 300;
+      function next() {
+        if (idx >= tids.length) {
+           $btn.prop('disabled', false).text('批量添加');
+           invalidateSubscriptionFeedSession(uuid, 'bulk-add');
+           renderSubscriptionFeedModule();
+           toast(`批量添加完成：成功 ${success}，失败 ${fail}，共 ${tids.length} 条`);
+           if (failedTids.length) {
+             $('#sp_feeds_bulk_add_input').val(failedTids.join(','));
+           } else {
+             $('#sp_feeds_bulk_add_input').val('');
+           }
+          return;
+        }
+        const tid = tids[idx++];
+        GM_xmlhttpRequest({
+          method: 'POST',
+          url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
+             onload: (resp) => {
+                try {
+                  const raw = String(resp.responseText || resp.response || '');
+                  const msg = JSON.parse(raw);
+                  if (typeof msg === 'string' && /不存在|失败|错误/.test(msg)) { fail++; failedTids.push(tid); }
+                  else success++;
+                } catch (_) {
+                  success++;
+                }
+               setTimeout(next, BATCH_DELAY);
+             },
+           onerror: () => { fail++; failedTids.push(tid); setTimeout(next, BATCH_DELAY); }
+        });
+      }
+      next();
+    });
+
+    // ── 导出串号到剪贴板 ──
+    $('#sp_feeds_export_clipboard').off('click.subscriptionFeedExport').on('click.subscriptionFeedExport', (e) => {
+      e.preventDefault();
+      const uuid = subscriptionFeedCurrentUuid || resolveSubscriptionFeedUuid();
+      if (!uuid) { toast('请先在设置中添加一个订阅号'); return; }
+      const $btn = $(e.currentTarget);
+      $btn.prop('disabled', true).text('导出中…');
+      const allTids = [];
+      let page = 1;
+      const PAGE_DELAY = 500;
+      function fetchNext() {
+        fetchSubscriptionFeedPage(uuid, page).then(items => {
+          if (!items || !items.length) {
+            // 全部拉完
+            $btn.prop('disabled', false).text('导出串号');
+            if (!allTids.length) { toast('该订阅号下无订阅内容'); return; }
+            const text = allTids.join(',');
+            navigator.clipboard.writeText(text).then(() => {
+              toast(`已导出 ${allTids.length} 个串号到剪贴板`);
+            }).catch(() => {
+              toast('导出失败，无法写入剪贴板');
+            });
+            return;
+          }
+          items.forEach(item => {
+            const id = String(item.id || '').trim();
+            if (id && id !== '0' && !allTids.includes(id)) allTids.push(id);
+          });
+          page++;
+          setTimeout(fetchNext, PAGE_DELAY);
+        }).catch(() => {
+          $btn.prop('disabled', false).text('导出串号');
+          toast('导出失败，网络错误');
+        });
+      }
+      fetchNext();
     });
   }
 
@@ -5784,7 +5836,7 @@ ${markedSwatchHtml}
                       <button type="button" data-post-history-type="reply" class="active">我的回复</button>
                     </div>
                     <div style="display:flex;gap:6px;margin-bottom:8px;">
-                      <input id="sp_posts_manual_add_input" type="text" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <input id="sp_posts_manual_add_input" type="search" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
                       <button id="sp_posts_manual_add_btn" type="button" style="padding:4px 10px;font-size:13px;">手动添加</button>
                     </div>
 
@@ -5809,6 +5861,11 @@ ${markedSwatchHtml}
                     </div>
                       <input id="sp_feeds_page_input" type="number" min="1" placeholder="页码" size="4" style="flex:0 0 auto;width:4em;padding:4px 6px;">
                       <button id="sp_feeds_page_jump" type="button" style="padding:4px 8px;">跳转</button>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                      <input id="sp_feeds_bulk_add_input" type="search" placeholder="输入串号，多个用逗号分隔，如 67024789,66994128" autocomplete="off" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <button id="sp_feeds_bulk_add_btn" type="button" style="padding:4px 10px;font-size:13px;">批量添加</button>
+                      <button id="sp_feeds_export_clipboard" type="button" style="padding:4px 10px;font-size:13px;">导出串号</button>
                     </div>
                     <div id="sp_feeds_results"></div>
                   </div>
