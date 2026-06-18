@@ -3652,7 +3652,6 @@
         const imageFile = buildPostHistoryImageFile(post.img, post.ext);
         // 无主题号的回复 → url 留空，不构建跳转链接
         const url = (type === 'reply' && resto === '0') ? '' : buildPostHistoryUrl(type, replyId || post.id, resto);
-
         if (existingMatch) {
           // 已存在但 resto=0 → 补充真实串号和相关信息
           const patch = {};
@@ -3660,6 +3659,9 @@
             patch.resto = resto;
             patch.threadId = resto;
             patch.url = url;
+          }
+          if (inputPage && !existingMatch.page) {
+            patch.page = inputPage;
           }
           if (fid && !existingMatch.fid) {
             patch.fid = fid;
@@ -3671,7 +3673,12 @@
           updatePostHistoryRecord(existingMatch.localId, patch);
           renderPostHistoryModule();
           $('#sp_posts_manual_add_input').val('');
-          toast('已更新 No.' + (replyId || postId) + ' 的串号信息');
+          const updated = [];
+          if (patch.resto) updated.push('串号');
+          if (patch.page) updated.push('页码');
+          if (patch.fid) updated.push('板块');
+          if (patch.imageFile) updated.push('图片');
+          toast('已更新 No.' + (replyId || postId) + '：' + (updated.join('、') || '无变化'));
         } else {
           // 新记录
           const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
