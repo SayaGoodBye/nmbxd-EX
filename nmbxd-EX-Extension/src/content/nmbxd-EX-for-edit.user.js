@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.3.0
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 。
+// @version      3.4.0
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增使用数据的导入导出，可选项目：设置/浏览历史/发言历史/草稿/颜文字统计\n
+// @changelog    新增\n1.新增发送前二次确认饼干功能，统计使用次数，并标记上次使用，弹窗中可使用键盘↑↓移动，Ctrl+Enter选择并发送。\n2.支持手动添加主题、回复，支持No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23等格式。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -3031,7 +3031,6 @@
 
   }
 
-
   function appendSubscriptionFeedPageSeparator(root, page) {
     if (!root || !page || page <= 1) return;
     const sep = document.createElement('div');
@@ -3072,8 +3071,6 @@
     $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
 
   }
-
-
 
   function renderSubscriptionFeedRenderedPages(options = {}) {
 
@@ -3116,7 +3113,6 @@
     else setTimeout(updateSubscriptionFeedDisplayPageFromScroll, 0);
 
   }
-
 
   function restoreSubscriptionFeedSession(uuid) {
     const session = getSubscriptionFeedSession(uuid);
@@ -3546,6 +3542,184 @@
       clearPostHistory();
       renderPostHistoryModule();
       toast('已清空我的发言');
+    });
+
+    // 手动添加发言历史
+    // 禁用浏览器自动填充
+    $('#sp_posts_manual_add_input').attr('autocomplete', 'off');
+    $('#sp_posts_manual_add_btn').off('click.xdex-post-history-manual').on('click.xdex-post-history-manual', function (e) {
+      e.preventDefault();
+      const raw = ($('#sp_posts_manual_add_input').val() || '').trim();
+      // 支持格式：No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23
+      let postId = '';
+      let replyId = '';
+      let inputPage = 0;
+      // 解析 URL 中的主题号、回复号、页码
+      const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{8,})(?:\?([^#]*))?(?:#.*)?$/i);
+      const simpleMatch = raw.match(/^(?:No\.)?(\d{8,})$/);
+      if (urlMatch) {
+        postId = urlMatch[1];
+        const qs = urlMatch[2] || '';
+        const rMatch = qs.match(/(?:^|&)r=(\d{8,})(?:&|$)/);
+        const pMatch = qs.match(/(?:^|&)page=(\d+)(?:&|$)/);
+        replyId = rMatch ? rMatch[1] : '';
+        inputPage = pMatch ? parseInt(pMatch[1], 10) : 0;
+      } else if (simpleMatch) {
+        postId = simpleMatch[1];
+      } else {
+        toast('格式错误，支持:No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23');
+        return;
+      }
+      // 前后号相同 → 直接当主题处理
+      if (replyId && replyId === postId) replyId = '';
+      const existingStore = getPostHistoryStore();
+      // 查找是否已存在匹配记录：有 replyId 时只匹配回复号，无 replyId 时匹配主题号
+      const existingMatch = replyId
+        ? Object.values(existingStore.items).find(item =>
+            String(item.id) === replyId || String(item.postId) === replyId
+          )
+        : Object.values(existingStore.items).find(item =>
+            String(item.id) === postId || String(item.postId) === postId
+          );
+      // 已存在且有完整信息 → 检查是否需要补充页码
+      if (existingMatch && existingMatch.resto && existingMatch.resto !== '0') {
+        if (inputPage && inputPage !== Number(existingMatch.page || 0)) {
+          // 有新页码且与已有记录不同 → 更新页码
+          updatePostHistoryRecord(existingMatch.localId, { page: inputPage });
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          toast('已更新 No.' + (replyId || postId) + ' 的页码为 ' + inputPage);
+        } else {
+          toast(replyId ? '回复 No.' + replyId + ' 已存在' : '主题 No.' + postId + ' 已存在');
+        }
+        return;
+      }
+      const $btn = $(this);
+      $btn.prop('disabled', true).text('获取中…');
+      // 有 replyId → 直接用 ref API 获取回复内容
+      // 无 replyId → 用 ref API 获取帖子内容，再用 thread API 判定类型
+      const refTarget = replyId || postId;
+      const refUrl = 'https://api.nmb.best/api/ref?id=' + encodeURIComponent(refTarget);
+      const refHeaders = getPostHistoryApiCookieHeaders();
+      const refDetail = { id: refTarget, source: 'manual-add', api: true };
+      gmRequest(refUrl, 'text', refHeaders).then(async (resp) => {
+        const post = parsePostHistoryRefResponse(resp, refDetail);
+        if (!post || !post.id) { toast('未找到该串/回复'); return; }
+
+        let type = 'thread';
+        let resto = '0';
+        let fid = getPostHistoryPostFid(post);
+
+        if (replyId) {
+          // 有 replyId → 明确是回复，resto = 主题号
+          type = 'reply';
+          resto = postId;
+          try {
+            const pageData = await fetchPostHistoryThreadPage(postId, 1, { source: 'manual-add-fid' });
+            if (!fid) fid = getPostHistoryPostFid(pageData && pageData.thread) || '';
+          } catch (e) {}
+        } else {
+          // 无 replyId → 用 thread API 判定类型
+          try {
+            const pageData = await fetchPostHistoryThreadPage(post.id, 1, { source: 'manual-add-type' });
+            const thread = pageData && pageData.thread;
+            if (thread && thread.id && String(thread.id) === String(post.id)) {
+              if (!fid) fid = getPostHistoryPostFid(thread) || '';
+            } else {
+              type = 'reply';
+              toast('该串号为回复，无法确定所属主题');
+            }
+          } catch (e) {
+            type = 'reply';
+            toast('该串号为回复，无法确定所属主题');
+          }
+        }
+
+        // 饼干校验
+        const userHash = String(post.user_hash || post.userHash || '').trim();
+        const cookieList = getCookiesList();
+        const matchedCookie = userHash
+          ? Object.values(cookieList).find(c => abbreviateName(c.name || '') === userHash)
+          : null;
+        if (userHash && !matchedCookie) {
+          if (!window.confirm('No.' + (replyId || postId) + ' 对应的饼干 ' + userHash + ' 不在当前列表之中，是否确认添加？')) {
+            $btn.prop('disabled', false).text('手动添加');
+            return;
+          }
+        }
+        const serverContentRaw = post.content || '';
+        const serverContentText = normalizePostHistoryText(serverContentRaw);
+        const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+        // 无主题号的回复 → url 留空，不构建跳转链接
+        const url = (type === 'reply' && resto === '0') ? '' : buildPostHistoryUrl(type, replyId || post.id, resto);
+        if (existingMatch) {
+          // 已存在但 resto=0 → 补充真实串号和相关信息
+          const patch = {};
+          if (type === 'reply' && resto !== '0') {
+            patch.resto = resto;
+            patch.threadId = resto;
+            patch.url = url;
+          }
+          if (inputPage && !existingMatch.page) {
+            patch.page = inputPage;
+          }
+          if (fid && !existingMatch.fid) {
+            patch.fid = fid;
+            patch.forumName = getPostHistoryForumNameByFid(fid);
+          }
+          if (imageFile && !existingMatch.imageFile) {
+            Object.assign(patch, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+          }
+          updatePostHistoryRecord(existingMatch.localId, patch);
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          const updated = [];
+          if (patch.resto) updated.push('串号');
+          if (patch.page) updated.push('页码');
+          if (patch.fid) updated.push('板块');
+          if (patch.imageFile) updated.push('图片');
+          toast('已更新 No.' + (replyId || postId) + '：' + (updated.join('、') || '无变化'));
+        } else {
+          // 新记录
+          const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+          const record = {
+            status: 'confirmed',
+            type,
+            localId,
+            id: post.id,
+            resto,
+            threadId: type === 'reply' ? resto : post.id,
+            postId: post.id,
+            page: inputPage || Number(post.page) || (type === 'thread' ? 1 : 0),
+            fid,
+            forumName: getPostHistoryForumNameByFid(fid),
+            title: post.title || '',
+            name: post.name || '',
+            email: post.email || '',
+            contentRaw: serverContentRaw,
+            contentText: serverContentText,
+            contentHash: hashPostHistoryText(serverContentText),
+            contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
+            userHash,
+            submittedAt: Date.parse(post.now) || Date.now(),
+            confirmedAt: Date.now(),
+            sourceUrl: location.href,
+            url
+          };
+          if (imageFile) Object.assign(record, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+          upsertPostHistoryRecord(record);
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          toast(type === 'thread' ? '已添加主题 No.' + postId : '已添加回复 No.' + (replyId || postId));
+        }
+      }).catch(() => {
+        toast('获取失败，请检查串号或网络');
+      }).finally(() => {
+        $btn.prop('disabled', false).text('手动添加');
+      });
+    });
+    $('#sp_posts_manual_add_input').off('keydown.xdex-post-history-manual').on('keydown.xdex-post-history-manual', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); $('#sp_posts_manual_add_btn').trigger('click.xdex-post-history-manual'); }
     });
   }
 
@@ -4557,6 +4731,7 @@ ${markedSwatchHtml}
     key: 'myScriptSettings',
     defaults: {
       enableCookieSwitch: true,
+      enableCookieConfirm: false, // 发送前确认饼干
       disableWatermark: true,
       // note: `duplicatePagination` 已弃用，使用 `enablePaginationDuplication`
       enablePaginationDuplication: true,
@@ -5355,7 +5530,7 @@ ${markedSwatchHtml}
               </div>
 
                   <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label><span style="margin-left:8px;"></span><input type="checkbox" id="sp_enableCookieConfirm" class="xdex-switch" role="switch"><label for="sp_enableCookieConfirm"> 二次确认饼干</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication" class="xdex-switch" role="switch"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark" class="xdex-switch" role="switch"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_updatePreviewCookie" class="xdex-switch" role="switch"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
@@ -5608,6 +5783,11 @@ ${markedSwatchHtml}
                       <button type="button" data-post-history-type="thread">我的主题</button>
                       <button type="button" data-post-history-type="reply" class="active">我的回复</button>
                     </div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                      <input id="sp_posts_manual_add_input" type="text" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <button id="sp_posts_manual_add_btn" type="button" style="padding:4px 10px;font-size:13px;">手动添加</button>
+                    </div>
+
                     <div id="sp_posts_results"></div>
                   </div>
                 </div>
@@ -5732,6 +5912,7 @@ ${markedSwatchHtml}
 
       const reloadRequiredSettingKeys = [
         'enableCookieSwitch',
+        'enableCookieConfirm',
         'disableWatermark',
         'enablePaginationDuplication',
         'updatePreviewCookie',
@@ -5976,8 +6157,6 @@ ${markedSwatchHtml}
         $('#subscription-feed-inputs-container .subscription-feed-row').last().find('.subscription-feed-desc-input').focus();
 
       });
-
-
 
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
         const parsed = collectMarkedGroupsFromPanel();
@@ -6537,7 +6716,7 @@ ${markedSwatchHtml}
       const FULL_EXPORT_SCHEMA_VERSION = 1;
 
       const FULL_IMPORT_DIRECT_OVERRIDE_KEYS = [
-        'enableCookieSwitch', 'disableWatermark', 'enablePaginationDuplication',
+        'enableCookieSwitch', 'enableCookieConfirm', 'disableWatermark', 'enablePaginationDuplication',
         'updatePreviewCookie', 'hideEmptyTitleEmail', 'enableExternalImagePreview',
         'enableAutoCookieRefresh', 'enableAutoCookieRefreshToast',
         'interceptReplyFormUnvcode', 'interceptReplyFormU200B',
@@ -7250,6 +7429,7 @@ ${markedSwatchHtml}
 
       const spDescriptions = {
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
+        sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送。',
         sp_enablePaginationDuplication: '在串首页添加页码导航栏',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
@@ -7430,6 +7610,7 @@ ${markedSwatchHtml}
       // 勾选框
       [
         'enableCookieSwitch',
+        'enableCookieConfirm',
         'disableWatermark',
         'enablePaginationDuplication',
         'updatePreviewCookie',
@@ -7453,6 +7634,9 @@ ${markedSwatchHtml}
         'enablePostExpandAll',
         'toggleSidebar'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
+
+      // 二次确认饼干联动：快捷切换饼干关闭时禁用
+      $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
 
       // 固定启用项：始终显示为开启
       $('#sp_enableImageHideMode').prop('checked', true);
@@ -16049,6 +16233,27 @@ ${markedSwatchHtml}
       }
       form.__submitting = true;
 
+      // ── 发送前饼干二次确认 ──
+      const _cookieConfirmCfg = typeof getFilterConfig === "function" ? getFilterConfig() : {};
+      const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
+      if (_cookieConfirmEnabled) {
+        const _resto = (formData.get("resto") || "").toString().trim();
+        const _tidMatch = location.pathname.match(/\/t\/(\d{8,})/);
+        const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
+
+        // 跳过占位符和非真实串号
+        if (_threadId && _threadId !== '20011114' && /^\d{8,}$/.test(_threadId)) {
+          showCookieConfirmDialog(_threadId, () => {
+            resetIllegalRetryState({ clearOriginalContent: false });
+            const _ta = form.querySelector("textarea[name='content']");
+            form.__originalContent = _ta ? _ta.value : (formData.get("content") || "").toString();
+            toast("正在发送……");
+            doSubmit(formData, false).finally(() => { form.__submitting = false; });
+          }, () => { form.__submitting = false; });
+          return;
+        }
+      }
+
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
       resetIllegalRetryState({ clearOriginalContent: false });
       const textarea = form.querySelector('textarea[name="content"]');
@@ -21887,6 +22092,163 @@ ${markedSwatchHtml}
       span.appendChild(a);
       span.appendChild(document.createTextNode(']'));
       anchor.before(span, sep);
+    });
+  }
+
+  /* --------------------------------------------------
+   * tag 25. 发送前饼干二次确认
+   * -------------------------------------------------- */
+  function getThreadCookieStats(threadId) {
+    if (!threadId) return {};
+    const store = getPostHistoryStore();
+    const stats = {};
+    let lastUsedHash = '';
+    let lastUsedTs = 0;
+    store.order.forEach(key => {
+      const item = store.items[key];
+      if (!item) return;
+      const hash = String(item.userHash || '').trim();
+      if (!hash) return;
+      const itemThreadId = String(item.threadId || (item.type === 'reply' ? item.resto : item.id) || '');
+      if (itemThreadId !== threadId) return;
+      if (!stats[hash]) stats[hash] = { count: 0, lastUsed: 0 };
+      stats[hash].count++;
+      const ts = Number(item.confirmedAt || item.submittedAt) || 0;
+      if (ts > stats[hash].lastUsed) stats[hash].lastUsed = ts;
+      if (ts > lastUsedTs) { lastUsedTs = ts; lastUsedHash = hash; }
+    });
+    const cookieList = getCookiesList();
+    Object.keys(stats).forEach(hash => {
+      const cookie = cookieList[hash];
+      stats[hash].name = cookie ? abbreviateName(cookie.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim() : hash;
+      stats[hash].desc = cookie ? (cookie.desc || '') : '';
+      stats[hash].isLastUsed = (hash === lastUsedHash && lastUsedTs > 0);
+    });
+    return stats;
+  }
+
+  function showCookieConfirmDialog(threadId, onConfirm, onCancel) {
+    const stats = getThreadCookieStats(threadId);
+    const cookieList = getCookiesList();
+    const currentCookie = getCurrentCookie();
+    const currentId = currentCookie ? String(currentCookie.id) : '';
+    const allCookies = Object.values(cookieList);
+    allCookies.sort((a, b) => {
+      const aId = String(a.id), bId = String(b.id);
+      const aCur = aId === currentId ? 0 : 1, bCur = bId === currentId ? 0 : 1;
+      if (aCur !== bCur) return aCur - bCur;
+      const aHash = abbreviateName(a.name), bHash = abbreviateName(b.name); const aCnt = (stats[aHash] || {}).count || 0, bCnt = (stats[bHash] || {}).count || 0;
+      return bCnt - aCnt;
+    });
+    let selectedId = currentId;
+    const $m = $(
+      '<div id="cookie-confirm-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">' +
+        '<div class="cookie-confirm-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.4);"></div>' +
+        '<div class="cookie-confirm-dialog" style="position:relative;width:360px;max-height:80vh;background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow-y:auto;">' +
+          '<h3 style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);">确认饼干</h3>' +
+          '<p style="margin:0 0 10px;color:var(--muted-foreground, #666);font-size:13px;">当前串 <font color="#789922">No.' + threadId + '</font></p>' +
+          '<div id="cookie-confirm-list"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:12px;">' +
+            '<button id="cookie-confirm-ok" style="flex:1;padding:6px 10px;">使用当前饼干发送</button>' +
+            '<button id="cookie-confirm-cancel" style="padding:6px 10px;">取消</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+    const $list = $m.find('#cookie-confirm-list');
+    allCookies.forEach(cookie => {
+      const id = String(cookie.id);
+      const cookieHash = abbreviateName(cookie.name || '');
+      const st = stats[cookieHash];
+      const count = st ? st.count : 0;
+      const isCurrent = id === currentId;
+      const isLastUsed = st && st.isLastUsed;
+      const rawName = abbreviateName(cookie.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim();
+      const rawDesc = (cookie.desc || '').trim();
+      const hasDesc = rawDesc && !/^0{4}-0{2}-0{2}/.test(rawDesc);
+      const displayName = rawName + (hasDesc ? ' - ' + rawDesc : '');
+      let statsHtml = '';
+      if (isLastUsed && count > 0) {
+        statsHtml = '<span style="background:rgba(255,193,7,.18);color:#ffb300;padding:1px 5px;border-radius:3px;font-size:11px;">上次' + count + '</span>';
+      } else if (count > 0) {
+        statsHtml = '<span style="background:rgba(102,204,255,.15);color:#66CCFF;padding:1px 5px;border-radius:3px;font-size:11px;">用过' + count + '</span>';
+      } else {
+        statsHtml = '<span style="color:var(--muted-foreground, #888);font-size:12px;">无记录</span>';
+      }
+      const selectedBg = isCurrent ? 'background:rgba(0,184,148,.12);border-color:#00b894;' : '';
+      const $item = $(
+        '<div data-cookie-id="' + id + '" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin:4px 0;border:1px solid var(--xdex-sp-border, #ddd);border-radius:6px;cursor:pointer;color:var(--foreground, #333);' + selectedBg + '">' +
+          '<span class="h-threads-info-uid" data-xdex-cookie-id="' + cookieHash + '">' + displayName + '</span>' +
+          '<span>' + statsHtml + '</span>' +
+        '</div>'
+      );
+      $item.on('click', () => {
+        $list.find('[data-cookie-id]').css({ background: '', borderColor: 'var(--xdex-sp-border, #ddd)' });
+        $item.css({ background: 'rgba(0,184,148,.12)', borderColor: '#00b894' });
+        selectedId = id;
+        focusedIndex = $list.find('[data-cookie-id]').toArray().findIndex(el => el === $item[0]);
+        const btnText = id === currentId ? '使用当前饼干发送' : '切换到 ' + rawName + ' 并发送';
+        $m.find('#cookie-confirm-ok').text(btnText);
+      });
+      $list.append($item);
+    });
+    $m.find('#cookie-confirm-ok').on('click', () => {
+      if (selectedId === currentId) {
+        $m.remove();
+        onConfirm();
+      } else {
+        const targetCookie = cookieList[selectedId];
+        if (!targetCookie) { toast('饼干信息无效'); return; }
+        switch_cookie(targetCookie, {
+          silent: false,
+          onDone: () => { $m.remove(); onConfirm(); },
+          onFail: () => { toast('切换失败，未发送'); $m.remove(); onCancel(); }
+        });
+      }
+    });
+    $m.find('#cookie-confirm-cancel').on('click', () => { $m.remove(); onCancel(); });
+    $m.find('.cookie-confirm-backdrop').on('click', () => { $m.remove(); onCancel(); });
+    $('body').append($m);
+    $m[0].focus();
+    // 应用引用格式拓展和标记饼干
+    try { if (typeof initExtendedContent === "function") initExtendedContent($m[0]); } catch (e) {}
+    try { if (typeof markAllCookies === "function") markAllCookies(getFilterConfig().markedGroups || [], $m[0]); } catch (e) {}
+
+    // ── 键盘导航 ──
+    const $items = () => $list.find('[data-cookie-id]');
+    let focusedIndex = allCookies.findIndex(c => String(c.id) === currentId);
+    if (focusedIndex < 0) focusedIndex = 0;
+
+    function updateFocus(newIndex) {
+      const $all = $items();
+      if (!$all.length) return;
+      focusedIndex = Math.max(0, Math.min(newIndex, $all.length - 1));
+      $all.css('box-shadow', '');
+      $all.eq(focusedIndex).css('box-shadow', 'inset 0 0 0 2px rgba(102,204,255,.6)').get(0)?.scrollIntoView({ block: 'nearest' });
+    }
+    updateFocus(focusedIndex);
+    $m.on('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex - 1);
+      } else if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        // 直接用当前聚焦的饼干发送
+        const $all = $items();
+        if ($all.eq(focusedIndex).length) $all.eq(focusedIndex).trigger('click');
+        $m.find('#cookie-confirm-ok').trigger('click');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        $m.remove();
+        onCancel();
+      }
     });
   }
 

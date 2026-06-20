@@ -27,8 +27,8 @@
     "// ==UserScript==",
     "// @name         X岛-EX",
     "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
-    "// @version      3.3.0",
-    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干/ 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 。",
+    "// @version      3.4.0",
+    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 。",
     "// @author       XY",
     "// @match        https://*.nmbxd1.com/*",
     "// @match        https://*.nmbxd.com/*",
@@ -61,7 +61,7 @@
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
     "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
     "// @license      WTFPL",
-    "// @changelog    新增\\n1.新增使用数据的导入导出，可选项目：设置/浏览历史/发言历史/草稿/颜文字统计\\n",
+    "// @changelog    新增\\n1.新增发送前二次确认饼干功能，统计使用次数，并标记上次使用，弹窗中可使用键盘↑↓移动，Ctrl+Enter选择并发送。\\n2.支持手动添加主题、回复，支持No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23等格式。\\n",
     "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
     "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
     "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
@@ -74,7 +74,7 @@
     "// @run-at       document-start",
     "// ==/UserScript=="
   ].join('\n');
-  const scriptMeta = { name: "X岛-EX", version: "3.3.0" };
+  const scriptMeta = { name: "X岛-EX", version: "3.4.0" };
   // END GENERATED USERSCRIPT META
 
   function normalizeKey(key) {

@@ -1,7 +1,7 @@
 {
   "extension": {
-    "version": "3.3.0",
-    "changelog": "新增\n1.新增使用数据的导入导出，可选项目：设置/浏览历史/发言历史/草稿/颜文字统计",
+    "version": "3.4.0",
+    "changelog": "新增\n1.新增发送前二次确认饼干功能，统计使用次数，并标记上次使用，弹窗中可使用键盘↑↓移动，Ctrl+Enter选择并发送。\n2.支持手动添加主题、回复，支持No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23等格式。",
     "downloads": {
       "github": "https://github.com/SayaGoodBye/nmbxd-EX/releases/latest",
       "baidupan": "https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf"
