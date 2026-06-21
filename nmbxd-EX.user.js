@@ -6770,6 +6770,7 @@ ${markedSwatchHtml}
           postHistory: $('#sp_fullExport_postHistory').is(':checked'),
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+          cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
         };
         if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
         const fileData = buildFullExportFile(selection);
