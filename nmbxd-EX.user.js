@@ -14802,16 +14802,13 @@ ${markedSwatchHtml}
             }
             // 不匹配 → 弹窗，预选偏好饼干
             showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
-              setThreadCookiePref(_threadId, pinnedHash || selectedHash);
+              if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
               _doSend();
             }, () => { form.__submitting = false; }, { preselectHash: _pref.hash });
             return;
           }
-          // 无偏好 → 走原有逻辑
-          showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
-            if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
-            _doSend();
-          }, () => { form.__submitting = false; });
+          // 无偏好 → 直接发送
+          _doSend();
           return;
         }
       }
