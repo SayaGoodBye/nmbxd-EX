@@ -5092,7 +5092,14 @@ ${markedSwatchHtml}
                          color:#777;
                          font-size:12px;
                     }
-              </style>
+                /* 饼干 switch 动效 */
+              .xdex-pin-btn {
+                transition: background-color 0.2s ease, border-color 0.2s ease;
+              }
+              .xdex-pin-btn:checked {
+                transition: background-color 0.2s ease, border-color 0.2s ease;
+              }
+            </style>
           `);
       }
       if (!$('#sp_btn').length) {
@@ -20197,15 +20204,37 @@ ${markedSwatchHtml}
       // switch 点击设为默认饼干（不发送、不关闭弹窗）
       $item.find('.xdex-pin-btn').on('click', (e) => {
         e.stopPropagation();
-        // 取消其他 switch，只保留当前
-        $list.find('.xdex-pin-btn').prop('checked', false);
-        $item.find('.xdex-pin-btn').prop('checked', true);
+        // e.target.checked 是点击后的状态，取反得到点击前的状态
+        const isChecked = e.target.checked;
 
-        setThreadCookiePref(threadId, cookieHash);
-        // 实时更新弹窗头部默认标识和按钮文字
-        $m.find('p span').each(function() { if (this.style && this.style.color === 'rgb(255, 179, 0)') this.textContent = '\u9ed8\u8ba4: ' + rawName; });
+        if (isChecked) {
+          // 点击后是打开状态 → 刚刚从关闭切换到打开：设置偏好（互斥）
+          $list.find('.xdex-pin-btn').prop('checked', false);
+          $item.find('.xdex-pin-btn').prop('checked', true);
+          setThreadCookiePref(threadId, cookieHash);
+          // 更新右上角默认提示
+          const $existing = $m.find('p span[style*="color:#ffb300"], p span[style*="color: rgb(255, 179, 0)"]');
+          if ($existing.length) {
+            $existing.text('默认: ' + rawName);
+          } else {
+            $m.find('p').append('<span style="color:#ffb300;font-size:11px;">默认: ' + rawName + '</span>');
+          }
+          toast('已将 ' + rawName + ' 设为本串默认饼干');
+        } else {
+          // 点击后是关闭状态 → 刚刚从打开切换到关闭：清除偏好
+          $item.find('.xdex-pin-btn').prop('checked', false);
+          removeThreadCookiePref(threadId);
+          // 移除右上角默认提示
+          $m.find('p span[style*="color:#ffb300"], p span[style*="color: rgb(255, 179, 0)"]').remove();
+          // 同步关闭外部的饼干偏好开关
+          const outerSwitch = document.querySelector('.xdex-cookie-check-sw');
+          if (outerSwitch) {
+            outerSwitch.checked = false;
+            outerSwitch.dispatchEvent(new Event('change'));
+          }
+          toast('已清除当前串的偏好饼干');
+        }
         updateOkButton();
-        toast('已将 ' + rawName + ' 设为本串默认饼干');
       });
       $list.append($item);
     });
@@ -20301,7 +20330,10 @@ ${markedSwatchHtml}
   }
   function getThreadCookiePref(threadId) {
     if (!threadId) return null;
-    return getThreadCookiePrefs()[threadId] || null;
+    const pref = getThreadCookiePrefs()[threadId];
+    // 如果是清除标记，返回 null
+    if (pref && pref.cleared) return null;
+    return pref || null;
   }
   function setThreadCookiePref(threadId, hash) {
     if (!threadId || !hash) return;
@@ -20312,7 +20344,8 @@ ${markedSwatchHtml}
   function removeThreadCookiePref(threadId) {
     if (!threadId) return;
     const prefs = getThreadCookiePrefs();
-    delete prefs[threadId];
+    // 存储清除标记，防止 initThreadCookiePref 自动重新设置
+    prefs[threadId] = { hash: '', cleared: true, clearedAt: Date.now() };
     try { GM_setValue(THREAD_COOKIE_PREFS_KEY, prefs); } catch (e) {}
   }
   // 在 cookieList 中通过 hash 查找饼干（兼容 key 为 id 或 hash 的情况）
@@ -20349,9 +20382,12 @@ ${markedSwatchHtml}
   // ── 初始化串内偏好 ──
   function initThreadCookiePref(threadId) {
     if (!threadId) return;
-    const existing = getThreadCookiePref(threadId);
-    if (existing) {
-      if (findCookieByHash(getCookiesList(), existing.hash)) return; // 有效
+    // 直接检查原始 prefs（包括清除标记）
+    const rawPref = getThreadCookiePrefs()[threadId];
+    if (rawPref) {
+      // 如果用户主动清除了偏好，不自动设置
+      if (rawPref.cleared) return;
+      if (rawPref.hash && findCookieByHash(getCookiesList(), rawPref.hash)) return; // 有效
       return; // 失效留给发送时处理
     }
     const poHash = detectPOCookieHash();
@@ -20397,14 +20433,17 @@ ${markedSwatchHtml}
     switchEl.addEventListener('change', () => {
       if (switchEl.checked) {
         if (!getThreadCookiePref(threadId)) {
+          // 智能选择默认饼干：PO主 > 发言历史 > 当前饼干
+          const poHash = detectPOCookieHash();
+          const histHash = detectHistoryCookieHash(threadId);
           const cur = getCurrentCookie();
-          if (cur) setThreadCookiePref(threadId, abbreviateName(cur.name));
+          const defaultHash = poHash || histHash || (cur ? abbreviateName(cur.name) : '');
+          if (defaultHash) setThreadCookiePref(threadId, defaultHash);
         }
         editBtn.style.visibility = 'visible';
         editBtn.style.pointerEvents = 'auto';
       } else {
-
-      removeThreadCookiePref(threadId);
+        removeThreadCookiePref(threadId);
         editBtn.style.visibility = 'hidden';
         editBtn.style.pointerEvents = 'none';
       }
