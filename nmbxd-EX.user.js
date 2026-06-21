@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.重新设计发送前二次确认饼干功能，统计使用次数，并标记上次使用，弹窗中可使用键盘↑↓移动，Ctrl+Enter选择并发送。\n2.支持手动添加主题、回复，支持No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23等格式。\n
+// @changelog    新增\n1.重新设计发送前二次确认饼干功能，现在可在每个串内主动设置偏好饼干，开启偏好饼干时，使用非默认饼干发送消息时候弹出二次确认窗口；位于“我的主题”的串内默认选定Po主饼干为偏好饼干。\n2.新增将串号批量添加入订阅功能；新增批量导出订阅号中的串号到剪切板功能。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -768,8 +768,9 @@
     if (!postId && !threadId) return '';
     if (type === 'reply') return buildCanonicalReplyUrl(threadId, postId);
     // 主题也使用 ?r=threadId 格式
-    // return `${location.origin}/t/${threadId}`;
-    return `${location.origin}/t/${threadId}?r=${threadId}`;
+    // return `${location.origin}/t/${threadId}?r=${threadId}`;
+    // 主题:精简版 URL,不带 ?r=threadId
+    return `${location.origin}/t/${threadId}`;
   }
   function buildPostHistoryReplyActionUrl(type, id, resto, page) {
     const postId = String(id || '').trim();
