@@ -542,7 +542,41 @@
     }) || '';
   }
   function normalizePostHistoryText(text) {
+    // 旧版（破坏性）：暴力替换空白、移除标签、trim — 已禁用
+    // return String(text || '')
+    //   .replace(/<br\s*\/?\s*>/gi, ' ')
+    //   .replace(/<[^>]+>/g, '')
+    //   .replace(/&nbsp;/gi, ' ')
+    //   .replace(/&gt;/gi, '>')
+    //   .replace(/&lt;/gi, '<')
+    //   .replace(/&amp;/gi, '&')
+    //   .replace(/\r\n/g, '\n')
+    //   .replace(/\r/g, '\n')
+    //   .replace(/[\s\u00a0]+/g, ' ')
+    //   .trim();
+    // 新版：忠实保留原始内容
     return String(text || '')
+      .replace(/<br\s*\/?\s*>/gi, '\n')     // <br> → 换行（不是空格）
+      .replace(/&gt;/gi, '>')               // 符号转义
+      .replace(/&lt;/gi, '<')
+      .replace(/&amp;/gi, '&')
+      .replace(/&nbsp;/gi, '\u00a0')         // &nbsp; → 不间断空格（保留语义）
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+      // 不移除 HTML 标签，保留原始结构
+      // 不合并空白字符，保留原始空格/全角空格/零宽空格
+      // 不 trim，保留原始首尾空白
+  }
+  function sanitizePostHistoryServerContentHtml(content) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = String(content || '');
+    return sanitizeThreadHistoryContentHtml(wrapper);
+  }
+  function hashPostHistoryText(text) {
+    // 旧版：直接调用 normalizePostHistoryText — 已禁用（normalizePostHistoryText 已改为忠实模式）
+    // const normalized = normalizePostHistoryText(text);
+    // 新版：内部独立标准化，保持 hash 计算一致性
+    const normalized = String(text || '')
       .replace(/<br\s*\/?\s*>/gi, ' ')
       .replace(/<[^>]+>/g, '')
       .replace(/&nbsp;/gi, ' ')
@@ -553,14 +587,6 @@
       .replace(/\r/g, '\n')
       .replace(/[\s\u00a0]+/g, ' ')
       .trim();
-  }
-  function sanitizePostHistoryServerContentHtml(content) {
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = String(content || '');
-    return sanitizeThreadHistoryContentHtml(wrapper);
-  }
-  function hashPostHistoryText(text) {
-    const normalized = normalizePostHistoryText(text);
     let hash = 0;
     for (let i = 0; i < normalized.length; i++) {
       hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0;
@@ -1496,7 +1522,8 @@
     return String(text || '').replace(ZERO_WIDTH_RE, '').replace(/[\s\u00a0]+/g, '');
   }
   function trimThreadHistoryContentText(text) {
-    return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
+    // 只去除ASCII空白（空格/Tab/换行），保留全角空格/零宽空格等用户输入的Unicode空白
   }
   function sanitizeThreadHistoryInlineStyle(styleValue) {
     const safeRules = [];
@@ -1533,9 +1560,10 @@
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     if (!nodes.length) return;
-    nodes[0].nodeValue = String(nodes[0].nodeValue || '').replace(/^\s+/, '');
+    // 首尾文本节点去空白 — 只清理ASCII空白（空格/Tab/换行），保留用户输入的全角空格/零宽空格等Unicode空白
+    nodes[0].nodeValue = String(nodes[0].nodeValue || '').replace(/^[ \t\r\n]+/, '');
     const last = nodes[nodes.length - 1];
-    last.nodeValue = String(last.nodeValue || '').replace(/\s+$/, '');
+    last.nodeValue = String(last.nodeValue || '').replace(/[ \t\r\n]+$/, '');
   }
   function normalizeThreadHistoryContentWhitespace(root) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -1545,9 +1573,9 @@
       const prev = node.previousSibling;
       const next = node.nextSibling;
       let value = String(node.nodeValue || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      value = value.replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n');
-      if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR') value = value.replace(/^\s+/, '');
-      if (next && next.nodeType === Node.ELEMENT_NODE && next.tagName === 'BR') value = value.replace(/[ \t]+$/, '');
+      // value = value.replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n'); // 连续空行压缩 — 已禁用，保留原始空行
+      if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR') value = value.replace(/^\s+/, ''); // BR后空白清理 — 保留：清理HTML源码格式化产生的换行符，防止innerHTML重新渲染时出现多余空行
+      if (next && next.nodeType === Node.ELEMENT_NODE && next.tagName === 'BR') value = value.replace(/[ \t]+$/, ''); // BR前空白清理 — 保留：清理HTML源码格式化产生的空格
       node.nodeValue = value;
     });
     cleanThreadHistoryContentWhitespace(root);
@@ -1644,7 +1672,8 @@
       });
     });
     cleanThreadHistoryContentWhitespace(clone);
-    return clone.innerHTML.trim();
+    return clone.innerHTML.replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
+    // 只去除ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
   }
   function extractThreadHistoryCookieId(cookieEl, fallbackText) {
     if (cookieEl) {
@@ -1714,7 +1743,8 @@
       });
     });
     normalizeThreadHistoryContentWhitespace(clone);
-    return clone.innerHTML.trim();
+    return clone.innerHTML.replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
+    // 只去除ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
   }
   function normalizeThreadHistoryImageFile(urlValue) {
     if (!urlValue) return '';
