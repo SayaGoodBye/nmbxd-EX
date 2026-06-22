@@ -5091,14 +5091,14 @@ ${markedSwatchHtml}
                           margin-top:8px;
                          color:#777;
                          font-size:12px;
-                    }
-                /* 饼干 switch 动效 */
-              .xdex-pin-btn {
-                transition: background-color 0.2s ease, border-color 0.2s ease;
-              }
-              .xdex-pin-btn:checked {
-                transition: background-color 0.2s ease, border-color 0.2s ease;
-              }
+                  }
+              /* 饼干 switch 动效 */
+            .xdex-pin-btn {
+              transition: background-color 0.2s ease, border-color 0.2s ease;
+            }
+            .xdex-pin-btn:checked {
+              transition: background-color 0.2s ease, border-color 0.2s ease;
+                  }
             </style>
           `);
       }
@@ -5211,6 +5211,7 @@ ${markedSwatchHtml}
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -6736,6 +6737,7 @@ ${markedSwatchHtml}
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
           cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
+          cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
         };
         if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
         const parts = [];
@@ -6770,7 +6772,6 @@ ${markedSwatchHtml}
           postHistory: $('#sp_fullExport_postHistory').is(':checked'),
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
-          cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
         };
         if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
         const fileData = buildFullExportFile(selection);
@@ -6977,6 +6978,7 @@ ${markedSwatchHtml}
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
+        sp_enableImageViewerMode: '在串内页右上角添加“图”按钮，点击进入阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图可放大查看并支持旋转、缩放、键盘翻页（左/右方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
       };
@@ -20460,6 +20462,664 @@ ${markedSwatchHtml}
   }
 
   /* --------------------------------------------------
+   * tag 26. 阅图模式
+   * -------------------------------------------------- */
+  // ── 图片阅览器状态 ──
+  const ImageViewer = {
+    active: false,
+    threadId: '',
+    totalPageCount: 0,
+    gridImages: [],          // {id, imgUrl, thumbUrl, isGif, userHash, name, content, now, page}
+    loadedPages: new Set(),
+    loading: false,
+    currentDetailIndex: -1,  // 当前详情查看的图片索引
+    rotation: 0,
+    scale: 1,
+    panX: 0,
+    panY: 0,
+    gridScrollTop: 0         // 返回瀑布流时恢复滚动位置
+  };
+  function getImageViewerApiUrl(threadId, page) {
+    return `https://api.nmb.best/api/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+  }
+  const XV_MAX_DISPLAY_HEIGHT = 500;
+
+  function buildImageUrls(item) {
+    const ext = (item.ext || '').toLowerCase();
+    const isGif = ext === '.gif';
+    const imgUrl = `https://image.nmb.best/image/${item.img}${item.ext}`;
+    const thumbUrl = isGif ? imgUrl : `https://image.nmb.best/thumb/${item.img}${item.ext}`;
+    return { imgUrl, thumbUrl, isGif };
+  }
+  // ── 预加载缩略图尺寸 ──
+  function preloadThumbnailSizes() {
+    const images = ImageViewer.gridImages;
+    const toLoad = images.filter(img => !img._thumbW);
+    if (!toLoad.length) return Promise.resolve();
+    return Promise.allSettled(toLoad.map(img => new Promise((resolve) => {
+      const probe = new Image();
+      probe.onload = () => {
+        img._thumbW = probe.naturalWidth || 200;
+        img._thumbH = probe.naturalHeight || 200;
+        // 计算在列宽下的显示高度
+        const ratio = img._thumbH / img._thumbW;
+        const cw = ImageViewer._colWidth || 200;
+        let displayH = Math.round(cw * ratio);
+        // 长图限高
+        if (ratio > 3) {
+          displayH = 500;
+          img._isLong = true;
+        }
+        img._displayH = displayH;
+        resolve();
+      };
+      probe.onerror = () => { img._thumbW = 200; img._thumbH = 200; img._displayH = 200; resolve(); };
+      probe.src = img.thumbUrl;
+    })));
+  }
+  function buildGridCard(img, index) {
+    const card = document.createElement('div');
+    card.className = 'xv-grid-card';
+    card.style.cssText = 'border:1px solid var(--border,#333);border-radius:6px;overflow:hidden;cursor:pointer;background:var(--card,#1a1a1a);transition:border-color .15s;';
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = img._displayH
+      ? 'position:relative;overflow:hidden;height:' + img._displayH + 'px;'
+      : 'position:relative;overflow:hidden;';
+    const imgEl = document.createElement('img');
+    imgEl.src = img.thumbUrl;
+    imgEl.loading = 'lazy';
+    imgEl.style.cssText = img._displayH
+      ? 'width:100%;height:100%;object-fit:cover;display:block;'
+      : 'width:100%;height:auto;display:block;';
+    wrapper.appendChild(imgEl);
+    // GIF 角标
+    if (img.isGif) {
+      const gifBadge = document.createElement('span');
+      gifBadge.style.cssText = 'position:absolute;top:4px;left:4px;background:rgba(0,0,0,.7);color:#0f0;font-size:10px;padding:1px 4px;border-radius:3px;z-index:1;';
+      gifBadge.textContent = 'GIF';
+      wrapper.appendChild(gifBadge);
+    }
+    // 长图角标（初始隐藏，onload 后判定）
+    const longBadge = document.createElement('span');
+    longBadge.style.cssText = 'position:absolute;' + (img.isGif ? 'top:20px;' : 'top:4px;') + 'left:4px;background:rgba(255,193,7,.85);color:#000;font-size:10px;padding:1px 4px;border-radius:3px;z-index:1;display:none;';
+    longBadge.textContent = '长图';
+    wrapper.appendChild(longBadge);
+    card.appendChild(wrapper);
+    const footer = document.createElement('div');
+    footer.style.cssText = 'padding:4px 6px;display:flex;justify-content:space-between;align-items:center;';
+    footer.innerHTML = `<span style="font-size:11px;color:var(--muted-foreground,#888);">No.${img.id}</span><span style="font-size:10px;color:var(--muted-foreground,#666);">P${img.page}</span>`;
+    card.appendChild(footer);
+    // 图片加载后：判定宽高比和长图，必要时切换原图、限高
+    imgEl.addEventListener('load', function onLoad() {
+      imgEl.removeEventListener('load', onLoad);
+      const w = imgEl.naturalWidth || 1;
+      const h = imgEl.naturalHeight || 1;
+      const ratio = Math.max(w / h, h / w);
+      // 宽高比 >3 的长图/宽图 → 限制最大高度，标记角标
+      if (h > w && h / w > 3) {
+        longBadge.style.display = '';
+        wrapper.style.maxHeight = XV_MAX_DISPLAY_HEIGHT + 'px';
+        imgEl.style.maxHeight = XV_MAX_DISPLAY_HEIGHT + 'px';
+        imgEl.style.objectFit = 'cover';
+      }
+      // 缩略图太小或宽高比极端 → 换原图
+      if (imgEl.naturalWidth < 60 || ratio > 3) {
+        imgEl.src = img.imgUrl;
+      }
+    });
+    card.addEventListener('click', () => openDetailLayer(index));
+    return card;
+  }
+  function stripHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html || '';
+    return (tmp.textContent || '').trim();
+  }
+  async function fetchThreadPage(threadId, page) {
+    const url = getImageViewerApiUrl(threadId, page);
+    const resp = await gmRequest(url, 'json');
+    const data = resp && (resp.response || resp.responseText);
+    if (!data || typeof data === 'string') {
+      try { return JSON.parse(data); } catch (e) { return null; }
+    }
+    return data;
+  }
+  async function loadViewerPages(threadId, startPage, count) {
+    const pages = [];
+    for (let i = 0; i < count; i++) {
+      const p = startPage + i;
+      if (ImageViewer.loadedPages.has(p) || p < 1) continue;
+      pages.push(p);
+    }
+    if (!pages.length) return;
+    const results = await Promise.allSettled(
+      pages.map(p => fetchThreadPage(threadId, p))
+    );
+    let appended = 0;
+    results.forEach((r, i) => {
+      const page = pages[i];
+      if (r.status !== 'fulfilled' || !r.value) return;
+      const thread = r.value;
+      const replies = Array.isArray(thread.Replies) ? thread.Replies : [];
+      ImageViewer.loadedPages.add(page);
+      replies.forEach(rep => {
+        if (!rep || !rep.img || !rep.ext || rep.id === 9999999) return;
+        const { imgUrl, thumbUrl, isGif } = buildImageUrls(rep);
+        ImageViewer.gridImages.push({
+          id: rep.id,
+          imgUrl,
+          thumbUrl,
+          isGif,
+          userHash: rep.user_hash || '',
+          name: rep.name || '',
+          content: stripHtml(rep.content || ''),
+          now: rep.now || '',
+          page
+        });
+        appended++;
+      });
+      const replyCount = Number(thread.ReplyCount || replies.length);
+      if (replyCount > 0) {
+        const impliedTotal = Math.ceil(replyCount / 19);
+        if (impliedTotal > ImageViewer.totalPageCount) ImageViewer.totalPageCount = impliedTotal;
+      }
+    });
+    return appended;
+  }
+  // ── 入口：串内页添加"阅图"按钮 ──
+  function injectImageViewerButton() {
+    const isThreadPage = /\/t\/\d{8,}/.test(location.pathname) || /\/Forum\/po\/id\/\d+/.test(location.pathname);
+    if (!isThreadPage) return;
+    if (document.querySelector('.xdex-image-viewer-btn')) return;
+    const threadMatch = location.pathname.match(/\/t\/(\d{8,})/) || location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
+    if (!threadMatch) return;
+    const threadId = threadMatch[1];
+    const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">图</button>');
+    $btn.css({
+      position: 'fixed', top: '10px', right: '52px', zIndex: '10000',
+      width: '28px', height: '28px', padding: '0',
+      border: 'none', borderRadius: '50%',
+      background: '#99ffff', color: '#000',
+      fontSize: '13px', fontWeight: 'bold', cursor: 'pointer',
+      boxShadow: '0 1px 4px rgba(0,0,0,.18)',
+      transition: 'transform .15s, box-shadow .15s, background .15s',
+      display: 'flex', alignItems: 'center', justifyContent: 'center'
+    });
+    $btn.on('click', () => openImageViewer(threadId));
+    $('body').append($btn);
+  }
+  // ── 打开阅览器 ──
+  function getImageViewerStartPage() {
+    const m1 = location.pathname.match(/\/page\/(\d+)(?:\.html)?$/);
+    if (m1) return Math.max(1, parseInt(m1[1], 10));
+    const m2 = location.search.match(/[?&]page=(\d+)/);
+    if (m2) return Math.max(1, parseInt(m2[1], 10));
+    return 1;
+  }
+  function openImageViewer(threadId) {
+    if (ImageViewer.active) return;
+    ImageViewer.active = true;
+    ImageViewer.threadId = threadId;
+    ImageViewer.gridImages = [];
+    ImageViewer.loadedPages = new Set();
+    ImageViewer.loading = false;
+    ImageViewer.currentDetailIndex = -1;
+    ImageViewer.totalPageCount = 0;
+    ImageViewer.gridScrollTop = 0;
+    document.body.style.overflow = 'hidden';
+    const startPage = getImageViewerStartPage();
+    renderGridLayer();
+    loadViewerPages(threadId, startPage, 2).then(async () => {
+      await preloadThumbnailSizes();
+      renderGridImages();
+    });
+  }
+  // ── 关闭阅览器 ──
+  function closeImageViewer() {
+    ImageViewer.active = false;
+    ImageViewer.threadId = '';
+    ImageViewer.gridImages = [];
+    ImageViewer.loadedPages = new Set();
+    ImageViewer.currentDetailIndex = -1;
+    ImageViewer.rotation = 0;
+    ImageViewer.scale = 1;
+    ImageViewer.panX = 0;
+    ImageViewer.panY = 0;
+    document.body.style.overflow = '';
+    const overlay = document.getElementById('xdex-image-viewer');
+    if (overlay) overlay.remove();
+    document.removeEventListener('keydown', viewerKeyHandler);
+  }
+  // ── 瀑布流层：骨架 ──
+  function renderGridLayer() {
+    const existing = document.getElementById('xdex-image-viewer');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'xdex-image-viewer';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10001;background:var(--background,#111);display:flex;flex-direction:column;overscroll-behavior:contain;';
+    overlay.innerHTML = `
+      <div class="xv-header" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
+        <span class="xv-header-info" style="color:var(--foreground,#ccc);font-size:13px;">串号 ${ImageViewer.threadId} · 正在加载…</span>
+        <button class="xv-close-btn" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
+      </div>
+      <div class="xv-grid-scroll" style="flex:1;overflow-y:auto;padding:12px;">
+        <div class="xv-masonry" style="display:flex;gap:8px;align-items:flex-start;justify-content:center;position:relative;width:100%;"></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    // 拦截滚轮和触摸，防止穿透到原页面
+    overlay.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+    overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+    overlay.querySelector('.xv-close-btn').addEventListener('click', closeImageViewer);
+    const scroll = overlay.querySelector('.xv-grid-scroll');
+    // 在真正滚动容器上拦截默认行为，防止滚到边界时穿透到底层页面
+    scroll.addEventListener('wheel', (e) => {
+      const atTop = scroll.scrollTop <= 0;
+      const atBottom = scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1;
+      if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+    scroll.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    scroll.addEventListener('scroll', () => {
+      if (ImageViewer.loading) return;
+      if (scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 400) {
+        loadNextGridPages();
+      }
+    });
+  }
+  // ── 瀑布流：获取或创建列容器 ──
+  function getGridLayout() {
+    const masonry = document.querySelector('.xv-masonry');
+    if (!masonry) return { numCols: 4, colWidth: 200, gap: 8 };
+    const containerWidth = masonry.clientWidth || 800;
+    const gap = 8;
+    const targetColWidth = 200;
+    let numCols = Math.max(1, Math.floor((containerWidth + gap) / (targetColWidth + gap)));
+    // 拉伸列宽填满容器，但限制在合理范围
+    let colWidth = Math.floor((containerWidth - (numCols - 1) * gap) / numCols);
+    colWidth = Math.max(160, Math.min(300, colWidth));
+    return { numCols, colWidth, gap };
+  }
+  function buildPageSeparator(pageNum, colHeights) {
+    const colWidth = (ImageViewer._colWidth || 200), gap = 8;
+    const sep = document.createElement('div');
+    sep.className = 'xv-page-separator';
+    sep.dataset.page = String(pageNum);
+    if (!colHeights || colHeights.length < 2) {
+      const minH = colHeights && colHeights.length ? Math.min(...colHeights) : 0;
+      sep.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);width:' + totalW + 'px;top:' + minH + 'px;pointer-events:none;z-index:2;text-align:center;';
+      sep.innerHTML = '<span style="display:inline-block;background:var(--background,#111);color:#e53935;font-size:12px;font-weight:600;padding:2px 8px;">第' + pageNum + '页</span>';
+      return sep;
+    }
+    const maxH = Math.max(...colHeights);
+    const minH = Math.min(...colHeights);
+    const contourH = Math.max(maxH - minH, 1);
+    const points = [];
+    for (let c = 0; c < colHeights.length; c++) {
+      const x1 = c * (colWidth + gap);
+      const x2 = x1 + colWidth;
+      const y = colHeights[c] - minH;
+      points.push(x1 + ',' + y);
+      points.push(x2 + ',' + y);
+    }
+    const totalW = colHeights.length * colWidth + (colHeights.length - 1) * gap;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(totalW));
+    svg.setAttribute('height', String(contourH));
+    svg.setAttribute('viewBox', '0 0 ' + totalW + ' ' + contourH);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.cssText = 'display:block;';
+    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    polyline.setAttribute('points', points.join(' '));
+    polyline.setAttribute('fill', 'none');
+    polyline.setAttribute('stroke', '#e53935');
+    polyline.setAttribute('stroke-width', '2');
+    polyline.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(polyline);
+    sep.appendChild(svg);
+    // label 放在 polyline 水平中点的实际路径上
+    const midX = totalW / 2;
+    let labelY = 0;
+    for (let i = 0; i < points.length - 2; i += 2) {
+      const x1 = parseFloat(points[i].split(',')[0]);
+      const y1 = parseFloat(points[i].split(',')[1]);
+      const x2 = parseFloat(points[i + 1].split(',')[0]);
+      const y2 = parseFloat(points[i + 1].split(',')[1]);
+      const x3 = parseFloat(points[i + 2].split(',')[0]);
+      const y3 = parseFloat(points[i + 2].split(',')[1]);
+      // 检查 midX 是否在 segment (x2,y2)→(x3,y3) 之间
+      if (midX >= x2 && midX <= x3) {
+        const t = (x3 !== x2) ? (midX - x2) / (x3 - x2) : 0;
+        labelY = y2 + t * (y3 - y2);
+        break;
+      }
+      // 检查 midX 是否在 segment (x1,y1)→(x2,y2) 之间
+      if (midX >= x1 && midX <= x2) {
+        const t = (x2 !== x1) ? (midX - x1) / (x2 - x1) : 0;
+        labelY = y1 + t * (y2 - y1);
+        break;
+      }
+    }
+    const label = document.createElement('span');
+    label.style.cssText = 'position:absolute;left:50%;top:' + Math.round(labelY) + 'px;transform:translate(-50%,-50%);background:var(--background,#111);color:#e53935;font-size:12px;font-weight:600;padding:0 8px;white-space:nowrap;z-index:1;';
+    label.textContent = '第' + pageNum + '页';
+    sep.appendChild(label);
+    // 绝对定位：top = 最矮列高度
+
+    sep.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);width:' + totalW + 'px;top:' + minH + 'px;height:' + contourH + 'px;pointer-events:none;z-index:2;';
+
+    return sep;
+  }
+  // ── 瀑布流层：渲染图片卡片（瀑布流，每页一组列） ──
+  function renderGridImages() {
+    const overlay = document.getElementById('xdex-image-viewer');
+    if (!overlay) return;
+    const info = overlay.querySelector('.xv-header-info');
+    const masonry = overlay.querySelector('.xv-masonry');
+    if (!masonry) return;
+    const images = ImageViewer.gridImages;
+    const lastCount = masonry.querySelectorAll('.xv-grid-card').length;
+    // 确保有一组列（只创建一次）
+    let cols = Array.from(masonry.querySelectorAll('.xv-masonry-col'));
+    if (cols.length === 0) {
+      const { numCols, colWidth, gap } = getGridLayout();
+      ImageViewer._colWidth = colWidth;
+      ImageViewer._gap = gap;
+      for (let c = 0; c < numCols; c++) {
+        const col = document.createElement('div');
+        col.className = 'xv-masonry-col';
+        col.style.cssText = 'flex:0 0 ' + colWidth + 'px;display:flex;flex-direction:column;gap:' + gap + 'px;';
+        masonry.appendChild(col);
+        cols.push(col);
+      }
+    }
+    // 找到最后一个已插入分隔线的页码
+    let lastSepPage = 0;
+    const existingSeps = masonry.querySelectorAll('.xv-page-separator');
+    if (existingSeps.length > 0) {
+      lastSepPage = parseInt(existingSeps[existingSeps.length - 1].dataset.page) || 0;
+    }
+    // 收集新图片，按页分组
+    const newItems = [];
+    for (let i = lastCount; i < images.length; i++) {
+      newItems.push({ img: images[i], index: i });
+    }
+    const pageGroups = new Map();
+    for (const item of newItems) {
+      const p = item.img.page;
+      if (!pageGroups.has(p)) pageGroups.set(p, []);
+      pageGroups.get(p).push(item);
+    }
+    // 按页处理：LPT 全局最优分配
+    const gap = 8;
+    for (const [pageNum, pageItems] of pageGroups) {
+      // 先插入分隔线（此时列高 = 上一页图片底部，第一页时 = 0）
+      if (pageNum > lastSepPage) {
+        const colHeights = cols.map(c => c.offsetHeight);
+        masonry.appendChild(buildPageSeparator(pageNum, colHeights));
+        lastSepPage = pageNum;
+      }
+      // 按显示高度降序排列（大图优先）
+      pageItems.sort((a, b) => {
+        const ha = a.img._displayH || 200;
+        const hb = b.img._displayH || 200;
+        return hb - ha;
+      });
+      // 用虚拟高度做全局分配，避免逐张贪心
+      const vHeights = cols.map(c => c.offsetHeight);
+      for (const item of pageItems) {
+        let minIdx = 0;
+        for (let c = 1; c < vHeights.length; c++) {
+          if (vHeights[c] < vHeights[minIdx]) minIdx = c;
+        }
+        const card = buildGridCard(item.img, item.index);
+        cols[minIdx].appendChild(card);
+        vHeights[minIdx] += (item.img._displayH || 200) + gap;
+      }
+    }
+    info.textContent = '\u4e32\u53f7 ' + ImageViewer.threadId + ' \u00b7 \u5df2\u52a0\u8f7d ' + images.length + ' \u5f20\u56fe \u00b7 ' + ImageViewer.loadedPages.size + ' \u9875';
+  }
+  // ── 瀑布流层：滚动加载更多页 ──
+  async function loadNextGridPages() {
+    if (ImageViewer.loading) return;
+    const nextPages = [];
+    const maxLoaded = Math.max(...Array.from(ImageViewer.loadedPages), 0);
+    for (let i = 1; i <= 2; i++) {
+      const p = maxLoaded + i;
+      if (!ImageViewer.loadedPages.has(p)) nextPages.push(p);
+    }
+    if (!nextPages.length) return;
+    ImageViewer.loading = true;
+    await loadViewerPages(ImageViewer.threadId, nextPages[0], nextPages.length);
+    await preloadThumbnailSizes();
+    renderGridImages();
+    ImageViewer.loading = false;
+  }
+  // ── 详情层：打开 ──
+  function openDetailLayer(index) {
+    ImageViewer.currentDetailIndex = index;
+    ImageViewer.rotation = 0;
+    ImageViewer.scale = 1;
+    ImageViewer.panX = 0;
+    ImageViewer.panY = 0;
+    ImageViewer.gridScrollTop = document.querySelector('.xv-grid-scroll')?.scrollTop || 0;
+    renderDetailLayer();
+    document.addEventListener('keydown', viewerKeyHandler);
+    prefetchAdjacentImages(index);
+  }
+  // ── 详情层：关闭回到瀑布流 ──
+  function closeDetailLayer() {
+    ImageViewer.currentDetailIndex = -1;
+    document.removeEventListener('keydown', viewerKeyHandler);
+    const overlay = document.getElementById('xdex-image-viewer');
+    if (!overlay) return;
+    const detail = overlay.querySelector('.xv-detail');
+    if (detail) detail.remove();
+    const grid = overlay.querySelector('.xv-grid-scroll');
+    if (grid) {
+      grid.style.display = '';
+      setTimeout(() => { grid.scrollTop = ImageViewer.gridScrollTop; }, 0);
+    }
+    const header = overlay.querySelector('.xv-header');
+    if (header) header.style.display = 'flex';
+  }
+  // ── 详情层：渲染 ──
+  function renderDetailLayer() {
+    const overlay = document.getElementById('xdex-image-viewer');
+    if (!overlay) return;
+    const grid = overlay.querySelector('.xv-grid-scroll');
+    if (grid) grid.style.display = 'none';
+    const header = overlay.querySelector('.xv-header');
+    if (header) header.style.display = 'none';
+    let detail = overlay.querySelector('.xv-detail');
+    if (!detail) {
+      detail = document.createElement('div');
+      detail.className = 'xv-detail';
+      detail.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;background:var(--background,#111);';
+      overlay.appendChild(detail);
+    }
+    const img = ImageViewer.gridImages[ImageViewer.currentDetailIndex];
+    if (!img) { closeDetailLayer(); return; }
+    const decoded = decodeHtmlEntities(img.content);
+    detail.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
+        <button class="xv-back-btn" style="padding:4px 10px;background:var(--primary,#006666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">返回瀑布流</button>
+        <span style="color:var(--foreground,#ccc);font-size:13px;">${ImageViewer.currentDetailIndex + 1} / ${ImageViewer.gridImages.length} · No.${img.id} · 第${img.page}页</span>
+        <button class="xv-close-btn2" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
+      </div>
+      <div style="display:flex;flex:1;overflow:hidden;">
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
+          <button class="xv-prev-btn" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:36px;height:36px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;cursor:pointer;font-size:18px;z-index:2;">◀</button>
+          <img class="xv-main-img" src="${img.imgUrl}" style="max-width:90%;max-height:90%;object-fit:contain;transition:transform .15s;cursor:grab;" draggable="false">
+          <button class="xv-next-btn" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:36px;height:36px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;cursor:pointer;font-size:18px;z-index:2;">▶</button>
+        </div>
+        <div style="width:240px;border-left:1px solid var(--border,#333);padding:12px;overflow-y:auto;background:var(--card,#1a1a1a);flex-shrink:0;">
+          <div style="margin-bottom:8px;">
+            <span style="color:var(--muted-foreground,#888);font-size:12px;">No.${img.id}</span>
+            <span style="color:var(--muted-foreground,#666);font-size:12px;margin-left:8px;">${img.now}</span>
+          </div>
+          <div style="margin-bottom:8px;">
+            <span style="color:var(--foreground,#ccc);font-size:13px;">${img.userHash ? 'ID:' + img.userHash : ''} ${img.name || ''}</span>
+          </div>
+          <div style="color:var(--foreground,#ddd);font-size:13px;line-height:1.5;">${decoded || '<span style="color:var(--muted-foreground,#888);">无文字</span>'}</div>
+          <a href="https://www.nmbxd1.com/t/${ImageViewer.threadId}?r=${img.id}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--primary,#6cf);font-size:12px;">查看原帖</a>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;background:var(--card,#1a1a1a);border-top:1px solid var(--border,#333);flex-shrink:0;">
+        <button class="xv-rotate-left" style="padding:4px 8px;font-size:12px;">左旋</button>
+        <button class="xv-rotate-right" style="padding:4px 8px;font-size:12px;">右旋</button>
+        <button class="xv-zoom-in" style="padding:4px 8px;font-size:12px;">放大</button>
+        <button class="xv-zoom-out" style="padding:4px 8px;font-size:12px;">缩小</button>
+        <button class="xv-reset" style="padding:4px 8px;font-size:12px;">复位</button>
+      </div>
+    `;
+    // 绑定事件
+    detail.querySelector('.xv-back-btn').addEventListener('click', closeDetailLayer);
+    detail.querySelector('.xv-close-btn2').addEventListener('click', closeImageViewer);
+    detail.querySelector('.xv-prev-btn').addEventListener('click', () => navigateDetail(-1));
+    detail.querySelector('.xv-next-btn').addEventListener('click', () => navigateDetail(1));
+    detail.querySelector('.xv-rotate-left').addEventListener('click', () => adjustRotation(-90));
+    detail.querySelector('.xv-rotate-right').addEventListener('click', () => adjustRotation(90));
+    detail.querySelector('.xv-zoom-in').addEventListener('click', () => adjustScale(0.2));
+    detail.querySelector('.xv-zoom-out').addEventListener('click', () => adjustScale(-0.2));
+    detail.querySelector('.xv-reset').addEventListener('click', resetTransform);
+    // 拖拽平移图片
+    const mainImg = detail.querySelector('.xv-main-img');
+    let dragStartX = 0, dragStartY = 0, dragMoved = false;
+    mainImg.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragMoved = false;
+      mainImg.style.cursor = 'grabbing';
+      const onMove = (ev) => {
+        const dx = ev.clientX - dragStartX;
+        const dy = ev.clientY - dragStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+        // scale 影响平移量的感知，除以 scale 让拖拽距离与视觉一致
+        ImageViewer.panX += (ev.clientX - dragStartX) / ImageViewer.scale;
+        ImageViewer.panY += (ev.clientY - dragStartY) / ImageViewer.scale;
+        dragStartX = ev.clientX;
+        dragStartY = ev.clientY;
+        applyTransform();
+      };
+      const onUp = () => {
+        mainImg.style.cursor = 'grab';
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        // 没有拖拽 → 当作点击，左 30% 上一张，右 30% 下一张
+        if (!dragMoved) {
+          const rect = mainImg.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          if (x < rect.width * 0.3) navigateDetail(-1);
+          else if (x > rect.width * 0.7) navigateDetail(1);
+        }
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+    // 滚轮缩放
+    const imgContainer = detail.querySelector(".xv-main-img");
+    if (imgContainer) {
+      imgContainer.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        adjustScale(e.deltaY < 0 ? 0.15 : -0.15);
+      }, { passive: false });
+    }
+    applyTransform();
+  }
+  function decodeHtmlEntities(text) {
+    const ta = document.createElement('textarea');
+    ta.innerHTML = text || '';
+    return ta.value;
+  }
+  // ── 详情层：导航 ──
+  function navigateDetail(delta) {
+    const next = ImageViewer.currentDetailIndex + delta;
+    if (next < 0 || next >= ImageViewer.gridImages.length) return;
+    ImageViewer.currentDetailIndex = next;
+    ImageViewer.rotation = 0;
+    ImageViewer.scale = 1;
+    ImageViewer.panX = 0;
+    ImageViewer.panY = 0;
+    renderDetailLayer();
+    prefetchAdjacentImages(next);
+    if (next >= ImageViewer.gridImages.length - 3) {
+      loadNextGridPages();
+    }
+  }
+  // ── 图片变换 ──
+  function applyTransform() {
+    const img = document.querySelector('.xv-main-img');
+    if (!img) return;
+    img.style.transform = `rotate(${ImageViewer.rotation}deg) scale(${ImageViewer.scale}) translate(${ImageViewer.panX}px, ${ImageViewer.panY}px)`;
+  }
+  function adjustRotation(deg) {
+    ImageViewer.rotation = (ImageViewer.rotation + deg) % 360;
+    applyTransform();
+  }
+  function adjustScale(delta) {
+    ImageViewer.scale = Math.max(0.01, ImageViewer.scale + delta);
+    applyTransform();
+  }
+  function resetTransform() {
+    ImageViewer.rotation = 0;
+    ImageViewer.scale = 1;
+    ImageViewer.panX = 0;
+    ImageViewer.panY = 0;
+    applyTransform();
+  }
+  // ── 预加载相邻图片 ──
+  function prefetchAdjacentImages(index) {
+    [-1, 1].forEach(offset => {
+      const target = ImageViewer.gridImages[index + offset];
+      if (!target) return;
+      const img = new Image();
+      img.src = target.imgUrl;
+    });
+  }
+  // ── 键盘处理 ──
+  function viewerKeyHandler(e) {
+    if (!ImageViewer.active || ImageViewer.currentDetailIndex < 0) return;
+    switch (e.key) {
+      case 'ArrowLeft':
+        e.preventDefault();
+        navigateDetail(-1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        navigateDetail(1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        ImageViewer.panY += 60;
+        applyTransform();
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        ImageViewer.panY -= 60;
+        applyTransform();
+        break;
+      case '[':
+        adjustRotation(-90);
+        break;
+      case ']':
+        adjustRotation(90);
+        break;
+      case '=':
+      case '+':
+        adjustScale(0.2);
+        break;
+      case '-':
+        adjustScale(-0.2);
+        break;
+      case '0':
+        resetTransform();
+        break;
+    }
+  }
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => {
@@ -20491,6 +21151,7 @@ ${markedSwatchHtml}
         injectCookieCheckSwitch(_initThreadId);
       }
     }
+    injectImageViewerButton();                                    //阅图模式入口
     if (cfg.enablePaginationDuplication) enablePaginationDuplication();     //添加页首页码
     if (cfg.disableWatermark)            disableWatermark();        //关闭图片水印
     if (cfg.updatePreviewCookie)         updatePreviewCookieId();   //预览真实饼干
