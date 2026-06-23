@@ -1574,7 +1574,7 @@
       const next = node.nextSibling;
       let value = String(node.nodeValue || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       // value = value.replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n'); // 连续空行压缩 — 已禁用，保留原始空行
-      if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR') value = value.replace(/^\s+/, ''); // BR后空白清理 — 保留：清理HTML源码格式化产生的换行符，防止innerHTML重新渲染时出现多余空行
+      if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR') value = value.replace(/^[ \t\r\n]+/, ''); // BR后空白清理 — 只清理ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
       if (next && next.nodeType === Node.ELEMENT_NODE && next.tagName === 'BR') value = value.replace(/[ \t]+$/, ''); // BR前空白清理 — 保留：清理HTML源码格式化产生的空格
       node.nodeValue = value;
     });
