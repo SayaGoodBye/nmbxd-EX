@@ -12536,9 +12536,12 @@ ${markedSwatchHtml}
     return startupPerfDebug.measure('initExtendedContent', () => {
     const $root = $(root || document);
     ensureRefViewLayoutStyle();
+    renderHiddenTextContent(root);  // 先处理隐藏文本，再挂处理器，避免 $content.html() 重写破坏处理器
     try { injectSubscriptionExButton(root || document); } catch (e) {}
     // —— 在捕获阶段接管原生引用浮窗，避免原站先显示未处理内容 ——
-    $root.find("font[color='#789922']").add($root.filter("font[color='#789922']"))
+    const _xvFindResult = $root.find("font[color='#789922']");
+    // console.log('[xv-ref-find] $root.find result:', _xvFindResult.length, 'root:', $root[0]?.tagName, $root[0]?.className);
+    _xvFindResult.add($root.filter("font[color='#789922']"))
       .filter(function () {
         return /(No\.\d{8}|\d{8})/.test($(this).text());
       })
@@ -12549,6 +12552,7 @@ ${markedSwatchHtml}
           quoteEl.removeEventListener('mouseover', quoteEl.__xdexRefHoverHandler, true);
           quoteEl.removeEventListener('mouseenter', quoteEl.__xdexRefHoverHandler, true);
         }
+        // console.log('[xv-ref-attach] attaching handler to:', quoteEl.textContent, 'parent:', quoteEl.parentElement.tagName);
         quoteEl.__xdexRefHoverHandler = function (event) {
           if (event.type === 'mouseover' && event.relatedTarget && quoteEl.contains(event.relatedTarget)) return;
           event.preventDefault();
@@ -12560,6 +12564,8 @@ ${markedSwatchHtml}
           const seq = (window.__xdexRefViewRequestSeq || 0) + 1;
           window.__xdexRefViewRequestSeq = seq;
           const $rv = $("#h-ref-view").off().stop(true, true).hide().css('visibility', 'hidden');
+          // console.log('[xv-ref] handler fired, tid=' + tid + ', quoteText=' + $(quoteEl).text());
+          // console.log('[xv-ref] #h-ref-view exists:', $('#h-ref-view').length, 'display:', $('#h-ref-view').css('display'));
           $.get('/Home/Forum/ref?id=' + tid)
             .done(function (data) {
               if (seq !== window.__xdexRefViewRequestSeq) return;
@@ -12579,14 +12585,15 @@ ${markedSwatchHtml}
                 if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
                 updateRefViewImageLayout(refEl, quoteEl);
               } catch (e) {}
+              // console.log('[xv-ref] AJAX done, showing popup, offset:', $(quoteEl).offset());
               $rv.css('visibility', '').show();
+              // console.log('[xv-ref] popup shown, display:', $rv.css('display'), 'visibility:', $rv.css('visibility'));
             });
         };
         quoteEl.addEventListener('mouseover', quoteEl.__xdexRefHoverHandler, true);
         quoteEl.addEventListener('mouseenter', quoteEl.__xdexRefHoverHandler, true);
       });
     // —— 新增：处理 [h]...[/h] 隐藏文本 ——
-    renderHiddenTextContent(root);
     }, () => startupPerfDebug.summarizeRoot(root || document));
   }
 
@@ -19444,6 +19451,13 @@ ${markedSwatchHtml}
       '"': '&quot;'
     })[ch]);
   }
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>]/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;'
+    })[ch]);
+  }
   async function isAnimatedPngBlob(blob) {
     if (!blob || blob.size < 33) return false;
     const header = new Uint8Array(await blob.slice(0, Math.min(blob.size, 1024 * 1024)).arrayBuffer());
@@ -20498,8 +20512,10 @@ ${markedSwatchHtml}
   const ImageViewer = {
     active: false,
     threadId: '',
+    poHash: '',              // PO主的饼干has
     totalPageCount: 0,
-    gridImages: [],          // {id, imgUrl, thumbUrl, isGif, userHash, name, content, now, page}
+    gridImages: [],          // {id, imgUrl, thumbUrl, isGif, userHash, name, title, content, contentRaw, now, page} // contentRaw: 原始HTML，用于详情页显示
+
     loadedPages: new Set(),
     loading: false,
     currentDetailIndex: -1,  // 当前详情查看的图片索引
@@ -20631,6 +20647,8 @@ ${markedSwatchHtml}
       if (r.status !== 'fulfilled' || !r.value) return;
       const thread = r.value;
       const replies = Array.isArray(thread.Replies) ? thread.Replies : [];
+      // 记录PO主hash（从串的user_hash获取）
+      if (!ImageViewer.poHash && thread.user_hash) ImageViewer.poHash = thread.user_hash;
       ImageViewer.loadedPages.add(page);
       replies.forEach(rep => {
         if (!rep || !rep.img || !rep.ext || rep.id === 9999999) return;
@@ -20642,7 +20660,9 @@ ${markedSwatchHtml}
           isGif,
           userHash: rep.user_hash || '',
           name: rep.name || '',
+          title: rep.title || '',
           content: stripHtml(rep.content || ''),
+          contentRaw: rep.content || '',
           now: rep.now || '',
           page
         });
@@ -20690,6 +20710,7 @@ ${markedSwatchHtml}
     if (ImageViewer.active) return;
     ImageViewer.active = true;
     ImageViewer.threadId = threadId;
+    ImageViewer.poHash = '';
     ImageViewer.gridImages = [];
     ImageViewer.loadedPages = new Set();
     ImageViewer.loading = false;
@@ -20942,6 +20963,9 @@ ${markedSwatchHtml}
   function closeDetailLayer() {
     ImageViewer.currentDetailIndex = -1;
     document.removeEventListener('keydown', viewerKeyHandler);
+    // 移除引用弹窗层级修复样式
+    const zfix = document.getElementById('xdex-detail-quote-zfix');
+    if (zfix) zfix.remove();
     const overlay = document.getElementById('xdex-image-viewer');
     if (!overlay) return;
     const detail = overlay.querySelector('.xv-detail');
@@ -20971,7 +20995,6 @@ ${markedSwatchHtml}
     }
     const img = ImageViewer.gridImages[ImageViewer.currentDetailIndex];
     if (!img) { closeDetailLayer(); return; }
-    const decoded = decodeHtmlEntities(img.content);
     detail.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
         <button class="xv-back-btn" style="padding:4px 10px;background:var(--primary,#006666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">返回瀑布流</button>
@@ -20984,16 +21007,14 @@ ${markedSwatchHtml}
           <img class="xv-main-img" src="${img.imgUrl}" style="max-width:90%;max-height:90%;object-fit:contain;transition:transform .15s;cursor:grab;" draggable="false">
           <button class="xv-next-btn" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:36px;height:36px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;cursor:pointer;font-size:18px;z-index:2;">▶</button>
         </div>
-        <div style="width:240px;border-left:1px solid var(--border,#333);padding:12px;overflow-y:auto;background:var(--card,#1a1a1a);flex-shrink:0;">
-          <div style="margin-bottom:8px;">
-            <span style="color:var(--muted-foreground,#888);font-size:12px;">No.${img.id}</span>
-            <span style="color:var(--muted-foreground,#666);font-size:12px;margin-left:8px;">${img.now}</span>
-          </div>
-          <div style="margin-bottom:8px;">
-            <span style="color:var(--foreground,#ccc);font-size:13px;">${img.userHash ? 'ID:' + img.userHash : ''} ${img.name || ''}</span>
-          </div>
-          <div style="color:var(--foreground,#ddd);font-size:13px;line-height:1.5;">${decoded || '<span style="color:var(--muted-foreground,#888);">无文字</span>'}</div>
-          <a href="https://www.nmbxd1.com/t/${ImageViewer.threadId}?r=${img.id}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--primary,#6cf);font-size:12px;">查看原帖</a>
+        <div class="h-threads-info" style="width:240px;border-left:1px solid var(--border,#333);padding:12px;overflow-y:auto;background:var(--card,#1a1a1a);flex-shrink:0;font-size:13px;line-height:1.6;">
+          ${img.title && img.title !== '无标题' ? '<span class="h-threads-info-title" style="font-weight:bold;margin-right:6px;">' + escapeHtml(img.title) + '</span>' : ''}
+          ${img.name && img.name !== '无名氏' ? '<span class="h-threads-info-email" style="color:var(--primary,#6cf);margin-right:6px;">' + escapeHtml(img.name) + '</span>' : ''}
+          <span class="h-threads-info-createdat" style="color:var(--muted-foreground,#888);font-size:12px;">${escapeHtml(img.now)}</span>
+          <br>
+          ${img.userHash ? '<span class="h-threads-info-uid" style="color:var(--foreground,#ccc);">ID:' + escapeHtml(img.userHash) + '</span>' : ''}${img.userHash && img.userHash === ImageViewer.poHash ? ' <span class="uk-text-primary uk-text-small">(PO主)</span>' : ''}
+          <a href="https://www.nmbxd1.com/t/${ImageViewer.threadId}?r=${img.id}" class="h-threads-info-id" target="_blank" rel="noopener" style="margin-left:8px;color:var(--primary,#6cf);font-size:12px;">No.${img.id}</a>
+          ${(img.contentRaw && img.contentRaw !== '分享图片') ? '<div class="h-threads-content h-threads-info" style="margin-top:8px;color:var(--foreground,#ddd);line-height:1.5;">' + img.contentRaw + '</div>' : ''}
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;background:var(--card,#1a1a1a);border-top:1px solid var(--border,#333);flex-shrink:0;">
@@ -21058,6 +21079,26 @@ ${markedSwatchHtml}
       }, { passive: false });
     }
     applyTransform();
+    // 提升引用弹窗层级（覆盖详情层 z-index:10001）
+    if (!document.getElementById('xdex-detail-quote-zfix')) {
+      const zfix = document.createElement('style');
+      zfix.id = 'xdex-detail-quote-zfix';
+      zfix.textContent = '#h-ref-view{z-index:10003!important}.qp-overlay-quote{z-index:10002!important}.qp-close-all{z-index:10003!important}.qp-stack{z-index:10003!important}';
+      document.head.appendChild(zfix);
+    }
+    // 标记饼干
+    try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig().markedGroups || [], detail); } catch (e) {}
+    // 选择性增强：顺序很重要
+    // 1. 先链接化URL（纯文本 → <a> 标签）
+    try {
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      if (cfg && cfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(detail);
+    } catch (e) {}
+    // 2. 再拓展引用格式（裸数字 → <font> 标签，必须在URL链接化之后，避免破坏URL结构）
+    try { if (typeof extendQuote === 'function') extendQuote(detail); } catch (e) {}
+    // 3. 最后挂引用弹窗处理器（必须在extendQuote之后，才能覆盖新创建的<font>标签）
+    try { if (typeof initExtendedContent === 'function') { console.log('[xv-detail] calling initExtendedContent, fonts:', detail.querySelectorAll("font[color='#789922']").length); initExtendedContent(detail); console.log('[xv-detail] initExtendedContent done'); } } catch (e) { console.error('[xv-detail] initExtendedContent error:', e); }
+
   }
   function decodeHtmlEntities(text) {
     const ta = document.createElement('textarea');
@@ -21149,6 +21190,7 @@ ${markedSwatchHtml}
         break;
     }
   }
+
   /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
