@@ -1,7 +1,7 @@
 {
   "extension": {
-    "version": "3.5.0",
-    "changelog": "新增\n1.重新设计发送前二次确认饼干功能，现在可在每个串内主动设置偏好饼干，开启偏好饼干时，使用非默认饼干发送消息时候弹出二次确认窗口；位于“我的主题”的串内默认选定Po主饼干为偏好饼干。\n2.新增将串号批量添加入订阅功能；新增批量导出订阅号中的串号到剪切板功能。",
+    "version": "3.6.0",
+    "changelog": "新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。",
     "downloads": {
       "github": "https://github.com/SayaGoodBye/nmbxd-EX/releases/latest",
       "baidupan": "https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf"

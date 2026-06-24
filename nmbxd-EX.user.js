@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.5.0
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 。
+// @version      3.6.0
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.重新设计发送前二次确认饼干功能，现在可在每个串内主动设置偏好饼干，开启偏好饼干时，使用非默认饼干发送消息时候弹出二次确认窗口；位于“我的主题”的串内默认选定Po主饼干为偏好饼干。\n2.新增将串号批量添加入订阅功能；新增批量导出订阅号中的串号到剪切板功能。\n
+// @changelog    新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -5198,7 +5198,7 @@ ${markedSwatchHtml}
                 <a id="sp_version_link" href="javascript:void(0)" style="position:absolute; right:0; top:50%; transform:translateY(-50%); font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
               </div>
                   <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label><span style="margin-left:8px;"></span><input type="checkbox" id="sp_enableCookieConfirm" class="xdex-switch" role="switch"><label for="sp_enableCookieConfirm"> 二次确认饼干</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label><input type="checkbox" id="sp_enableCookieConfirm" class="xdex-switch" role="switch"><label for="sp_enableCookieConfirm"> 二次确认饼干</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePaginationDuplication" class="xdex-switch" role="switch"><label for="sp_enablePaginationDuplication"> 添加页首页码</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_disableWatermark" class="xdex-switch" role="switch"><label for="sp_disableWatermark"> 关闭图片水印</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_updatePreviewCookie" class="xdex-switch" role="switch"><label for="sp_updatePreviewCookie"> 预览真实饼干</label></div>
@@ -7008,7 +7008,7 @@ ${markedSwatchHtml}
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
-        sp_enableImageViewerMode: '在串内页右上角添加“图”按钮，点击进入阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图可放大查看并支持旋转、缩放、键盘翻页（左/右方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
+        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
       };
