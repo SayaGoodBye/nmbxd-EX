@@ -20571,6 +20571,7 @@ ${markedSwatchHtml}
   function buildGridCard(img, index) {
     const card = document.createElement('div');
     card.className = 'xv-grid-card';
+    card.dataset.imgId = img.id;
     card.style.cssText = 'border:1px solid var(--border,#333);border-radius:6px;overflow:hidden;cursor:pointer;background:var(--card,#1a1a1a);transition:border-color .15s;';
     const wrapper = document.createElement('div');
     wrapper.style.cssText = img._displayH
@@ -21162,6 +21163,8 @@ ${markedSwatchHtml}
   }
   // ── 详情层：关闭回到瀑布流 ──
   function closeDetailLayer() {
+    // 保存当前图片 ID（用于返回瀑布流后滚动定位）
+    const _returnToImageId = ImageViewer._currentDetailImageId;
     ImageViewer.currentDetailIndex = -1;
     document.removeEventListener('keydown', viewerKeyHandler);
     // 移除引用弹窗层级修复样式
@@ -21175,7 +21178,6 @@ ${markedSwatchHtml}
     if (grid) {
       grid.style.display = '';
       setTimeout(() => {
-        grid.scrollTop = ImageViewer.gridScrollTop;
         // 补渲染：详情页期间加载的新页面现在可以正确测量列高
         if (ImageViewer._pendingGridRender) {
           ImageViewer._pendingGridRender = false;
@@ -21187,6 +21189,18 @@ ${markedSwatchHtml}
           ImageViewer._pendingUpwardPages.clear();
           for (const p of pending) prependGridImages(p);
         }
+        // 滚动到当前查看图片的卡片位置
+        if (_returnToImageId) {
+          const card = grid.querySelector('[data-img-id="' + _returnToImageId + '"]');
+          if (card) {
+            card.scrollIntoView({ block: 'center', behavior: 'instant' });
+            // 临时高亮 2 秒，方便定位
+            card.style.boxShadow = '0 0 0 3px #00ffccb3, 0 0 8px #66ccff66, 0 0 16px #99ffff40';
+            card.style.transition = 'box-shadow 0.6s ease';
+            setTimeout(() => { card.style.boxShadow = ''; }, 2000);
+          }
+          else { grid.scrollTop = ImageViewer.gridScrollTop; }
+        } else { grid.scrollTop = ImageViewer.gridScrollTop; }
       }, 0);
     }
     const header = overlay.querySelector('.xv-header');
