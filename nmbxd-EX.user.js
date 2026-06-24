@@ -20523,7 +20523,12 @@ ${markedSwatchHtml}
     scale: 1,
     panX: 0,
     panY: 0,
-    gridScrollTop: 0         // 返回瀑布流时恢复滚动位置
+    gridScrollTop: 0,        // 返回瀑布流时恢复滚动位置
+    // 向上翻页相关
+    upwardEnabled: false,    // 向上翻页模式是否开启
+    startPage: 0,            // 打开瀑布流时的起始页码
+    _upwardRenderedCount: 0, // 向上容器已渲染的图片数
+    renderedKeys: new Set(), // 已渲染到 DOM 的图片 id（防重复渲染）
   };
   function getImageViewerApiUrl(threadId, page) {
     return `https://api.nmb.best/api/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
@@ -20593,7 +20598,7 @@ ${markedSwatchHtml}
     card.appendChild(wrapper);
     const footer = document.createElement('div');
     footer.style.cssText = 'padding:4px 6px;display:flex;justify-content:space-between;align-items:center;';
-    footer.innerHTML = `<span style="font-size:11px;color:var(--muted-foreground,#888);">No.${img.id}</span><span style="font-size:10px;color:var(--muted-foreground,#666);">P${img.page}</span>`;
+    footer.innerHTML = `<span style="font-size:11px;color:var(--muted-foreground,#888);">No.${img.id}</span><span style="font-size:10px;color:var(--muted-foreground,#666);">P${img.page}·${img.pageIdx}</span>`;
     card.appendChild(footer);
     // 图片加载后：判定宽高比和长图，必要时切换原图、限高
     imgEl.addEventListener('load', function onLoad() {
@@ -20650,9 +20655,11 @@ ${markedSwatchHtml}
       // 记录PO主hash（从串的user_hash获取）
       if (!ImageViewer.poHash && thread.user_hash) ImageViewer.poHash = thread.user_hash;
       ImageViewer.loadedPages.add(page);
+      let pageIdx = 0;
       replies.forEach(rep => {
         if (!rep || !rep.img || !rep.ext || rep.id === 9999999) return;
         const { imgUrl, thumbUrl, isGif } = buildImageUrls(rep);
+        pageIdx++;
         ImageViewer.gridImages.push({
           id: rep.id,
           imgUrl,
@@ -20664,7 +20671,8 @@ ${markedSwatchHtml}
           content: stripHtml(rep.content || ''),
           contentRaw: rep.content || '',
           now: rep.now || '',
-          page
+          page,
+          pageIdx
         });
         appended++;
       });
@@ -20706,6 +20714,76 @@ ${markedSwatchHtml}
     if (m2) return Math.max(1, parseInt(m2[1], 10));
     return 1;
   }
+  function renderGridImages() {
+    const overlay = document.getElementById('xdex-image-viewer');
+    if (!overlay) return;
+    const info = overlay.querySelector('.xv-header-info');
+    const masonry = overlay.querySelector('.xv-masonry');
+    if (!masonry) return;
+    const images = ImageViewer.gridImages;
+    // 确保有一组列（只创建一次）
+    let cols = Array.from(masonry.querySelectorAll('.xv-masonry-col'));
+    if (cols.length === 0) {
+      const { numCols, colWidth, gap } = getGridLayout();
+      ImageViewer._colWidth = colWidth;
+      ImageViewer._gap = gap;
+      for (let c = 0; c < numCols; c++) {
+        const col = document.createElement('div');
+        col.className = 'xv-masonry-col';
+        col.style.cssText = 'flex:0 0 ' + colWidth + 'px;display:flex;flex-direction:column;gap:' + gap + 'px;';
+        masonry.appendChild(col);
+        cols.push(col);
+      }
+    }
+    // 找到最后一个已插入分隔线的页码
+    let lastSepPage = 0;
+    const existingSeps = masonry.querySelectorAll('.xv-page-separator');
+    if (existingSeps.length > 0) {
+      lastSepPage = parseInt(existingSeps[existingSeps.length - 1].dataset.page) || 0;
+    }
+    // 收集尚未渲染到 DOM 的新图片（用图片 id 去重，避免数组混杂时重复渲染）
+    const newItems = [];
+    for (let i = 0; i < images.length; i++) {
+      if (!ImageViewer.renderedKeys.has(images[i].id)) {
+        newItems.push({ img: images[i], index: i });
+      }
+    }
+    const pageGroups = new Map();
+    for (const item of newItems) {
+      const p = item.img.page;
+      if (!pageGroups.has(p)) pageGroups.set(p, []);
+      pageGroups.get(p).push(item);
+    }
+    // 按页处理：LPT 全局最优分配
+    const gap = 8;
+    for (const [pageNum, pageItems] of pageGroups) {
+      // 先插入分隔线（此时列高 = 上一页图片底部，第一页时 = 0）
+      if (pageNum > lastSepPage) {
+        const colHeights = cols.map(c => c.offsetHeight);
+        masonry.appendChild(buildPageSeparator(pageNum, colHeights));
+        lastSepPage = pageNum;
+      }
+      // 按显示高度降序排列（大图优先）
+      pageItems.sort((a, b) => {
+        const ha = a.img._displayH || 200;
+        const hb = b.img._displayH || 200;
+        return hb - ha;
+      });
+      // 用虚拟高度做全局分配，避免逐张贪心
+      const vHeights = cols.map(c => c.offsetHeight);
+      for (const item of pageItems) {
+        let minIdx = 0;
+        for (let c = 1; c < vHeights.length; c++) {
+          if (vHeights[c] < vHeights[minIdx]) minIdx = c;
+        }
+        const card = buildGridCard(item.img, item.index);
+        cols[minIdx].appendChild(card);
+        ImageViewer.renderedKeys.add(item.img.id);  // 标记已渲染
+        vHeights[minIdx] += (item.img._displayH || 200) + gap;
+      }
+    }
+    info.textContent = '\u4e32\u53f7 ' + ImageViewer.threadId + ' \u00b7 \u5df2\u52a0\u8f7d ' + images.length + ' \u5f20\u56fe \u00b7 ' + ImageViewer.loadedPages.size + ' \u9875';
+  }
   function openImageViewer(threadId) {
     if (ImageViewer.active) return;
     ImageViewer.active = true;
@@ -20717,6 +20795,11 @@ ${markedSwatchHtml}
     ImageViewer.currentDetailIndex = -1;
     ImageViewer.totalPageCount = 0;
     ImageViewer.gridScrollTop = 0;
+    ImageViewer.upwardEnabled = false;
+    ImageViewer._upwardRenderedCount = 0;
+    ImageViewer.renderedKeys.clear();
+    ImageViewer.startPage = getImageViewerStartPage();
+    ImageViewer._upwardResizeObserver = null; // 会在需要时创建
     document.body.style.overflow = 'hidden';
     const startPage = getImageViewerStartPage();
     renderGridLayer();
@@ -20732,10 +20815,15 @@ ${markedSwatchHtml}
     ImageViewer.gridImages = [];
     ImageViewer.loadedPages = new Set();
     ImageViewer.currentDetailIndex = -1;
+    ImageViewer.renderedKeys.clear();
     ImageViewer.rotation = 0;
     ImageViewer.scale = 1;
     ImageViewer.panX = 0;
     ImageViewer.panY = 0;
+    if (ImageViewer._upwardResizeObserver) {
+      ImageViewer._upwardResizeObserver.disconnect();
+      ImageViewer._upwardResizeObserver = null;
+    }
     document.body.style.overflow = '';
     const overlay = document.getElementById('xdex-image-viewer');
     if (overlay) overlay.remove();
@@ -20751,9 +20839,11 @@ ${markedSwatchHtml}
     overlay.innerHTML = `
       <div class="xv-header" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
         <span class="xv-header-info" style="color:var(--foreground,#ccc);font-size:13px;">串号 ${ImageViewer.threadId} · 正在加载…</span>
-        <button class="xv-close-btn" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
+        <div style="display:flex;gap:6px;align-items:center;"><button class="xv-upward-btn" style="padding:4px 10px;background:var(--muted-foreground,#666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;opacity:0.6;" title="开启向上翻页">▲</button><button class="xv-close-btn" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button></div>
       </div>
-      <div class="xv-grid-scroll" style="flex:1;overflow-y:auto;padding:12px;">
+      <div class="xv-grid-scroll" style="flex:1;overflow-y:auto;overflow-anchor:none;padding:12px;">
+        <div class="xv-masonry-upward" style="display:flex;gap:8px;align-items:flex-end;justify-content:center;position:relative;width:100%;"></div>
+        <div class="xv-masonry-anchor" style="height:0;width:100%;flex-shrink:0;"></div>
         <div class="xv-masonry" style="display:flex;gap:8px;align-items:flex-start;justify-content:center;position:relative;width:100%;"></div>
       </div>
     `;
@@ -20774,10 +20864,35 @@ ${markedSwatchHtml}
     scroll.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
     scroll.addEventListener('scroll', () => {
       if (ImageViewer.loading) return;
+      // 向下加载：接近底部时触发
       if (scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 400) {
         loadNextGridPages();
       }
+      // 向上加载：开启向上模式且接近顶部时触发
+      if (ImageViewer.upwardEnabled && scroll.scrollTop <= 400) {
+        loadPrevGridPages();
+      }
     });
+    // 向上翻页按钮事件
+    const upwardBtn = overlay.querySelector('.xv-upward-btn');
+    if (upwardBtn) {
+      upwardBtn.addEventListener('click', () => {
+        ImageViewer.upwardEnabled = !ImageViewer.upwardEnabled;
+        if (ImageViewer.upwardEnabled) {
+          upwardBtn.style.opacity = '1';
+          upwardBtn.style.background = 'var(--primary,#006666)';
+          upwardBtn.title = '关闭向上翻页';
+          toast('已开启向上翻页');
+          // 立即触发一次向上加载
+          loadPrevGridPages();
+        } else {
+          upwardBtn.style.opacity = '0.6';
+          upwardBtn.style.background = 'var(--muted-foreground,#666)';
+          upwardBtn.title = '开启向上翻页';
+          toast('已关闭向上翻页');
+        }
+      });
+    }
   }
   // ── 瀑布流：获取或创建列容器 ──
   function getGridLayout() {
@@ -20794,6 +20909,9 @@ ${markedSwatchHtml}
   }
   function buildPageSeparator(pageNum, colHeights) {
     const colWidth = (ImageViewer._colWidth || 200), gap = 8;
+    const totalW = (colHeights && colHeights.length > 0)
+      ? colHeights.length * colWidth + (colHeights.length - 1) * gap
+      : colWidth;
     const sep = document.createElement('div');
     sep.className = 'xv-page-separator';
     sep.dataset.page = String(pageNum);
@@ -20814,7 +20932,6 @@ ${markedSwatchHtml}
       points.push(x1 + ',' + y);
       points.push(x2 + ',' + y);
     }
-    const totalW = colHeights.length * colWidth + (colHeights.length - 1) * gap;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', String(totalW));
     svg.setAttribute('height', String(contourH));
@@ -20863,75 +20980,87 @@ ${markedSwatchHtml}
     return sep;
   }
   // ── 瀑布流层：渲染图片卡片（瀑布流，每页一组列） ──
-  function renderGridImages() {
+  // ── 向上翻页：插入图片到瀑布流顶部 ──
+  // ── 向上翻页：插入图片到独立的向上容器 ──
+  function prependGridImages(pageNum) {
     const overlay = document.getElementById('xdex-image-viewer');
     if (!overlay) return;
-    const info = overlay.querySelector('.xv-header-info');
-    const masonry = overlay.querySelector('.xv-masonry');
-    if (!masonry) return;
+
+    const upwardContainer = overlay.querySelector('.xv-masonry-upward');
+    if (!upwardContainer) return;
     const images = ImageViewer.gridImages;
-    const lastCount = masonry.querySelectorAll('.xv-grid-card').length;
-    // 确保有一组列（只创建一次）
-    let cols = Array.from(masonry.querySelectorAll('.xv-masonry-col'));
+    const gap = 8;
+    // 确保向上容器有一组列
+    let cols = Array.from(upwardContainer.querySelectorAll('.xv-masonry-col'));
     if (cols.length === 0) {
-      const { numCols, colWidth, gap } = getGridLayout();
-      ImageViewer._colWidth = colWidth;
-      ImageViewer._gap = gap;
+      const { numCols, colWidth } = getGridLayout();
+      ImageViewer._colWidth = colWidth; // 同步列宽，保证 SVG 等高线点位正确
       for (let c = 0; c < numCols; c++) {
         const col = document.createElement('div');
         col.className = 'xv-masonry-col';
-        col.style.cssText = 'flex:0 0 ' + colWidth + 'px;display:flex;flex-direction:column;gap:' + gap + 'px;';
-        masonry.appendChild(col);
+        col.style.cssText = 'flex:0 0 ' + colWidth + 'px;display:flex;flex-direction:column;align-items:stretch;gap:' + gap + 'px;';
+        upwardContainer.appendChild(col);
         cols.push(col);
       }
     }
-    // 找到最后一个已插入分隔线的页码
-    let lastSepPage = 0;
-    const existingSeps = masonry.querySelectorAll('.xv-page-separator');
-    if (existingSeps.length > 0) {
-      lastSepPage = parseInt(existingSeps[existingSeps.length - 1].dataset.page) || 0;
-    }
-    // 收集新图片，按页分组
-    const newItems = [];
-    for (let i = lastCount; i < images.length; i++) {
-      newItems.push({ img: images[i], index: i });
-    }
-    const pageGroups = new Map();
-    for (const item of newItems) {
-      const p = item.img.page;
-      if (!pageGroups.has(p)) pageGroups.set(p, []);
-      pageGroups.get(p).push(item);
-    }
-    // 按页处理：LPT 全局最优分配
-    const gap = 8;
-    for (const [pageNum, pageItems] of pageGroups) {
-      // 先插入分隔线（此时列高 = 上一页图片底部，第一页时 = 0）
-      if (pageNum > lastSepPage) {
-        const colHeights = cols.map(c => c.offsetHeight);
-        masonry.appendChild(buildPageSeparator(pageNum, colHeights));
-        lastSepPage = pageNum;
+    // 记录插入前列高度
+    const colHeightsBefore = cols.map(c => c.offsetHeight);
+    const containerHBefore = Math.max(...colHeightsBefore, 1);
+    // console.log("[xv-pg] BEFORE insert", "containerHBefore=" + containerHBefore, "colHeights=" + JSON.stringify(colHeightsBefore));
+    // 收集该页图片（过滤掉已渲染的，避免重复）
+    const pageItems = images
+      .map((img, index) => ({ img, index }))
+      .filter(item => item.img.page === pageNum && !ImageViewer.renderedKeys.has(item.img.id));
+    if (!pageItems.length) return; // 该页所有图片已渲染，直接跳过
+    // 按显示高度降序排列
+    pageItems.sort((a, b) => (b.img._displayH || 200) - (a.img._displayH || 200));
+    // LPT 分配到各列（插入到列最前面）
+    const vHeights = cols.map(() => 0);
+    for (const item of pageItems) {
+      let minIdx = 0;
+      for (let c = 1; c < vHeights.length; c++) {
+        if (vHeights[c] < vHeights[minIdx]) minIdx = c;
       }
-      // 按显示高度降序排列（大图优先）
-      pageItems.sort((a, b) => {
-        const ha = a.img._displayH || 200;
-        const hb = b.img._displayH || 200;
-        return hb - ha;
+      const card = buildGridCard(item.img, item.index);
+      cols[minIdx].insertBefore(card, cols[minIdx].firstChild);
+      ImageViewer.renderedKeys.add(item.img.id);  // 标记已渲染
+      vHeights[minIdx] += (item.img._displayH || 200) + gap;
+    }
+    // 分隔线：标记第 pageNum 页的顶部等高线
+    //
+    // 上容器 flex-end 布局下，列顶部(视觉) = containerH - colHeight。
+    // 每次新页插入到列头部后，旧内容整体下移，旧分隔线的 top 需要同步增加。
+    // 关键性质：第 N 页图片在容器中的 y 坐标 = containerH_current - colHeight_after_insert_pageN，
+    // 而这个值在后续页插入时只增加 delta = newContainerH - oldContainerH，polyline 形状不变。
+    //
+    // 计算插入后容器高度
+    const uContainerH = Math.max(...cols.map(c => c.offsetHeight), 1);
+    // console.log("[xv-pg] AFTER insert", "uContainerH=" + uContainerH, "delta=" + (uContainerH - containerHBefore), "colHeights=" + JSON.stringify(cols.map(c => c.offsetHeight)));
+    // 更新所有已有分隔线：旧内容下移了 (uContainerH - containerHBefore) 像素
+    const delta = uContainerH - containerHBefore;
+    if (delta !== 0) {
+      const oldSeps = upwardContainer.querySelectorAll('.xv-page-separator');
+      oldSeps.forEach(sep => {
+        const prevTop = parseFloat(sep.style.top) || 0;
+        sep.style.top = (prevTop + delta) + 'px';
       });
-      // 用虚拟高度做全局分配，避免逐张贪心
-      const vHeights = cols.map(c => c.offsetHeight);
-      for (const item of pageItems) {
-        let minIdx = 0;
-        for (let c = 1; c < vHeights.length; c++) {
-          if (vHeights[c] < vHeights[minIdx]) minIdx = c;
-        }
-        const card = buildGridCard(item.img, item.index);
-        cols[minIdx].appendChild(card);
-        vHeights[minIdx] += (item.img._displayH || 200) + gap;
-      }
     }
-    info.textContent = '\u4e32\u53f7 ' + ImageViewer.threadId + ' \u00b7 \u5df2\u52a0\u8f7d ' + images.length + ' \u5f20\u56fe \u00b7 ' + ImageViewer.loadedPages.size + ' \u9875';
+    // 当前页分隔线：该页首图顶部在容器中的 y 坐标 = uContainerH - 当前列高
+    const sepHeights = cols.map(c => uContainerH - c.offsetHeight);
+    const separator = buildPageSeparator(pageNum, sepHeights);
+    // 绝对定位元素 append 到 positioned ancestor 根（而非某一列内部）
+    upwardContainer.appendChild(separator);
+    // 记录向上容器已渲染的图片数
+
+    ImageViewer._upwardRenderedCount = upwardContainer.querySelectorAll('.xv-grid-card').length;
+    return delta; // 返回向上容器高度增量，供调用方补偿滚动位置
+    // 更新 header
+    const info = overlay.querySelector('.xv-header-info');
+    if (info) {
+      info.textContent = '\u4e32\u53f7 ' + ImageViewer.threadId + ' \u00b7 \u5df2\u52a0\u8f7d ' + images.length + ' \u5f20\u56fe \u00b7 ' + ImageViewer.loadedPages.size + ' \u9875';
+    }
   }
-  // ── 瀑布流层：滚动加载更多页 ──
+  // ── 向下加载下一页 ──
   async function loadNextGridPages() {
     if (ImageViewer.loading) return;
     const nextPages = [];
@@ -20946,6 +21075,52 @@ ${markedSwatchHtml}
     await preloadThumbnailSizes();
     renderGridImages();
     ImageViewer.loading = false;
+  }
+  // ── 向上加载上一页 ──
+  async function loadPrevGridPages() {
+    if (ImageViewer.loading) return;
+    const minLoaded = Math.min(...Array.from(ImageViewer.loadedPages));
+    if (minLoaded <= 1) return; // 已经是第一页
+    const prevPage = minLoaded - 1;
+    if (ImageViewer.loadedPages.has(prevPage)) return;
+    ImageViewer.loading = true;
+    const scroll = document.querySelector('.xv-grid-scroll');
+    // console.log("[xv-up] loadPrevGridPages START", "scrollTop=" + scroll.scrollTop, "scrollHeight=" + scroll.scrollHeight, "upwardH=" + (scroll.querySelector(".xv-masonry-upward")||{}).offsetHeight);
+    await loadViewerPages(ImageViewer.threadId, prevPage, 1);
+    await preloadThumbnailSizes();
+    // prependGridImages 返回向上容器高度增量（内部同步测量，不受 await 期间其他容器变化干扰）
+    const upwardDelta = prependGridImages(prevPage);
+    // console.log("[xv-up] AFTER prepend", "upwardDelta=" + upwardDelta, "scrollTop=" + scroll.scrollTop, "scrollHeight=" + scroll.scrollHeight, "upwardH=" + (scroll.querySelector(".xv-masonry-upward")||{}).offsetHeight);
+    scroll.scrollTop += upwardDelta;
+    if (ImageViewer._lastUpwardH !== undefined) ImageViewer._lastUpwardH = scroll.querySelector(".xv-masonry-upward").offsetHeight; // 同步 ResizeObserver 基准，避免双重补偿
+    // console.log("[xv-up] AFTER compensate", "scrollTop=" + scroll.scrollTop, "scrollHeight=" + scroll.scrollHeight);
+    // 监听向上容器高度变化（图片异步加载可能导致列高变化），自动补偿滚动位置
+    const upwardContainer = scroll.querySelector('.xv-masonry-upward');
+    if (upwardContainer && !ImageViewer._upwardResizeObserver) {
+      ImageViewer._lastUpwardH = upwardContainer.offsetHeight;
+      ImageViewer._upwardResizeObserver = new ResizeObserver(() => {
+        if (!ImageViewer.active) return;
+        const newH = upwardContainer.offsetHeight;
+        const dh = newH - ImageViewer._lastUpwardH;
+    // console.log("[xv-ro] resize", "newH=" + newH, "lastH=" + ImageViewer._lastUpwardH, "dh=" + dh, "scrollTop=" + scroll.scrollTop);
+        ImageViewer._lastUpwardH = newH;
+        if (dh > 0) scroll.scrollTop += dh; // 向下补偿，保持视口稳定
+      });
+      ImageViewer._upwardResizeObserver.observe(upwardContainer);
+    }
+    ImageViewer.loading = false;
+    // 如果已经加载到第1页，自动关闭向上模式
+    if (Math.min(...Array.from(ImageViewer.loadedPages)) <= 1) {
+      ImageViewer.upwardEnabled = false;
+      const upwardBtn = document.querySelector('.xv-upward-btn');
+      if (upwardBtn) {
+        upwardBtn.style.opacity = '0.4';
+        upwardBtn.style.background = 'var(--muted-foreground,#444)';
+        upwardBtn.title = '已到第1页';
+        upwardBtn.disabled = true;
+      }
+      toast('已加载到第1页');
+    }
   }
   // ── 详情层：打开 ──
   function openDetailLayer(index) {
@@ -20998,7 +21173,7 @@ ${markedSwatchHtml}
     detail.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
         <button class="xv-back-btn" style="padding:4px 10px;background:var(--primary,#006666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">返回瀑布流</button>
-        <span style="color:var(--foreground,#ccc);font-size:13px;">${ImageViewer.currentDetailIndex + 1} / ${ImageViewer.gridImages.length} · No.${img.id} · 第${img.page}页</span>
+        <span style="color:var(--foreground,#ccc);font-size:13px;">${ImageViewer.currentDetailIndex + 1} / ${ImageViewer.gridImages.length} · No.${img.id} · 第${img.page}页·第${img.pageIdx}张</span>
         <button class="xv-close-btn2" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
       </div>
       <div style="display:flex;flex:1;overflow:hidden;">
