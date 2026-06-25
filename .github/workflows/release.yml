@@ -78,7 +78,6 @@ jobs:
           cp nmbxd-EX.user.js "dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js"
           cp -R nmbxd-EX-Extension dist/nmbxd-EX-Extension
           cp nmbxd-EX.user.js dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
-          cp forum-fid-map.json dist/forum-fid-map.json
 
       - name: Sync extension metadata
         shell: bash
