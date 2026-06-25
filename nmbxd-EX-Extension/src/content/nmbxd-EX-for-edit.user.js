@@ -3139,6 +3139,7 @@
       const isOpen = $dropdown.is(':visible');
       $dropdown.toggle(!isOpen);
       $display.attr('aria-expanded', String(!isOpen));
+      $display.find('.xdex-feed-display-uuid').toggleClass('xdex-feed-uuid-visible', !isOpen);
     });
     $dropdown.off('click.feedOption', '.xdex-feed-option').on('click.feedOption', '.xdex-feed-option', function (e) {
       e.stopPropagation();
@@ -3152,10 +3153,12 @@
       $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
+      $display.find('.xdex-feed-display-uuid').removeClass('xdex-feed-uuid-visible');
     });
     $(document).off('click.feedDropdownClose').on('click.feedDropdownClose', () => {
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
+      $display.find('.xdex-feed-display-uuid').removeClass('xdex-feed-uuid-visible');
     });
     $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
       subscriptionFeedCurrentUuid = $(this).val() || '';
@@ -5208,7 +5211,7 @@ ${markedSwatchHtml}
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSeamlessPaging" class="xdex-switch" role="switch"><label for="sp_enableSeamlessPaging"> 无缝翻页</label><input type="checkbox" id="sp_enableAutoSeamlessPaging" class="xdex-switch" role="switch" checked><label for="sp_enableAutoSeamlessPaging"> 自动翻页</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableHDImageAndLayoutFix" class="xdex-switch" role="switch"><label for="sp_enableHDImageAndLayoutFix"> 图片控件-布局调整</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableLinkBlank" class="xdex-switch" role="switch"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableAutoUrlLinkify" class="xdex-switch" role="switch"><label for="sp_enableAutoUrlLinkify"> 自动识别网址链接</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableAutoUrlLinkify" class="xdex-switch" role="switch"><label for="sp_enableAutoUrlLinkify"> 自动识别链接</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableQuotePreview" class="xdex-switch" role="switch"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote" class="xdex-switch" role="switch"><label for="sp_extendQuote"> 拓展引用格式</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar" class="xdex-switch" role="switch"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
@@ -6985,7 +6988,7 @@ ${markedSwatchHtml}
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
-        sp_threadCookieWhitelistModeEnabled: '只看饼干模式。折叠：保持原版只看饼干折叠逻辑；隐藏：未命中的回复直接隐藏；分栏：重点回复保留在主阅读流，观众回复进入侧栏批注。',
+        sp_threadCookieWhitelistModeEnabled: '只看饼干模式。\n折叠：保持原版只看饼干折叠逻辑；\n隐藏：未命中的回复直接隐藏；\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注。\n可选观众回复的展开/收起。',
         sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动。',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
         sp_updateReplyNumbers: '添加当页内回复编号显示',
@@ -20019,6 +20022,9 @@ ${markedSwatchHtml}
       }
       .xdex-feed-display-uuid:empty { display: none; }
       .xdex-feed-selector-wrap:hover .xdex-feed-display-uuid {
+        filter: none;
+      }
+      .xdex-feed-display-uuid.xdex-feed-uuid-visible {
         filter: none;
       }
       .xdex-feed-selector-dropdown {
