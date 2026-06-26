@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\n
+// @changelog    新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n优化\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -14459,7 +14459,7 @@ ${markedSwatchHtml}
             if (emailInput) emailInput.value = '';
             // 再广播事件给增强模块/其他联动
             document.dispatchEvent(new CustomEvent('replySuccess', {
-              detail: { key: getDraftKey() }
+              detail: { key: getDraftKey(), tid: form.querySelector('input[name="resto"]')?.value || '' }
             }));
             // 重置预览框
             const previewBox = document.querySelector('.h-preview-box');
@@ -14546,14 +14546,19 @@ ${markedSwatchHtml}
             //   location.reload();
             // }
             if (isReply) {
-              try {
-                refreshRepliesWithSeamlessPaging(() => {
-                  // 刷新完成（翻页逻辑已在内部处理）
-                  recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
-                  console.log('回复区刷新完成');
-                });
-              } catch (err) {
-                console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
+              // 板块页/时间线页：跳过全量刷新，由 handleBoardQuickReplyRefresh 做增量更新
+              // 串内页：正常全量刷新
+              const _isBoardOrTimeline = /^\/f\//.test(location.pathname) || /\/Forum\/timeline\/id\/\d+/i.test(location.pathname);
+              if (!_isBoardOrTimeline) {
+                try {
+                  refreshRepliesWithSeamlessPaging(() => {
+                    // 刷新完成（翻页逻辑已在内部处理）
+                    recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
+                    console.log('回复区刷新完成');
+                  });
+                } catch (err) {
+                  console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
+                }
               }
             } else {
               // 发串：根据设置决定行为
@@ -17868,125 +17873,207 @@ ${markedSwatchHtml}
     function bindBoardQuickReplyRefresh() {
       document.addEventListener('tempReplySuccess', handleBoardQuickReplyRefresh);
       document.addEventListener('contReplySuccess', handleBoardQuickReplyRefresh);
+      // === v3: API 拉取末页+倒数第二页，位置感知增量合并，滚动位置保持 ===
       function handleBoardQuickReplyRefresh(e) {
         // 只在 板块页 或 时间线 页生效
         if (!/^\/f\//.test(location.pathname) && !/\/Forum\/timeline\/id\/\d+/i.test(location.pathname)) return;
-        // 优先使用事件 detail 中的 tid，否则用持久变量
         const tid = e.detail?.tid || currentReplyTid;
         if (!tid) {
           toast('订阅失败：未识别到当前串号');
           return;
         }
-        // 不同页面的第一页 URL 构造：
-        // - 板块页（/f/）：使用 ?page=1
-        // - 时间线（/Forum/timeline/id/X[/page/N]）：去掉 /page/... 部分，得到 base timeline 地址（即第一页）
-        let page1Url;
-        if (isTimeline) {
-          const base = location.pathname.replace(/\/page\/\d+(\.html)?$/i, '').replace(/\/$/, '');
-          page1Url = location.origin + base;
-        } else {
-          page1Url = location.origin + location.pathname + '?page=1';
-        }
-        fetch(page1Url, { credentials: 'include' })
-        .then(res => res.text())
-        .then(html => {
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const newThreadDiv = doc.querySelector(`.h-threads-list div[data-threads-id="${tid}"]`);
-          if (!newThreadDiv) return;
-          // ——— 离线处理（关键，参考拦截中间页的处理方式） ———
-          const fragment = document.createElement('div');
-          fragment.appendChild(newThreadDiv.cloneNode(true));
-          const cfg2 = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
-            ? SettingPanel.state
-            : null;
-          // 在离线 fragment 上预处理
+        const cfg2 = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
+          ? SettingPanel.state : null;
+        const REPLY_PER_PAGE = 19;
+        const API_BASE = 'https://api.nmb.best/api';
+        (async () => {
           try {
-            if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(fragment));
-            if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2, fragment);
-          } catch (e) {
-            console.warn('预处理过滤失败', e);
-          }
-          // 获取处理后的节点
-          const processedNode = fragment.firstChild;
-          // ——— 替换当前页面所有相同串号的节点 ———
-          // document.querySelectorAll(`.h-threads-list div[data-threads-id="${tid}"]`).forEach(oldNode => {
-          //   const newNode = processedNode.cloneNode(true);
-          //   oldNode.parentNode.replaceChild(newNode, oldNode);
-          // });
-          // === 改为增量新增：比较新旧回复差异，如有交集，新回复区可与旧回复区合并，否则替换 ===
-          document.querySelectorAll(`.h-threads-list div[data-threads-id="${tid}"]`).forEach(oldNode => {
-            const oldReplies = Array.from(oldNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
-            const oldIds = oldReplies.map(r => r.getAttribute('data-threads-id'));
-            const newReplies = Array.from(processedNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
-            const newIds = newReplies.map(r => r.getAttribute('data-threads-id'));
-            // 判断是否有交集
-            const hasIntersection = newIds.some(id => oldIds.includes(id));
-            if (hasIntersection) {
-              // 合并：保留旧的，再追加新的（避免重复）
-              const oldIdSet = new Set(oldIds);
-              for (const reply of newReplies) {
-                const tidReply = reply.getAttribute('data-threads-id');
-                if (!oldIdSet.has(tidReply)) {
-                  oldNode.querySelector('.h-threads-item-replies').appendChild(reply.cloneNode(true));
+            // Step 1: 拉取第1页获取 ReplyCount → 计算末页页码
+            const p1Resp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=1', 'json');
+            const p1Raw = p1Resp && (p1Resp.response || p1Resp.responseText);
+            const p1 = typeof p1Raw === 'string' ? JSON.parse(p1Raw) : p1Raw;
+            if (!p1 || p1.success === false) throw new Error((p1 && p1.error) || 'API error');
+            const replyCount = Number(p1.ReplyCount || p1.reply_count || 0);
+            const tailPage = Math.max(1, Math.ceil(replyCount / REPLY_PER_PAGE));
+            // Step 2: 拉取末页
+            const tResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + tailPage, 'json');
+            const tRaw = tResp && (tResp.response || tResp.responseText);
+            const t = typeof tRaw === 'string' ? JSON.parse(tRaw) : tRaw;
+            if (!t || t.success === false) throw new Error((t && t.error) || 'API error');
+            let tailReplies = Array.isArray(t.Replies) ? t.Replies.slice() : [];
+            // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
+
+            const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
+            if (!allOldNodes.length) return;
+            // 用第一个节点的最后一条回复 ID 作为 API 数据范围的基准
+
+            const firstNode = allOldNodes[0];
+
+            const firstReplyEls = Array.from(firstNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
+            const lastOldId = firstReplyEls.length ? Number(firstReplyEls[firstReplyEls.length - 1].getAttribute('data-threads-id')) : 0;
+            // Step 4: 定位 lastOldId 并确定新回复范围
+            // 关键：板块页展示的最近5条回复可能跨页（如 [18,19] 在倒数第二页，[1,2,3] 在末页）
+            // 如果 lastOldId 不在末页，必须同时拉取倒数第二页，避免漏掉中间的回复
+            let newReplies = [];
+            if (lastOldId > 0) {
+              const idx = tailReplies.findIndex(r => r && Number(r.id) === lastOldId);
+              if (idx >= 0) {
+                // lastOldId 在末页中 → 取其后的所有回复
+                newReplies = tailReplies.slice(idx + 1);
+              } else {
+                // lastOldId 不在末页 → 需要拉倒数第二页填补间隙
+                if (tailPage > 1) {
+                  const pResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + (tailPage - 1), 'json');
+                  const pRaw = pResp && (pResp.response || pResp.responseText);
+                  const p = typeof pRaw === 'string' ? JSON.parse(pRaw) : pRaw;
+                  const prevReplies = Array.isArray(p && p.Replies) ? p.Replies : [];
+                  // 合并两页：倒数第二页 + 末页
+                  const merged = prevReplies.concat(tailReplies);
+                  const mIdx = merged.findIndex(r => r && Number(r.id) === lastOldId);
+                  if (mIdx >= 0) {
+                    newReplies = merged.slice(mIdx + 1);
+                  } else {
+                    // 两页数据里都找不到页面上的最后一条回复 → 用户看到的页面数据太老
+                    toast('当前页面数据过旧，请手动刷新页面');
+                    return;
+                  }
+                } else {
+                  // 只有一页且找不到 lastOldId → 页面数据过旧
+                  if (tailReplies.some(r => r && Number(r.id) === lastOldId)) {
+                    const sIdx = tailReplies.findIndex(r => r && Number(r.id) === lastOldId);
+                    newReplies = tailReplies.slice(sIdx + 1);
+                  } else {
+                    toast('当前页面数据过旧，请手动刷新页面');
+                    return;
+                  }
                 }
               }
             } else {
-              // 无交集：整块替换
-              const newNode = processedNode.cloneNode(true);
-              oldNode.parentNode.replaceChild(newNode, oldNode);
+              newReplies = tailReplies;
             }
-          });
-          // 立即执行视觉相关过滤，避免闪烁
-          try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(); } catch (e) {}
-          try { if (cfg2) refreshFilterDisplay(cfg2); } catch (e) {}
-          try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
-          // 延迟执行其他增强
-          setTimeout(() => {
-            document.querySelectorAll(`.h-threads-list div[data-threads-id="${tid}"]`).forEach(targetNode => {
-              try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetNode)); } catch (e) {}
-              try { if (typeof highlightPO === 'function') highlightPO(targetNode); } catch (e) {}
-              try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(targetNode); } catch (e) {}
-              try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(targetNode); } catch (e) {}
-              try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(targetNode); } catch (e) {}
-              try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(targetNode); } catch (e) {}
-              try { if (typeof initContent === 'function') initContent(targetNode); } catch (e) {}
-              try { if (typeof initExtendedContent === 'function') initExtendedContent(targetNode); } catch (e) {}
-              //try { if (typeof autoHideRefView === 'function') autoHideRefView(targetNode); } catch (e) {}
+            if (!newReplies.length) return;
+            // Step 5: 保存滚动位置（插入前）
+            const scrollEl = document.scrollingElement || document.documentElement;
+            const scrollTopBefore = scrollEl.scrollTop;
+            const viewportTop = scrollTopBefore;
+            // 记录每个节点插入前的 offsetTop 和高度（用于滚动补偿）
+            const nodeMetricsBefore = allOldNodes.map(node => {
+              const rect = node.getBoundingClientRect();
+              return {
+                node,
+                bottom: rect.bottom,
+                height: node.offsetHeight
+              };
             });
-            enableHDImageAndLayoutFix(document);
-            enableHDImage(document);
-            try { if (cfg2 && cfg2.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
-            try { if (cfg2) refreshFilterDisplay(cfg2); } catch (e) {}
-            try { if (typeof enablePostExpand === 'function') enablePostExpand(targetNode); } catch (e) {}
-          }, 50);
-            // --------- 确保重新应用标记与屏蔽 ---------
-            // 说明：有两点防护：
-            //  1) 使用 try/catch 防止 applyFilters 抛错中断其它逻辑；
-            //  2) 对 cfg 做存在性回退（优先使用已存在的 cfg；没有时回退到 SettingPanel.state；再没有则不给参数调用，且吞掉异常）
-            try {
-              if (typeof applyFilters === 'function') {
-                // 优先使用当前作用域的 cfg（如果存在），否则尝试使用 SettingPanel.state（你的函数中多次引用过）。
-                const _cfg = (typeof cfg !== 'undefined') ? cfg
-                            : (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) ? SettingPanel.state
-                            : null;
-                if (_cfg) {
-                  // 正常调用（大多数情况会走到这里）
-                  refreshFilterDisplay(_cfg);
-                } else {
-                  // 没有可用配置对象时，仍尝试一次无参调用以兼容极少数实现（但捕获其可能抛出的异常）
-                  try { refreshFilterDisplay(); } catch (e) { /* 忽略 */ }
+            // Step 6: 遍历所有匹配节点，每个节点独立增量追加
+            for (const node of allOldNodes) {
+              const rc = node.querySelector('.h-threads-item-replies');
+              if (!rc) continue;
+              // 收集该节点已有的回复 ID
+              const existingIds = new Set(
+                Array.from(rc.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
+                  .map(el => el.getAttribute('data-threads-id'))
+                  .filter(id => id && id !== '9999999')
+              );
+              // 只追加该节点缺失的回复
+              for (const reply of newReplies) {
+                if (!existingIds.has(String(reply.id))) {
+                  const el = buildApiReplyNode(reply, tid);
+                  if (el) rc.appendChild(el);
                 }
               }
-            } catch (e) {
-              // 保守地记录错误（不抛出），以免阻断页面其它增强逻辑
-              console.warn('applyFilters reapply failed:', e);
             }
-          // 临时模式下刷新完成后清空持久变量
-          if (e.type === 'tempReplySuccess') {
-            currentReplyTid = null;
+            // Step 7: 计算视口上方节点增长的高度，补偿滚动位置
+            // 只有完全在视口上方（bottom <= viewportTop）的节点增长才需要补偿
+            let heightAddedAbove = 0;
+            for (let i = 0; i < allOldNodes.length; i++) {
+              const before = nodeMetricsBefore[i];
+              const afterHeight = allOldNodes[i].offsetHeight;
+              const delta = afterHeight - before.height;
+              if (delta > 0 && before.bottom <= viewportTop) {
+                heightAddedAbove += delta;
+              }
+            }
+            scrollEl.scrollTop = scrollTopBefore + heightAddedAbove;
+            // Step 8: 后处理增强（所有匹配节点）
+            for (const node of allOldNodes) {
+              try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(node)); } catch (err) {}
+              try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig().markedGroups || [], node); } catch (err) {}
+            }
+            // 延迟执行其他增强
+            setTimeout(() => {
+              for (const node of allOldNodes) {
+                try { if (typeof highlightPO === 'function') highlightPO(node); } catch (err) {}
+                try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(node); } catch (err) {}
+                try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(node); } catch (err) {}
+                try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(node); } catch (err) {}
+                try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(node); } catch (err) {}
+                try { if (typeof initContent === 'function') initContent(node); } catch (err) {}
+                try { if (typeof initExtendedContent === 'function') initExtendedContent(node); } catch (err) {}
+              }
+              try { if (cfg2) refreshFilterDisplay(cfg2); } catch (err) {}
+              try { if (typeof enablePostExpand === 'function') enablePostExpand(document); } catch (err) {}
+            }, 50);
+            if (e.type === 'tempReplySuccess') currentReplyTid = null;
+          } catch (err) {
+            console.warn('[board-quick-reply] API refresh failed', err);
+            toast('刷新板块串失败');
           }
-        })
-        .catch(() => toast('刷新板块串失败'));
+        })();
+      }
+      // 构建 API 回复的 DOM 节点（匹配页面原生 .h-threads-item-reply 结构）
+      function buildApiReplyNode(reply, threadId) {
+        if (!reply || !reply.id) return null;
+        const _e = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        const id = String(reply.id);
+        const title = String(reply.title || '');
+        const email = String(reply.email || '');
+        const now = String(reply.now || '');
+        const hash = String(reply.user_hash || '');
+        const contentHtml = String(reply.content || '');
+        const imgRaw = String(reply.img || '');
+        const extRaw = String(reply.ext || '');
+        const suf = extRaw ? (extRaw[0] === '.' ? extRaw : '.' + extRaw) : '';
+        const fullUrl = imgRaw ? 'https://image.nmb.best/image/' + imgRaw + suf : '';
+        const thumbUrl = imgRaw ? 'https://image.nmb.best/thumb/' + imgRaw + suf : '';
+        // 图片区（含工具栏）
+        const imgHtml = imgRaw
+          ? '<div class="h-threads-img-box">'
+            + '<div class="h-threads-img-tool uk-animation-slide-top">'
+            +   '<span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>'
+            +   '<a href="' + _e(fullUrl) + '" target="_blank" class="h-threads-img-tool-btn uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>'
+            +   '<span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>'
+            +   '<span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>'
+            + '</div>'
+            + '<a href="' + _e(fullUrl) + '" rel="_blank" target="_blank" class="h-threads-img-a">'
+            +   '<img data-src="' + _e(thumbUrl) + '" src="' + _e(thumbUrl) + '" align="left" border="0" hspace="20" class="h-threads-img">'
+            + '</a>'
+          + '</div>'
+          : '';
+        // 信息区
+        const uidHtml = hash
+          ? '<span class="h-threads-info-uid" data-xdex-cookie-id="' + _e(hash) + '">ID:' + _e(hash) + '</span>'
+          : '';
+        const titleText = (title && title !== '无标题') ? _e(title) : '无标题';
+        const emailText = (email && email !== '无名氏') ? _e(email) : '无名氏';
+        const html = '<div data-threads-id="' + _e(id) + '" class="h-threads-item-reply">'
+          + '<div class="h-threads-item-reply-icon">…</div>'
+          + '<div class="h-threads-item-reply-main">'
+            + imgHtml
+            + '<div class="h-threads-info">'
+              + '<span class="h-threads-info-title">' + titleText + '</span>'
+              + '<span class="h-threads-info-email">' + emailText + '</span>'
+              + '<span class="h-threads-info-createdat">' + _e(now) + '</span>'
+              + uidHtml
+              + '<span class="h-threads-info-report-btn">[<a href="/f/值班室?r=' + _e(id) + '">举报</a>]</span>'
+              + '<a href="/t/' + _e(threadId) + '?r=' + _e(id) + '" class="h-threads-info-id">No.' + _e(id) + '</a>'
+            + '</div>'
+            + '<div class="h-threads-content">' + contentHtml + '</div>'
+          + '</div>'
+        + '</div>';
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return tmp.firstChild || null;
       }
     }
     // 统一调用

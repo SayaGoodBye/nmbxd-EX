@@ -1,7 +1,7 @@
 {
   "extension": {
     "version": "3.6.0",
-    "changelog": "新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。",
+    "changelog": "新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n优化\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。",
     "downloads": {
       "github": "https://github.com/SayaGoodBye/nmbxd-EX/releases/latest",
       "baidupan": "https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf"

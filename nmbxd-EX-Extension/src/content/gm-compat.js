@@ -61,7 +61,7 @@
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
     "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
     "// @license      WTFPL",
-    "// @changelog    新增\\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\\n\\n修复\\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\\n",
+    "// @changelog    新增\\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\\n\\n优化\\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\\n\\n修复\\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\\n",
     "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
     "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
     "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
