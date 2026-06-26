@@ -17901,14 +17901,16 @@ ${markedSwatchHtml}
             const t = typeof tRaw === 'string' ? JSON.parse(tRaw) : tRaw;
             if (!t || t.success === false) throw new Error((t && t.error) || 'API error');
             let tailReplies = Array.isArray(t.Replies) ? t.Replies.slice() : [];
-            // Step 3: 定位页面上该串已有的最后一条回复 ID
-            const oldNode = document.querySelector('.h-threads-list div[data-threads-id="' + tid + '"]');
-            if (!oldNode) return;
+            // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
 
-            const replyContainer = oldNode.querySelector('.h-threads-item-replies');
-            if (!replyContainer) return;
-            const oldEls = Array.from(oldNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
-            const lastOldId = oldEls.length ? Number(oldEls[oldEls.length - 1].getAttribute('data-threads-id')) : 0;
+            const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
+            if (!allOldNodes.length) return;
+            // 用第一个节点的最后一条回复 ID 作为 API 数据范围的基准
+
+            const firstNode = allOldNodes[0];
+
+            const firstReplyEls = Array.from(firstNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
+            const lastOldId = firstReplyEls.length ? Number(firstReplyEls[firstReplyEls.length - 1].getAttribute('data-threads-id')) : 0;
             // Step 4: 定位 lastOldId 并确定新回复范围
             // 关键：板块页展示的最近5条回复可能跨页（如 [18,19] 在倒数第二页，[1,2,3] 在末页）
             // 如果 lastOldId 不在末页，必须同时拉取倒数第二页，避免漏掉中间的回复
@@ -17953,25 +17955,62 @@ ${markedSwatchHtml}
             // Step 5: 保存滚动位置（插入前）
             const scrollEl = document.scrollingElement || document.documentElement;
             const scrollTopBefore = scrollEl.scrollTop;
-            // Step 6: 构建 DOM 追加
-            for (const reply of newReplies) {
-              const el = buildApiReplyNode(reply, tid);
-              if (el) replyContainer.appendChild(el);
+            const viewportTop = scrollTopBefore;
+            // 记录每个节点插入前的 offsetTop 和高度（用于滚动补偿）
+            const nodeMetricsBefore = allOldNodes.map(node => {
+              const rect = node.getBoundingClientRect();
+              return {
+                node,
+                bottom: rect.bottom,
+                height: node.offsetHeight
+              };
+            });
+            // Step 6: 遍历所有匹配节点，每个节点独立增量追加
+            for (const node of allOldNodes) {
+              const rc = node.querySelector('.h-threads-item-replies');
+              if (!rc) continue;
+              // 收集该节点已有的回复 ID
+              const existingIds = new Set(
+                Array.from(rc.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
+                  .map(el => el.getAttribute('data-threads-id'))
+                  .filter(id => id && id !== '9999999')
+              );
+              // 只追加该节点缺失的回复
+              for (const reply of newReplies) {
+                if (!existingIds.has(String(reply.id))) {
+                  const el = buildApiReplyNode(reply, tid);
+                  if (el) rc.appendChild(el);
+                }
+              }
             }
-            // Step 7: 恢复滚动位置（保持视口不动）
-            scrollEl.scrollTop = scrollTopBefore;
-            // Step 8: 后处理增强
-            try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(oldNode)); } catch (err) {}
-            try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig().markedGroups || [], oldNode); } catch (err) {}
+            // Step 7: 计算视口上方节点增长的高度，补偿滚动位置
+            // 只有完全在视口上方（bottom <= viewportTop）的节点增长才需要补偿
+            let heightAddedAbove = 0;
+            for (let i = 0; i < allOldNodes.length; i++) {
+              const before = nodeMetricsBefore[i];
+              const afterHeight = allOldNodes[i].offsetHeight;
+              const delta = afterHeight - before.height;
+              if (delta > 0 && before.bottom <= viewportTop) {
+                heightAddedAbove += delta;
+              }
+            }
+            scrollEl.scrollTop = scrollTopBefore + heightAddedAbove;
+            // Step 8: 后处理增强（所有匹配节点）
+            for (const node of allOldNodes) {
+              try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(node)); } catch (err) {}
+              try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig().markedGroups || [], node); } catch (err) {}
+            }
             // 延迟执行其他增强
             setTimeout(() => {
-              try { if (typeof highlightPO === 'function') highlightPO(oldNode); } catch (err) {}
-              try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(oldNode); } catch (err) {}
-              try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(oldNode); } catch (err) {}
-              try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(oldNode); } catch (err) {}
-              try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(oldNode); } catch (err) {}
-              try { if (typeof initContent === 'function') initContent(oldNode); } catch (err) {}
-              try { if (typeof initExtendedContent === 'function') initExtendedContent(oldNode); } catch (err) {}
+              for (const node of allOldNodes) {
+                try { if (typeof highlightPO === 'function') highlightPO(node); } catch (err) {}
+                try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(node); } catch (err) {}
+                try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(node); } catch (err) {}
+                try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(node); } catch (err) {}
+                try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(node); } catch (err) {}
+                try { if (typeof initContent === 'function') initContent(node); } catch (err) {}
+                try { if (typeof initExtendedContent === 'function') initExtendedContent(node); } catch (err) {}
+              }
               try { if (cfg2) refreshFilterDisplay(cfg2); } catch (err) {}
               try { if (typeof enablePostExpand === 'function') enablePostExpand(document); } catch (err) {}
             }, 50);
