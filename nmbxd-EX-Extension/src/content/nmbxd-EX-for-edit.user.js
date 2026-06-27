@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n优化\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\n
+// @changelog    新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n优化\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\n2.发言历史中的[回应]链接加入引用对应回应号参数；常用串链接随浏览历史的中记录的最远页面实时更新。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -802,9 +802,9 @@
     const postId = String(id || '').trim();
     const threadId = String(type === 'reply' ? resto : id || '').trim();
     const pageNum = Math.max(0, Number(page) || 0);
-    // reply 类型保持原来的行为：有 page 就用 ?page=N，否则回退到 ?r=replyId
+    // reply 类型保持原来的行为：有 page 就用 ?page=N&r=${postId}`;，否则回退到 ?r=replyId
     if (type === 'reply') {
-      if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
+      if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`;
       return buildPostHistoryUrl(type, postId, threadId);
     }
     // thread 类型优先从浏览历史获取最新页面（动态更新）
@@ -1888,6 +1888,8 @@
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
     const saved = setThreadHistoryStore(store);
     logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: merged });
+    // 同步常用串菜单中对应串的链接
+    try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
     return saved;
   }
   function touchThreadHistoryCurrentLocation(options = {}) {
@@ -1914,6 +1916,8 @@
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
     const saved = setThreadHistoryStore(store);
     logThreadHistory('location touched', { key, reason: options.reason || '', page: item.page, url: item.url, maxVisitedPage: item.maxVisitedPage, touchVisitedAt: !!options.touchVisitedAt });
+    // 同步常用串菜单中对应串的链接
+    try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
     return saved;
   }
   function recordThreadHistoryProgress(options = {}) {
@@ -19978,6 +19982,7 @@ ${markedSwatchHtml}
       const subItem = document.createElement('li');
       const link = document.createElement('a');
       link.href = getLatestThreadHistoryUrl(item.threadId) || makeFavoriteThreadUrl(item.threadId);
+      link.dataset.threadId = item.threadId;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.setAttribute('achecked', '1');
@@ -20069,6 +20074,18 @@ ${markedSwatchHtml}
     menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
     menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
     menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
+  }
+  // 同步常用串菜单中各链接的 href（浏览历史更新后调用，保持链接指向最新访问页）
+  function syncFavoriteThreadsLinks() {
+    const menu = document.getElementById('xdex-favorite-threads-menu');
+    if (!menu) return;
+    menu.querySelectorAll('a[data-thread-id]').forEach(link => {
+      const tid = link.dataset.threadId;
+      if (tid) {
+        const url = getLatestThreadHistoryUrl(tid);
+        if (url) link.href = url;
+      }
+    });
   }
   // ─── 页面内「订阅EX」快捷按钮 ─────────────────────────────────────────────────────────
   function ensureSubscriptionExButtonStyle() {
