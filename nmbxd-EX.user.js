@@ -1688,12 +1688,12 @@
       }
     }
     const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
-    const match = String(value).match(/[A-Za-z0-9]{3,7}/);
+    const match = String(value).match(/[A-Za-z0-9]{3,8}/);
     return match ? match[0] : value;
   }
   function buildThreadHistoryLegacyCookieHtml(cookieId) {
     const value = String(cookieId || '').trim();
-    const match = value.match(/^([A-Za-z0-9]{3,7})(.+)$/);
+    const match = value.match(/^([A-Za-z0-9]{3,8})(.+)$/);
     if (!match || !match[2].trim()) return '';
     const id = escapeThreadHistoryHtml(match[1]);
     const badge = escapeThreadHistoryHtml(match[2].trim());
@@ -1701,7 +1701,7 @@
   }
   function getThreadHistoryCookieMarkId(item) {
     const value = String(item && item.cookieId || '').trim();
-    const match = value.match(/^([A-Za-z0-9]{3,7})/);
+    const match = value.match(/^([A-Za-z0-9]{3,8})/);
     return match ? match[1] : value;
   }
   function sanitizeThreadHistoryContentHtml(contentEl) {
@@ -3932,7 +3932,7 @@
         if (t) list.push(t);
         return [...new Set(list)];
       },
-      cookieLegal: s => /^[A-Za-z0-9]{3,7}$/.test(s),
+      cookieLegal: s => /^[A-Za-z0-9]{3,8}$/.test(s),
       cookieMatch: (cid,p) => cid.toLowerCase().includes(p.toLowerCase()),
       firstHit(txt,list) {
         return list.find(k=>txt.toLowerCase().includes(k.toLowerCase()))||null;
@@ -4242,7 +4242,7 @@
         <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
-          <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-7位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+          <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
         </div>
       </div>`;
   }
@@ -4311,7 +4311,7 @@
         <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
         <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-7位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+          <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
 ${markedSwatchHtml}
         </div>
       </div>`;
@@ -7265,7 +7265,7 @@ ${markedSwatchHtml}
       }
     }
     const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
-    const match = String(value).match(/[A-Za-z0-9]{3,7}/);
+    const match = String(value).match(/[A-Za-z0-9]{3,8}/);
     return match ? match[0] : value;
   }
   function wrapCookieMarkTargetPreserveHtml(el, color) {
