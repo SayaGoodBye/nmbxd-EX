@@ -1433,8 +1433,8 @@
       return null;
     }
     const path = url.pathname || '';
-    const normalMatch = path.match(/\/t\/(\d{8,})(?:\/(\d+))?/);
-    const poMatch = path.match(/\/Forum\/po\/id\/(\d{8,})(?:\/page\/(\d+)\.html)?/);
+    const normalMatch = path.match(/\/t\/(\d{6,8})(?:\/(\d+))?/);
+    const poMatch = path.match(/\/Forum\/po\/id\/(\d{6,8})(?:\/page\/(\d+)\.html)?/);
     const match = normalMatch || poMatch;
     if (!match) return null;
     const pathPage = parseInt(match[2] || '', 10);
@@ -1688,12 +1688,12 @@
       }
     }
     const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
-    const match = String(value).match(/[A-Za-z0-9]{3,7}/);
+    const match = String(value).match(/[A-Za-z0-9]{3,8}/);
     return match ? match[0] : value;
   }
   function buildThreadHistoryLegacyCookieHtml(cookieId) {
     const value = String(cookieId || '').trim();
-    const match = value.match(/^([A-Za-z0-9]{3,7})(.+)$/);
+    const match = value.match(/^([A-Za-z0-9]{3,8})(.+)$/);
     if (!match || !match[2].trim()) return '';
     const id = escapeThreadHistoryHtml(match[1]);
     const badge = escapeThreadHistoryHtml(match[2].trim());
@@ -1701,7 +1701,7 @@
   }
   function getThreadHistoryCookieMarkId(item) {
     const value = String(item && item.cookieId || '').trim();
-    const match = value.match(/^([A-Za-z0-9]{3,7})/);
+    const match = value.match(/^([A-Za-z0-9]{3,8})/);
     return match ? match[1] : value;
   }
   function sanitizeThreadHistoryContentHtml(contentEl) {
@@ -3255,7 +3255,7 @@
       if (!uuid) { toast('请先在设置中添加一个订阅号'); return; }
       const raw = ($('#sp_feeds_bulk_add_input').val() || '').trim();
       if (!raw) { toast('请输入串号'); return; }
-      const tids = raw.split(/[,，\s]+/).map(s => s.replace(/^(?:No\.)/i, '').trim()).filter(s => /^\d{8,}$/.test(s));
+      const tids = raw.split(/[,，\s]+/).map(s => s.replace(/^(?:No\.)/i, '').trim()).filter(s => /^\d{6,8}$/.test(s));
       if (!tids.length) { toast('未识别到有效串号'); return; }
       const $btn = $(e.currentTarget);
       $btn.prop('disabled', true).text('添加中…');
@@ -3395,12 +3395,12 @@
       let replyId = '';
       let inputPage = 0;
       // 解析 URL 中的主题号、回复号、页码
-      const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{8,})(?:\?([^#]*))?(?:#.*)?$/i);
-      const simpleMatch = raw.match(/^(?:No\.)?(\d{8,})$/);
+      const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{6,8})(?:\?([^#]*))?(?:#.*)?$/i);
+      const simpleMatch = raw.match(/^(?:No\.)?(\d{6,8})$/);
       if (urlMatch) {
         postId = urlMatch[1];
         const qs = urlMatch[2] || '';
-        const rMatch = qs.match(/(?:^|&)r=(\d{8,})(?:&|$)/);
+        const rMatch = qs.match(/(?:^|&)r=(\d{6,8})(?:&|$)/);
         const pMatch = qs.match(/(?:^|&)page=(\d+)(?:&|$)/);
         replyId = rMatch ? rMatch[1] : '';
         inputPage = pMatch ? parseInt(pMatch[1], 10) : 0;
@@ -3932,7 +3932,7 @@
         if (t) list.push(t);
         return [...new Set(list)];
       },
-      cookieLegal: s => /^[A-Za-z0-9]{3,7}$/.test(s),
+      cookieLegal: s => /^[A-Za-z0-9]{3,8}$/.test(s),
       cookieMatch: (cid,p) => cid.toLowerCase().includes(p.toLowerCase()),
       firstHit(txt,list) {
         return list.find(k=>txt.toLowerCase().includes(k.toLowerCase()))||null;
@@ -4100,7 +4100,7 @@
     return normalizeHexColor(group && group.color) || markColors[index % markColors.length];
   }
   function isValidThreadId(threadId) {
-    return /^\d{8}$/.test(threadId);
+    return /^\d{6,8}$/.test(threadId);
   }
   function normalizeFavoriteThreadInput(raw) {
     const value = String(raw || '').trim();
@@ -4113,9 +4113,9 @@
     }
     if (url.hostname && !['www.nmbxd1.com', 'nmbxd1.com', 'www.nmbxd.com', 'nmbxd.com'].includes(url.hostname)) return '';
     const path = url.pathname || '';
-    const threadMatch = path.match(/^\/t\/(\d{8})(?:\/\d+)?\/?$/);
+    const threadMatch = path.match(/^\/t\/(\d{6,8})(?:\/\d+)?\/?$/);
     if (threadMatch) return threadMatch[1];
-    const poMatch = path.match(/^\/Forum\/po\/id\/(\d{8})(?:\/page\/\d+)?(?:\.html)?$/);
+    const poMatch = path.match(/^\/Forum\/po\/id\/(\d{6,8})(?:\/page\/\d+)?(?:\.html)?$/);
     if (poMatch) return poMatch[1];
     return '';
   }
@@ -4199,7 +4199,7 @@
         <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="8位串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
+          <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
         </div>
       </div>`;
   }
@@ -4241,8 +4241,8 @@
         <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
         <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="8位串号1,8位串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
-          <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-7位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+          <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
+          <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
         </div>
       </div>`;
   }
@@ -4311,7 +4311,7 @@
         <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
         <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-7位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+          <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
 ${markedSwatchHtml}
         </div>
       </div>`;
@@ -7265,7 +7265,7 @@ ${markedSwatchHtml}
       }
     }
     const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
-    const match = String(value).match(/[A-Za-z0-9]{3,7}/);
+    const match = String(value).match(/[A-Za-z0-9]{3,8}/);
     return match ? match[0] : value;
   }
   function wrapCookieMarkTargetPreserveHtml(el, color) {
@@ -7426,11 +7426,11 @@ ${markedSwatchHtml}
     const $index = $el.closest('.h-threads-item-index[data-threads-id]');
     const indexTid = ($index.attr('data-threads-id') || '').trim();
     if (isValidThreadId(indexTid)) return indexTid;
-    const pathMatch = location.pathname.match(/\/t\/(\d{8,})/);
+    const pathMatch = location.pathname.match(/\/t\/(\d{6,8})/);
     if (pathMatch) return pathMatch[1].slice(0, 8);
     const href = $el.closest('.h-threads-item-index, .h-threads-item, .h-threads-item-reply, .h-threads-item-reply-main')
       .find('.h-threads-info-id[href*="/t/"]').first().attr('href') || '';
-    const hrefMatch = href.match(/\/t\/(\d{8,})/);
+    const hrefMatch = href.match(/\/t\/(\d{6,8})/);
     return hrefMatch ? hrefMatch[1].slice(0, 8) : '';
   }
   function addFilterId(ids, value) {
@@ -7469,7 +7469,7 @@ ${markedSwatchHtml}
     return replyIdText === 'No.9999999';
   }
   function isThreadPageForPOAnnotation() {
-    return /\/t\/\d{8,}/.test(location.pathname);
+    return /\/t\/\d{6,8}/.test(location.pathname);
   }
   function isLiveDocumentRoot(root) {
     if (!root || root === document) return true;
@@ -7624,7 +7624,7 @@ ${markedSwatchHtml}
       const $ph = Utils.collapse($reply, `${prefix}只看饼干『${whitelistCookies.join('，')}』`);
       if ($ph) decorateFilterPlaceholder($ph, $reply, 'xdex-placeholder-whitelist', '0 0 auto');
     };
-    if(/\/t\/\d{8,}/.test(location.pathname)){
+    if(/\/t\/\d{6,8}/.test(location.pathname)){
       const currentThreadId = getThreadIdForElement($root);
       const whitelistGroup = getThreadWhitelistGroup(currentThreadId, whitelistGroups);
       withSelf($root, '.h-threads-item-reply-main').each((_,el)=>{
@@ -14830,9 +14830,9 @@ ${markedSwatchHtml}
       const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
       if (_cookieConfirmEnabled) {
         const _resto = (formData.get("resto") || "").toString().trim();
-        const _tidMatch = location.pathname.match(/\/t\/(\d{8,})/);
+        const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
         const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
-        if (_threadId && _threadId !== '20011114' && /^\d{8,}$/.test(_threadId)) {
+        if (_threadId && _threadId !== '20011114' && /^\d{6,8}$/.test(_threadId)) {
           const _pref = getThreadCookiePref(_threadId);
           const _doSend = () => {
             resetIllegalRetryState({ clearOriginalContent: false });
@@ -19772,8 +19772,8 @@ ${markedSwatchHtml}
   }
   function isFavoriteThreadPageLocation() {
     const path = window.location.pathname || '';
-    return /^\/t\/\d{8}(?:\/\d+)?\/?$/.test(path)
-      || /^\/Forum\/po\/id\/\d{8}(?:\/page\/\d+)?(?:\.html)?$/i.test(path);
+    return /^\/t\/\d{6,8}(?:\/\d+)?\/?$/.test(path)
+      || /^\/Forum\/po\/id\/\d{6,8}(?:\/page\/\d+)?(?:\.html)?$/i.test(path);
   }
   function getCurrentFavoriteThreadId() {
     if (!isFavoriteThreadPageLocation()) return '';
@@ -19786,8 +19786,8 @@ ${markedSwatchHtml}
     return isFavoriteThreadPageLocation() ? '添加当前串' : '添加常用串';
   }
   function getCurrentFavoriteThreadDesc() {
-    const fromTitle = String(document.title || '').replace(/\s+-\s+No\.\d{8}.*$/, '').trim();
-    const title = fromTitle && !/^No\.\d{8}/.test(fromTitle) ? fromTitle : selectEnhanceIslandTitleText();
+    const fromTitle = String(document.title || '').replace(/\s+-\s+No\.\d{6,8}.*$/, '').trim();
+    const title = fromTitle && !/^No\.\d{6,8}/.test(fromTitle) ? fromTitle : selectEnhanceIslandTitleText();
     return trimFavoriteThreadDesc(title);
   }
   function openFavoriteThreadsSettingsPanel(options = {}) {
@@ -20808,10 +20808,10 @@ ${markedSwatchHtml}
   }
   // ── 入口：串内页添加"阅图"按钮 ──
   function injectImageViewerButton() {
-    const isThreadPage = /\/t\/\d{8,}/.test(location.pathname) || /\/Forum\/po\/id\/\d+/.test(location.pathname);
+    const isThreadPage = /\/t\/\d{6,8}/.test(location.pathname) || /\/Forum\/po\/id\/\d+/.test(location.pathname);
     if (!isThreadPage) return;
     if (document.querySelector('.xdex-image-viewer-btn')) return;
-    const threadMatch = location.pathname.match(/\/t\/(\d{8,})/) || location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
+    const threadMatch = location.pathname.match(/\/t\/(\d{6,8})/) || location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
     if (!threadMatch) return;
     const threadId = threadMatch[1];
     const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">图</button>');
@@ -21602,7 +21602,7 @@ ${markedSwatchHtml}
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     // 串内饼干偏好初始化
     if (cfg.enableCookieSwitch && cfg.enableCookieConfirm) {
-      const _tidMatch = location.pathname.match(/\/t\/(\d{8,})/);
+      const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
       const _initThreadId = _tidMatch ? _tidMatch[1].slice(0, 8) : '';
       if (_initThreadId) {
         initThreadCookiePref(_initThreadId);
