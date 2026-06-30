@@ -593,7 +593,7 @@ function testHistoryAndPostCanonicalReplyLinksContract() {
   assert(upstream.includes('function buildPostHistoryReplyActionUrl(type, id, resto, page)'), 'post-history must centralize [回应] page-link construction separately from No. links');
   const postReplyActionStart = upstream.indexOf('function buildPostHistoryReplyActionUrl(type, id, resto, page)');
   const postReplyActionBody = upstream.slice(postReplyActionStart, upstream.indexOf('function getConfirmedPostHistoryIds', postReplyActionStart));
-  assert(postReplyActionBody.includes('return `${location.origin}/t/${threadId}?page=${pageNum}`') && postReplyActionBody.includes('return buildPostHistoryUrl(type, postId, threadId);'), 'post-history [回应] must use /t/{threadId}?page={page} and fall back to the canonical ?r link when page is missing');
+  assert(postReplyActionBody.includes('return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`') && postReplyActionBody.includes('return buildPostHistoryUrl(type, postId, threadId);'), 'post-history [回应] must use /t/{threadId}?page={page}&r={postId} and fall back to the canonical ?r link when page is missing');
   const postUrlStart = upstream.indexOf('function buildPostHistoryUrl(type, id, resto)');
   const postUrlBody = upstream.slice(postUrlStart, upstream.indexOf('function getConfirmedPostHistoryIds', postUrlStart));
   assert(postUrlBody.includes('return buildCanonicalReplyUrl(threadId, postId);'), 'post-history render must rebuild links from stored ids/resto instead of trusting old saved url fields');
