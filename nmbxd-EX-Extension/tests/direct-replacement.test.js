@@ -765,8 +765,8 @@ function testHistoryAndPostDeleteConfirmContract() {
 function testBrowsingHistoryUrlParsingContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
   assert(upstream.includes('function parseThreadHistoryUrl'), 'userscript must expose a history URL parser');
-  assert(upstream.includes('/\\/t\\/(\\d{8,})(?:\\/(\\d+))?/'), 'history URL parser must support /t/{id} and /t/{id}/{page}');
-  assert(upstream.includes('/\\/Forum\\/po\\/id\\/(\\d{8,})(?:\\/page\\/(\\d+)\\.html)?/'), 'history URL parser must support PO id page paths');
+  assert(upstream.includes('/\\/t\\/(\\d{6,8})(?:\\/(\\d+))?/'), 'history URL parser must support /t/{id} and /t/{id}/{page}');
+  assert(upstream.includes('/\\/Forum\\/po\\/id\\/(\\d{6,8})(?:\\/page\\/(\\d+)\\.html)?/'), 'history URL parser must support PO id page paths');
   assert(upstream.includes("url.searchParams.get('page')"), 'history URL parser must support query page fallback');
   assert(upstream.includes("mode: poMatch ? 'po' : 'normal'"), 'history URL parser must return normal or po mode');
 }
