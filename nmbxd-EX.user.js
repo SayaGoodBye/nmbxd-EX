@@ -805,6 +805,7 @@
     // reply 类型保持原来的行为：有 page 就用 ?page=N&r=${postId}`;，否则回退到 ?r=replyId
     if (type === 'reply') {
       if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`;
+      // if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
       return buildPostHistoryUrl(type, postId, threadId);
     }
     // thread 类型优先从浏览历史获取最新页面（动态更新）
@@ -4512,6 +4513,7 @@ ${markedSwatchHtml}
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
+      disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
       threadCookieWhitelistDisplayMode: 'fold', // 只看饼干：fold | hide | column
       poAnnotationSideDisplayMode: 'collapse', // 分栏侧栏：collapse | expand
@@ -5246,7 +5248,7 @@ ${markedSwatchHtml}
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label></div>
             </div>
@@ -5599,7 +5601,8 @@ ${markedSwatchHtml}
         'enableAutoUrlLinkify',
         'enableQuotePreview',
         'extendQuote',
-        'toggleSidebar'
+        'toggleSidebar',
+        'disableAutoQuote'
       ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
@@ -7018,6 +7021,7 @@ ${markedSwatchHtml}
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
+        sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号'
       };
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
       if (!document.getElementById('sp_update_log')) {
@@ -7170,7 +7174,8 @@ ${markedSwatchHtml}
         'enableImageHideMode',
         'extendQuote',
         'enablePostExpandAll',
-        'toggleSidebar'
+        'toggleSidebar',
+        'disableAutoQuote'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
       // 二次确认饼干联动：快捷切换饼干关闭时禁用
       $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
@@ -21598,6 +21603,60 @@ ${markedSwatchHtml}
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
+    // 阻止URL中r=参数导致的自动引用插入（网站原生行为）
+    // 开关：设置面板 → 关闭引用（disableAutoQuote），实时生效
+    (function() {
+      const rParam = new URLSearchParams(location.search).get('r');
+      if (!rParam) return;
+      const rEsc = rParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const quoteRe = new RegExp('^\\s*>>No\\.' + rEsc + '\\s*\\n?');
+      // 读取实时设置（支持面板切换后即时生效）
+      function isEnabled() {
+        try {
+          const s = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+          return s.disableAutoQuote !== false; // 默认 true（开启拦截）
+        } catch (e) { return true; }
+      }
+      // 检查草稿是否本身以该引用号开头（如果是，说明引用来自草稿而非网站自动插入）
+      function draftHasQuote() {
+        try {
+          if (typeof readDraftValue === 'function') {
+            const draft = readDraftValue();
+            return typeof draft === 'string' && quoteRe.test(draft);
+          }
+        } catch (e) {}
+        return false;
+      }
+      function interceptTextarea(ta) {
+        if (ta.__quoteIntercepted) return;
+        ta.__quoteIntercepted = true;
+        const desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+        Object.defineProperty(ta, 'value', {
+          configurable: true, enumerable: true,
+          get() { return desc.get.call(this); },
+          set(v) {
+            // 仅在拦截开启 且 草稿本身不含此引用号时才剥离
+            if (isEnabled() && !draftHasQuote() && quoteRe.test(v)) {
+              v = v.replace(quoteRe, '');
+            }
+            desc.set.call(this, v);
+          }
+        });
+        // 初始清理（仅在开启且草稿不含该引用时）
+        if (isEnabled() && !draftHasQuote() && quoteRe.test(ta.value)) {
+          const cleaned = ta.value.replace(quoteRe, '');
+          desc.set.call(ta, cleaned);
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      const obs = new MutationObserver(() => {
+        const ta = document.querySelector('textarea.h-post-form-textarea');
+        if (ta) { interceptTextarea(ta); obs.disconnect(); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => { const ta = document.querySelector('textarea.h-post-form-textarea'); if (ta) interceptTextarea(ta); }, 1000);
+    })();
+
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     // 串内饼干偏好初始化
