@@ -76,8 +76,9 @@ jobs:
 
           cp nmbxd-EX.user.js dist/nmbxd-EX.user.js
           cp nmbxd-EX.user.js "dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js"
-          cp -R nmbxd-EX-Extension dist/nmbxd-EX-Extension
-          cp nmbxd-EX.user.js dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
+          cp -R nmbxd-EX-Extension dist/nmbxd-EX-Extension
+          cp nmbxd-EX.user.js dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
+          cp forum-fid-map.json dist/forum-fid-map.json
 
       - name: Sync extension metadata
         shell: bash
@@ -108,12 +109,18 @@ jobs:
           if (gmVersion !== userscriptVersion) {
             throw new Error(`gm-compat version ${gmVersion} does not match userscript ${userscriptVersion}`);
           }
-          if (manifest.version !== userscriptVersion) {
-            throw new Error(`manifest version ${manifest.version} does not match userscript ${userscriptVersion}`);
-          }
-          if (!update.extension || update.extension.version !== userscriptVersion) {
-            throw new Error(`update.json version ${update.extension && update.extension.version} does not match userscript ${userscriptVersion}`);
-          }
+          if (manifest.version !== userscriptVersion) {
+
+            throw new Error(`manifest version ${manifest.version} does not match userscript ${userscriptVersion}`);
+
+          }
+
+          if (!update.extension || update.extension.version !== userscriptVersion) {
+
+            throw new Error(`update.json version ${update.extension && update.extension.version} does not match userscript ${userscriptVersion}`);
+
+          }
+
           if (!manifest.key) {
             throw new Error('Missing manifest key for stable unpacked extension ID');
           }
