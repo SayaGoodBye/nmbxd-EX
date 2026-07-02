@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.6.0
+// @version      3.7.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n优化\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\n2.发言历史中的[回应]链接加入引用对应回应号参数；常用串链接随浏览历史的中记录的最远页面实时更新。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\n
+// @changelog    新增\n1.新增“关闭引用”开关，在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号。\n\n修复\n1.排除版块页快速回复api拉取的数据中可能混杂的Tips。\n2.修复订阅面板中切换订阅号后没有重新作用模糊遮罩的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -123,7 +123,8 @@
   const UPDATE_CHECK_HOUR = 11;
   const THREAD_HISTORY_STORAGE_KEY = 'xdex_thread_history';
   const THREAD_HISTORY_STORE_VERSION = 1;
-  const THREAD_HISTORY_LIMIT = 500;
+  // const THREAD_HISTORY_LIMIT = 500;
+  const THREAD_HISTORY_LIMIT = Infinity;
   const THREAD_HISTORY_EXCERPT_LIMIT = 250;
   const THREAD_HISTORY_RECORD_RETRY_LIMIT = 10;
   const THREAD_HISTORY_RECORD_RETRY_DELAY = 500;
@@ -805,6 +806,7 @@
     // reply 类型保持原来的行为：有 page 就用 ?page=N&r=${postId}`;，否则回退到 ?r=replyId
     if (type === 'reply') {
       if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`;
+      // if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
       return buildPostHistoryUrl(type, postId, threadId);
     }
     // thread 类型优先从浏览历史获取最新页面（动态更新）
@@ -1313,12 +1315,10 @@
     if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
     logPostHistory('confirmed', { localId, type, id, resto, url });
     updatePostHistoryRecord(localId, update);
-
     // 新串发布成功 → 自动写入串内饼干偏好
     if (type === 'thread' && update.userHash) {
       try { setThreadCookiePref(id, update.userHash); } catch (e) {}
     }
-
     const resolver = postHistoryConfirmationMap.get(localId);
     if (!imageFile) {
       // 没有图片，异步获取后再通知等待者
@@ -3138,12 +3138,16 @@
     const $wrap = $('.xdex-feed-selector-wrap');
     const $display = $('#sp_feeds_selector_display');
     const $dropdown = $('#sp_feeds_selector_dropdown');
+    // 鼠标悬停时临时显示 UUID，移出后恢复模糊（比 CSS :hover 更可靠）
+    const $uuid = $display.find('.xdex-feed-display-uuid');
+    $wrap.off('mouseenter.feedBlur mouseleave.feedBlur')
+      .on('mouseenter.feedBlur', () => $uuid.css('filter', 'none'))
+      .on('mouseleave.feedBlur', () => $uuid.css('filter', ''));
     $display.off('click.feedDropdown').on('click.feedDropdown', (e) => {
       e.stopPropagation();
       const isOpen = $dropdown.is(':visible');
       $dropdown.toggle(!isOpen);
       $display.attr('aria-expanded', String(!isOpen));
-      $display.find('.xdex-feed-display-uuid').toggleClass('xdex-feed-uuid-visible', !isOpen);
     });
     $dropdown.off('click.feedOption', '.xdex-feed-option').on('click.feedOption', '.xdex-feed-option', function (e) {
       e.stopPropagation();
@@ -3157,12 +3161,10 @@
       $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
-      $display.find('.xdex-feed-display-uuid').removeClass('xdex-feed-uuid-visible');
     });
     $(document).off('click.feedDropdownClose').on('click.feedDropdownClose', () => {
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
-      $display.find('.xdex-feed-display-uuid').removeClass('xdex-feed-uuid-visible');
     });
     $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
       subscriptionFeedCurrentUuid = $(this).val() || '';
@@ -4512,6 +4514,7 @@ ${markedSwatchHtml}
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
+      disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
       threadCookieWhitelistDisplayMode: 'fold', // 只看饼干：fold | hide | column
       poAnnotationSideDisplayMode: 'collapse', // 分栏侧栏：collapse | expand
@@ -5246,7 +5249,7 @@ ${markedSwatchHtml}
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label></div>
             </div>
@@ -5599,7 +5602,8 @@ ${markedSwatchHtml}
         'enableAutoUrlLinkify',
         'enableQuotePreview',
         'extendQuote',
-        'toggleSidebar'
+        'toggleSidebar',
+        'disableAutoQuote'
       ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
@@ -6763,7 +6767,6 @@ ${markedSwatchHtml}
       // 关闭面板时清除暂存
       const _origClose = $('#sp_close,#sp_cover').off.bind($('#sp_close,#sp_cover'), 'click');
       delete SettingPanel.__pendingImport;
-
       // ── 使用数据导入导出 ──
       $('#btn_sp_fullExport_reset').off('click').on('click', (e) => {
         e.stopPropagation();
@@ -7018,6 +7021,7 @@ ${markedSwatchHtml}
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
+        sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号'
       };
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
       if (!document.getElementById('sp_update_log')) {
@@ -7170,7 +7174,8 @@ ${markedSwatchHtml}
         'enableImageHideMode',
         'extendQuote',
         'enablePostExpandAll',
-        'toggleSidebar'
+        'toggleSidebar',
+        'disableAutoQuote'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
       // 二次确认饼干联动：快捷切换饼干关闭时禁用
       $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
@@ -17904,15 +17909,12 @@ ${markedSwatchHtml}
             const tRaw = tResp && (tResp.response || tResp.responseText);
             const t = typeof tRaw === 'string' ? JSON.parse(tRaw) : tRaw;
             if (!t || t.success === false) throw new Error((t && t.error) || 'API error');
-            let tailReplies = Array.isArray(t.Replies) ? t.Replies.slice() : [];
+            let tailReplies = (Array.isArray(t.Replies) ? t.Replies : []).filter(r => r && Number(r.id) !== 9999999);
             // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
-
             const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
             if (!allOldNodes.length) return;
             // 用第一个节点的最后一条回复 ID 作为 API 数据范围的基准
-
             const firstNode = allOldNodes[0];
-
             const firstReplyEls = Array.from(firstNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
             const lastOldId = firstReplyEls.length ? Number(firstReplyEls[firstReplyEls.length - 1].getAttribute('data-threads-id')) : 0;
             // Step 4: 定位 lastOldId 并确定新回复范围
@@ -17930,7 +17932,7 @@ ${markedSwatchHtml}
                   const pResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + (tailPage - 1), 'json');
                   const pRaw = pResp && (pResp.response || pResp.responseText);
                   const p = typeof pRaw === 'string' ? JSON.parse(pRaw) : pRaw;
-                  const prevReplies = Array.isArray(p && p.Replies) ? p.Replies : [];
+                  const prevReplies = (Array.isArray(p && p.Replies) ? p.Replies : []).filter(r => r && Number(r.id) !== 9999999);
                   // 合并两页：倒数第二页 + 末页
                   const merged = prevReplies.concat(tailReplies);
                   const mIdx = merged.findIndex(r => r && Number(r.id) === lastOldId);
@@ -20125,12 +20127,6 @@ ${markedSwatchHtml}
         transition: filter 0.15s;
       }
       .xdex-feed-display-uuid:empty { display: none; }
-      .xdex-feed-selector-wrap:hover .xdex-feed-display-uuid {
-        filter: none;
-      }
-      .xdex-feed-display-uuid.xdex-feed-uuid-visible {
-        filter: none;
-      }
       .xdex-feed-selector-dropdown {
         position: absolute; top: 100%; left: 0; right: 0;
         margin-top: 2px;
@@ -20424,8 +20420,8 @@ ${markedSwatchHtml}
         });
       }
     });
-    $m.find('#cookie-confirm-cancel').on('click', () => { $m.remove(); onCancel(); });
-    $m.find('.cookie-confirm-backdrop').on('click', () => { $m.remove(); onCancel(); });
+    $m.find('#cookie-confirm-cancel').on('click', () => { $m.remove(); onCancel(); document.querySelector('textarea.h-post-form-textarea')?.focus(); });
+    $m.find('.cookie-confirm-backdrop').on('click', () => { $m.remove(); onCancel(); document.querySelector('textarea.h-post-form-textarea')?.focus(); });
     $('body').append($m);
     $m[0].focus();
     // 应用引用格式拓展和标记饼干
@@ -20472,10 +20468,10 @@ ${markedSwatchHtml}
         e.stopPropagation();
         $m.remove();
         onCancel();
+        document.querySelector('textarea.h-post-form-textarea')?.focus();
       }
     });
   }
-
   // ── 串内饼干偏好存储 ──
     const THREAD_COOKIE_PREFS_KEY = 'xdex_thread_cookie_prefs';
     // 一次性清理旧的脏数据（调试期间写入的错误偏好）
@@ -20574,7 +20570,6 @@ ${markedSwatchHtml}
       replyRow.classList.add('uk-width-4-5');
       replyRow.style.display = 'flex';
       replyRow.style.alignItems = 'center';
-
       // 串号 font 元素撑满，把 area 推到右侧
       const fontEl = replyRow.querySelector('font');
       if (fontEl) fontEl.style.flex = '1';
@@ -21578,6 +21573,65 @@ ${markedSwatchHtml}
   }
 
   /* --------------------------------------------------
+
+   * tag 27. 关闭引用
+
+   * -------------------------------------------------- */
+  // 阻止URL中r=参数导致的自动引用插入（网站原生行为）
+  // 开关：设置面板 → 关闭引用（disableAutoQuote），实时生效
+  function initDisableAutoQuote() {
+    const rParam = new URLSearchParams(location.search).get('r');
+    if (!rParam) return;
+    const rEsc = rParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const quoteRe = new RegExp('^\\s*>>No\\.' + rEsc + '\\s*\\n?');
+    // 读取实时设置（支持面板切换后即时生效）
+    function isEnabled() {
+      try {
+        const s = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        return s.disableAutoQuote !== false; // 默认 true（开启拦截）
+      } catch (e) { return true; }
+    }
+    // 检查草稿是否本身以该引用号开头（如果是，说明引用来自草稿而非网站自动插入）
+    function draftHasQuote() {
+      try {
+        if (typeof readDraftValue === 'function') {
+          const draft = readDraftValue();
+          return typeof draft === 'string' && quoteRe.test(draft);
+        }
+      } catch (e) {}
+      return false;
+    }
+    function interceptTextarea(ta) {
+      if (ta.__quoteIntercepted) return;
+      ta.__quoteIntercepted = true;
+      const desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+      Object.defineProperty(ta, 'value', {
+        configurable: true, enumerable: true,
+        get() { return desc.get.call(this); },
+        set(v) {
+          // 仅在拦截开启 且 草稿本身不含此引用号时才剥离
+          if (isEnabled() && !draftHasQuote() && quoteRe.test(v)) {
+            v = v.replace(quoteRe, '');
+          }
+          desc.set.call(this, v);
+        }
+      });
+      // 初始清理（仅在开启且草稿不含该引用时）
+      if (isEnabled() && !draftHasQuote() && quoteRe.test(ta.value)) {
+        const cleaned = ta.value.replace(quoteRe, '');
+        desc.set.call(ta, cleaned);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+    const obs = new MutationObserver(() => {
+      const ta = document.querySelector('textarea.h-post-form-textarea');
+      if (ta) { interceptTextarea(ta); obs.disconnect(); }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => { const ta = document.querySelector('textarea.h-post-form-textarea'); if (ta) interceptTextarea(ta); }, 1000);
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => {
@@ -21598,6 +21652,7 @@ ${markedSwatchHtml}
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
+    initDisableAutoQuote(); //关闭引用：阻止URL中?r=参数自动插入引用号
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     // 串内饼干偏好初始化

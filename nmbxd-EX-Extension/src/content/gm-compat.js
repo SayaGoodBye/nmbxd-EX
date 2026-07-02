@@ -27,7 +27,7 @@
     "// ==UserScript==",
     "// @name         X岛-EX",
     "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
-    "// @version      3.6.0",
+    "// @version      3.7.0",
     "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。",
     "// @author       XY",
     "// @match        https://*.nmbxd1.com/*",
@@ -61,7 +61,7 @@
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
     "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
     "// @license      WTFPL",
-    "// @changelog    新增\\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\\n\\n优化\\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\\n2.发言历史中的[回应]链接加入引用对应回应号参数；常用串链接随浏览历史的中记录的最远页面实时更新。\\n\\n修复\\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\\n",
+    "// @changelog    新增\\n1.新增“关闭引用”开关，在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号。\\n\\n修复\\n1.排除版块页快速回复api拉取的数据中可能混杂的Tips。\\n2.修复订阅面板中切换订阅号后没有重新作用模糊遮罩的问题。\\n",
     "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
     "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
     "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
@@ -74,7 +74,7 @@
     "// @run-at       document-start",
     "// ==/UserScript=="
   ].join('\n');
-  const scriptMeta = { name: "X岛-EX", version: "3.6.0" };
+  const scriptMeta = { name: "X岛-EX", version: "3.7.0" };
   // END GENERATED USERSCRIPT META
 
   function normalizeKey(key) {

@@ -593,7 +593,7 @@ function testHistoryAndPostCanonicalReplyLinksContract() {
   assert(upstream.includes('function buildPostHistoryReplyActionUrl(type, id, resto, page)'), 'post-history must centralize [回应] page-link construction separately from No. links');
   const postReplyActionStart = upstream.indexOf('function buildPostHistoryReplyActionUrl(type, id, resto, page)');
   const postReplyActionBody = upstream.slice(postReplyActionStart, upstream.indexOf('function getConfirmedPostHistoryIds', postReplyActionStart));
-  assert(postReplyActionBody.includes('return `${location.origin}/t/${threadId}?page=${pageNum}`') && postReplyActionBody.includes('return buildPostHistoryUrl(type, postId, threadId);'), 'post-history [回应] must use /t/{threadId}?page={page} and fall back to the canonical ?r link when page is missing');
+  assert(postReplyActionBody.includes('return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`') && postReplyActionBody.includes('return buildPostHistoryUrl(type, postId, threadId);'), 'post-history [回应] must use /t/{threadId}?page={page}&r={postId} and fall back to the canonical ?r link when page is missing');
   const postUrlStart = upstream.indexOf('function buildPostHistoryUrl(type, id, resto)');
   const postUrlBody = upstream.slice(postUrlStart, upstream.indexOf('function getConfirmedPostHistoryIds', postUrlStart));
   assert(postUrlBody.includes('return buildCanonicalReplyUrl(threadId, postId);'), 'post-history render must rebuild links from stored ids/resto instead of trusting old saved url fields');
@@ -765,8 +765,8 @@ function testHistoryAndPostDeleteConfirmContract() {
 function testBrowsingHistoryUrlParsingContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
   assert(upstream.includes('function parseThreadHistoryUrl'), 'userscript must expose a history URL parser');
-  assert(upstream.includes('/\\/t\\/(\\d{8,})(?:\\/(\\d+))?/'), 'history URL parser must support /t/{id} and /t/{id}/{page}');
-  assert(upstream.includes('/\\/Forum\\/po\\/id\\/(\\d{8,})(?:\\/page\\/(\\d+)\\.html)?/'), 'history URL parser must support PO id page paths');
+  assert(upstream.includes('/\\/t\\/(\\d{6,8})(?:\\/(\\d+))?/'), 'history URL parser must support /t/{id} and /t/{id}/{page}');
+  assert(upstream.includes('/\\/Forum\\/po\\/id\\/(\\d{6,8})(?:\\/page\\/(\\d+)\\.html)?/'), 'history URL parser must support PO id page paths');
   assert(upstream.includes("url.searchParams.get('page')"), 'history URL parser must support query page fallback');
   assert(upstream.includes("mode: poMatch ? 'po' : 'normal'"), 'history URL parser must return normal or po mode');
 }
