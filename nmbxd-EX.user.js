@@ -20084,8 +20084,16 @@ ${markedSwatchHtml}
     menu.querySelectorAll('a[data-thread-id]').forEach(link => {
       const tid = link.dataset.threadId;
       if (tid) {
-        const url = getLatestThreadHistoryUrl(tid);
-        if (url) link.href = url;
+        const store = getThreadHistoryStore();
+        const candidates = ['normal', 'po']
+          .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
+          .filter(Boolean)
+          .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
+        if (candidates.length) {
+          const item = candidates[0];
+          const page = item.maxVisitedPage || item.page || 1;
+          link.href = buildThreadHistoryPageUrl(item.mode, tid, page);
+        }
       }
     });
   }
