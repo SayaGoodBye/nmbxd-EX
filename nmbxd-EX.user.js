@@ -9139,7 +9139,6 @@ ${markedSwatchHtml}
    * tag 6. 页面增强：页首页码 / 关闭水印 / 预览区真实饼干 / 隐藏无标题+无名氏+版规
    * -------------------------------------------------- */
   function enablePaginationDuplication  (){
-
     // 获取所有分页栏，而不是只获取一个
     const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
     if(!pags.length) return;
@@ -14454,7 +14453,7 @@ ${markedSwatchHtml}
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
             // 清空输入框
             const textarea = form.querySelector('textarea[name="content"]');
-            if (textarea) textarea.value = '';
+            if (textarea) { textarea.value = ''; textarea.dispatchEvent(new Event('input', { bubbles: true })); }
             // 清空图片选择
             const fileInput = form.querySelector('input[type="file"][name="image"]');
             if (fileInput) fileInput.value = '';
@@ -14463,11 +14462,11 @@ ${markedSwatchHtml}
             deleteDraftSafe(getDraftKey());
             // **清空标题、名称、Email**
             const titleInput = form.querySelector('input[name="title"]');
-            if (titleInput) titleInput.value = '';
+            if (titleInput) { titleInput.value = ''; titleInput.dispatchEvent(new Event('input', { bubbles: true })); }
             const nameInput = form.querySelector('input[name="name"]');
-            if (nameInput) nameInput.value = '';
+            if (nameInput) { nameInput.value = ''; nameInput.dispatchEvent(new Event('input', { bubbles: true })); }
             const emailInput = form.querySelector('input[name="email"]');
-            if (emailInput) emailInput.value = '';
+            if (emailInput) { emailInput.value = ''; emailInput.dispatchEvent(new Event('input', { bubbles: true })); }
             // 再广播事件给增强模块/其他联动
             document.dispatchEvent(new CustomEvent('replySuccess', {
               detail: { key: getDraftKey(), tid: form.querySelector('input[name="resto"]')?.value || '' }
@@ -15360,8 +15359,28 @@ ${markedSwatchHtml}
           Object.assign(btnWrapper.style, {
             marginLeft: 'auto',
             display: 'flex',
-            alignItems: 'center'
+            alignItems: 'center',
+            gap: '6px'
           });
+          const contentTextarea = form.querySelector('textarea[name="content"].h-post-form-textarea');
+          if (contentTextarea) {
+            let contentCounter = btnWrapper.querySelector('.xdex-post-content-char-count');
+            if (!contentCounter) {
+              contentCounter = document.createElement('span');
+              contentCounter.className = 'xdex-post-content-char-count';
+              contentCounter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+              btnWrapper.appendChild(contentCounter);
+            }
+            const updateContentCounter = () => {
+              contentCounter.textContent = '字数:' + String(contentTextarea.value || '').length;
+            };
+            if (contentTextarea.__xdexPostContentCharCounter) {
+              contentTextarea.removeEventListener('input', contentTextarea.__xdexPostContentCharCounter);
+            }
+            contentTextarea.__xdexPostContentCharCounter = updateContentCounter;
+            contentTextarea.addEventListener('input', updateContentCounter);
+            updateContentCounter();
+          }
           btnWrapper.appendChild(sendBtn);
           // 将按钮容器添加到“颜文字”行
           emoticonRow.appendChild(btnWrapper);
@@ -15384,14 +15403,48 @@ ${markedSwatchHtml}
         .filter(Boolean);
       // 关闭浏览器推荐填充（title/name/email）
       form.setAttribute('autocomplete', 'off');
+      form.setAttribute('data-form-type', 'other');
       const noPersistInputs = rowsToCollapse.flatMap(row =>
         Array.from(row.querySelectorAll('input[type="text"], textarea'))
       );
+      const POST_FORM_OPTIONAL_MAX_LENGTH = 15;
       noPersistInputs.forEach(input => {
         input.setAttribute('autocomplete', 'off');
         input.setAttribute('autocapitalize', 'off');
         input.setAttribute('autocorrect', 'off');
         input.setAttribute('spellcheck', 'false');
+        input.setAttribute('aria-autocomplete', 'none');
+        input.setAttribute('data-lpignore', 'true');
+        input.setAttribute('data-form-type', 'other');
+        const inputCell = input.closest('.h-post-form-input');
+        if (inputCell) {
+          inputCell.style.display = 'flex';
+          inputCell.style.alignItems = 'center';
+          inputCell.style.gap = '6px';
+          inputCell.style.minWidth = '0';
+          input.style.flex = '1 1 auto';
+          input.style.minWidth = '0';
+        }
+        let counter = input.nextElementSibling && input.nextElementSibling.classList?.contains('xdex-post-form-char-count')
+          ? input.nextElementSibling
+          : null;
+        if (!counter) {
+          counter = document.createElement('span');
+          counter.className = 'xdex-post-form-char-count';
+          counter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+          input.insertAdjacentElement('afterend', counter);
+        }
+        const updateCounter = () => {
+          const len = String(input.value || '').length;
+          counter.textContent = len + '/' + POST_FORM_OPTIONAL_MAX_LENGTH;
+          counter.style.color = len > POST_FORM_OPTIONAL_MAX_LENGTH ? '#e53935' : '#888';
+        };
+        if (input.__xdexPostFormCharCounter) {
+          input.removeEventListener('input', input.__xdexPostFormCharCounter);
+        }
+        input.__xdexPostFormCharCounter = updateCounter;
+        input.addEventListener('input', updateCounter);
+        updateCounter();
       });
       if (rowsToCollapse.length) {
         const wrapper = document.createElement('div');
@@ -16902,6 +16955,8 @@ ${markedSwatchHtml}
         }
       }
       正文框.val(draft);
+      // 触发 input 事件，让字数计数器同步更新（jQuery .val() 不会触发原生事件）
+      正文框[0]?.dispatchEvent(new Event('input', { bubbles: true }));
     }
     // 草稿：注册自动保存 + 初始化一次保存触发（原脚本用 $(保存编辑)）
     function 注册自动保存编辑() {
@@ -21874,5 +21929,4 @@ ${markedSwatchHtml}
   });
   }
   scheduleXDexStartup();
-
 })(jQuery);
