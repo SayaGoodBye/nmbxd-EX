@@ -12157,8 +12157,9 @@ ${markedSwatchHtml}
       hideEmptyTitleAndEmail($quote[0]);
       initContent($quote[0]);
       try {
-        const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
-        if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', $quote[0]);
+        const cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        markAllCookies(cfg.markedGroups || [], $quote[0]);
+        if (cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', $quote[0]);
       } catch (e) {}
       if (options && options.fromPOImage) {
         setTimeout(() => {
@@ -12592,7 +12593,8 @@ ${markedSwatchHtml}
                 renderHiddenTextContent(refEl);
                 if (typeof extendQuote === 'function') extendQuote(refEl);
                 if (typeof initExtendedContent === 'function') initExtendedContent(refEl);
-                const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+                const _cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+                markAllCookies(_cfg.markedGroups || [], refEl);
                 if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
                 if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
                 updateRefViewImageLayout(refEl, quoteEl);
