@@ -9265,14 +9265,34 @@ ${markedSwatchHtml}
   //   pag.insertBefore(fragment, nextPageLi);
   // }
 
+  function parsePaginationPageNum(href) {
+    if (!href) return null;
+    const value = String(href);
+    let m = value.match(/[?&]page=(\d+)/);
+    if (m) return parseInt(m[1], 10);
+    m = value.match(/\/page\/(\d+)\.html/);
+    if (m) return parseInt(m[1], 10);
+    return null;
+  }
+  function buildPaginationHref(sampleHref, pageNum) {
+    const href = String(sampleHref || '');
+    if (/[?&]page=\d+/.test(href)) return href.replace(/page=\d+/, `page=${pageNum}`);
+    if (/\/page\/\d+\.html/.test(href)) return href.replace(/\/page\/\d+\.html/, `/page/${pageNum}.html`);
+    if (/^\/f\//.test(location.pathname) || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
+      const base = location.pathname.replace(/\/page\/\d+\.html$/, '');
+      return `${base}/page/${pageNum}.html`;
+    }
+    return href;
+  }
+  function isBoardPaginationContext() {
+    return /^\/f\//.test(location.pathname);
+  }
   // 重建分页栏页码：显示 7 个页码，当前页居中（边界时左/右对齐）
   function rebuildPaginationPages(pag) {
-    // 1) 提取 URL 基础模式（如 "/t/68707051?page="）
-    const anyLink = pag.querySelector('a[href*="page="]');
+    // 1) 提取分页链接样本：支持串内 ?page=N，也支持版块页 /page/N.html
+    const anyLink = Array.from(pag.querySelectorAll('a[href], span[href]')).find(el => parsePaginationPageNum(el.getAttribute('href')));
     if (!anyLink) return;
-    const anyHref = anyLink.getAttribute('href') || '';
-    const urlBase = anyHref.replace(/page=\d+/, 'page=');
-    if (!urlBase) return;
+    const sampleHref = anyLink.getAttribute('href') || '';
     // 2) 提取当前页码：优先 uk-active，回退到 data-cloned-page，再回退到上一页+1
     // （先提取当前页，后面计算总页数需要用到）
     let currentPage = 0;
@@ -9281,8 +9301,8 @@ ${markedSwatchHtml}
       const activeEl = activeLi.querySelector('span, a');
       if (activeEl) {
         const activeHref = activeEl.getAttribute('href') || '';
-        const currentMatch = activeHref.match(/page=(\d+)/);
-        currentPage = currentMatch ? parseInt(currentMatch[1], 10) : 0;
+        currentPage = parsePaginationPageNum(activeHref) || 0;
+        if (!currentPage && /^\d+$/.test((activeEl.textContent || '').trim())) currentPage = parseInt((activeEl.textContent || '').trim(), 10);
       }
     }
     if (!currentPage) {
@@ -9292,8 +9312,8 @@ ${markedSwatchHtml}
       const prevLink = Array.from(pag.querySelectorAll('a')).find(a => (a.textContent || '').trim() === '上一页');
       if (prevLink) {
         const prevHref = prevLink.getAttribute('href') || '';
-        const prevMatch = prevHref.match(/page=(\d+)/);
-        currentPage = prevMatch ? parseInt(prevMatch[1], 10) + 1 : 0;
+        const prevPage = parsePaginationPageNum(prevHref);
+        currentPage = prevPage ? prevPage + 1 : 0;
       }
     }
     if (!currentPage) currentPage = 1;
@@ -9303,8 +9323,7 @@ ${markedSwatchHtml}
     const lastLink = Array.from(pag.querySelectorAll('a')).find(a => (a.textContent || '').trim().startsWith('末页'));
     if (lastLink) {
       const lastHref = lastLink.getAttribute('href') || '';
-      const lastMatch = lastHref.match(/page=(\d+)/);
-      totalPages = lastMatch ? parseInt(lastMatch[1], 10) : 0;
+      totalPages = parsePaginationPageNum(lastHref) || 0;
     }
     // 回退2：data-last-page（无缝翻页的属性，可能是翻页前的页码而非真正的总页数）
     if (!totalPages || totalPages < 1) {
@@ -9313,11 +9332,16 @@ ${markedSwatchHtml}
     // 回退3：从所有页码链接中取最大值
     if (!totalPages || totalPages < 1) {
       let maxPage = 0;
-      pag.querySelectorAll('a[href*="page="], span[href*="page="]').forEach(el => {
-        const m = (el.getAttribute('href') || '').match(/page=(\d+)/);
-        if (m) maxPage = Math.max(maxPage, parseInt(m[1], 10));
+      pag.querySelectorAll('a[href], span[href]').forEach(el => {
+        const n = parsePaginationPageNum(el.getAttribute('href') || '');
+        if (n) maxPage = Math.max(maxPage, n);
       });
       totalPages = maxPage;
+    }
+    // 版块页最多 100 页；若没有末页信息，按 100 兜底（少于 100 页的板块会由末页链接覆盖）
+    if (isBoardPaginationContext()) {
+      totalPages = totalPages ? Math.min(100, totalPages) : 100;
+      if (currentPage > totalPages) totalPages = Math.min(100, currentPage);
     }
     // 关键修正：如果"下一页"被禁用（uk-disabled），说明当前就是末页
     const nextPageCandidate = Array.from(pag.children).find(li => (li.textContent || '').trim() === '下一页');
@@ -9327,7 +9351,7 @@ ${markedSwatchHtml}
     // 兜底：总页数不能小于当前页
     if (totalPages < currentPage) totalPages = currentPage;
     if (!totalPages) return;
-    // console.debug('[rebuildPaginationPages]', { totalPages, currentPage, urlBase });
+    // console.debug('[rebuildPaginationPages]', { totalPages, currentPage, sampleHref });
     // 4) 计算页码窗口
     const WINDOW = 7;
     const HALF = Math.floor(WINDOW / 2);
@@ -9373,12 +9397,12 @@ ${markedSwatchHtml}
       if (p === currentPage) {
         li.className = 'uk-active';
         const span = document.createElement('span');
-        span.setAttribute('href', urlBase + p);
+        span.setAttribute('href', buildPaginationHref(sampleHref, p));
         span.textContent = String(p);
         li.appendChild(span);
       } else {
         const a = document.createElement('a');
-        a.setAttribute('href', urlBase + p);
+        a.setAttribute('href', buildPaginationHref(sampleHref, p));
         a.setAttribute('achecked', '1');
         a.textContent = String(p);
         li.appendChild(a);
@@ -10208,16 +10232,11 @@ ${markedSwatchHtml}
       }
       function parseLastPageFromPagination(pagUl) {
         if (!pagUl) return null;
-        const anchors = Array.from(pagUl.querySelectorAll('a')).map(a => a.href || a.getAttribute('href') || '');
+        const anchors = Array.from(pagUl.querySelectorAll('a, span')).map(a => a.href || a.getAttribute('href') || '');
         const pageNums = anchors.map(h => {
-          try {
-            const u = new URL(h, location.origin);
-            const p = Number(u.searchParams.get('page') || '') || null;
-            return p;
-          } catch (e) {
-            const m = (h || '').match(/page=(\d+)/);
-            return m ? Number(m[1]) : null;
-          }
+          if (typeof parsePaginationPageNum === 'function') return parsePaginationPageNum(h);
+          const m = (h || '').match(/[?&]page=(\d+)|\/page\/(\d+)\.html/);
+          return m ? Number(m[1] || m[2]) : null;
         }).filter(n => !!n);
         if (pageNums.length === 0) return null;
         return Math.max(...pageNums);
