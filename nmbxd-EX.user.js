@@ -22039,6 +22039,18 @@ ${markedSwatchHtml}
         return s.disableAutoQuote !== false; // 默认 true（开启拦截）
       } catch (e) { return true; }
     }
+    // 值班室/举报表单需要保留 r= 自动引用，以便精准举报
+    function shouldPreserveAutoQuoteForReport() {
+      try {
+        const decodedPath = decodeURIComponent(location.pathname || '');
+        if (/^\/f\/值班室(?:\/|$)/.test(decodedPath)) return true;
+      } catch (e) {}
+      try {
+        return !!document.querySelector('form[action="/Home/Forum/doReplyThread.html"] #h-report-switch, form[action="/Home/Forum/doPostThread.html"] #h-report-switch, #h-report-switch');
+      } catch (e) {
+        return false;
+      }
+    }
     // 检查草稿是否本身以该引用号开头（如果是，说明引用来自草稿而非网站自动插入）
     function draftHasQuote() {
       try {
@@ -22057,15 +22069,15 @@ ${markedSwatchHtml}
         configurable: true, enumerable: true,
         get() { return desc.get.call(this); },
         set(v) {
-          // 仅在拦截开启 且 草稿本身不含此引用号时才剥离
-          if (isEnabled() && !draftHasQuote() && quoteRe.test(v)) {
+          // 仅在拦截开启 且 草稿本身不含此引用号 且 非值班室/举报场景时才剥离
+          if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(v)) {
             v = v.replace(quoteRe, '');
           }
           desc.set.call(this, v);
         }
       });
-      // 初始清理（仅在开启且草稿不含该引用时）
-      if (isEnabled() && !draftHasQuote() && quoteRe.test(ta.value)) {
+      // 初始清理（仅在开启且草稿不含该引用且非值班室/举报场景时）
+      if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(ta.value)) {
         const cleaned = ta.value.replace(quoteRe, '');
         desc.set.call(ta, cleaned);
         ta.dispatchEvent(new Event('input', { bubbles: true }));
