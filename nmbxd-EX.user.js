@@ -9991,20 +9991,30 @@ ${markedSwatchHtml}
   // ========== 公共增强函数 ==========
   // root: 新插入或替换的 DOM 节点（例如 repliesClone 或 targetReplies）
   // cfg: 当前配置对象
-  function applyPageEnhancements(root, cfg) {
-    const getLatestCfg = () => {
-      try {
-        // 关键：以 GM 最新配置为最高优先级，避免旧 cfg 覆盖新设置
-        return Object.assign({}, SettingPanel.defaults, cfg || {}, GM_getValue(SettingPanel.key, {}));
-      } catch (e) {
-        return Object.assign({}, SettingPanel.defaults, cfg || {});
-      }
-    };
-    let liveCfg = getLatestCfg();
+  function getPageEnhancementConfig(cfg) {
+    try {
+      // 关键：以 GM 最新配置为最高优先级，避免旧 cfg 覆盖新设置
+      return Object.assign({}, SettingPanel.defaults, cfg || {}, GM_getValue(SettingPanel.key, {}));
+    } catch (e) {
+      return Object.assign({}, SettingPanel.defaults, cfg || {});
+    }
+  }
+  // 插入 DOM 前可安全执行的同步增强：避免用户看到原始 DOM → 增强后 DOM 的闪烁过程
+  function preprocessPageEnhancementsBeforeInsert(root, cfg) {
+    const liveCfg = getPageEnhancementConfig(cfg);
     try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
+    try { if (typeof highlightPO === 'function') highlightPO(root); } catch (e) {}
+    try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig(liveCfg).markedGroups || [], root); } catch (e) {}
     try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
-      try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
-      try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
+    try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
+    try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
+    try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
+    try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
+  }
+  function applyPageEnhancements(root, cfg) {
+    const getLatestCfg = () => getPageEnhancementConfig(cfg);
+    let liveCfg = getLatestCfg();
+    preprocessPageEnhancementsBeforeInsert(root, liveCfg);
     setTimeout(() => {
       liveCfg = getLatestCfg();
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
@@ -10674,6 +10684,8 @@ ${markedSwatchHtml}
           const repliesClone = startupPerfDebug.measure('seamless.loadNext.cloneReplies', () => replies.cloneNode(true), { nextPageNum, replies: replies.querySelectorAll ? replies.querySelectorAll('.h-threads-item-reply').length : 0 });
           repliesClone.setAttribute('data-cloned-page', String(nextPageNum));
           removeIdsFromNode(repliesClone);
+          // 插入 DOM 前同步执行会影响视觉的公共增强，避免用户看到未处理态闪烁
+          try { if (typeof preprocessPageEnhancementsBeforeInsert === 'function') preprocessPageEnhancementsBeforeInsert(repliesClone, cfg); } catch (e) {}
           const containers = getRootRepliesContainer();
           if (!containers) { return; }
           const { lastReplies } = containers;
@@ -10772,6 +10784,8 @@ ${markedSwatchHtml}
           if (!list) { done = true; return; }
           const listClone = startupPerfDebug.measure('seamless.loadNextBoard.cloneList', () => list.cloneNode(true), { nextPageNum, threads: list.querySelectorAll ? list.querySelectorAll('.h-threads-item').length : 0 });
           removeIdsFromNode(listClone);
+          // 插入 DOM 前同步执行会影响视觉的公共增强，避免用户看到未处理态闪烁
+          try { if (typeof preprocessPageEnhancementsBeforeInsert === 'function') preprocessPageEnhancementsBeforeInsert(listClone, cfg); } catch (e) {}
           // 找到当前页面最后一个 .h-threads-list
           const lists = document.querySelectorAll('.h-threads-list');
           const lastList = lists[lists.length - 1];
@@ -15295,10 +15309,14 @@ ${markedSwatchHtml}
           // 排除系统提示类回复（tips）
           Array.from(fragment.querySelectorAll('.h-threads-item-reply[data-threads-id="9999999"]'))
             .forEach(el => el.remove());
-          // 离线预处理：对 fragment 做一次过滤（主要保证新增项的 DOM 是处理过的）
+          // 离线预处理：对 fragment 做完整的插入前公共增强，保证新增项进入页面前就是处理后的 DOM
           try {
-            if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(fragment));
-            if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2, fragment);
+            if (typeof preprocessPageEnhancementsBeforeInsert === 'function') {
+              preprocessPageEnhancementsBeforeInsert(fragment, cfg2);
+            } else {
+              if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(fragment));
+              if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2, fragment);
+            }
           } catch (e) {
             console.warn('预处理过滤失败', e);
           }
@@ -15310,8 +15328,8 @@ ${markedSwatchHtml}
               .map(i => i.getAttribute('data-threads-id'))
               .filter(id => id && id !== '9999999')
           );
-          // 2) 收集新页面的回复项（使用 newReplies，而非 fragment，以维持服务器顺序）
-          const newItems = Array.from(newReplies.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
+          // 2) 收集新页面的回复项（使用已离线预处理的 fragment，以维持服务器顺序并避免插入后闪烁）
+          const newItems = Array.from(fragment.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
             .filter(i => i.getAttribute('data-threads-id') !== '9999999');
           // 3) 逐项比较，把新页面中不存在于旧页面的项依顺序追加（保持服务器顺序）
           const appendedNodes = [];
@@ -15549,13 +15567,17 @@ ${markedSwatchHtml}
    * tag 12. 高亮Po主+回复表单UI调整
    * -------------------------------------------------- */
   // 高亮 Po 主（内置并先执行楼层编号）
-  function highlightPO() {
+  function highlightPO(root) {
+    const scope = root || document;
     return startupPerfDebug.measure('highlightPO', () => {
     const poTextColor  = '#00FFCC'; // Po 本体颜色
     const iconWidthEm  = 3.0;       // 所有图标统一宽度
     // 子函数：先为当前页面所有回复区编号（原 updateReplyNumbers 逻辑）
     function updateReplyNumbersLocal() {
-      document.querySelectorAll('.h-threads-item-replies').forEach(replies => {
+      const repliesList = scope.querySelectorAll
+        ? Array.from(scope.querySelectorAll('.h-threads-item-replies')).concat(scope.matches && scope.matches('.h-threads-item-replies') ? [scope] : [])
+        : Array.from(document.querySelectorAll('.h-threads-item-replies'));
+      repliesList.forEach(replies => {
         let effectiveCount = 0;
         replies.querySelectorAll('.h-threads-item-reply-icon').forEach(icon => {
           const reply = icon.closest('[data-threads-id]');
@@ -15572,7 +15594,8 @@ ${markedSwatchHtml}
       });
     }
     // 统一设置所有回复图标的宽度与基础样式
-    document.querySelectorAll('.h-threads-item-reply-icon').forEach(icon => {
+    const icons = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-item-reply-icon') : document.querySelectorAll('.h-threads-item-reply-icon');
+    icons.forEach(icon => {
       icon.style.display = 'inline-block';
       icon.style.width = iconWidthEm + 'em';
       icon.style.textAlign = 'center';
@@ -15582,7 +15605,8 @@ ${markedSwatchHtml}
     // 先编号，再做 Po 标替换
     updateReplyNumbersLocal();
     // 替换 PO 回复的数字为 Po，并加角标
-    document.querySelectorAll('.h-threads-item-reply').forEach(reply => {
+    const replies = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-item-reply') : document.querySelectorAll('.h-threads-item-reply');
+    replies.forEach(reply => {
       const main = reply.querySelector('.h-threads-item-reply-main');
       const icon = reply.querySelector('.h-threads-item-reply-icon');
       if (!main || !icon) return;
