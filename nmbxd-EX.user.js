@@ -9180,33 +9180,270 @@ ${markedSwatchHtml}
   /* --------------------------------------------------
    * tag 6. 页面增强：页首页码 / 关闭水印 / 预览区真实饼干 / 隐藏无标题+无名氏+版规
    * -------------------------------------------------- */
+  // ---- 旧版 enablePaginationDuplication（仅克隆 + 末页补全）----
+  // function enablePaginationDuplication  (){
+  //   const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+  //   if(!pags.length) return;
+  //   pags.forEach(pag => {
+  //     const tit = document.querySelector('h2.h-title');
+  //     if(!tit || !pag) return;
+  //     const clone = pag.cloneNode(true);
+  //     tit.parentNode.insertBefore(clone, tit.nextSibling);
+  //     processPagination(clone);
+  //   });
+  //   const observer = new MutationObserver(mutations => {
+  //     mutations.forEach(m => {
+  //       m.addedNodes.forEach(node => {
+  //         if(node.nodeType === 1){
+  //           if(node.matches && node.matches('ul.uk-pagination.uk-pagination-left.h-pagination')){
+  //             processPagination(node);
+  //           }
+  //           const innerPags = node.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination');
+  //           innerPags?.forEach(p => processPagination(p));
+  //         }
+  //       });
+  //     });
+  //   });
+  //   observer.observe(document.body, { childList: true, subtree: true });
+  // }
+
+  // ---- 旧版 rebuildPaginationPages ----
+  // function rebuildPaginationPages(pag) {
+  //   const totalPages = parseInt(pag.getAttribute('data-last-page'), 10);
+  //   if (!totalPages || totalPages < 1) return;
+  //   const activeLi = pag.querySelector('li.uk-active');
+  //   if (!activeLi) return;
+  //   const activeEl = activeLi.querySelector('span, a');
+  //   if (!activeEl) return;
+  //   const activeHref = activeEl.getAttribute('href') || '';
+  //   const currentMatch = activeHref.match(/page=(\d+)/);
+  //   const currentPage = currentMatch ? parseInt(currentMatch[1], 10) : 1;
+  //   if (!currentPage) return;
+  //   const anyLink = pag.querySelector('a[href*="page="]');
+  //   if (!anyLink) return;
+  //   const anyHref = anyLink.getAttribute('href') || '';
+  //   const urlBase = anyHref.replace(/page=\d+/, 'page=');
+  //   if (!urlBase) return;
+  //   const WINDOW = 7;
+  //   const HALF = Math.floor(WINDOW / 2);
+  //   let start = Math.max(1, currentPage - HALF);
+  //   let end = Math.min(totalPages, start + WINDOW - 1);
+  //   start = Math.max(1, end - WINDOW + 1);
+  //   const allLi = Array.from(pag.children);
+  //   let prevPageLi = null;
+  //   let nextPageLi = null;
+  //   for (const li of allLi) {
+  //     const text = (li.textContent || '').trim();
+  //     if (text === '上一页') prevPageLi = li;
+  //     else if (text === '下一页') nextPageLi = li;
+  //   }
+  //   if (!prevPageLi || !nextPageLi) return;
+  //   let removing = false;
+  //   for (const li of allLi) {
+  //     if (li === prevPageLi) { removing = true; continue; }
+  //     if (li === nextPageLi) break;
+  //     if (removing) li.remove();
+  //   }
+  //   const fragment = document.createDocumentFragment();
+  //   for (let p = start; p <= end; p++) {
+  //     const li = document.createElement('li');
+  //     if (p === currentPage) {
+  //       li.className = 'uk-active';
+  //       const span = document.createElement('span');
+  //       span.setAttribute('href', urlBase + p);
+  //       span.textContent = String(p);
+  //       li.appendChild(span);
+  //     } else {
+  //       const a = document.createElement('a');
+  //       a.setAttribute('href', urlBase + p);
+  //       a.setAttribute('achecked', '1');
+  //       a.textContent = String(p);
+  //       li.appendChild(a);
+  //     }
+  //     fragment.appendChild(li);
+  //   }
+  //   pag.insertBefore(fragment, nextPageLi);
+  // }
+
+  // 重建分页栏页码：显示 7 个页码，当前页居中（边界时左/右对齐）
+  function rebuildPaginationPages(pag) {
+    // 1) 提取 URL 基础模式（如 "/t/68707051?page="）
+    const anyLink = pag.querySelector('a[href*="page="]');
+    if (!anyLink) return;
+    const anyHref = anyLink.getAttribute('href') || '';
+    const urlBase = anyHref.replace(/page=\d+/, 'page=');
+    if (!urlBase) return;
+    // 2) 提取当前页码：优先 uk-active，回退到 data-cloned-page，再回退到上一页+1
+    // （先提取当前页，后面计算总页数需要用到）
+    let currentPage = 0;
+    const activeLi = pag.querySelector('li.uk-active');
+    if (activeLi) {
+      const activeEl = activeLi.querySelector('span, a');
+      if (activeEl) {
+        const activeHref = activeEl.getAttribute('href') || '';
+        const currentMatch = activeHref.match(/page=(\d+)/);
+        currentPage = currentMatch ? parseInt(currentMatch[1], 10) : 0;
+      }
+    }
+    if (!currentPage) {
+      currentPage = parseInt(pag.getAttribute('data-cloned-page'), 10) || 0;
+    }
+    if (!currentPage) {
+      const prevLink = Array.from(pag.querySelectorAll('a')).find(a => (a.textContent || '').trim() === '上一页');
+      if (prevLink) {
+        const prevHref = prevLink.getAttribute('href') || '';
+        const prevMatch = prevHref.match(/page=(\d+)/);
+        currentPage = prevMatch ? parseInt(prevMatch[1], 10) + 1 : 0;
+      }
+    }
+    if (!currentPage) currentPage = 1;
+    // 3) 提取总页数（多级回退）
+    let totalPages = 0;
+    // 回退1：末页链接的 href
+    const lastLink = Array.from(pag.querySelectorAll('a')).find(a => (a.textContent || '').trim().startsWith('末页'));
+    if (lastLink) {
+      const lastHref = lastLink.getAttribute('href') || '';
+      const lastMatch = lastHref.match(/page=(\d+)/);
+      totalPages = lastMatch ? parseInt(lastMatch[1], 10) : 0;
+    }
+    // 回退2：data-last-page（无缝翻页的属性，可能是翻页前的页码而非真正的总页数）
+    if (!totalPages || totalPages < 1) {
+      totalPages = parseInt(pag.getAttribute('data-last-page'), 10) || 0;
+    }
+    // 回退3：从所有页码链接中取最大值
+    if (!totalPages || totalPages < 1) {
+      let maxPage = 0;
+      pag.querySelectorAll('a[href*="page="], span[href*="page="]').forEach(el => {
+        const m = (el.getAttribute('href') || '').match(/page=(\d+)/);
+        if (m) maxPage = Math.max(maxPage, parseInt(m[1], 10));
+      });
+      totalPages = maxPage;
+    }
+    // 关键修正：如果"下一页"被禁用（uk-disabled），说明当前就是末页
+    const nextPageCandidate = Array.from(pag.children).find(li => (li.textContent || '').trim() === '下一页');
+    if (nextPageCandidate && nextPageCandidate.classList.contains('uk-disabled')) {
+      totalPages = Math.max(totalPages, currentPage);
+    }
+    // 兜底：总页数不能小于当前页
+    if (totalPages < currentPage) totalPages = currentPage;
+    if (!totalPages) return;
+    // console.debug('[rebuildPaginationPages]', { totalPages, currentPage, urlBase });
+    // 4) 计算页码窗口
+    const WINDOW = 7;
+    const HALF = Math.floor(WINDOW / 2);
+    let start = Math.max(1, currentPage - HALF);
+    let end = Math.min(totalPages, start + WINDOW - 1);
+    start = Math.max(1, end - WINDOW + 1);
+    // 幂等检查：如果上一页/下一页之间已经是目标页码，就不要再改 DOM，避免 observer 自触发循环
+    const currentPageItems = Array.from(pag.children)
+      .filter(li => {
+        const text = (li.textContent || '').trim();
+        return /^\d+$/.test(text);
+      })
+      .map(li => ({ text: (li.textContent || '').trim(), active: li.classList.contains('uk-active') }));
+    const expectedPageItems = [];
+    for (let p = start; p <= end; p++) expectedPageItems.push({ text: String(p), active: p === currentPage });
+    const alreadyMatches = currentPageItems.length === expectedPageItems.length
+      && currentPageItems.every((item, idx) => item.text === expectedPageItems[idx].text && item.active === expectedPageItems[idx].active);
+    if (alreadyMatches) {
+      pag.setAttribute('data-xdex-rebuilt', '1');
+      return;
+    }
+    // 5) 定位上一页/下一页按钮
+    const allLi = Array.from(pag.children);
+    let prevPageLi = null;
+    let nextPageLi = null;
+    for (const li of allLi) {
+      const text = (li.textContent || '').trim();
+      if (text === '上一页') prevPageLi = li;
+      else if (text === '下一页') nextPageLi = li;
+    }
+    if (!prevPageLi || !nextPageLi) return;
+    // 6) 移除上一页和下一页之间的旧页码 <li>
+    let removing = false;
+    for (const li of allLi) {
+      if (li === prevPageLi) { removing = true; continue; }
+      if (li === nextPageLi) break;
+      if (removing) li.remove();
+    }
+    // 7) 生成新页码 <li> 并插入
+    const fragment = document.createDocumentFragment();
+    for (let p = start; p <= end; p++) {
+      const li = document.createElement('li');
+      if (p === currentPage) {
+        li.className = 'uk-active';
+        const span = document.createElement('span');
+        span.setAttribute('href', urlBase + p);
+        span.textContent = String(p);
+        li.appendChild(span);
+      } else {
+        const a = document.createElement('a');
+        a.setAttribute('href', urlBase + p);
+        a.setAttribute('achecked', '1');
+        a.textContent = String(p);
+        li.appendChild(a);
+      }
+      fragment.appendChild(li);
+    }
+    pag.insertBefore(fragment, nextPageLi);
+    // 标记已重建，避免延迟重扫或 MutationObserver 重复处理
+    pag.setAttribute('data-xdex-rebuilt', '1');
+  }
   function enablePaginationDuplication  (){
     // 获取所有分页栏，而不是只获取一个
     const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
     if(!pags.length) return;
     pags.forEach(pag => {
+      // 重建页码（显示 7 个页码，当前页居中）
+      rebuildPaginationPages(pag);
+      // 末页补全
+      processPagination(pag);
       const tit = document.querySelector('h2.h-title');
       if(!tit || !pag) return;
       // 克隆分页栏并插入标题后
       const clone = pag.cloneNode(true);
       tit.parentNode.insertBefore(clone, tit.nextSibling);
-      // 对克隆分页栏执行末页补全
+      // 对克隆分页栏执行末页补全（页码已随克隆复制）
       processPagination(clone);
     });
-    // 监听 DOM 变化，自动处理后续新增的分页栏
+    // 延迟重建：防止其他功能（如无缝翻页初始化）在之后覆盖分页栏
+    function rescanAndRebuild() {
+      document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination:not([data-xdex-rebuilt])').forEach(pag => {
+        rebuildPaginationPages(pag);
+        processPagination(pag);
+        pag.setAttribute('data-xdex-rebuilt', '1');
+      });
+    }
+    [500, 1500].forEach(ms => setTimeout(rescanAndRebuild, ms));
+    // 监听 DOM 变化，自动处理后续新增/替换的分页栏
+    // 用防抖避免 rebuild 改 DOM 后触发 observer 造成无限循环
+    const pagDebounceTimers = new WeakMap();
     const observer = new MutationObserver(mutations => {
+      const targets = new Set();
       mutations.forEach(m => {
         m.addedNodes.forEach(node => {
-          if(node.nodeType === 1){
-            // 判断是否是分页栏
-            if(node.matches && node.matches('ul.uk-pagination.uk-pagination-left.h-pagination')){
-              processPagination(node);
-            }
-            // 判断是否包含分页栏
-            const innerPags = node.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination');
-            innerPags?.forEach(p => processPagination(p));
+          if(node.nodeType !== 1) return;
+          // 情况1：新增的节点本身是分页栏
+          if(node.matches && node.matches('ul.uk-pagination.uk-pagination-left.h-pagination')){
+            targets.add(node);
+            return;
           }
+          // 情况2：新增的节点内部包含分页栏
+          const innerPags = node.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination');
+          innerPags?.forEach(p => targets.add(p));
+          // 情况3：新增的节点是分页栏的子节点（如 <li> 被替换），向上查找父分页栏
+          const parentPag = node.closest?.('ul.uk-pagination.uk-pagination-left.h-pagination');
+          if (parentPag) targets.add(parentPag);
         });
+      });
+      // 对每个受影响的分页栏做防抖重建（50ms 内重复变化只触发一次）
+      targets.forEach(pag => {
+        if (pagDebounceTimers.has(pag)) clearTimeout(pagDebounceTimers.get(pag));
+        pagDebounceTimers.set(pag, setTimeout(() => {
+          pagDebounceTimers.delete(pag);
+          rebuildPaginationPages(pag);
+          processPagination(pag);
+        }, 50));
       });
     });
     observer.observe(document.body, { childList: true, subtree: true });
@@ -10147,8 +10384,12 @@ ${markedSwatchHtml}
         const oldPags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
         const oldPag = oldPags.length ? oldPags[oldPags.length - 1] : null;
         if (newPag && oldPag) {
-          // 只替换 innerHTML（避免完全替换导致事件/引用丢失），但你也可改为 replaceWith(clone)
-          try { oldPag.innerHTML = newPag.innerHTML; } catch (e) { oldPag.replaceWith(newPag.cloneNode(true)); }
+          // 先在 detached DOM 中扩展分页栏，再替换到页面，避免先出现原版 3 页码再二次修正造成闪烁
+          const preparedPag = newPag.cloneNode(true);
+          try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(preparedPag); } catch (e) {}
+          try { if (typeof processPagination === 'function') processPagination(preparedPag); } catch (e) {}
+          // 只替换 innerHTML（避免完全替换导致事件/引用丢失），但内容已是扩展后的 7 页码版本
+          try { oldPag.innerHTML = preparedPag.innerHTML; } catch (e) { oldPag.replaceWith(preparedPag); }
         }
         // 让其他模块对新内容生效（使用 initSeamlessPaging 作用域内已有的函数）
         try { if (typeof reinitForNewContent === 'function') reinitForNewContent(targetReplies); } catch (e) {}
@@ -10427,6 +10668,9 @@ ${markedSwatchHtml}
           const lastPageNum = parseLastPageFromPagination(pagClone);
           if (lastPageNum) pagClone.setAttribute('data-last-page', String(lastPageNum));
           pagClone.setAttribute('data-cloned-page', String(nextPageNum));
+          // 插入 DOM 前直接重建分页栏，避免先显示原版 3 页码再被 observer 二次修正造成闪烁/循环
+          if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(pagClone);
+          if (typeof processPagination === 'function') processPagination(pagClone);
           const repliesClone = startupPerfDebug.measure('seamless.loadNext.cloneReplies', () => replies.cloneNode(true), { nextPageNum, replies: replies.querySelectorAll ? replies.querySelectorAll('.h-threads-item-reply').length : 0 });
           repliesClone.setAttribute('data-cloned-page', String(nextPageNum));
           removeIdsFromNode(repliesClone);
@@ -10535,6 +10779,9 @@ ${markedSwatchHtml}
             let pagClone = pagination ? pagination.cloneNode(true) : null;
             if (pagClone) {
               removeIdsFromNode(pagClone);
+              // 插入 DOM 前直接重建分页栏，避免原版 3 页码闪烁后再修正
+              if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(pagClone);
+              if (typeof processPagination === 'function') processPagination(pagClone);
               startupPerfDebug.measure('seamless.loadNextBoard.insertDom', () => {
                 lastList.insertAdjacentElement('afterend', pagClone);
                 pagClone.insertAdjacentElement('afterend', listClone);
@@ -15121,11 +15368,14 @@ ${markedSwatchHtml}
             const wasLastPage = oldNextLi &&
               oldNextLi.classList.contains('uk-disabled') &&
               !oldNextLi.querySelector('a');
-            // 替换 DOM
+            // 替换 DOM：先在 detached DOM 中扩展分页栏，再替换到页面，避免原版 3 页码闪烁
+            const preparedPag = newPag.cloneNode(true);
+            try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(preparedPag); } catch (e) {}
+            try { if (typeof processPagination === 'function') processPagination(preparedPag); } catch (e) {}
             try {
-              oldPag.innerHTML = newPag.innerHTML;
+              oldPag.innerHTML = preparedPag.innerHTML;
             } catch (e) {
-              oldPag.replaceWith(newPag.cloneNode(true));
+              oldPag.replaceWith(preparedPag);
             }
             // 2. 如果发送前是最后一页，检查刷新后是否出现了新页
             if (wasLastPage) {
