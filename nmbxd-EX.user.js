@@ -22023,9 +22023,7 @@ ${markedSwatchHtml}
   }
 
   /* --------------------------------------------------
-
    * tag 27. 关闭引用
-
    * -------------------------------------------------- */
   // 阻止URL中r=参数导致的自动引用插入（网站原生行为）
   // 开关：设置面板 → 关闭引用（disableAutoQuote），实时生效
@@ -22079,6 +22077,47 @@ ${markedSwatchHtml}
     });
     obs.observe(document.body, { childList: true, subtree: true });
     setTimeout(() => { const ta = document.querySelector('textarea.h-post-form-textarea'); if (ta) interceptTextarea(ta); }, 1000);
+  }
+
+  /* --------------------------------------------------
+   * tag 28. 值班室自动选择理由
+   * -------------------------------------------------- */
+  // 举报理由：自动补充并默认选择“其他”，避免值班室/举报表单未选理由时阻止发送
+  function autoSelectReportReason(root = document) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const selects = [];
+    if (scope.matches && scope.matches('select#h-report-switch')) selects.push(scope);
+    scope.querySelectorAll?.('select#h-report-switch').forEach(sel => selects.push(sel));
+    selects.forEach(sel => {
+      if (sel.__xdexReportReasonHandled) return;
+      sel.__xdexReportReasonHandled = true;
+      const customValue = '其他';
+      let option = Array.from(sel.options || []).find(opt => opt.value === customValue || opt.textContent.trim() === customValue);
+      if (!option) {
+        option = document.createElement('option');
+        option.value = customValue;
+        option.textContent = customValue;
+        sel.appendChild(option);
+      }
+      if (!sel.value || sel.value === '-1') {
+        sel.value = option.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const form = sel.closest('form');
+      const info = (form || document).querySelector('#h-report-info');
+      if (info && sel.value && sel.value !== '-1') info.style.display = 'none';
+    });
+    if (!autoSelectReportReason.__observerInstalled && root === document) {
+      autoSelectReportReason.__observerInstalled = true;
+      const observer = new MutationObserver(mutations => {
+        mutations.forEach(m => {
+          m.addedNodes.forEach(node => {
+            if (node && node.nodeType === 1) autoSelectReportReason(node);
+          });
+        });
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
 
   /* --------------------------------------------------
@@ -22140,6 +22179,7 @@ ${markedSwatchHtml}
     }
     interceptReplyForm();                                            //拦截回复中间页
     enhancePostFormLayout();                                         //发帖UI调整
+    autoSelectReportReason();                                        //举报理由默认选择“其他”
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
     renderFavoriteThreadsMenu();                                      //常用串
     if (isThreadHistoryPageActive()) {
