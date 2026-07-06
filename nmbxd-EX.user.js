@@ -4127,9 +4127,51 @@
   function trimFavoriteThreadDesc(desc) {
     return String(desc || '').trim().slice(0, 20);
   }
+  // 判断码点是否为全角/CJK字符（视觉宽度 2）
+  function _isFullWidthCodePoint(cp) {
+    return (
+      (cp >= 0x1100 && cp <= 0x115F) ||        // Hangul Jamo
+      (cp >= 0x2E80 && cp <= 0x303E) ||        // CJK Radicals, Kangxi, etc.
+      (cp >= 0x3040 && cp <= 0x33BF) ||        // Hiragana, Katakana, Bopomofo, etc.
+      (cp >= 0x3400 && cp <= 0x4DBF) ||        // CJK Extension A
+      (cp >= 0x4E00 && cp <= 0x9FFF) ||        // CJK Unified Ideographs
+      (cp >= 0xA000 && cp <= 0xA4CF) ||        // Yi Syllables
+      (cp >= 0xAC00 && cp <= 0xD7AF) ||        // Hangul Syllables
+      (cp >= 0xF900 && cp <= 0xFAFF) ||        // CJK Compatibility Ideographs
+      (cp >= 0xFE30 && cp <= 0xFE4F) ||        // CJK Compatibility Forms
+      (cp >= 0xFF01 && cp <= 0xFF60) ||        // Fullwidth Forms（含全角字母/数字/标点）
+      (cp >= 0xFFE0 && cp <= 0xFFE6) ||        // Fullwidth Signs
+      (cp >= 0x20000 && cp <= 0x2FA1F) ||      // CJK Extensions B-F
+      cp === 0x2026                             // HORIZONTAL ELLIPSIS（东亚语境占全角宽度）
+    );
+  }
+  // 按视觉宽度截断（CJK/全角=2，其余=1）
+  function _truncateByVisualWidth(str, maxWidth) {
+    let w = 0;
+    for (let i = 0; i < str.length; i++) {
+      const cp = str.codePointAt(i);
+      const cw = _isFullWidthCodePoint(cp) ? 2 : 1;
+      if (w + cw > maxWidth) return str.slice(0, i);
+      w += cw;
+      if (cp > 0xFFFF) i++; // surrogate pair 跳过
+    }
+    return str;
+  }
+  function _visualWidth(str) {
+    let w = 0;
+    for (const ch of str) w += _isFullWidthCodePoint(ch.codePointAt(0)) ? 2 : 1;
+    return w;
+  }
   function formatFavoriteThreadMenuText(item) {
     const text = item && item.desc ? item.desc : item && item.threadId ? item.threadId : '';
-    return text.length > 7 ? `${text.slice(0, 7)}……` : text;
+    const VISUAL_MAX = 18; // 侧边栏实际可用：≈7个汉字 + "……"
+    const ELLIPSIS_W = 4;  // "……" 两个全角省略号 = 4个半角宽度
+    const w = _visualWidth(text);
+    if (w <= VISUAL_MAX) return text;
+    const truncated = _truncateByVisualWidth(text, VISUAL_MAX - ELLIPSIS_W);
+    // 截断后加"……"反而比原文更宽（或差不多）→ 直接显示原文，接受轻微溢出
+    if (_visualWidth(truncated) + ELLIPSIS_W >= w) return text;
+    return `${truncated}……`;
   }
   function normalizeFavoriteThreads(val) {
     if (!Array.isArray(val)) return [];
