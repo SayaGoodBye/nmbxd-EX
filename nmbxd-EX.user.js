@@ -13159,8 +13159,11 @@ ${markedSwatchHtml}
   function bindRightSidebarShellButtons(docker) {
     if (!docker || docker.dataset.xdexSidebarShellBound === '1') return;
     docker.dataset.xdexSidebarShellBound = '1';
-    docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
-    docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+    const supportsHasSelector = !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))'));
+    if (!supportsHasSelector) {
+      docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
+      docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+    }
     const topBtn = docker.querySelector('[data-type="TOP"]');
     const bottomBtn = docker.querySelector('[data-type="BOTTOM"]');
     topBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
@@ -13180,6 +13183,478 @@ ${markedSwatchHtml}
     bindRightSidebarShellButtons(docker);
     return !!docker;
   }
+  function ensureRightSidebarReplyController() {
+    if (window.__xdexRightSidebarReplyController) return window.__xdexRightSidebarReplyController;
+    // 悬浮窗引用
+    let overlay;
+    function ensureOverlay() {
+      if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.className = 'qp-overlay';
+          overlay.innerHTML = `
+              <div class="qp-stack">
+                  <div class="qp-quote">
+                      <div class="qp-drag-edge top"></div>
+                      <div class="qp-drag-edge bottom"></div>
+                      <div class="qp-drag-edge left"></div>
+                      <div class="qp-drag-edge right"></div>
+                      <div class="qp-body"></div>
+                  </div>
+              </div>
+              <div class="qp-reset-btn">🗘</div>
+          `;
+          document.body.appendChild(overlay);
+          // 点击遮罩关闭（点内容不关闭，且允许事件冒泡到 document 以触发引用弹窗）
+          overlay.addEventListener('click', function (e) {
+            if (e.target.closest('.qp-quote')) {
+                return; // 点击在内容区：不关闭，也不阻止冒泡
+            }
+            // 如果正在调整 textarea 大小，不关闭浮窗
+            if (overlay.__isResizing) {
+                return;
+            }
+            closeOverlay();
+          });
+          // ESC 关闭（优先关闭颜文字选择框）
+          document.addEventListener('keydown', e => {
+            if (e.key !== 'Escape') return;
+            // 检查是否存在打开的颜文字面板
+            const openKaomojiPanel = document.querySelector('.kaomoji-panel[style*="display: grid"]');
+            if (openKaomojiPanel) {
+                // 触发颜文字函数内的关闭逻辑（模拟点击空白或ESC）
+                openKaomojiPanel.style.display = 'none';
+                // 若有全局绑定的 hidePanel 函数（例如触发按钮附近定义的），触发它
+                const hideEvent = new CustomEvent('kaomoji:hide');
+                document.dispatchEvent(hideEvent);
+                //openKaomojiPanel.style.display = 'none';
+                // ★ 新增：关闭颜文字面板后聚焦到浮窗内的 textarea
+                const ta = overlay?.querySelector('textarea[name="content"]');
+                if (ta) {
+                  ta.focus();
+                }
+                return; // 阻止继续关闭浮窗
+            }
+            // 若没有颜文字面板打开，则关闭回复浮窗
+            closeOverlay();
+          });
+          // 归位按钮事件
+          const resetBtn = overlay.querySelector('.qp-reset-btn');
+          resetBtn.addEventListener('click', (e) => {
+              e.stopPropagation(); // 阻止事件冒泡，避免触发 overlay 的关闭逻辑
+              const quote = overlay.querySelector('.qp-quote');
+              quote.style.top = '0px';
+              quote.style.left = '0px';
+          });
+      }
+      return overlay;
+   }
+    function closeOverlay() {
+      if (!overlay) return;
+      // 清理 ResizeObserver
+      if (overlay.__resizeObserver) {
+        overlay.__resizeObserver.disconnect();
+        overlay.__resizeObserver = null;
+      }
+      // 清理 stack 的 ResizeObserver
+      if (overlay.__stackObserver) {
+        overlay.__stackObserver.disconnect();
+        overlay.__stackObserver = null;
+      }
+      // 保存当前浮窗和textarea的尺寸（保存计算后的实际值）
+      const stack = overlay.querySelector('.qp-stack');
+      const ta = overlay.querySelector('textarea[name="content"]');
+      if (stack && ta) {
+        const taRect = ta.getBoundingClientRect();
+        overlay.__savedStackWidth = stack.style.width;
+        overlay.__savedTextareaWidth = taRect.width + 'px'; // 保存实际宽度
+        overlay.__savedTextareaHeight = taRect.height + 'px'; // 保存实际高度
+        // 在移回原位置之前，先应用尺寸到 textarea
+        ta.style.width = taRect.width + 'px';
+        ta.style.height = taRect.height + 'px';
+      }
+      overlay.style.display = 'none';
+      // 隐藏归位按钮
+      const resetBtn = overlay.querySelector('.qp-reset-btn');
+      if (resetBtn) resetBtn.style.display = 'none';
+      // 清理窗口 resize 监听
+      if (overlay.__windowResizeHandler) {
+        window.removeEventListener('resize', overlay.__windowResizeHandler);
+        overlay.__windowResizeHandler = null;
+      }
+      if (overlay.__formEl && overlay.__formEl.__placeholder) {
+        overlay.__formEl.__placeholder.parentNode.insertBefore(overlay.__formEl, overlay.__formEl.__placeholder);
+        // 移回后清除 textarea 的宽度样式，让它恢复原始状态
+        const taInForm = overlay.__formEl.querySelector('textarea[name="content"]');
+        if (taInForm) {
+          taInForm.style.removeProperty('width');
+          taInForm.style.removeProperty('height');
+          taInForm.style.removeProperty('min-width');
+          taInForm.style.removeProperty('max-width');
+        }
+          if (overlay.__formEl.__wasCollapsed) {
+            const $form = $(overlay.__formEl);
+            const hint = overlay.__formEl.action.includes('doReplyThread') ? '『回复』' : '『发串』';
+            // 如果原位置已经有占位符，就直接隐藏并标记折叠
+            if ($form.prev('.xdex-placeholder').length) {
+                $form.hide().data('xdex-collapsed', true);
+            } else if (typeof Utils !== 'undefined' && typeof Utils.collapse === 'function') {
+                Utils.collapse($form, hint);
+            }
+            overlay.__formEl.__wasCollapsed = false;
+        }
+      }
+      if (overlay.__previewEl && overlay.__previewEl.__placeholder) {
+        overlay.__previewEl.__placeholder.parentNode.insertBefore(overlay.__previewEl, overlay.__previewEl.__placeholder);
+      }
+    }
+    // 新增：回复浮窗拖拽函数
+    function enableDragForReply($quote, $handles) {
+      // 确保初始位置居中
+      $quote.css({
+          top: '0px',
+          left: '0px',
+          position: 'absolute' // 确保是相对于 stack 定位
+      });
+      //let dragging = false, dx = 0, dy = 0;
+      let dx = 0, dy = 0;
+      // 移除旧的事件监听（避免重复绑定）
+      $handles.off('mousedown.qpdrag-reply');
+      $handles.on('mousedown.qpdrag-reply', function(e){
+          //dragging = true;
+          $quote.data('dragging', true);  // ← 使用 data 存储
+          $quote.addClass('is-dragging');
+          // 获取当前的 top 和 left 值
+          const currentTop = parseInt($quote.css('top')) || 0;
+          const currentLeft = parseInt($quote.css('left')) || 0;
+          dx = e.pageX - currentLeft - $quote.parent().offset().left;
+          dy = e.pageY - currentTop - $quote.parent().offset().top;
+          e.preventDefault();
+          function onDragMove(e) {
+              //if (!dragging) return;
+              if (!$quote.data('dragging')) return;  // ← 从 data 读取
+              e.preventDefault();  // ← 在这里添加
+              e.stopPropagation(); // ← 在这里添加
+              const $stack = $quote.parent();
+              const stackOff = $stack.offset();
+              const stackWidth = $stack.width();
+              const stackHeight = $stack.height();
+              const quoteWidth = $quote.outerWidth();
+              const quoteHeight = $quote.outerHeight();
+              let top = e.pageY - dy - stackOff.top;
+              let left = e.pageX - dx - stackOff.left;
+              // 限制拖拽范围，允许向左和向上拖出一部分
+              top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
+              left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
+              $quote.css({ top: top + 'px', left: left + 'px' });
+          }
+          function onDragEnd(e) {
+              //if (!dragging) return;
+              if (!$quote.data('dragging')) return;  // ← 从 data 读取
+              e.preventDefault();
+              //dragging = false;
+              $quote.data('dragging', false);  // ← 使用 data 存储
+              $quote.removeClass('is-dragging');
+              window.removeEventListener('mousemove', onDragMove);
+          }
+          window.addEventListener('mousemove', onDragMove);
+          window.addEventListener('mouseup', onDragEnd, { once: true });
+      });
+    }
+    // REPLY 按钮
+    function open() {
+      let formEl = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]');
+      let previewEl = document.querySelector('.h-preview-box');
+      // 如果串内没找到表单，尝试板块页发串表单
+      if (!formEl) {
+          const postForm = document.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]');
+          if (postForm) {
+              formEl = postForm;
+              previewEl = document.querySelector('#h-post-form .h-preview-box');
+          }
+      }
+      if (!formEl) {
+          toast && toast('未找到回复/发串表单');
+          return;
+      }
+      const ov = ensureOverlay();
+      const body = ov.querySelector('.qp-body');
+      body.innerHTML = '';
+      // 占位符
+      if (!formEl.__placeholder) {
+          const ph1 = document.createElement('div');
+          ph1.style.display = 'none';
+          formEl.parentNode.insertBefore(ph1, formEl);
+          formEl.__placeholder = ph1;
+      }
+      if (previewEl && !previewEl.__placeholder) {
+          const ph2 = document.createElement('div');
+          ph2.style.display = 'none';
+          previewEl.parentNode.insertBefore(ph2, previewEl);
+          previewEl.__placeholder = ph2;
+      }
+      // 如果表单是折叠状态，展开它（不影响原位置的占位符）
+      if ($(formEl).data('xdex-collapsed')) {
+          formEl.__wasCollapsed = true; // ★ 记录原本是折叠的
+          $(formEl).show().removeData('xdex-collapsed');
+      }
+      // === 新增：给表单打标记，避免被板块页展开逻辑误处理 ===
+      formEl.classList.add('qp-reply-form');
+      // 包装容器，防止 UI 松散
+      const wrap = document.createElement('div');
+      wrap.className = 'qp-content-wrap';
+      // 表单是必需的
+      wrap.appendChild(formEl);
+      // 预览框是可选的
+      if (previewEl) {
+        wrap.appendChild(previewEl);
+        // 浮窗内：强制预览框及其 replies 拉满宽度，清理站点样式的限宽/居中
+        if (previewEl) {
+          // 预览框本身满宽
+          previewEl.style.width = '100%';
+          previewEl.style.maxWidth = 'none';
+          previewEl.style.margin = '0';
+          // replies 拉满
+          const replies = previewEl.querySelectorAll('.h-threads-item-replies');
+          replies.forEach(el => {
+            el.style.width = '100%';
+            el.style.maxWidth = 'none';
+            el.style.margin = '0';
+            el.style.display = 'block';
+            el.style.boxSizing = 'border-box';
+          });
+          // 如有外层 item/容器被限宽，一并放开
+          const items = previewEl.querySelectorAll('.h-threads-item');
+          items.forEach(el => {
+            el.style.width = '100%';
+            el.style.maxWidth = 'none';
+            el.style.margin = '0';
+            el.style.boxSizing = 'border-box';
+          });
+        }
+      }
+      body.appendChild(wrap);
+      // 浮窗内立即处理扩展引用，保证可点击引用弹窗
+      if (typeof extendQuote === 'function') {
+        extendQuote(previewEl || wrap);
+      }
+      if (typeof initContent === 'function') {
+        try { initContent(previewEl || wrap); } catch (e) {}
+      }
+      // if (typeof autoHideRefView === 'function') {
+      //   try { autoHideRefView(root); } catch (e) { try { autoHideRefView(); } catch (e) {} }
+      // }
+      // 保存引用
+      ov.__formEl = formEl;
+      ov.__previewEl = previewEl;
+      // 显示 overlay
+      ov.style.display = 'block';
+      // 初始化时检查是否需要调整浮窗宽度（确保不超出当前浏览器宽度）
+      const currentResponsiveWidth = Math.max(400, Math.min(window.innerWidth * 0.9, 820));
+      const stackElement = ov.querySelector('.qp-stack');
+      const currentWidth = stackElement.getBoundingClientRect().width;
+      if (currentWidth > currentResponsiveWidth) {
+        stackElement.style.width = currentResponsiveWidth + 'px';
+      }
+      // // 恢复之前保存的尺寸（需要在 ResizeObserver 创建之前恢复）
+      // const stackForRestore = ov.querySelector('.qp-stack');
+      // const restoredTa = ov.querySelector('textarea[name="content"]');
+      // // 先恢复 textarea 的尺寸
+      // if (ov.__savedTextareaWidth && restoredTa) {
+      //   restoredTa.style.width = ov.__savedTextareaWidth;
+      //   restoredTa.style.minWidth = ov.__savedTextareaWidth; // 确保不会被缩小
+      // }
+      // if (ov.__savedTextareaHeight && restoredTa) {
+      //   restoredTa.style.height = ov.__savedTextareaHeight;
+      // }
+      // // 再恢复 stack 的宽度
+      // if (ov.__savedStackWidth && stackForRestore) {
+      //   stackForRestore.style.width = ov.__savedStackWidth;
+      // }
+      // 显示归位按钮
+      const resetBtn = ov.querySelector('.qp-reset-btn');
+      if (resetBtn) resetBtn.style.display = 'block';
+      // 启用拖拽功能
+      const $quote = $(ov.querySelector('.qp-quote'));
+      const $handles = $quote.find('.qp-drag-edge');
+      enableDragForReply($quote, $handles);
+      const ta = ov.querySelector('textarea[name="content"]');
+      // ---------- BEGIN 插入（替换旧的 ResizeObserver 逻辑） ----------
+      if (ta) {
+        // 先恢复之前保存的尺寸，再设置其他属性
+        if (ov.__savedTextareaWidth) {
+          ta.style.width = ov.__savedTextareaWidth;
+        }
+        if (ov.__savedTextareaHeight) {
+          ta.style.height = ov.__savedTextareaHeight;
+        }
+        ta.style.resize = 'both';
+        ta.style.fontSize = '14px';
+        // 不设置 maxWidth，让它自由调整
+      }
+      // 监听 textarea 调整大小的开始和结束
+      if (ta) {
+        ta.addEventListener('mousedown', function(e) {
+          // 检测是否点击在右下角调整区域（通常是最后 15px 范围）
+          const rect = ta.getBoundingClientRect();
+          const offsetX = e.clientX - rect.left;
+          const offsetY = e.clientY - rect.top;
+          const isResizeCorner = (offsetX > rect.width - 15) && (offsetY > rect.height - 15);
+          const isResizeRight = offsetX > rect.width - 15;
+          const isResizeBottom = offsetY > rect.height - 15;
+          if (isResizeCorner || isResizeRight || isResizeBottom) {
+            ov.__isResizing = true;
+            // 监听鼠标释放，标记调整结束
+            const onMouseUp = function() {
+              // 延迟一点清除标记，避免释放瞬间的点击事件触发关闭
+              setTimeout(() => {
+                ov.__isResizing = false;
+              }, 100);
+              document.removeEventListener('mouseup', onMouseUp);
+            };
+            document.addEventListener('mouseup', onMouseUp);
+          }
+        });
+      }
+      const stack = ov.querySelector('.qp-stack');
+      const quote = ov.querySelector('.qp-quote');
+      // 绝对最小宽度（不能再小）
+      const ABSOLUTE_MIN_WIDTH = 400;
+      // 动态计算当前应有的宽度（视口90%，但不小于400px，不大于820px）
+      function getResponsiveWidth() {
+        return Math.max(ABSOLUTE_MIN_WIDTH, Math.min(window.innerWidth * 0.9, 820));
+      }
+      // 初始化时记录用户可能扩展到的最大宽度
+      // 如果有保存的宽度，使用保存的；否则使用响应式宽度
+      let userMaxWidth = ov.__savedStackWidth ? parseFloat(ov.__savedStackWidth) : getResponsiveWidth();
+      // 定义安全边距（textarea 与浮窗边框之间的最小距离）
+      const SAFE_MARGIN = 30;
+      const ro = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          const taRect = ta.getBoundingClientRect();
+          const taWidth = Math.round(taRect.width);
+          const stackRect = stack.getBoundingClientRect();
+          // 获取 quote 的 padding
+          const quoteStyle = window.getComputedStyle(quote);
+          const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
+          const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
+          // 计算 textarea 左边距（相对于 quote）
+          const quoteRect = quote.getBoundingClientRect();
+          const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
+          // 计算 textarea 右边界（相对于 quote 左边界）
+          const taRightEdge = taLeftOffset + taWidth;
+          // 计算 quote 的内部可用宽度
+          const quoteInnerWidth = quoteRect.width - quotePaddingLeft - quotePaddingRight;
+          // 获取视口宽度和当前响应式宽度
+          const maxAllowedWidth = window.innerWidth;
+          const responsiveWidth = getResponsiveWidth();
+          // 如果 textarea 右边界超过了安全区域，需要扩展 stack
+          const safeRightBound = quoteInnerWidth - SAFE_MARGIN - 20;
+          if (taRightEdge > safeRightBound) {
+            // 计算需要的新 stack 宽度
+            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
+            // 限制不超过视口宽度
+            const finalWidth = Math.min(neededQuoteWidth, maxAllowedWidth);
+            stack.style.width = finalWidth + 'px';
+            quote.style.width = '100%';
+            // 更新用户扩展到的最大宽度
+            userMaxWidth = Math.max(finalWidth, userMaxWidth);
+            // 如果达到最大宽度，限制 textarea 不能继续变宽
+            if (finalWidth >= maxAllowedWidth) {
+              const maxTaWidth = maxAllowedWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
+              ta.style.maxWidth = Math.max(maxTaWidth, 200) + 'px';
+            } else {
+              ta.style.maxWidth = 'none';
+            }
+          }
+          // 如果 textarea 缩小了，也缩小 stack
+          else {
+            // 计算当前实际需要的宽度
+            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
+            const currentStackWidth = stackRect.width;
+            // 只有当需要的宽度明显小于当前宽度时才缩小
+            if (neededQuoteWidth < currentStackWidth - 10) {
+              // 使用响应式宽度作为下限
+              const finalWidth = Math.max(neededQuoteWidth, responsiveWidth);
+              stack.style.width = finalWidth + 'px';
+              quote.style.width = '100%';
+              // 同步调整 textarea 宽度，使其适应浮窗
+              if (finalWidth <= responsiveWidth) {
+                const maxTaWidth = finalWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
+                if (taWidth > maxTaWidth) {
+                  ta.style.width = Math.max(maxTaWidth, 200) + 'px';
+                }
+              }
+            }
+            // 缩小时也要检查是否需要解除 maxWidth 限制
+            if (stackRect.width < maxAllowedWidth) {
+              ta.style.maxWidth = 'none';
+            }
+          }
+        }
+      });
+      if (ta) {
+        ro.observe(ta);
+        ov.__resizeObserver = ro;
+      }
+      // 最后恢复 stack 的宽度（在 ResizeObserver 创建之后）
+      const stackForRestore = ov.querySelector('.qp-stack');
+      if (ov.__savedStackWidth && stackForRestore) {
+        stackForRestore.style.width = ov.__savedStackWidth;
+        // 监听窗口大小变化，动态调整浮窗和 textarea
+      const handleWindowResize = function() {
+        const responsiveWidth = getResponsiveWidth(); // 当前浏览器宽度对应的响应式宽度
+        const currentStackWidth = stack.getBoundingClientRect().width;
+        // 关键：只在浏览器宽度变窄、且当前浮窗宽度超出响应式宽度时，才缩小浮窗
+        if (responsiveWidth < currentStackWidth) {
+          // 将浮窗宽度设置为响应式宽度（会随浏览器变窄而变窄）
+          stack.style.width = responsiveWidth + 'px';
+          // 同时调整 textarea，确保不超出新的浮窗宽度
+          if (ta) {
+            const taRect = ta.getBoundingClientRect();
+            const quoteStyle = window.getComputedStyle(quote);
+            const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
+            const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
+            const quoteRect = quote.getBoundingClientRect();
+            const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
+            const maxTaWidth = responsiveWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
+            if (taRect.width > maxTaWidth) {
+              ta.style.width = Math.max(maxTaWidth, 200) + 'px';
+            }
+          }
+        }
+        // 浏览器变宽时不做任何调整（保持用户设置的宽度）
+      };
+      window.addEventListener('resize', handleWindowResize);
+      ov.__windowResizeHandler = handleWindowResize;
+      }
+      // ---------- END 插入 ----------
+      // 聚焦 textarea
+      if (ta) {
+          ta.focus();
+          const val = ta.value;
+          ta.value = '';
+          ta.value = val;
+      }
+      // Ctrl+Enter 发送并在成功后关闭浮窗
+      if (ta) {
+          const form = ta.closest('form');
+          if (form && !ta.__qpCtrlEnterBound) {
+              ta.__qpCtrlEnterBound = true;
+              // 保留：提交成功后关闭浮窗
+              document.addEventListener('replySuccess', () => {
+                  form.__submitting = false;
+                  closeOverlay();
+              });
+              // 新增：调用抽取的绑定函数
+              bindCtrlEnter(ta);
+          }
+      }
+    }
+    const controller = { open, close: closeOverlay };
+    window.__xdexRightSidebarReplyController = controller;
+    return controller;
+  }
+
   function replaceRightSidebar() {
     const logRightSidebar = (stage, detail) => {
       console.log('[replaceRightSidebar]', stage, detail || {});
@@ -13396,469 +13871,14 @@ ${markedSwatchHtml}
       早期插入: dockerDom[0]?.dataset.xdexEarlyDocker === '1',
       支持Has选择器: !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))')),
     });
-    // 悬浮窗引用
-    let overlay;
-    function ensureOverlay() {
-      if (!overlay) {
-          overlay = document.createElement('div');
-          overlay.className = 'qp-overlay';
-          overlay.innerHTML = `
-              <div class="qp-stack">
-                  <div class="qp-quote">
-                      <div class="qp-drag-edge top"></div>
-                      <div class="qp-drag-edge bottom"></div>
-                      <div class="qp-drag-edge left"></div>
-                      <div class="qp-drag-edge right"></div>
-                      <div class="qp-body"></div>
-                  </div>
-              </div>
-              <div class="qp-reset-btn">🗘</div>
-          `;
-          document.body.appendChild(overlay);
-          // 点击遮罩关闭（点内容不关闭，且允许事件冒泡到 document 以触发引用弹窗）
-          overlay.addEventListener('click', function (e) {
-            if (e.target.closest('.qp-quote')) {
-                return; // 点击在内容区：不关闭，也不阻止冒泡
-            }
-            // 如果正在调整 textarea 大小，不关闭浮窗
-            if (overlay.__isResizing) {
-                return;
-            }
-            closeOverlay();
-          });
-          // ESC 关闭（优先关闭颜文字选择框）
-          document.addEventListener('keydown', e => {
-            if (e.key !== 'Escape') return;
-            // 检查是否存在打开的颜文字面板
-            const openKaomojiPanel = document.querySelector('.kaomoji-panel[style*="display: grid"]');
-            if (openKaomojiPanel) {
-                // 触发颜文字函数内的关闭逻辑（模拟点击空白或ESC）
-                openKaomojiPanel.style.display = 'none';
-                // 若有全局绑定的 hidePanel 函数（例如触发按钮附近定义的），触发它
-                const hideEvent = new CustomEvent('kaomoji:hide');
-                document.dispatchEvent(hideEvent);
-                //openKaomojiPanel.style.display = 'none';
-                // ★ 新增：关闭颜文字面板后聚焦到浮窗内的 textarea
-                const ta = overlay?.querySelector('textarea[name="content"]');
-                if (ta) {
-                  ta.focus();
-                }
-                return; // 阻止继续关闭浮窗
-            }
-            // 若没有颜文字面板打开，则关闭回复浮窗
-            closeOverlay();
-          });
-          // 归位按钮事件
-          const resetBtn = overlay.querySelector('.qp-reset-btn');
-          resetBtn.addEventListener('click', (e) => {
-              e.stopPropagation(); // 阻止事件冒泡，避免触发 overlay 的关闭逻辑
-              const quote = overlay.querySelector('.qp-quote');
-              quote.style.top = '0px';
-              quote.style.left = '0px';
-          });
-      }
-      return overlay;
-   }
-    function closeOverlay() {
-      if (!overlay) return;
-      // 清理 ResizeObserver
-      // if (overlay.__resizeObserver) {
-      //   overlay.__resizeObserver.disconnect();
-      //   overlay.__resizeObserver = null;
-      // }
-      // 清理 stack 的 ResizeObserver
-      if (overlay.__stackObserver) {
-        overlay.__stackObserver.disconnect();
-        overlay.__stackObserver = null;
-      }
-      // 保存当前浮窗和textarea的尺寸（保存计算后的实际值）
-      const stack = overlay.querySelector('.qp-stack');
-      const ta = overlay.querySelector('textarea[name="content"]');
-      if (stack && ta) {
-        const taRect = ta.getBoundingClientRect();
-        overlay.__savedStackWidth = stack.style.width;
-        overlay.__savedTextareaWidth = taRect.width + 'px'; // 保存实际宽度
-        overlay.__savedTextareaHeight = taRect.height + 'px'; // 保存实际高度
-        // 在移回原位置之前，先应用尺寸到 textarea
-        ta.style.width = taRect.width + 'px';
-        ta.style.height = taRect.height + 'px';
-      }
-      overlay.style.display = 'none';
-      // 隐藏归位按钮
-      const resetBtn = overlay.querySelector('.qp-reset-btn');
-      if (resetBtn) resetBtn.style.display = 'none';
-      // 清理窗口 resize 监听
-      if (overlay.__windowResizeHandler) {
-        window.removeEventListener('resize', overlay.__windowResizeHandler);
-        overlay.__windowResizeHandler = null;
-      }
-      if (overlay.__formEl && overlay.__formEl.__placeholder) {
-        overlay.__formEl.__placeholder.parentNode.insertBefore(overlay.__formEl, overlay.__formEl.__placeholder);
-        // 移回后清除 textarea 的宽度样式，让它恢复原始状态
-        const taInForm = overlay.__formEl.querySelector('textarea[name="content"]');
-        if (taInForm) {
-          taInForm.style.removeProperty('width');
-          taInForm.style.removeProperty('height');
-          taInForm.style.removeProperty('min-width');
-          taInForm.style.removeProperty('max-width');
-        }
-          if (overlay.__formEl.__wasCollapsed) {
-            const $form = $(overlay.__formEl);
-            const hint = overlay.__formEl.action.includes('doReplyThread') ? '『回复』' : '『发串』';
-            // 如果原位置已经有占位符，就直接隐藏并标记折叠
-            if ($form.prev('.xdex-placeholder').length) {
-                $form.hide().data('xdex-collapsed', true);
-            } else if (typeof Utils !== 'undefined' && typeof Utils.collapse === 'function') {
-                Utils.collapse($form, hint);
-            }
-            overlay.__formEl.__wasCollapsed = false;
-        }
-      }
-      if (overlay.__previewEl && overlay.__previewEl.__placeholder) {
-        overlay.__previewEl.__placeholder.parentNode.insertBefore(overlay.__previewEl, overlay.__previewEl.__placeholder);
-      }
-    }
-    // 新增：回复浮窗拖拽函数
-    function enableDragForReply($quote, $handles) {
-      // 确保初始位置居中
-      $quote.css({
-          top: '0px',
-          left: '0px',
-          position: 'absolute' // 确保是相对于 stack 定位
-      });
-      //let dragging = false, dx = 0, dy = 0;
-      let dx = 0, dy = 0;
-      // 移除旧的事件监听（避免重复绑定）
-      $handles.off('mousedown.qpdrag-reply');
-      $(window).off('mousemove.qpdrag-reply mouseup.qpdrag-reply');
-      $handles.on('mousedown.qpdrag-reply', function(e){
-          //dragging = true;
-          $quote.data('dragging', true);  // ← 使用 data 存储
-          $quote.addClass('is-dragging');
-          // 获取当前的 top 和 left 值
-          const currentTop = parseInt($quote.css('top')) || 0;
-          const currentLeft = parseInt($quote.css('left')) || 0;
-          dx = e.pageX - currentLeft - $quote.parent().offset().left;
-          dy = e.pageY - currentTop - $quote.parent().offset().top;
-          e.preventDefault();
-      });
-      $(window).on('mousemove.qpdrag-reply', function(e){
-          //if (!dragging) return;
-          if (!$quote.data('dragging')) return;  // ← 从 data 读取
-          e.preventDefault();  // ← 在这里添加
-          e.stopPropagation(); // ← 在这里添加
-          const $stack = $quote.parent();
-          const stackOff = $stack.offset();
-          const stackWidth = $stack.width();
-          const stackHeight = $stack.height();
-          const quoteWidth = $quote.outerWidth();
-          const quoteHeight = $quote.outerHeight();
-          let top = e.pageY - dy - stackOff.top;
-          let left = e.pageX - dx - stackOff.left;
-          // 限制拖拽范围，允许向左和向上拖出一部分
-          top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
-          left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
-          $quote.css({ top: top + 'px', left: left + 'px' });
-      });
-      $(window).on('mouseup.qpdrag-reply', function(e){
-          //if (!dragging) return;
-          if (!$quote.data('dragging')) return;  // ← 从 data 读取
-          e.preventDefault();    // ← 添加（但注意这里没有 e 参数）
-          //dragging = false;
-          $quote.data('dragging', false);  // ← 使用 data 存储
-          $quote.removeClass('is-dragging');
+    // REPLY 按钮：完整浮窗控制器延迟到首次点击再初始化
+    const replyBtn = dockerDom[0]?.querySelector('[data-type="REPLY"]');
+    if (replyBtn && replyBtn.dataset.xdexReplyDockBound !== '1') {
+      replyBtn.dataset.xdexReplyDockBound = '1';
+      replyBtn.addEventListener('click', () => {
+        ensureRightSidebarReplyController().open();
       });
     }
-    // REPLY 按钮
-    dockerDom.find('[data-type="REPLY"]').off('click.xdexReplyDock').on('click.xdexReplyDock', () => {
-      let formEl = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]');
-      let previewEl = document.querySelector('.h-preview-box');
-      // 如果串内没找到表单，尝试板块页发串表单
-      if (!formEl) {
-          const postForm = document.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]');
-          if (postForm) {
-              formEl = postForm;
-              previewEl = document.querySelector('#h-post-form .h-preview-box');
-          }
-      }
-      if (!formEl) {
-          toast && toast('未找到回复/发串表单');
-          return;
-      }
-      const ov = ensureOverlay();
-      const body = ov.querySelector('.qp-body');
-      body.innerHTML = '';
-      // 占位符
-      if (!formEl.__placeholder) {
-          const ph1 = document.createElement('div');
-          ph1.style.display = 'none';
-          formEl.parentNode.insertBefore(ph1, formEl);
-          formEl.__placeholder = ph1;
-      }
-      if (previewEl && !previewEl.__placeholder) {
-          const ph2 = document.createElement('div');
-          ph2.style.display = 'none';
-          previewEl.parentNode.insertBefore(ph2, previewEl);
-          previewEl.__placeholder = ph2;
-      }
-      // 如果表单是折叠状态，展开它（不影响原位置的占位符）
-      if ($(formEl).data('xdex-collapsed')) {
-          formEl.__wasCollapsed = true; // ★ 记录原本是折叠的
-          $(formEl).show().removeData('xdex-collapsed');
-      }
-      // === 新增：给表单打标记，避免被板块页展开逻辑误处理 ===
-      formEl.classList.add('qp-reply-form');
-      // 包装容器，防止 UI 松散
-      const wrap = document.createElement('div');
-      wrap.className = 'qp-content-wrap';
-      // 表单是必需的
-      wrap.appendChild(formEl);
-      // 预览框是可选的
-      if (previewEl) {
-        wrap.appendChild(previewEl);
-        // 浮窗内：强制预览框及其 replies 拉满宽度，清理站点样式的限宽/居中
-        if (previewEl) {
-          // 预览框本身满宽
-          previewEl.style.width = '100%';
-          previewEl.style.maxWidth = 'none';
-          previewEl.style.margin = '0';
-          // replies 拉满
-          const replies = previewEl.querySelectorAll('.h-threads-item-replies');
-          replies.forEach(el => {
-            el.style.width = '100%';
-            el.style.maxWidth = 'none';
-            el.style.margin = '0';
-            el.style.display = 'block';
-            el.style.boxSizing = 'border-box';
-          });
-          // 如有外层 item/容器被限宽，一并放开
-          const items = previewEl.querySelectorAll('.h-threads-item');
-          items.forEach(el => {
-            el.style.width = '100%';
-            el.style.maxWidth = 'none';
-            el.style.margin = '0';
-            el.style.boxSizing = 'border-box';
-          });
-        }
-      }
-      body.appendChild(wrap);
-      // 浮窗内立即处理扩展引用，保证可点击引用弹窗
-      if (typeof extendQuote === 'function') {
-        extendQuote(previewEl || wrap);
-      }
-      if (typeof initContent === 'function') {
-        try { initContent(root); } catch (e) {}
-      }
-      // if (typeof autoHideRefView === 'function') {
-      //   try { autoHideRefView(root); } catch (e) { try { autoHideRefView(); } catch (e) {} }
-      // }
-      // 保存引用
-      ov.__formEl = formEl;
-      ov.__previewEl = previewEl;
-      // 显示 overlay
-      ov.style.display = 'block';
-      // 初始化时检查是否需要调整浮窗宽度（确保不超出当前浏览器宽度）
-      const currentResponsiveWidth = Math.max(400, Math.min(window.innerWidth * 0.9, 820));
-      const stackElement = ov.querySelector('.qp-stack');
-      const currentWidth = stackElement.getBoundingClientRect().width;
-      if (currentWidth > currentResponsiveWidth) {
-        stackElement.style.width = currentResponsiveWidth + 'px';
-      }
-      // // 恢复之前保存的尺寸（需要在 ResizeObserver 创建之前恢复）
-      // const stackForRestore = ov.querySelector('.qp-stack');
-      // const restoredTa = ov.querySelector('textarea[name="content"]');
-      // // 先恢复 textarea 的尺寸
-      // if (ov.__savedTextareaWidth && restoredTa) {
-      //   restoredTa.style.width = ov.__savedTextareaWidth;
-      //   restoredTa.style.minWidth = ov.__savedTextareaWidth; // 确保不会被缩小
-      // }
-      // if (ov.__savedTextareaHeight && restoredTa) {
-      //   restoredTa.style.height = ov.__savedTextareaHeight;
-      // }
-      // // 再恢复 stack 的宽度
-      // if (ov.__savedStackWidth && stackForRestore) {
-      //   stackForRestore.style.width = ov.__savedStackWidth;
-      // }
-      // 显示归位按钮
-      const resetBtn = ov.querySelector('.qp-reset-btn');
-      if (resetBtn) resetBtn.style.display = 'block';
-      // 启用拖拽功能
-      const $quote = $(ov.querySelector('.qp-quote'));
-      const $handles = $quote.find('.qp-drag-edge');
-      enableDragForReply($quote, $handles);
-      const ta = ov.querySelector('textarea[name="content"]');
-      // ---------- BEGIN 插入（替换旧的 ResizeObserver 逻辑） ----------
-      if (ta) {
-        // 先恢复之前保存的尺寸，再设置其他属性
-        if (ov.__savedTextareaWidth) {
-          ta.style.width = ov.__savedTextareaWidth;
-        }
-        if (ov.__savedTextareaHeight) {
-          ta.style.height = ov.__savedTextareaHeight;
-        }
-        ta.style.resize = 'both';
-        ta.style.fontSize = '14px';
-        // 不设置 maxWidth，让它自由调整
-      }
-      // 监听 textarea 调整大小的开始和结束
-      if (ta) {
-        ta.addEventListener('mousedown', function(e) {
-          // 检测是否点击在右下角调整区域（通常是最后 15px 范围）
-          const rect = ta.getBoundingClientRect();
-          const offsetX = e.clientX - rect.left;
-          const offsetY = e.clientY - rect.top;
-          const isResizeCorner = (offsetX > rect.width - 15) && (offsetY > rect.height - 15);
-          const isResizeRight = offsetX > rect.width - 15;
-          const isResizeBottom = offsetY > rect.height - 15;
-          if (isResizeCorner || isResizeRight || isResizeBottom) {
-            ov.__isResizing = true;
-            // 监听鼠标释放，标记调整结束
-            const onMouseUp = function() {
-              // 延迟一点清除标记，避免释放瞬间的点击事件触发关闭
-              setTimeout(() => {
-                ov.__isResizing = false;
-              }, 100);
-              document.removeEventListener('mouseup', onMouseUp);
-            };
-            document.addEventListener('mouseup', onMouseUp);
-          }
-        });
-      }
-      const stack = ov.querySelector('.qp-stack');
-      const quote = ov.querySelector('.qp-quote');
-      // 绝对最小宽度（不能再小）
-      const ABSOLUTE_MIN_WIDTH = 400;
-      // 动态计算当前应有的宽度（视口90%，但不小于400px，不大于820px）
-      function getResponsiveWidth() {
-        return Math.max(ABSOLUTE_MIN_WIDTH, Math.min(window.innerWidth * 0.9, 820));
-      }
-      // 初始化时记录用户可能扩展到的最大宽度
-      // 如果有保存的宽度，使用保存的；否则使用响应式宽度
-      let userMaxWidth = ov.__savedStackWidth ? parseFloat(ov.__savedStackWidth) : getResponsiveWidth();
-      // 定义安全边距（textarea 与浮窗边框之间的最小距离）
-      const SAFE_MARGIN = 30;
-      const ro = new ResizeObserver(entries => {
-        for (const entry of entries) {
-          const taRect = ta.getBoundingClientRect();
-          const taWidth = Math.round(taRect.width);
-          const stackRect = stack.getBoundingClientRect();
-          // 获取 quote 的 padding
-          const quoteStyle = window.getComputedStyle(quote);
-          const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
-          const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
-          // 计算 textarea 左边距（相对于 quote）
-          const quoteRect = quote.getBoundingClientRect();
-          const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
-          // 计算 textarea 右边界（相对于 quote 左边界）
-          const taRightEdge = taLeftOffset + taWidth;
-          // 计算 quote 的内部可用宽度
-          const quoteInnerWidth = quoteRect.width - quotePaddingLeft - quotePaddingRight;
-          // 获取视口宽度和当前响应式宽度
-          const maxAllowedWidth = window.innerWidth;
-          const responsiveWidth = getResponsiveWidth();
-          // 如果 textarea 右边界超过了安全区域，需要扩展 stack
-          const safeRightBound = quoteInnerWidth - SAFE_MARGIN - 20;
-          if (taRightEdge > safeRightBound) {
-            // 计算需要的新 stack 宽度
-            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
-            // 限制不超过视口宽度
-            const finalWidth = Math.min(neededQuoteWidth, maxAllowedWidth);
-            stack.style.width = finalWidth + 'px';
-            quote.style.width = '100%';
-            // 更新用户扩展到的最大宽度
-            userMaxWidth = Math.max(finalWidth, userMaxWidth);
-            // 如果达到最大宽度，限制 textarea 不能继续变宽
-            if (finalWidth >= maxAllowedWidth) {
-              const maxTaWidth = maxAllowedWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-              ta.style.maxWidth = Math.max(maxTaWidth, 200) + 'px';
-            } else {
-              ta.style.maxWidth = 'none';
-            }
-          }
-          // 如果 textarea 缩小了，也缩小 stack
-          else {
-            // 计算当前实际需要的宽度
-            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
-            const currentStackWidth = stackRect.width;
-            // 只有当需要的宽度明显小于当前宽度时才缩小
-            if (neededQuoteWidth < currentStackWidth - 10) {
-              // 使用响应式宽度作为下限
-              const finalWidth = Math.max(neededQuoteWidth, responsiveWidth);
-              stack.style.width = finalWidth + 'px';
-              quote.style.width = '100%';
-              // 同步调整 textarea 宽度，使其适应浮窗
-              if (finalWidth <= responsiveWidth) {
-                const maxTaWidth = finalWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-                if (taWidth > maxTaWidth) {
-                  ta.style.width = Math.max(maxTaWidth, 200) + 'px';
-                }
-              }
-            }
-            // 缩小时也要检查是否需要解除 maxWidth 限制
-            if (stackRect.width < maxAllowedWidth) {
-              ta.style.maxWidth = 'none';
-            }
-          }
-        }
-      });
-      if (ta) {
-        ro.observe(ta);
-        ov.__resizeObserver = ro;
-      }
-      // 最后恢复 stack 的宽度（在 ResizeObserver 创建之后）
-      const stackForRestore = ov.querySelector('.qp-stack');
-      if (ov.__savedStackWidth && stackForRestore) {
-        stackForRestore.style.width = ov.__savedStackWidth;
-        // 监听窗口大小变化，动态调整浮窗和 textarea
-      const handleWindowResize = function() {
-        const responsiveWidth = getResponsiveWidth(); // 当前浏览器宽度对应的响应式宽度
-        const currentStackWidth = stack.getBoundingClientRect().width;
-        // 关键：只在浏览器宽度变窄、且当前浮窗宽度超出响应式宽度时，才缩小浮窗
-        if (responsiveWidth < currentStackWidth) {
-          // 将浮窗宽度设置为响应式宽度（会随浏览器变窄而变窄）
-          stack.style.width = responsiveWidth + 'px';
-          // 同时调整 textarea，确保不超出新的浮窗宽度
-          if (ta) {
-            const taRect = ta.getBoundingClientRect();
-            const quoteStyle = window.getComputedStyle(quote);
-            const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
-            const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
-            const quoteRect = quote.getBoundingClientRect();
-            const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
-            const maxTaWidth = responsiveWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-            if (taRect.width > maxTaWidth) {
-              ta.style.width = Math.max(maxTaWidth, 200) + 'px';
-            }
-          }
-        }
-        // 浏览器变宽时不做任何调整（保持用户设置的宽度）
-      };
-      window.addEventListener('resize', handleWindowResize);
-      ov.__windowResizeHandler = handleWindowResize;
-      }
-      // ---------- END 插入 ----------
-      // 聚焦 textarea
-      if (ta) {
-          ta.focus();
-          const val = ta.value;
-          ta.value = '';
-          ta.value = val;
-      }
-      // Ctrl+Enter 发送并在成功后关闭浮窗
-      if (ta) {
-          const form = ta.closest('form');
-          if (form && !ta.__qpCtrlEnterBound) {
-              ta.__qpCtrlEnterBound = true;
-              // 保留：提交成功后关闭浮窗
-              document.addEventListener('replySuccess', () => {
-                  form.__submitting = false;
-                  closeOverlay();
-              });
-              // 新增：调用抽取的绑定函数
-              bindCtrlEnter(ta);
-          }
-      }
-    });
     // TOP/BOTTOM 在 early shell 阶段已绑定轻量滚动；这里不重复绑定，避免一次点击触发两套滚动。
   }
 
