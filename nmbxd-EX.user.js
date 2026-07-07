@@ -13183,18 +13183,40 @@ ${markedSwatchHtml}
     `;
     (document.head || document.documentElement).appendChild(style);
   }
-  function bindRightSidebarShellButtons(docker) {
-    if (!docker || docker.dataset.xdexSidebarShellBound === '1') return;
-    docker.dataset.xdexSidebarShellBound = '1';
-    const supportsHasSelector = !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))'));
-    if (!supportsHasSelector) {
-      docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
-      docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+  function openRightSidebarReplyWhenReady(retry = 0) {
+    const hasForm = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
+      || document.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]');
+    if (hasForm) {
+      ensureRightSidebarReplyController().open();
+      return;
     }
-    const topBtn = docker.querySelector('[data-type="TOP"]');
-    const bottomBtn = docker.querySelector('[data-type="BOTTOM"]');
-    topBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-    bottomBtn?.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
+    if (retry < 12) {
+      setTimeout(() => openRightSidebarReplyWhenReady(retry + 1), 80);
+      return;
+    }
+    if (typeof toast === 'function') toast('未找到回复/发串表单');
+  }
+  function bindRightSidebarReplyButton(docker) {
+    const replyBtn = docker?.querySelector('[data-type="REPLY"]');
+    if (!replyBtn || replyBtn.dataset.xdexReplyDockBound === '1') return;
+    replyBtn.dataset.xdexReplyDockBound = '1';
+    replyBtn.addEventListener('click', () => openRightSidebarReplyWhenReady());
+  }
+  function bindRightSidebarShellButtons(docker) {
+    if (!docker) return;
+    const supportsHasSelector = !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))'));
+    if (docker.dataset.xdexSidebarShellBound !== '1') {
+      docker.dataset.xdexSidebarShellBound = '1';
+      if (!supportsHasSelector) {
+        docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
+        docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+      }
+      const topBtn = docker.querySelector('[data-type="TOP"]');
+      const bottomBtn = docker.querySelector('[data-type="BOTTOM"]');
+      topBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+      bottomBtn?.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
+    }
+    bindRightSidebarReplyButton(docker);
   }
   function tryReplaceRightSidebarEarly() {
     if (!document.body) return false;
@@ -13898,14 +13920,8 @@ ${markedSwatchHtml}
       早期插入: dockerDom[0]?.dataset.xdexEarlyDocker === '1',
       支持Has选择器: !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))')),
     });
-    // REPLY 按钮：完整浮窗控制器延迟到首次点击再初始化
-    const replyBtn = dockerDom[0]?.querySelector('[data-type="REPLY"]');
-    if (replyBtn && replyBtn.dataset.xdexReplyDockBound !== '1') {
-      replyBtn.dataset.xdexReplyDockBound = '1';
-      replyBtn.addEventListener('click', () => {
-        ensureRightSidebarReplyController().open();
-      });
-    }
+    // REPLY 按钮：early shell 已绑定；这里兜底补绑，完整浮窗控制器仍延迟到首次点击再初始化
+    bindRightSidebarReplyButton(dockerDom[0]);
     // TOP/BOTTOM 在 early shell 阶段已绑定轻量滚动；这里不重复绑定，避免一次点击触发两套滚动。
   }
 
