@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.6.0
+// @version      3.9.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增阅图模式，以瀑布流显示当前串的图片，支持向上/向下加载，点击图片后进入对应图片详情模式。\n\n优化\n1.优化版块页快捷回复后增量更新的实现模式，当前使用API获取最新回复。\n2.发言历史中的[回应]链接加入引用对应回应号参数；常用串链接随浏览历史的中记录的最远页面实时更新。\n\n修复\n1.修复浏览历史、发言历史中消息被格式化后与原始内容不一致的问题。\n
+// @changelog    新增\n1.新增“关闭引用”开关，在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号（值班室版块默认关闭）。\n2.新增标题/作者/E-mail/正文字数统计与提醒。\n\n优化\n1.优化脚本加载时机、加载顺序等，减少首次打开页面时候用户等待时间。\n2.值班室举报理由新增“其他”理由并默认选中，以便快速提交，如有更适合的理由请手动选择。\n3.值班室板块内快捷回复默认为“发串”模式，以便用户按预期提交举报。\n4.页码栏拓展为最长七个页码按钮。\n5.优化阅图模式瀑布流，打开页面图片较少时继续获取，尽可能填满当前页面。\n6.部分功能支持6/7位串号以及8位饼干。\n\n修复\n1.排除版块页快速回复api拉取的数据中可能混杂的Tips。\n2.修复订阅面板中切换订阅号后没有重新作用模糊遮罩的问题。\n3.修复侧边栏常用串标题溢出问题。\n4.修复常用串链接没有优先指向浏览历史中该串最远页码的问题。\n5.修复阅图模式瀑布流在图片较少时，更多图片集中在某一列的问题。\n6.修复原生/拓展引用浮窗中未作用标记饼干的问题。\n7.修复串内检查回复是否更新结果toast可能被覆盖的问题。
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -123,7 +123,8 @@
   const UPDATE_CHECK_HOUR = 11;
   const THREAD_HISTORY_STORAGE_KEY = 'xdex_thread_history';
   const THREAD_HISTORY_STORE_VERSION = 1;
-  const THREAD_HISTORY_LIMIT = 500;
+  // const THREAD_HISTORY_LIMIT = 500;
+  const THREAD_HISTORY_LIMIT = Infinity;
   const THREAD_HISTORY_EXCERPT_LIMIT = 250;
   const THREAD_HISTORY_RECORD_RETRY_LIMIT = 10;
   const THREAD_HISTORY_RECORD_RETRY_DELAY = 500;
@@ -805,6 +806,7 @@
     // reply 类型保持原来的行为：有 page 就用 ?page=N&r=${postId}`;，否则回退到 ?r=replyId
     if (type === 'reply') {
       if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`;
+      // if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
       return buildPostHistoryUrl(type, postId, threadId);
     }
     // thread 类型优先从浏览历史获取最新页面（动态更新）
@@ -1313,12 +1315,10 @@
     if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
     logPostHistory('confirmed', { localId, type, id, resto, url });
     updatePostHistoryRecord(localId, update);
-
     // 新串发布成功 → 自动写入串内饼干偏好
     if (type === 'thread' && update.userHash) {
       try { setThreadCookiePref(id, update.userHash); } catch (e) {}
     }
-
     const resolver = postHistoryConfirmationMap.get(localId);
     if (!imageFile) {
       // 没有图片，异步获取后再通知等待者
@@ -3138,12 +3138,16 @@
     const $wrap = $('.xdex-feed-selector-wrap');
     const $display = $('#sp_feeds_selector_display');
     const $dropdown = $('#sp_feeds_selector_dropdown');
+    // 鼠标悬停时临时显示 UUID，移出后恢复模糊（比 CSS :hover 更可靠）
+    const $uuid = $display.find('.xdex-feed-display-uuid');
+    $wrap.off('mouseenter.feedBlur mouseleave.feedBlur')
+      .on('mouseenter.feedBlur', () => $uuid.css('filter', 'none'))
+      .on('mouseleave.feedBlur', () => $uuid.css('filter', ''));
     $display.off('click.feedDropdown').on('click.feedDropdown', (e) => {
       e.stopPropagation();
       const isOpen = $dropdown.is(':visible');
       $dropdown.toggle(!isOpen);
       $display.attr('aria-expanded', String(!isOpen));
-      $display.find('.xdex-feed-display-uuid').toggleClass('xdex-feed-uuid-visible', !isOpen);
     });
     $dropdown.off('click.feedOption', '.xdex-feed-option').on('click.feedOption', '.xdex-feed-option', function (e) {
       e.stopPropagation();
@@ -3157,12 +3161,10 @@
       $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
-      $display.find('.xdex-feed-display-uuid').removeClass('xdex-feed-uuid-visible');
     });
     $(document).off('click.feedDropdownClose').on('click.feedDropdownClose', () => {
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
-      $display.find('.xdex-feed-display-uuid').removeClass('xdex-feed-uuid-visible');
     });
     $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
       subscriptionFeedCurrentUuid = $(this).val() || '';
@@ -3899,17 +3901,20 @@
   function showImmediateToast(msg, duration = 900, key = 'default') {
     const safeKey = String(key || 'default').replace(/[^a-z0-9_-]/gi, '-');
     let $t = $(`#xdex-immediate-toast-${safeKey}`);
-    if ($t.length) {
-      $t.stop(true, true).text(msg).show().delay(duration).fadeOut(160, () => $t.remove());
-      return $t;
+    if (!$t.length) {
+      $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
+        position:fixed;top:10px;left:50%;transform:translateX(-50%);
+        background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
+        border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
+      $('body').append($t);
     }
-    $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
-      position:fixed;top:10px;left:50%;transform:translateX(-50%);
-      background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
-      border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
-    $t.text(msg);
-    $('body').append($t);
-    $t.fadeIn(120).delay(duration).fadeOut(160, () => $t.remove());
+    const el = $t[0];
+    const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
+    el.__xdexImmediateToastSeq = seq;
+    $t.stop(true, false).text(msg).show();
+    $t.delay(duration).fadeOut(160, () => {
+      if (el.__xdexImmediateToastSeq === seq) $t.remove();
+    });
     return $t;
   }
   const Utils = {
@@ -4125,9 +4130,51 @@
   function trimFavoriteThreadDesc(desc) {
     return String(desc || '').trim().slice(0, 20);
   }
+  // 判断码点是否为全角/CJK字符（视觉宽度 2）
+  function _isFullWidthCodePoint(cp) {
+    return (
+      (cp >= 0x1100 && cp <= 0x115F) ||        // Hangul Jamo
+      (cp >= 0x2E80 && cp <= 0x303E) ||        // CJK Radicals, Kangxi, etc.
+      (cp >= 0x3040 && cp <= 0x33BF) ||        // Hiragana, Katakana, Bopomofo, etc.
+      (cp >= 0x3400 && cp <= 0x4DBF) ||        // CJK Extension A
+      (cp >= 0x4E00 && cp <= 0x9FFF) ||        // CJK Unified Ideographs
+      (cp >= 0xA000 && cp <= 0xA4CF) ||        // Yi Syllables
+      (cp >= 0xAC00 && cp <= 0xD7AF) ||        // Hangul Syllables
+      (cp >= 0xF900 && cp <= 0xFAFF) ||        // CJK Compatibility Ideographs
+      (cp >= 0xFE30 && cp <= 0xFE4F) ||        // CJK Compatibility Forms
+      (cp >= 0xFF01 && cp <= 0xFF60) ||        // Fullwidth Forms（含全角字母/数字/标点）
+      (cp >= 0xFFE0 && cp <= 0xFFE6) ||        // Fullwidth Signs
+      (cp >= 0x20000 && cp <= 0x2FA1F) ||      // CJK Extensions B-F
+      cp === 0x2026                             // HORIZONTAL ELLIPSIS（东亚语境占全角宽度）
+    );
+  }
+  // 按视觉宽度截断（CJK/全角=2，其余=1）
+  function _truncateByVisualWidth(str, maxWidth) {
+    let w = 0;
+    for (let i = 0; i < str.length; i++) {
+      const cp = str.codePointAt(i);
+      const cw = _isFullWidthCodePoint(cp) ? 2 : 1;
+      if (w + cw > maxWidth) return str.slice(0, i);
+      w += cw;
+      if (cp > 0xFFFF) i++; // surrogate pair 跳过
+    }
+    return str;
+  }
+  function _visualWidth(str) {
+    let w = 0;
+    for (const ch of str) w += _isFullWidthCodePoint(ch.codePointAt(0)) ? 2 : 1;
+    return w;
+  }
   function formatFavoriteThreadMenuText(item) {
     const text = item && item.desc ? item.desc : item && item.threadId ? item.threadId : '';
-    return text.length > 7 ? `${text.slice(0, 7)}……` : text;
+    const VISUAL_MAX = 18; // 侧边栏实际可用：≈7个汉字 + "……"
+    const ELLIPSIS_W = 4;  // "……" 两个全角省略号 = 4个半角宽度
+    const w = _visualWidth(text);
+    if (w <= VISUAL_MAX) return text;
+    const truncated = _truncateByVisualWidth(text, VISUAL_MAX - ELLIPSIS_W);
+    // 截断后加"……"反而比原文更宽（或差不多）→ 直接显示原文，接受轻微溢出
+    if (_visualWidth(truncated) + ELLIPSIS_W >= w) return text;
+    return `${truncated}……`;
   }
   function normalizeFavoriteThreads(val) {
     if (!Array.isArray(val)) return [];
@@ -4479,6 +4526,31 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   const SETTINGS_BUTTON_ICON_32 = 'data:image/png;base64,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';
   const SETTINGS_BUTTON_ICON_64 = 'data:image/png;base64,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';
+  function installSettingPanelEasterEgg(root = document) {
+    const scope = root && root.querySelector ? root : document;
+    const title = scope.querySelector('.xdex-setting-title-easter-egg');
+    if (!title || title.__xdexSettingEasterEggBound) return;
+    title.__xdexSettingEasterEggBound = true;
+    const CLICK_WINDOW_MS = 3000;
+    const REQUIRED_CLICKS = 3;
+    const EASTER_EGG_TID = '68811442';
+    let clicks = [];
+    title.addEventListener('click', () => {
+      const now = Date.now();
+      clicks = clicks.filter(t => now - t <= CLICK_WINDOW_MS);
+      clicks.push(now);
+      if (clicks.length < REQUIRED_CLICKS) return;
+      clicks = [];
+      try {
+        if (typeof enableQuotePreview === 'function') enableQuotePreview();
+        if (typeof window.__xdexOpenQuoteByTid === 'function') {
+          window.__xdexOpenQuoteByTid(EASTER_EGG_TID, { fromPOImage: true });
+        }
+      } catch (e) {
+        console.warn('[X岛-EX] setting panel easter egg failed', e);
+      }
+    });
+  }
   const SettingPanel = {
     key: 'myScriptSettings',
     defaults: {
@@ -4512,6 +4584,7 @@ ${markedSwatchHtml}
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
+      disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
       threadCookieWhitelistDisplayMode: 'fold', // 只看饼干：fold | hide | column
       poAnnotationSideDisplayMode: 'collapse', // 分栏侧栏：collapse | expand
@@ -5201,7 +5274,7 @@ ${markedSwatchHtml}
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
                 <div id="sp_panel_content" class="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;box-sizing:border-box;">
                   <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
-                <span style="font-size:20px; font-weight:bold;">X岛-EX</span>
+                <span class="xdex-setting-title-easter-egg" style="font-size:20px; font-weight:bold; cursor:pointer;">X岛-EX</span>
                 <a id="sp_version_link" href="javascript:void(0)" style="position:absolute; right:0; top:50%; transform:translateY(-50%); font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
               </div>
                   <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
@@ -5246,9 +5319,10 @@ ${markedSwatchHtml}
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -5512,6 +5586,7 @@ ${markedSwatchHtml}
         </div>`;
       $('#sp_cover').remove();
       $('body').append(html);
+      installSettingPanelEasterEgg(document);
       function setSettingsPanelModule(moduleName) {
         const $nextView = $(`#sp_panel_views [data-sp-module-view="${moduleName}"]`);
         const nextModule = $nextView.length ? moduleName : 'settings';
@@ -5599,7 +5674,8 @@ ${markedSwatchHtml}
         'enableAutoUrlLinkify',
         'enableQuotePreview',
         'extendQuote',
-        'toggleSidebar'
+        'toggleSidebar',
+        'disableAutoQuote'
       ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
@@ -6763,7 +6839,6 @@ ${markedSwatchHtml}
       // 关闭面板时清除暂存
       const _origClose = $('#sp_close,#sp_cover').off.bind($('#sp_close,#sp_cover'), 'click');
       delete SettingPanel.__pendingImport;
-
       // ── 使用数据导入导出 ──
       $('#btn_sp_fullExport_reset').off('click').on('click', (e) => {
         e.stopPropagation();
@@ -6972,11 +7047,10 @@ ${markedSwatchHtml}
       });
       //鼠标悬浮在具体功能上显示提示
       // ====== 1. 定义功能描述映射表 ======
-
       const spDescriptions = {
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
         sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送。',
-        sp_enablePaginationDuplication: '在串首页添加页码导航栏',
+        sp_enablePaginationDuplication: '在串首页添加页码导航栏，并拓展为最长七个页码按钮',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
         sp_hideEmptyTitleEmail: '隐藏帖内无标题、无名氏和版规提示，优化显示效果，减少版面占用',
@@ -7003,7 +7077,7 @@ ${markedSwatchHtml}
         sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片。',
         sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
-        sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面',
+        sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面，添加标题/作者/E-mail/正文的字数统计与提醒',
         sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则\n折叠：匹配到的串/回复显示为可展开的按钮\n隐藏：匹配到的串/回复完全隐藏',
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
         sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间。',
@@ -7018,20 +7092,22 @@ ${markedSwatchHtml}
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
+        sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，保留高亮的同时控制其是否在输入框中自动添加引用号，值班室版块默认不生效',
+        sp_autoSelectReportReason: '值班室默认选择“其他”理由，且在值班室版块快捷回复面板中默认为“发串”模式以便提交举报',
       };
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
       if (!document.getElementById('sp_update_log')) {
         const $log = $(
           '<div id=\"sp_update_log\" style=\"display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10001;\">' +
-            '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;background:var(--xdex-sp-panel-bg);border:1px solid var(--xdex-sp-border);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow);\">' +
-              '<div style=\"padding:10px 12px;border-bottom:1px solid var(--xdex-sp-border);display:flex;align-items:center;justify-content:space-between;\">' +
+            '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(640px, calc(100vw - 48px));max-height:calc(100vh - 96px);display:flex;flex-direction:column;overflow:hidden;background:var(--xdex-sp-panel-bg);border:1px solid var(--xdex-sp-border);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow);\">' +
+              '<div style=\"padding:10px 12px;border-bottom:1px solid var(--xdex-sp-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;\">' +
                 '<span class=\"xdex-update-log-title\" style=\"font-weight:bold;\">更新日志</span>' +
                 '<span id=\"sp_update_log_close\" style=\"cursor:pointer;\">✕</span>' +
               '</div>' +
-              '<div class=\"xdex-update-log-body\" style=\"padding:12px;font-size:12px;white-space:pre-line;\">' +
+              '<div class=\"xdex-update-log-body\" style=\"padding:12px;font-size:12px;white-space:pre-line;overflow:auto;flex:1 1 auto;min-height:0;\">' +
                 (CHANGELOG || '暂无更新说明') +
               '</div>' +
-              '<div class=\"xdex-update-log-actions\" style=\"display:none;padding:0 12px 12px;gap:8px;justify-content:flex-end;\">' +
+              '<div class=\"xdex-update-log-actions\" style=\"display:none;padding:0 12px 12px;gap:8px;justify-content:flex-end;flex-shrink:0;\">' +
                 '<button id=\"sp_update_log_update_now\" style=\"padding:4px 10px;\">立即更新</button>' +
                 '<button id=\"sp_update_log_ignore_version\" style=\"padding:4px 10px;\">忽略此版本</button>' +
                 '<button id=\"sp_update_log_dismiss_today\" style=\"padding:4px 10px;\">今日关闭</button>' +
@@ -7170,7 +7246,8 @@ ${markedSwatchHtml}
         'enableImageHideMode',
         'extendQuote',
         'enablePostExpandAll',
-        'toggleSidebar'
+        'toggleSidebar',
+        'disableAutoQuote'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
       // 二次确认饼干联动：快捷切换饼干关闭时禁用
       $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
@@ -9133,34 +9210,328 @@ ${markedSwatchHtml}
   /* --------------------------------------------------
    * tag 6. 页面增强：页首页码 / 关闭水印 / 预览区真实饼干 / 隐藏无标题+无名氏+版规
    * -------------------------------------------------- */
-  function enablePaginationDuplication  (){
+  // ---- 旧版 enablePaginationDuplication（仅克隆 + 末页补全）----
+  // function enablePaginationDuplication  (){
+  //   const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+  //   if(!pags.length) return;
+  //   pags.forEach(pag => {
+  //     const tit = document.querySelector('h2.h-title');
+  //     if(!tit || !pag) return;
+  //     const clone = pag.cloneNode(true);
+  //     tit.parentNode.insertBefore(clone, tit.nextSibling);
+  //     processPagination(clone);
+  //   });
+  //   const observer = new MutationObserver(mutations => {
+  //     mutations.forEach(m => {
+  //       m.addedNodes.forEach(node => {
+  //         if(node.nodeType === 1){
+  //           if(node.matches && node.matches('ul.uk-pagination.uk-pagination-left.h-pagination')){
+  //             processPagination(node);
+  //           }
+  //           const innerPags = node.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination');
+  //           innerPags?.forEach(p => processPagination(p));
+  //         }
+  //       });
+  //     });
+  //   });
+  //   observer.observe(document.body, { childList: true, subtree: true });
+  // }
 
+  // ---- 旧版 rebuildPaginationPages ----
+  // function rebuildPaginationPages(pag) {
+  //   const totalPages = parseInt(pag.getAttribute('data-last-page'), 10);
+  //   if (!totalPages || totalPages < 1) return;
+  //   const activeLi = pag.querySelector('li.uk-active');
+  //   if (!activeLi) return;
+  //   const activeEl = activeLi.querySelector('span, a');
+  //   if (!activeEl) return;
+  //   const activeHref = activeEl.getAttribute('href') || '';
+  //   const currentMatch = activeHref.match(/page=(\d+)/);
+  //   const currentPage = currentMatch ? parseInt(currentMatch[1], 10) : 1;
+  //   if (!currentPage) return;
+  //   const anyLink = pag.querySelector('a[href*="page="]');
+  //   if (!anyLink) return;
+  //   const anyHref = anyLink.getAttribute('href') || '';
+  //   const urlBase = anyHref.replace(/page=\d+/, 'page=');
+  //   if (!urlBase) return;
+  //   const WINDOW = 7;
+  //   const HALF = Math.floor(WINDOW / 2);
+  //   let start = Math.max(1, currentPage - HALF);
+  //   let end = Math.min(totalPages, start + WINDOW - 1);
+  //   start = Math.max(1, end - WINDOW + 1);
+  //   const allLi = Array.from(pag.children);
+  //   let prevPageLi = null;
+  //   let nextPageLi = null;
+  //   for (const li of allLi) {
+  //     const text = (li.textContent || '').trim();
+  //     if (text === '上一页') prevPageLi = li;
+  //     else if (text === '下一页') nextPageLi = li;
+  //   }
+  //   if (!prevPageLi || !nextPageLi) return;
+  //   let removing = false;
+  //   for (const li of allLi) {
+  //     if (li === prevPageLi) { removing = true; continue; }
+  //     if (li === nextPageLi) break;
+  //     if (removing) li.remove();
+  //   }
+  //   const fragment = document.createDocumentFragment();
+  //   for (let p = start; p <= end; p++) {
+  //     const li = document.createElement('li');
+  //     if (p === currentPage) {
+  //       li.className = 'uk-active';
+  //       const span = document.createElement('span');
+  //       span.setAttribute('href', urlBase + p);
+  //       span.textContent = String(p);
+  //       li.appendChild(span);
+  //     } else {
+  //       const a = document.createElement('a');
+  //       a.setAttribute('href', urlBase + p);
+  //       a.setAttribute('achecked', '1');
+  //       a.textContent = String(p);
+  //       li.appendChild(a);
+  //     }
+  //     fragment.appendChild(li);
+  //   }
+  //   pag.insertBefore(fragment, nextPageLi);
+  // }
+
+  function parsePaginationPageNum(href) {
+    if (!href) return null;
+    const value = String(href);
+    let m = value.match(/[?&]page=(\d+)/);
+    if (m) return parseInt(m[1], 10);
+    m = value.match(/\/page\/(\d+)\.html/);
+    if (m) return parseInt(m[1], 10);
+    return null;
+  }
+  function buildPaginationHref(sampleHref, pageNum) {
+    const href = String(sampleHref || '');
+    if (/[?&]page=\d+/.test(href)) return href.replace(/page=\d+/, `page=${pageNum}`);
+    if (/\/page\/\d+\.html/.test(href)) return href.replace(/\/page\/\d+\.html/, `/page/${pageNum}.html`);
+    if (/^\/f\//.test(location.pathname) || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
+      const base = location.pathname.replace(/\/page\/\d+\.html$/, '');
+      return `${base}/page/${pageNum}.html`;
+    }
+    return href;
+  }
+  function isBoardPaginationContext() {
+    return /^\/f\//.test(location.pathname);
+  }
+  // 重建分页栏页码：显示 7 个页码，当前页居中（边界时左/右对齐）
+  function rebuildPaginationPages(pag) {
+    // 1) 提取分页链接样本：支持串内 ?page=N，也支持版块页 /page/N.html
+    const anyLink = Array.from(pag.querySelectorAll('a[href], span[href]')).find(el => parsePaginationPageNum(el.getAttribute('href')));
+    if (!anyLink) return;
+    const sampleHref = anyLink.getAttribute('href') || '';
+    // 2) 提取当前页码：优先 uk-active，回退到 data-cloned-page，再回退到上一页+1
+    // （先提取当前页，后面计算总页数需要用到）
+    let currentPage = 0;
+    const activeLi = pag.querySelector('li.uk-active');
+    if (activeLi) {
+      const activeEl = activeLi.querySelector('span, a');
+      if (activeEl) {
+        const activeHref = activeEl.getAttribute('href') || '';
+        currentPage = parsePaginationPageNum(activeHref) || 0;
+        if (!currentPage && /^\d+$/.test((activeEl.textContent || '').trim())) currentPage = parseInt((activeEl.textContent || '').trim(), 10);
+      }
+    }
+    if (!currentPage) {
+      currentPage = parseInt(pag.getAttribute('data-cloned-page'), 10) || 0;
+    }
+    if (!currentPage) {
+      const prevLink = Array.from(pag.querySelectorAll('a')).find(a => (a.textContent || '').trim() === '上一页');
+      if (prevLink) {
+        const prevHref = prevLink.getAttribute('href') || '';
+        const prevPage = parsePaginationPageNum(prevHref);
+        currentPage = prevPage ? prevPage + 1 : 0;
+      }
+    }
+    if (!currentPage) currentPage = 1;
+    // 3) 提取总页数（多级回退）
+    let totalPages = 0;
+    // 回退1：末页链接的 href
+    const lastLink = Array.from(pag.querySelectorAll('a')).find(a => (a.textContent || '').trim().startsWith('末页'));
+    if (lastLink) {
+      const lastHref = lastLink.getAttribute('href') || '';
+      totalPages = parsePaginationPageNum(lastHref) || 0;
+    }
+    // 回退2：data-last-page（无缝翻页的属性，可能是翻页前的页码而非真正的总页数）
+    if (!totalPages || totalPages < 1) {
+      totalPages = parseInt(pag.getAttribute('data-last-page'), 10) || 0;
+    }
+    // 回退3：从所有页码链接中取最大值
+    if (!totalPages || totalPages < 1) {
+      let maxPage = 0;
+      pag.querySelectorAll('a[href], span[href]').forEach(el => {
+        const n = parsePaginationPageNum(el.getAttribute('href') || '');
+        if (n) maxPage = Math.max(maxPage, n);
+      });
+      totalPages = maxPage;
+    }
+    // 版块页最多 100 页；若没有末页信息，按 100 兜底（少于 100 页的板块会由末页链接覆盖）
+    if (isBoardPaginationContext()) {
+      totalPages = totalPages ? Math.min(100, totalPages) : 100;
+      if (currentPage > totalPages) totalPages = Math.min(100, currentPage);
+    }
+    // 关键修正：如果"下一页"被禁用（uk-disabled），说明当前就是末页
+    const nextPageCandidate = Array.from(pag.children).find(li => (li.textContent || '').trim() === '下一页');
+    if (nextPageCandidate && nextPageCandidate.classList.contains('uk-disabled')) {
+      totalPages = Math.max(totalPages, currentPage);
+    }
+    // 兜底：总页数不能小于当前页
+    if (totalPages < currentPage) totalPages = currentPage;
+    if (!totalPages) return;
+    // console.debug('[rebuildPaginationPages]', { totalPages, currentPage, sampleHref });
+    // 4) 计算页码窗口
+    const WINDOW = 7;
+    const HALF = Math.floor(WINDOW / 2);
+    let start = Math.max(1, currentPage - HALF);
+    let end = Math.min(totalPages, start + WINDOW - 1);
+    start = Math.max(1, end - WINDOW + 1);
+    // 幂等检查：如果上一页/下一页之间已经是目标页码，就不要再改 DOM，避免 observer 自触发循环
+    const currentPageItems = Array.from(pag.children)
+      .filter(li => {
+        const text = (li.textContent || '').trim();
+        return /^\d+$/.test(text);
+      })
+      .map(li => ({ text: (li.textContent || '').trim(), active: li.classList.contains('uk-active') }));
+    const expectedPageItems = [];
+    for (let p = start; p <= end; p++) expectedPageItems.push({ text: String(p), active: p === currentPage });
+    const alreadyMatches = currentPageItems.length === expectedPageItems.length
+      && currentPageItems.every((item, idx) => item.text === expectedPageItems[idx].text && item.active === expectedPageItems[idx].active);
+    if (alreadyMatches) {
+      pag.setAttribute('data-xdex-rebuilt', '1');
+      return;
+    }
+    // 5) 定位上一页/下一页按钮
+    const allLi = Array.from(pag.children);
+    let prevPageLi = null;
+    let nextPageLi = null;
+    for (const li of allLi) {
+      const text = (li.textContent || '').trim();
+      if (text === '上一页') prevPageLi = li;
+      else if (text === '下一页') nextPageLi = li;
+    }
+    if (!prevPageLi || !nextPageLi) return;
+    // 6) 移除上一页和下一页之间的旧页码 <li>
+    let removing = false;
+    for (const li of allLi) {
+      if (li === prevPageLi) { removing = true; continue; }
+      if (li === nextPageLi) break;
+      if (removing) li.remove();
+    }
+    // 7) 生成新页码 <li> 并插入
+    const fragment = document.createDocumentFragment();
+    for (let p = start; p <= end; p++) {
+      const li = document.createElement('li');
+      if (p === currentPage) {
+        li.className = 'uk-active';
+        const span = document.createElement('span');
+        span.setAttribute('href', buildPaginationHref(sampleHref, p));
+        span.textContent = String(p);
+        li.appendChild(span);
+      } else {
+        const a = document.createElement('a');
+        a.setAttribute('href', buildPaginationHref(sampleHref, p));
+        a.setAttribute('achecked', '1');
+        a.textContent = String(p);
+        li.appendChild(a);
+      }
+      fragment.appendChild(li);
+    }
+    pag.insertBefore(fragment, nextPageLi);
+    // 标记已重建，避免延迟重扫或 MutationObserver 重复处理
+    pag.setAttribute('data-xdex-rebuilt', '1');
+  }
+  function enablePaginationDuplication  (){
     // 获取所有分页栏，而不是只获取一个
-    const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+    const pags = Array.from(document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
     if(!pags.length) return;
-    pags.forEach(pag => {
-      const tit = document.querySelector('h2.h-title');
-      if(!tit || !pag) return;
-      // 克隆分页栏并插入标题后
-      const clone = pag.cloneNode(true);
-      tit.parentNode.insertBefore(clone, tit.nextSibling);
-      // 对克隆分页栏执行末页补全
-      processPagination(clone);
+    const tit = document.querySelector('h2.h-title');
+    let titlePag = null;
+    if (tit) {
+      // early pass 和 ready 兜底都可能运行；标题后页码栏全页只保留一条
+      const titlePags = pags.filter(pag => pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling === tit);
+      titlePags.forEach((pag, idx) => {
+        if (idx === 0) {
+          titlePag = pag;
+          titlePag.dataset.xdexTitleClone = '1';
+        } else {
+          pag.remove();
+        }
+      });
+    }
+    const sourcePags = pags.filter(pag => pag.isConnected && pag.dataset.xdexTitleClone !== '1' && pag.previousElementSibling !== tit);
+    sourcePags.forEach(pag => {
+      // 重建页码（显示 7 个页码，当前页居中）
+      rebuildPaginationPages(pag);
+      // 末页补全
+      processPagination(pag);
     });
-    // 监听 DOM 变化，自动处理后续新增的分页栏
+    if (tit && !titlePag && sourcePags.length) {
+      // 克隆分页栏并插入标题后
+      titlePag = sourcePags[0].cloneNode(true);
+      titlePag.dataset.xdexTitleClone = '1';
+      tit.parentNode.insertBefore(titlePag, tit.nextSibling);
+    }
+    if (titlePag && titlePag.isConnected) {
+      rebuildPaginationPages(titlePag);
+      // 对克隆分页栏执行末页补全（页码已随克隆复制）
+      processPagination(titlePag);
+    }
+    // 延迟重建：防止其他功能（如无缝翻页初始化）在之后覆盖分页栏
+    function rescanAndRebuild() {
+      document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination:not([data-xdex-rebuilt])').forEach(pag => {
+        rebuildPaginationPages(pag);
+        processPagination(pag);
+        pag.setAttribute('data-xdex-rebuilt', '1');
+      });
+    }
+    [500, 1500].forEach(ms => setTimeout(rescanAndRebuild, ms));
+    // 监听 DOM 变化，自动处理后续新增/替换的分页栏
+    // 用防抖避免 rebuild 改 DOM 后触发 observer 造成无限循环
+    const pagDebounceTimers = new WeakMap();
     const observer = new MutationObserver(mutations => {
+      const targets = new Set();
       mutations.forEach(m => {
         m.addedNodes.forEach(node => {
-          if(node.nodeType === 1){
-            // 判断是否是分页栏
-            if(node.matches && node.matches('ul.uk-pagination.uk-pagination-left.h-pagination')){
-              processPagination(node);
-            }
-            // 判断是否包含分页栏
-            const innerPags = node.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination');
-            innerPags?.forEach(p => processPagination(p));
+          if(node.nodeType !== 1) return;
+          // 情况1：新增的节点本身是分页栏
+          if(node.matches && node.matches('ul.uk-pagination.uk-pagination-left.h-pagination')){
+            targets.add(node);
+            return;
           }
+          // 情况2：新增的节点内部包含分页栏
+          const innerPags = node.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination');
+          innerPags?.forEach(p => targets.add(p));
+          // 情况3：新增的节点是分页栏的子节点（如 <li> 被替换），向上查找父分页栏
+          const parentPag = node.closest?.('ul.uk-pagination.uk-pagination-left.h-pagination');
+          if (parentPag) targets.add(parentPag);
         });
+      });
+      // 对每个受影响的分页栏做防抖重建（50ms 内重复变化只触发一次）
+      targets.forEach(pag => {
+        if (pagDebounceTimers.has(pag)) clearTimeout(pagDebounceTimers.get(pag));
+        pagDebounceTimers.set(pag, setTimeout(() => {
+          pagDebounceTimers.delete(pag);
+          if (pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling?.matches?.('h2.h-title')) {
+            const tit = document.querySelector('h2.h-title');
+            const titlePags = Array.from(document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'))
+              .filter(p => p.dataset.xdexTitleClone === '1' || p.previousElementSibling === tit);
+            titlePags.forEach((p, idx) => {
+              if (idx === 0) {
+                p.dataset.xdexTitleClone = '1';
+                rebuildPaginationPages(p);
+                processPagination(p);
+              } else {
+                p.remove();
+              }
+            });
+            return;
+          }
+          rebuildPaginationPages(pag);
+          processPagination(pag);
+        }, 50));
       });
     });
     observer.observe(document.body, { childList: true, subtree: true });
@@ -9252,12 +9623,151 @@ ${markedSwatchHtml}
     Utils.collapse($root.find('form[action="/Home/Forum/doReplyThread.html"]').addBack('form[action="/Home/Forum/doReplyThread.html"]'), '『回复』');
     Utils.collapse($root.find('form[action="/Home/Forum/doPostThread.html"]').addBack('form[action="/Home/Forum/doPostThread.html"]'), '『发串』');
   }
-  function runEarlyStartupPass(root) {
-    const cfg = getEarlyStartupConfig();
-    if (cfg.hideEmptyTitleEmail) {
-      hideEmptyTitleAndEmail(root);
-      collapseEarlyStartupBlocks(root, cfg);
+  function buildEnhanceIslandPreviewHtml() {
+    // 从 cookie-switcher 里取当前饼干
+    const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
+    const cookieText = cookieDisplay ? cookieDisplay.textContent.trim() : '--';
+    return `
+      <div class="h-preview-box" data-xdex-early-preview="1">
+        <div class="h-threads-item">
+          <div class="h-threads-item-replies">
+            <div class="h-threads-item-reply">
+              <div class="h-threads-item-reply-main">
+                <div class="h-threads-img-box">
+                  <div class="h-threads-img-tool uk-animation-slide-top">
+                    <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
+                    <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
+                    <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
+                    <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
+                  </div>
+                  <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
+                </div>
+                <div class="h-threads-info">
+                  <span class="h-threads-info-title"></span>
+                  <span class="h-threads-info-email"></span>
+                  <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
+                  <span class="h-threads-info-uid">ID:${cookieText}</span>
+                  <span class="h-threads-info-report-btn">
+                    [<a href="/f/值班室" target="_blank">举报</a>]
+                  </span>
+                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                </div>
+                <div class="h-threads-content"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  function applyEarlyPreviewBoxStyle(previewEl) {
+    if (!previewEl) return;
+    previewEl.style.width = '100%';
+    previewEl.style.boxSizing = 'border-box';
+    const content = previewEl.querySelector('.h-threads-content');
+    if (content) {
+      content.style.overflowWrap = 'break-word';
+      content.style.wordBreak = 'break-word';
+      content.style.whiteSpace = 'normal';
     }
+  }
+  function tryInsertPreviewBoxEarly() {
+    if (!document.body || document.querySelector('.h-preview-box')) return false;
+    const form = document.querySelector('#h-post-form form');
+    if (!form) return false;
+    form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml());
+    const previewEl = form.nextElementSibling && form.nextElementSibling.classList?.contains('h-preview-box')
+      ? form.nextElementSibling
+      : document.querySelector('.h-preview-box');
+    applyEarlyPreviewBoxStyle(previewEl);
+    if (typeof updatePreviewCookieId === 'function') {
+      try { updatePreviewCookieId(); } catch (e) {}
+    }
+    return !!previewEl;
+  }
+  function tryEnablePaginationDuplicationEarly(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const tit = document.querySelector('h2.h-title');
+    const pags = [];
+    if (scope.matches && scope.matches('ul.uk-pagination.uk-pagination-left.h-pagination')) pags.push(scope);
+    scope.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination').forEach(p => pags.push(p));
+    if (!pags.length) return false;
+    let titlePag = null;
+    if (tit) {
+      const titlePags = pags.filter(pag => pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling === tit);
+      titlePags.forEach((pag, idx) => {
+        if (idx === 0) {
+          titlePag = pag;
+          titlePag.dataset.xdexTitleClone = '1';
+        } else {
+          pag.remove();
+        }
+      });
+    }
+    let changed = false;
+    pags.forEach(pag => {
+      if (!pag.isConnected) return;
+      try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(pag); } catch (e) {}
+      try { if (typeof processPagination === 'function') processPagination(pag); } catch (e) {}
+      if (!tit || titlePag || pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling === tit) return;
+      const clone = pag.cloneNode(true);
+      clone.dataset.xdexTitleClone = '1';
+      tit.parentNode.insertBefore(clone, tit.nextSibling);
+      try { if (typeof processPagination === 'function') processPagination(clone); } catch (e) {}
+      titlePag = clone;
+      changed = true;
+    });
+    return changed;
+  }
+  function runCriticalVisualEnhancements(root, cfg) {
+    const liveCfg = cfg || getEarlyStartupConfig();
+    try {
+      if (liveCfg.hideEmptyTitleEmail && typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(root);
+    } catch (e) {}
+    try {
+      if (liveCfg.hideEmptyTitleEmail) collapseEarlyStartupBlocks(root, liveCfg);
+    } catch (e) {}
+    try {
+      if (typeof highlightPO === 'function') highlightPO(root);
+    } catch (e) {}
+    try {
+      if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(liveCfg, root || document);
+    } catch (e) {}
+    try {
+      if (liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root || document);
+    } catch (e) {}
+    try {
+      if (typeof enablePostExpand === 'function') enablePostExpand(root || document);
+    } catch (e) {}
+    try {
+      if (typeof autoSelectReportReason === 'function') autoSelectReportReason(root || document);
+    } catch (e) {}
+    try {
+      if (liveCfg.enablePaginationDuplication) tryEnablePaginationDuplicationEarly(root);
+    } catch (e) {}
+    try {
+      if (liveCfg.updatePreviewCookie) tryInsertPreviewBoxEarly();
+    } catch (e) {}
+    try {
+      if (typeof tryReplaceRightSidebarEarly === 'function') tryReplaceRightSidebarEarly();
+    } catch (e) {}
+  }
+  function runEarlyStartupPass(root) {
+    runCriticalVisualEnhancements(root, getEarlyStartupConfig());
+  }
+  function installEarlyCriticalVisualPass() {
+    const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const duration = 800;
+    let rafId = 0;
+    function now() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
+    function pass() {
+      rafId = 0;
+      try { runCriticalVisualEnhancements(document, getEarlyStartupConfig()); } catch (e) {}
+      if (now() - startedAt < duration) {
+        rafId = requestAnimationFrame(pass);
+      }
+    }
+    pass();
+    setTimeout(() => { if (rafId) cancelAnimationFrame(rafId); }, duration + 250);
   }
   function getEnhanceIslandOriginalTitle() {
     const root = document.documentElement;
@@ -9350,7 +9860,21 @@ ${markedSwatchHtml}
     }
   }
   function installEarlyStartupObserver() {
-    const relevantSelector = '.h-threads-info-title, .h-threads-info-email, .h-forum-header, form[action="/Home/Forum/doReplyThread.html"], form[action="/Home/Forum/doPostThread.html"]';
+    const relevantSelector = [
+      '.h-threads-list',
+      '.h-threads-item',
+      '.h-threads-item-replies',
+      '.h-threads-item-reply',
+      '.h-threads-info-title',
+      '.h-threads-info-email',
+      '.h-threads-info-uid',
+      '.h-threads-item-reply-icon',
+      '.h-forum-header',
+      'ul.uk-pagination.uk-pagination-left.h-pagination',
+      'form[action="/Home/Forum/doReplyThread.html"]',
+      'form[action="/Home/Forum/doPostThread.html"]',
+      '#h-report-switch'
+    ].join(',');
     let observer = null;
     let rafId = 0;
     let passCount = 0;
@@ -9708,20 +10232,25 @@ ${markedSwatchHtml}
   // ========== 公共增强函数 ==========
   // root: 新插入或替换的 DOM 节点（例如 repliesClone 或 targetReplies）
   // cfg: 当前配置对象
+  function getPageEnhancementConfig(cfg) {
+    try {
+      // 关键：以 GM 最新配置为最高优先级，避免旧 cfg 覆盖新设置
+      return Object.assign({}, SettingPanel.defaults, cfg || {}, GM_getValue(SettingPanel.key, {}));
+    } catch (e) {
+      return Object.assign({}, SettingPanel.defaults, cfg || {});
+    }
+  }
+  // 插入 DOM 前可安全执行的同步增强：避免用户看到原始 DOM → 增强后 DOM 的闪烁过程
+  function preprocessPageEnhancementsBeforeInsert(root, cfg) {
+    const liveCfg = getPageEnhancementConfig(cfg);
+    try { if (typeof runCriticalVisualEnhancements === 'function') runCriticalVisualEnhancements(root, liveCfg); } catch (e) {}
+    try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
+    try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
+  }
   function applyPageEnhancements(root, cfg) {
-    const getLatestCfg = () => {
-      try {
-        // 关键：以 GM 最新配置为最高优先级，避免旧 cfg 覆盖新设置
-        return Object.assign({}, SettingPanel.defaults, cfg || {}, GM_getValue(SettingPanel.key, {}));
-      } catch (e) {
-        return Object.assign({}, SettingPanel.defaults, cfg || {});
-      }
-    };
+    const getLatestCfg = () => getPageEnhancementConfig(cfg);
     let liveCfg = getLatestCfg();
-    try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
-    try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
-      try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
-      try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
+    preprocessPageEnhancementsBeforeInsert(root, liveCfg);
     setTimeout(() => {
       liveCfg = getLatestCfg();
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
@@ -9915,16 +10444,11 @@ ${markedSwatchHtml}
       }
       function parseLastPageFromPagination(pagUl) {
         if (!pagUl) return null;
-        const anchors = Array.from(pagUl.querySelectorAll('a')).map(a => a.href || a.getAttribute('href') || '');
+        const anchors = Array.from(pagUl.querySelectorAll('a, span')).map(a => a.href || a.getAttribute('href') || '');
         const pageNums = anchors.map(h => {
-          try {
-            const u = new URL(h, location.origin);
-            const p = Number(u.searchParams.get('page') || '') || null;
-            return p;
-          } catch (e) {
-            const m = (h || '').match(/page=(\d+)/);
-            return m ? Number(m[1]) : null;
-          }
+          if (typeof parsePaginationPageNum === 'function') return parsePaginationPageNum(h);
+          const m = (h || '').match(/[?&]page=(\d+)|\/page\/(\d+)\.html/);
+          return m ? Number(m[1] || m[2]) : null;
         }).filter(n => !!n);
         if (pageNums.length === 0) return null;
         return Math.max(...pageNums);
@@ -10101,8 +10625,12 @@ ${markedSwatchHtml}
         const oldPags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
         const oldPag = oldPags.length ? oldPags[oldPags.length - 1] : null;
         if (newPag && oldPag) {
-          // 只替换 innerHTML（避免完全替换导致事件/引用丢失），但你也可改为 replaceWith(clone)
-          try { oldPag.innerHTML = newPag.innerHTML; } catch (e) { oldPag.replaceWith(newPag.cloneNode(true)); }
+          // 先在 detached DOM 中扩展分页栏，再替换到页面，避免先出现原版 3 页码再二次修正造成闪烁
+          const preparedPag = newPag.cloneNode(true);
+          try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(preparedPag); } catch (e) {}
+          try { if (typeof processPagination === 'function') processPagination(preparedPag); } catch (e) {}
+          // 只替换 innerHTML（避免完全替换导致事件/引用丢失），但内容已是扩展后的 7 页码版本
+          try { oldPag.innerHTML = preparedPag.innerHTML; } catch (e) { oldPag.replaceWith(preparedPag); }
         }
         // 让其他模块对新内容生效（使用 initSeamlessPaging 作用域内已有的函数）
         try { if (typeof reinitForNewContent === 'function') reinitForNewContent(targetReplies); } catch (e) {}
@@ -10122,7 +10650,7 @@ ${markedSwatchHtml}
         // 如果用户回复 < 19 => 肯定是最后一页
         if (userCount < 19) {
           const result = { status: 'last', hasUpdate };
-          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新");
+          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
           if (typeof done === 'function') done(result);
           addRefreshButtonIfNeeded();
           return;
@@ -10130,12 +10658,12 @@ ${markedSwatchHtml}
         // 用户回复满 19 条：若解析到的最新页码 > 当前已知 lastLoadedPage，则说明出现下一页
         if (parsedLastFromReturned && parsedLastFromReturned > lastLoadedPage) {
           const result = { status: 'hasNext', nextPage: lastLoadedPage + 1, hasUpdate };
-          if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新");
+          if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
           if (typeof done === 'function') done(result);
           return;
         } else {
           const result = { status: 'last', hasUpdate };
-          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新");
+          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
           if (typeof done === 'function') done(result);
           addRefreshButtonIfNeeded();
           return;
@@ -10381,9 +10909,14 @@ ${markedSwatchHtml}
           const lastPageNum = parseLastPageFromPagination(pagClone);
           if (lastPageNum) pagClone.setAttribute('data-last-page', String(lastPageNum));
           pagClone.setAttribute('data-cloned-page', String(nextPageNum));
+          // 插入 DOM 前直接重建分页栏，避免先显示原版 3 页码再被 observer 二次修正造成闪烁/循环
+          if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(pagClone);
+          if (typeof processPagination === 'function') processPagination(pagClone);
           const repliesClone = startupPerfDebug.measure('seamless.loadNext.cloneReplies', () => replies.cloneNode(true), { nextPageNum, replies: replies.querySelectorAll ? replies.querySelectorAll('.h-threads-item-reply').length : 0 });
           repliesClone.setAttribute('data-cloned-page', String(nextPageNum));
           removeIdsFromNode(repliesClone);
+          // 插入 DOM 前同步执行会影响视觉的公共增强，避免用户看到未处理态闪烁
+          try { if (typeof preprocessPageEnhancementsBeforeInsert === 'function') preprocessPageEnhancementsBeforeInsert(repliesClone, cfg); } catch (e) {}
           const containers = getRootRepliesContainer();
           if (!containers) { return; }
           const { lastReplies } = containers;
@@ -10482,6 +11015,8 @@ ${markedSwatchHtml}
           if (!list) { done = true; return; }
           const listClone = startupPerfDebug.measure('seamless.loadNextBoard.cloneList', () => list.cloneNode(true), { nextPageNum, threads: list.querySelectorAll ? list.querySelectorAll('.h-threads-item').length : 0 });
           removeIdsFromNode(listClone);
+          // 插入 DOM 前同步执行会影响视觉的公共增强，避免用户看到未处理态闪烁
+          try { if (typeof preprocessPageEnhancementsBeforeInsert === 'function') preprocessPageEnhancementsBeforeInsert(listClone, cfg); } catch (e) {}
           // 找到当前页面最后一个 .h-threads-list
           const lists = document.querySelectorAll('.h-threads-list');
           const lastList = lists[lists.length - 1];
@@ -10489,6 +11024,9 @@ ${markedSwatchHtml}
             let pagClone = pagination ? pagination.cloneNode(true) : null;
             if (pagClone) {
               removeIdsFromNode(pagClone);
+              // 插入 DOM 前直接重建分页栏，避免原版 3 页码闪烁后再修正
+              if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(pagClone);
+              if (typeof processPagination === 'function') processPagination(pagClone);
               startupPerfDebug.measure('seamless.loadNextBoard.insertDom', () => {
                 lastList.insertAdjacentElement('afterend', pagClone);
                 pagClone.insertAdjacentElement('afterend', listClone);
@@ -12152,8 +12690,9 @@ ${markedSwatchHtml}
       hideEmptyTitleAndEmail($quote[0]);
       initContent($quote[0]);
       try {
-        const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
-        if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', $quote[0]);
+        const cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        markAllCookies(cfg.markedGroups || [], $quote[0]);
+        if (cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', $quote[0]);
       } catch (e) {}
       if (options && options.fromPOImage) {
         setTimeout(() => {
@@ -12587,7 +13126,8 @@ ${markedSwatchHtml}
                 renderHiddenTextContent(refEl);
                 if (typeof extendQuote === 'function') extendQuote(refEl);
                 if (typeof initExtendedContent === 'function') initExtendedContent(refEl);
-                const _cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+                const _cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+                markAllCookies(_cfg.markedGroups || [], refEl);
                 if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
                 if (_cfg.enableAutoUrlLinkify) runAutoUrlLinkify(refEl);
                 updateRefViewImageLayout(refEl, quoteEl);
@@ -12607,212 +13147,8 @@ ${markedSwatchHtml}
   /* --------------------------------------------------
    * tag 10. 创建拓展坞+reply按钮呼出回复悬浮窗
    * -------------------------------------------------- */
-  function replaceRightSidebar() {
-    const logRightSidebar = (stage, detail) => {
-      console.log('[replaceRightSidebar]', stage, detail || {});
-    };
-    logRightSidebar('start', {
-      原始工具栏数: $('#h-tool').length,
-      既有拓展坞数: $('.hld__docker').length,
-      既有样式: !!document.getElementById('qp-style'),
-      readyState: document.readyState,
-      href: location.href,
-    });
-    // 移除原始工具栏
-    $('#h-tool').remove();
-    logRightSidebar('original-toolbar-removed', {
-      remainingToolbarCount: $('#h-tool').length,
-    });
-      const isDarkReaderActive = () => {
-        const root = document.documentElement;
-        if (!root) return false;
-        const mode = root.getAttribute('data-darkreader-mode');
-        const scheme = root.getAttribute('data-darkreader-scheme');
-        return !!(mode && mode !== 'off') || !!(scheme && scheme !== 'off');
-      };
-      const syncQuotePopupTheme = () => {
-        const root = document.documentElement;
-        if (!root) return;
-        root.classList.toggle('xdex-darkreader-active', isDarkReaderActive());
-        const previewBg = isDarkReaderActive() ? '#483327' : '#F0E0D6';
-        document.querySelectorAll('.qp-body .qp-content-wrap .h-preview-box, .qp-body .qp-content-wrap .h-preview-box .h-threads-item, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main').forEach((el) => {
-          el.style.setProperty('background', previewBg, 'important');
-        });
-      };
-      window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
-    // 样式（只注入一次）
-    if (!document.getElementById('qp-style')) {
-        const style = document.createElement('style');
-        style.id = 'qp-style';
-        style.textContent = `
-          :root {
-            --xdex-qp-shell-bg: #FFFFEE;
-            --xdex-qp-form-bg: #FFFFEE;
-            --xdex-qp-preview-bg: #F0E0D6;
-            --xdex-qp-textarea-bg: #fff;
-            --xdex-qp-border: #ccc;
-            --xdex-qp-outline: #fff;
-            --xdex-qp-shadow: rgba(0,0,0,.24);
-            --xdex-qp-reset-bg: rgba(0,0,0,.6);
-            --xdex-qp-reset-color: #fff;
-          }
-          :root.xdex-darkreader-active {
-            --xdex-qp-shell-bg: #2b2c2d;
-            --xdex-qp-form-bg: #2b2c2d;
-            --xdex-qp-preview-bg: #483327;
-            --xdex-qp-textarea-bg: #1f2021;
-            --xdex-qp-border: #4b4d50;
-            --xdex-qp-outline: #3a3c3f;
-            --xdex-qp-shadow: rgba(0,0,0,.55);
-            --xdex-qp-reset-bg: rgba(19,20,21,.88);
-            --xdex-qp-reset-color: #e8e6e3;
-          }
-          .qp-overlay {
-            position: fixed; inset: 0; z-index: 9000;
-            background: rgba(0,0,0,.45); display: none;
-          }
-          .qp-stack {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: min(90vw, 820px);   /* 初始宽度为视口的90%，最大820px */
-            min-width: 0;              /* 不设固定值，由 JS 动态控制 */
-            max-width: none;           /* 允许用户手动扩展 */
-            height: 80vh;
-            overflow: visible; box-sizing: border-box;
-          }
-          .qp-quote {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%;
-            max-height: 100%;
-          overflow-x: hidden;  /* 隐藏横向滚动条 */
-          overflow-y: auto;    /* 保留竖向滚动条 */
-            background: var(--xdex-qp-shell-bg);
-            border: 1px solid var(--xdex-qp-border);
-            outline: 2px solid var(--xdex-qp-outline);
-            border-radius: 8px;
-            box-shadow: 0 8px 24px var(--xdex-qp-shadow);
-            padding: 18px 20px 20px;
-            box-sizing: border-box;
-          }
-          .qp-quote textarea[name="content"] {
-            resize: both;           /* 允许双向调节 */
-            min-width: 90%;        /* 最小宽度为容器宽度 */
-            max-width: none;       /* 通过 JS 动态控制，这里不限制 */
-            box-sizing: border-box;
-          }
-          /* 仅在浮窗中允许拖动改变宽度 */
-          .qp-body .h-post-form-textarea {
-              resize: horizontal;   /* 允许左右拉伸 */
-              min-width: px;     /* 原始宽度为最小值，避免变太窄 */
-              max-width: 100%;      /* 防止超过容器太多 */
-              box-sizing: border-box;
-          }
-          /* 拖拽手柄：四边窄条，仅在手柄区域显示"移动"指针 */
-          .qp-drag-edge {
-            position: absolute;
-            pointer-events: auto;
-            z-index: 3;
-            cursor: move;
-          }
-          .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 8px; }
-          .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 8px; } 
-          .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 8px; }
-          .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 8px; } 
-          .qp-quote.is-dragging { cursor: grabbing !important; }
-          /* 归位按钮 */
-          .qp-reset-btn {
-            position: fixed; right: 12px; bottom: 12px;
-            font-size: 20px; line-height: 1;
-            color: var(--xdex-qp-reset-color); background: var(--xdex-qp-reset-bg);
-            padding: 6px 12px; border-radius: 6px; cursor: pointer;
-            z-index: 9001; /* 比 overlay 高 */
-            user-select: none;
-            display: none;
-          }
-          .qp-body .qp-content-wrap {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            max-width: none;       /* 改为 none，不限制最大宽度 */
-            margin: 0 auto;
-            background: var(--xdex-qp-form-bg);
-          }
-          .qp-body .qp-content-wrap form {
-            max-width: 100%;
-            box-sizing: border-box;
-            background: var(--xdex-qp-form-bg);
-          }
-          /* textarea 可以双向调整 */
-          .qp-body .qp-content-wrap textarea[name="content"] {
-            resize: both;
-            min-width: 600px;   /* 给个合理的最小值 */
-            min-height: 100px;   /* 给个合理的最小值 */
-            width: auto;        /* 不要强制 100% */
-            max-width: none;    /* 允许无限扩展 */
-            box-sizing: border-box;
-            background: var(--xdex-qp-textarea-bg);
-          }
-          .qp-body .qp-content-wrap .h-preview-box {
-            width: 100% !important;   /* 始终和容器一致 */
-            overflow-wrap: break-word; /* 长单词/长链接换行 */
-            word-break: break-word;    /* 兼容性处理 */
-            white-space: normal;       /* 允许正常换行 */
-          }
-          /* 浮窗内预览框及其子层级全部占满宽度 */
-          .qp-body .qp-content-wrap .h-preview-box,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main {
-              width: 100% !important;
-              max-width: none !important;
-              margin: 0 !important;
-              box-sizing: border-box;
-              display: block;
-              background: var(--xdex-qp-preview-bg);
-          }
-          /* 浮窗内：仅在非 h-active 状态下限制缩略图宽度 */
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
-            max-width: 33% !important;
-            height: auto !important;
-          }
-          /* 表单内：仅在非 h-active 状态下限制缩略图宽度 */
-          #h-post-form .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
-            max-width: 50% !important;
-            height: auto !important;
-          }
-          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
-          .hld__docker:hover,
-          .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
-          .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
-          .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
-          .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
-          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
-          .hld__docker:hover .hld__docker-btns>div,
-          .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
-          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
-          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
-          .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
-        `;
-        document.head.appendChild(style);
-        logRightSidebar('style-injected', { 样式ID: style.id });
-    } else {
-        logRightSidebar('style-reused', { 样式ID: 'qp-style' });
-    }
-    syncQuotePopupTheme();
-    if (!replaceRightSidebar.__darkReaderObserver) {
-      const observer = new MutationObserver(() => syncQuotePopupTheme());
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'style', 'class'],
-        childList: true,
-        subtree: true,
-      });
-      replaceRightSidebar.__darkReaderObserver = observer;
-    }
-    // 扩展坞 DOM
-    const dockerDom = $(`
+  function buildRightSidebarDockerHtml() {
+    return `
         <div class="hld__docker">
             <div class="hld__docker-sidebar">
                 <svg viewBox="0 0 1024 1024" width="64" height="64">
@@ -12826,28 +13162,58 @@ ${markedSwatchHtml}
                 <div data-type="BOTTOM">↓</div>
             </div>
         </div>
-    `);
-    $('body').append(dockerDom);
-    logRightSidebar('docker-appended', {
-      拓展坞数: $('.hld__docker').length,
-      按钮数: dockerDom.find('.hld__docker-btns>div').length,
-      支持Has选择器: !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))')),
-    });
-    dockerDom
-      .on('mouseenter', () => {
-        dockerDom.addClass('is-hover');
-      })
-      .on('mouseleave', () => {
-        dockerDom.removeClass('is-hover');
-      });
-    logRightSidebar('hover-bound', {
-      targetClass: 'hld__docker',
-      fallbackClass: 'is-hover',
-    });
-    // 顶部按钮
-    dockerDom.find('[data-type="TOP"]').on('click', () => {
-        $('html, body').animate({ scrollTop: 0 }, 500);
-    });
+    `;
+  }
+  function ensureRightSidebarShellStyle() {
+    if (document.getElementById('xdex-right-sidebar-shell-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-right-sidebar-shell-style';
+    style.textContent = `
+      #h-tool { display: none !important; }
+      .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
+      .hld__docker:hover,
+      .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
+      .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
+      .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
+      .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+      .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
+      .hld__docker:hover .hld__docker-btns>div,
+      .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
+      .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
+      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
+      .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+  function bindRightSidebarShellButtons(docker) {
+    if (!docker || docker.dataset.xdexSidebarShellBound === '1') return;
+    docker.dataset.xdexSidebarShellBound = '1';
+    const supportsHasSelector = !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))'));
+    if (!supportsHasSelector) {
+      docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
+      docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+    }
+    const topBtn = docker.querySelector('[data-type="TOP"]');
+    const bottomBtn = docker.querySelector('[data-type="BOTTOM"]');
+    topBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    bottomBtn?.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
+  }
+  function tryReplaceRightSidebarEarly() {
+    if (!document.body) return false;
+    ensureRightSidebarShellStyle();
+    const nativeTool = document.querySelector('#h-tool');
+    if (nativeTool) nativeTool.remove();
+    let docker = document.querySelector('.hld__docker');
+    if (!docker) {
+      document.body.insertAdjacentHTML('beforeend', buildRightSidebarDockerHtml());
+      docker = document.querySelector('.hld__docker');
+      if (docker) docker.dataset.xdexEarlyDocker = '1';
+    }
+    bindRightSidebarShellButtons(docker);
+    return !!docker;
+  }
+  function ensureRightSidebarReplyController() {
+    if (window.__xdexRightSidebarReplyController) return window.__xdexRightSidebarReplyController;
     // 悬浮窗引用
     let overlay;
     function ensureOverlay() {
@@ -12914,10 +13280,10 @@ ${markedSwatchHtml}
     function closeOverlay() {
       if (!overlay) return;
       // 清理 ResizeObserver
-      // if (overlay.__resizeObserver) {
-      //   overlay.__resizeObserver.disconnect();
-      //   overlay.__resizeObserver = null;
-      // }
+      if (overlay.__resizeObserver) {
+        overlay.__resizeObserver.disconnect();
+        overlay.__resizeObserver = null;
+      }
       // 清理 stack 的 ResizeObserver
       if (overlay.__stackObserver) {
         overlay.__stackObserver.disconnect();
@@ -12982,7 +13348,6 @@ ${markedSwatchHtml}
       let dx = 0, dy = 0;
       // 移除旧的事件监听（避免重复绑定）
       $handles.off('mousedown.qpdrag-reply');
-      $(window).off('mousemove.qpdrag-reply mouseup.qpdrag-reply');
       $handles.on('mousedown.qpdrag-reply', function(e){
           //dragging = true;
           $quote.data('dragging', true);  // ← 使用 data 存储
@@ -12993,36 +13358,39 @@ ${markedSwatchHtml}
           dx = e.pageX - currentLeft - $quote.parent().offset().left;
           dy = e.pageY - currentTop - $quote.parent().offset().top;
           e.preventDefault();
-      });
-      $(window).on('mousemove.qpdrag-reply', function(e){
-          //if (!dragging) return;
-          if (!$quote.data('dragging')) return;  // ← 从 data 读取
-          e.preventDefault();  // ← 在这里添加
-          e.stopPropagation(); // ← 在这里添加
-          const $stack = $quote.parent();
-          const stackOff = $stack.offset();
-          const stackWidth = $stack.width();
-          const stackHeight = $stack.height();
-          const quoteWidth = $quote.outerWidth();
-          const quoteHeight = $quote.outerHeight();
-          let top = e.pageY - dy - stackOff.top;
-          let left = e.pageX - dx - stackOff.left;
-          // 限制拖拽范围，允许向左和向上拖出一部分
-          top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
-          left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
-          $quote.css({ top: top + 'px', left: left + 'px' });
-      });
-      $(window).on('mouseup.qpdrag-reply', function(e){
-          //if (!dragging) return;
-          if (!$quote.data('dragging')) return;  // ← 从 data 读取
-          e.preventDefault();    // ← 添加（但注意这里没有 e 参数）
-          //dragging = false;
-          $quote.data('dragging', false);  // ← 使用 data 存储
-          $quote.removeClass('is-dragging');
+          function onDragMove(e) {
+              //if (!dragging) return;
+              if (!$quote.data('dragging')) return;  // ← 从 data 读取
+              e.preventDefault();  // ← 在这里添加
+              e.stopPropagation(); // ← 在这里添加
+              const $stack = $quote.parent();
+              const stackOff = $stack.offset();
+              const stackWidth = $stack.width();
+              const stackHeight = $stack.height();
+              const quoteWidth = $quote.outerWidth();
+              const quoteHeight = $quote.outerHeight();
+              let top = e.pageY - dy - stackOff.top;
+              let left = e.pageX - dx - stackOff.left;
+              // 限制拖拽范围，允许向左和向上拖出一部分
+              top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
+              left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
+              $quote.css({ top: top + 'px', left: left + 'px' });
+          }
+          function onDragEnd(e) {
+              //if (!dragging) return;
+              if (!$quote.data('dragging')) return;  // ← 从 data 读取
+              e.preventDefault();
+              //dragging = false;
+              $quote.data('dragging', false);  // ← 使用 data 存储
+              $quote.removeClass('is-dragging');
+              window.removeEventListener('mousemove', onDragMove);
+          }
+          window.addEventListener('mousemove', onDragMove);
+          window.addEventListener('mouseup', onDragEnd, { once: true });
       });
     }
     // REPLY 按钮
-    dockerDom.find('[data-type="REPLY"]').on('click', () => {
+    function open() {
       let formEl = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]');
       let previewEl = document.querySelector('.h-preview-box');
       // 如果串内没找到表单，尝试板块页发串表单
@@ -13099,7 +13467,7 @@ ${markedSwatchHtml}
         extendQuote(previewEl || wrap);
       }
       if (typeof initContent === 'function') {
-        try { initContent(root); } catch (e) {}
+        try { initContent(previewEl || wrap); } catch (e) {}
       }
       // if (typeof autoHideRefView === 'function') {
       //   try { autoHideRefView(root); } catch (e) { try { autoHideRefView(); } catch (e) {} }
@@ -13310,11 +13678,237 @@ ${markedSwatchHtml}
               bindCtrlEnter(ta);
           }
       }
+    }
+    const controller = { open, close: closeOverlay };
+    window.__xdexRightSidebarReplyController = controller;
+    return controller;
+  }
+
+  function replaceRightSidebar() {
+    const logRightSidebar = (stage, detail) => {
+      console.log('[replaceRightSidebar]', stage, detail || {});
+    };
+    logRightSidebar('start', {
+      原始工具栏数: $('#h-tool').length,
+      既有拓展坞数: $('.hld__docker').length,
+      既有样式: !!document.getElementById('qp-style'),
+      readyState: document.readyState,
+      href: location.href,
     });
-    // 底部按钮：平滑滚动到最底部，不污染 URL
-    dockerDom.find('[data-type="BOTTOM"]').on('click', () => {
-        $('html, body').animate({ scrollTop: $(document).height() - $(window).height() }, 500);
+    // 移除原始工具栏；early shell 可能已经处理过，这里兜底
+    tryReplaceRightSidebarEarly();
+    logRightSidebar('original-toolbar-removed', {
+      remainingToolbarCount: $('#h-tool').length,
     });
+      const isDarkReaderActive = () => {
+        const root = document.documentElement;
+        if (!root) return false;
+        const mode = root.getAttribute('data-darkreader-mode');
+        const scheme = root.getAttribute('data-darkreader-scheme');
+        return !!(mode && mode !== 'off') || !!(scheme && scheme !== 'off');
+      };
+      const syncQuotePopupTheme = () => {
+        const root = document.documentElement;
+        if (!root) return;
+        root.classList.toggle('xdex-darkreader-active', isDarkReaderActive());
+        const previewBg = isDarkReaderActive() ? '#483327' : '#F0E0D6';
+        document.querySelectorAll('.qp-body .qp-content-wrap .h-preview-box, .qp-body .qp-content-wrap .h-preview-box .h-threads-item, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main').forEach((el) => {
+          el.style.setProperty('background', previewBg, 'important');
+        });
+      };
+      window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
+    // 样式（只注入一次）
+    if (!document.getElementById('qp-style')) {
+        const style = document.createElement('style');
+        style.id = 'qp-style';
+        style.textContent = `
+          :root {
+            --xdex-qp-shell-bg: #FFFFEE;
+            --xdex-qp-form-bg: #FFFFEE;
+            --xdex-qp-preview-bg: #F0E0D6;
+            --xdex-qp-textarea-bg: #fff;
+            --xdex-qp-border: #ccc;
+            --xdex-qp-outline: #fff;
+            --xdex-qp-shadow: rgba(0,0,0,.24);
+            --xdex-qp-reset-bg: rgba(0,0,0,.6);
+            --xdex-qp-reset-color: #fff;
+          }
+          :root.xdex-darkreader-active {
+            --xdex-qp-shell-bg: #2b2c2d;
+            --xdex-qp-form-bg: #2b2c2d;
+            --xdex-qp-preview-bg: #483327;
+            --xdex-qp-textarea-bg: #1f2021;
+            --xdex-qp-border: #4b4d50;
+            --xdex-qp-outline: #3a3c3f;
+            --xdex-qp-shadow: rgba(0,0,0,.55);
+            --xdex-qp-reset-bg: rgba(19,20,21,.88);
+            --xdex-qp-reset-color: #e8e6e3;
+          }
+          .qp-overlay {
+            position: fixed; inset: 0; z-index: 9000;
+            background: rgba(0,0,0,.45); display: none;
+          }
+          .qp-stack {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(90vw, 820px);   /* 初始宽度为视口的90%，最大820px */
+            min-width: 0;              /* 不设固定值，由 JS 动态控制 */
+            max-width: none;           /* 允许用户手动扩展 */
+            height: 80vh;
+            overflow: visible; box-sizing: border-box;
+          }
+          .qp-quote {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            max-height: 100%;
+          overflow-x: hidden;  /* 隐藏横向滚动条 */
+          overflow-y: auto;    /* 保留竖向滚动条 */
+            background: var(--xdex-qp-shell-bg);
+            border: 1px solid var(--xdex-qp-border);
+            outline: 2px solid var(--xdex-qp-outline);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px var(--xdex-qp-shadow);
+            padding: 18px 20px 20px;
+            box-sizing: border-box;
+          }
+          .qp-quote textarea[name="content"] {
+            resize: both;           /* 允许双向调节 */
+            min-width: 90%;        /* 最小宽度为容器宽度 */
+            max-width: none;       /* 通过 JS 动态控制，这里不限制 */
+            box-sizing: border-box;
+          }
+          /* 仅在浮窗中允许拖动改变宽度 */
+          .qp-body .h-post-form-textarea {
+              resize: horizontal;   /* 允许左右拉伸 */
+              min-width: px;     /* 原始宽度为最小值，避免变太窄 */
+              max-width: 100%;      /* 防止超过容器太多 */
+              box-sizing: border-box;
+          }
+          /* 拖拽手柄：四边窄条，仅在手柄区域显示"移动"指针 */
+          .qp-drag-edge {
+            position: absolute;
+            pointer-events: auto;
+            z-index: 3;
+            cursor: move;
+          }
+          .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 8px; }
+          .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 8px; } 
+          .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 8px; }
+          .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 8px; } 
+          .qp-quote.is-dragging { cursor: grabbing !important; }
+          /* 归位按钮 */
+          .qp-reset-btn {
+            position: fixed; right: 12px; bottom: 12px;
+            font-size: 20px; line-height: 1;
+            color: var(--xdex-qp-reset-color); background: var(--xdex-qp-reset-bg);
+            padding: 6px 12px; border-radius: 6px; cursor: pointer;
+            z-index: 9001; /* 比 overlay 高 */
+            user-select: none;
+            display: none;
+          }
+          .qp-body .qp-content-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: none;       /* 改为 none，不限制最大宽度 */
+            margin: 0 auto;
+            background: var(--xdex-qp-form-bg);
+          }
+          .qp-body .qp-content-wrap form {
+            max-width: 100%;
+            box-sizing: border-box;
+            background: var(--xdex-qp-form-bg);
+          }
+          /* textarea 可以双向调整 */
+          .qp-body .qp-content-wrap textarea[name="content"] {
+            resize: both;
+            min-width: 600px;   /* 给个合理的最小值 */
+            min-height: 100px;   /* 给个合理的最小值 */
+            width: auto;        /* 不要强制 100% */
+            max-width: none;    /* 允许无限扩展 */
+            box-sizing: border-box;
+            background: var(--xdex-qp-textarea-bg);
+          }
+          .qp-body .qp-content-wrap .h-preview-box {
+            width: 100% !important;   /* 始终和容器一致 */
+            overflow-wrap: break-word; /* 长单词/长链接换行 */
+            word-break: break-word;    /* 兼容性处理 */
+            white-space: normal;       /* 允许正常换行 */
+          }
+          /* 浮窗内预览框及其子层级全部占满宽度 */
+          .qp-body .qp-content-wrap .h-preview-box,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main {
+              width: 100% !important;
+              max-width: none !important;
+              margin: 0 !important;
+              box-sizing: border-box;
+              display: block;
+              background: var(--xdex-qp-preview-bg);
+          }
+          /* 浮窗内：仅在非 h-active 状态下限制缩略图宽度 */
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
+            max-width: 33% !important;
+            height: auto !important;
+          }
+          /* 表单内：仅在非 h-active 状态下限制缩略图宽度 */
+          #h-post-form .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
+            max-width: 50% !important;
+            height: auto !important;
+          }
+          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
+          .hld__docker:hover,
+          .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
+          .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
+          .hld__docker:hover .hld__docker-btns>div,
+          .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
+          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
+          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
+          .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+        `;
+        document.head.appendChild(style);
+        logRightSidebar('style-injected', { 样式ID: style.id });
+    } else {
+        logRightSidebar('style-reused', { 样式ID: 'qp-style' });
+    }
+    syncQuotePopupTheme();
+    if (!replaceRightSidebar.__darkReaderObserver) {
+      const observer = new MutationObserver(() => syncQuotePopupTheme());
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'style', 'class'],
+        childList: true,
+        subtree: true,
+      });
+      replaceRightSidebar.__darkReaderObserver = observer;
+    }
+    // 扩展坞 DOM：复用 early shell，避免加载时重复插入和重复重绘
+    let dockerDom = $('.hld__docker').first();
+    if (!dockerDom.length) {
+      dockerDom = $(buildRightSidebarDockerHtml()).appendTo('body');
+      bindRightSidebarShellButtons(dockerDom[0]);
+    }
+    logRightSidebar('docker-ready', {
+      拓展坞数: $('.hld__docker').length,
+      按钮数: dockerDom.find('.hld__docker-btns>div').length,
+      早期插入: dockerDom[0]?.dataset.xdexEarlyDocker === '1',
+      支持Has选择器: !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))')),
+    });
+    // REPLY 按钮：完整浮窗控制器延迟到首次点击再初始化
+    const replyBtn = dockerDom[0]?.querySelector('[data-type="REPLY"]');
+    if (replyBtn && replyBtn.dataset.xdexReplyDockBound !== '1') {
+      replyBtn.dataset.xdexReplyDockBound = '1';
+      replyBtn.addEventListener('click', () => {
+        ensureRightSidebarReplyController().open();
+      });
+    }
+    // TOP/BOTTOM 在 early shell 阶段已绑定轻量滚动；这里不重复绑定，避免一次点击触发两套滚动。
   }
 
   /* --------------------------------------------------
@@ -14447,7 +15041,7 @@ ${markedSwatchHtml}
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
             // 清空输入框
             const textarea = form.querySelector('textarea[name="content"]');
-            if (textarea) textarea.value = '';
+            if (textarea) { textarea.value = ''; textarea.dispatchEvent(new Event('input', { bubbles: true })); }
             // 清空图片选择
             const fileInput = form.querySelector('input[type="file"][name="image"]');
             if (fileInput) fileInput.value = '';
@@ -14456,11 +15050,11 @@ ${markedSwatchHtml}
             deleteDraftSafe(getDraftKey());
             // **清空标题、名称、Email**
             const titleInput = form.querySelector('input[name="title"]');
-            if (titleInput) titleInput.value = '';
+            if (titleInput) { titleInput.value = ''; titleInput.dispatchEvent(new Event('input', { bubbles: true })); }
             const nameInput = form.querySelector('input[name="name"]');
-            if (nameInput) nameInput.value = '';
+            if (nameInput) { nameInput.value = ''; nameInput.dispatchEvent(new Event('input', { bubbles: true })); }
             const emailInput = form.querySelector('input[name="email"]');
-            if (emailInput) emailInput.value = '';
+            if (emailInput) { emailInput.value = ''; emailInput.dispatchEvent(new Event('input', { bubbles: true })); }
             // 再广播事件给增强模块/其他联动
             document.dispatchEvent(new CustomEvent('replySuccess', {
               detail: { key: getDraftKey(), tid: form.querySelector('input[name="resto"]')?.value || '' }
@@ -15000,10 +15594,14 @@ ${markedSwatchHtml}
           // 排除系统提示类回复（tips）
           Array.from(fragment.querySelectorAll('.h-threads-item-reply[data-threads-id="9999999"]'))
             .forEach(el => el.remove());
-          // 离线预处理：对 fragment 做一次过滤（主要保证新增项的 DOM 是处理过的）
+          // 离线预处理：对 fragment 做完整的插入前公共增强，保证新增项进入页面前就是处理后的 DOM
           try {
-            if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(fragment));
-            if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2, fragment);
+            if (typeof preprocessPageEnhancementsBeforeInsert === 'function') {
+              preprocessPageEnhancementsBeforeInsert(fragment, cfg2);
+            } else {
+              if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(fragment));
+              if (cfg2 && typeof applyFilters === 'function') applyFilters(cfg2, fragment);
+            }
           } catch (e) {
             console.warn('预处理过滤失败', e);
           }
@@ -15015,8 +15613,8 @@ ${markedSwatchHtml}
               .map(i => i.getAttribute('data-threads-id'))
               .filter(id => id && id !== '9999999')
           );
-          // 2) 收集新页面的回复项（使用 newReplies，而非 fragment，以维持服务器顺序）
-          const newItems = Array.from(newReplies.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
+          // 2) 收集新页面的回复项（使用已离线预处理的 fragment，以维持服务器顺序并避免插入后闪烁）
+          const newItems = Array.from(fragment.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
             .filter(i => i.getAttribute('data-threads-id') !== '9999999');
           // 3) 逐项比较，把新页面中不存在于旧页面的项依顺序追加（保持服务器顺序）
           const appendedNodes = [];
@@ -15073,11 +15671,14 @@ ${markedSwatchHtml}
             const wasLastPage = oldNextLi &&
               oldNextLi.classList.contains('uk-disabled') &&
               !oldNextLi.querySelector('a');
-            // 替换 DOM
+            // 替换 DOM：先在 detached DOM 中扩展分页栏，再替换到页面，避免原版 3 页码闪烁
+            const preparedPag = newPag.cloneNode(true);
+            try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(preparedPag); } catch (e) {}
+            try { if (typeof processPagination === 'function') processPagination(preparedPag); } catch (e) {}
             try {
-              oldPag.innerHTML = newPag.innerHTML;
+              oldPag.innerHTML = preparedPag.innerHTML;
             } catch (e) {
-              oldPag.replaceWith(newPag.cloneNode(true));
+              oldPag.replaceWith(preparedPag);
             }
             // 2. 如果发送前是最后一页，检查刷新后是否出现了新页
             if (wasLastPage) {
@@ -15251,13 +15852,17 @@ ${markedSwatchHtml}
    * tag 12. 高亮Po主+回复表单UI调整
    * -------------------------------------------------- */
   // 高亮 Po 主（内置并先执行楼层编号）
-  function highlightPO() {
+  function highlightPO(root) {
+    const scope = root || document;
     return startupPerfDebug.measure('highlightPO', () => {
     const poTextColor  = '#00FFCC'; // Po 本体颜色
     const iconWidthEm  = 3.0;       // 所有图标统一宽度
     // 子函数：先为当前页面所有回复区编号（原 updateReplyNumbers 逻辑）
     function updateReplyNumbersLocal() {
-      document.querySelectorAll('.h-threads-item-replies').forEach(replies => {
+      const repliesList = scope.querySelectorAll
+        ? Array.from(scope.querySelectorAll('.h-threads-item-replies')).concat(scope.matches && scope.matches('.h-threads-item-replies') ? [scope] : [])
+        : Array.from(document.querySelectorAll('.h-threads-item-replies'));
+      repliesList.forEach(replies => {
         let effectiveCount = 0;
         replies.querySelectorAll('.h-threads-item-reply-icon').forEach(icon => {
           const reply = icon.closest('[data-threads-id]');
@@ -15274,7 +15879,8 @@ ${markedSwatchHtml}
       });
     }
     // 统一设置所有回复图标的宽度与基础样式
-    document.querySelectorAll('.h-threads-item-reply-icon').forEach(icon => {
+    const icons = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-item-reply-icon') : document.querySelectorAll('.h-threads-item-reply-icon');
+    icons.forEach(icon => {
       icon.style.display = 'inline-block';
       icon.style.width = iconWidthEm + 'em';
       icon.style.textAlign = 'center';
@@ -15284,7 +15890,8 @@ ${markedSwatchHtml}
     // 先编号，再做 Po 标替换
     updateReplyNumbersLocal();
     // 替换 PO 回复的数字为 Po，并加角标
-    document.querySelectorAll('.h-threads-item-reply').forEach(reply => {
+    const replies = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-item-reply') : document.querySelectorAll('.h-threads-item-reply');
+    replies.forEach(reply => {
       const main = reply.querySelector('.h-threads-item-reply-main');
       const icon = reply.querySelector('.h-threads-item-reply-icon');
       if (!main || !icon) return;
@@ -15353,8 +15960,28 @@ ${markedSwatchHtml}
           Object.assign(btnWrapper.style, {
             marginLeft: 'auto',
             display: 'flex',
-            alignItems: 'center'
+            alignItems: 'center',
+            gap: '6px'
           });
+          const contentTextarea = form.querySelector('textarea[name="content"].h-post-form-textarea');
+          if (contentTextarea) {
+            let contentCounter = btnWrapper.querySelector('.xdex-post-content-char-count');
+            if (!contentCounter) {
+              contentCounter = document.createElement('span');
+              contentCounter.className = 'xdex-post-content-char-count';
+              contentCounter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+              btnWrapper.appendChild(contentCounter);
+            }
+            const updateContentCounter = () => {
+              contentCounter.textContent = '字数:' + String(contentTextarea.value || '').length;
+            };
+            if (contentTextarea.__xdexPostContentCharCounter) {
+              contentTextarea.removeEventListener('input', contentTextarea.__xdexPostContentCharCounter);
+            }
+            contentTextarea.__xdexPostContentCharCounter = updateContentCounter;
+            contentTextarea.addEventListener('input', updateContentCounter);
+            updateContentCounter();
+          }
           btnWrapper.appendChild(sendBtn);
           // 将按钮容器添加到“颜文字”行
           emoticonRow.appendChild(btnWrapper);
@@ -15377,14 +16004,48 @@ ${markedSwatchHtml}
         .filter(Boolean);
       // 关闭浏览器推荐填充（title/name/email）
       form.setAttribute('autocomplete', 'off');
+      form.setAttribute('data-form-type', 'other');
       const noPersistInputs = rowsToCollapse.flatMap(row =>
         Array.from(row.querySelectorAll('input[type="text"], textarea'))
       );
+      const POST_FORM_OPTIONAL_MAX_LENGTH = 15;
       noPersistInputs.forEach(input => {
         input.setAttribute('autocomplete', 'off');
         input.setAttribute('autocapitalize', 'off');
         input.setAttribute('autocorrect', 'off');
         input.setAttribute('spellcheck', 'false');
+        input.setAttribute('aria-autocomplete', 'none');
+        input.setAttribute('data-lpignore', 'true');
+        input.setAttribute('data-form-type', 'other');
+        const inputCell = input.closest('.h-post-form-input');
+        if (inputCell) {
+          inputCell.style.display = 'flex';
+          inputCell.style.alignItems = 'center';
+          inputCell.style.gap = '6px';
+          inputCell.style.minWidth = '0';
+          input.style.flex = '1 1 auto';
+          input.style.minWidth = '0';
+        }
+        let counter = input.nextElementSibling && input.nextElementSibling.classList?.contains('xdex-post-form-char-count')
+          ? input.nextElementSibling
+          : null;
+        if (!counter) {
+          counter = document.createElement('span');
+          counter.className = 'xdex-post-form-char-count';
+          counter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+          input.insertAdjacentElement('afterend', counter);
+        }
+        const updateCounter = () => {
+          const len = String(input.value || '').length;
+          counter.textContent = len + '/' + POST_FORM_OPTIONAL_MAX_LENGTH;
+          counter.style.color = len > POST_FORM_OPTIONAL_MAX_LENGTH ? '#e53935' : '#888';
+        };
+        if (input.__xdexPostFormCharCounter) {
+          input.removeEventListener('input', input.__xdexPostFormCharCounter);
+        }
+        input.__xdexPostFormCharCounter = updateCounter;
+        input.addEventListener('input', updateCounter);
+        updateCounter();
       });
       if (rowsToCollapse.length) {
         const wrapper = document.createElement('div');
@@ -16511,45 +17172,8 @@ ${markedSwatchHtml}
     const 路径分块 = 路径.split('/').splice(1);
     const isDraftEnabled = () => getDraftEnabledNow();
     let draftAutosaveBound = false;
-    // 动态生成预览区域 DOM
-    function buildPreviewHtml() {
-      // 从 cookie-switcher 里取当前饼干
-      const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
-      const cookieText = cookieDisplay ? cookieDisplay.textContent.trim() : '--';
-      return `
-      <div class="h-preview-box">
-        <div class="h-threads-item">
-          <div class="h-threads-item-replies">
-            <div class="h-threads-item-reply">
-              <div class="h-threads-item-reply-main">
-                <div class="h-threads-img-box">
-                  <div class="h-threads-img-tool uk-animation-slide-top">
-                    <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                    <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
-                    <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
-                    <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
-                  </div>
-                  <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
-                </div>
-                <div class="h-threads-info">
-                  <span class="h-threads-info-title"></span>
-                  <span class="h-threads-info-email"></span>
-                  <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
-                  <span class="h-threads-info-uid">ID:${cookieText}</span>
-                  <span class="h-threads-info-report-btn">
-                    [<a href="/f/值班室" target="_blank">举报</a>]
-                  </span>
-                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
-                </div>
-                <div class="h-threads-content"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>`;
-    }
     // 预览区域 DOM
-    const previewHtml = buildPreviewHtml();
+    const previewHtml = buildEnhanceIslandPreviewHtml();
     //previewBox.outerHTML = previewHtml;
     // 引用插入函数（与原脚本一致）
     function enhanceNode(root) {
@@ -16562,9 +17186,16 @@ ${markedSwatchHtml}
     function initPreviewBox() {
         if (!cfg.enablePreview) return;
         if (!$('#h-post-form form').length) return;
-        // 只创建一次预览框
-        if (!$('.h-preview-box').length) {
-            const $box = $(previewHtml).insertAfter('#h-post-form form');
+        // 只创建一次预览框；early skeleton 已存在时，替换为完整可绑定版本
+        const $existingEarlyBox = $('.h-preview-box[data-xdex-early-preview="1"]').first();
+        if (!$('.h-preview-box').length || $existingEarlyBox.length) {
+            let $box;
+            if ($existingEarlyBox.length) {
+                $box = $(previewHtml).removeAttr('data-xdex-early-preview');
+                $existingEarlyBox.replaceWith($box);
+            } else {
+                $box = $(previewHtml).removeAttr('data-xdex-early-preview').insertAfter('#h-post-form form');
+            }
             setTimeout(() => {
               startupPerfDebug.measure('enhanceIsland.deferEnhanceNode', () => enhanceNode($box[0]), () => startupPerfDebug.summarizeRoot($box[0]));
             }, 0);
@@ -16895,6 +17526,8 @@ ${markedSwatchHtml}
         }
       }
       正文框.val(draft);
+      // 触发 input 事件，让字数计数器同步更新（jQuery .val() 不会触发原生事件）
+      正文框[0]?.dispatchEvent(new Event('input', { bubbles: true }));
     }
     // 草稿：注册自动保存 + 初始化一次保存触发（原脚本用 $(保存编辑)）
     function 注册自动保存编辑() {
@@ -17746,6 +18379,24 @@ ${markedSwatchHtml}
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').text('连续');
       }
+    } else if (/^\/f\/值班室(?:\/|$)/.test(decodeURIComponent(location.pathname))) {
+      // 值班室版块强制发串模式，方便快速举报（不修改设置项，用户仍可手动切换回复模式）
+      setMode('发串', {silent: true});
+      try {
+        const today = new Date().toLocaleDateString('sv-SE');
+        const toastKey = 'xdex_duty_room_post_mode_toast_date';
+        const lastShown = typeof GM_getValue === 'function' ? GM_getValue(toastKey, '') : '';
+        if (lastShown !== today) {
+          toast('值班室版块默认为“发串”模式，请注意');
+          if (typeof GM_setValue === 'function') GM_setValue(toastKey, today);
+        }
+      } catch (e) {
+        toast('值班室版块默认为“发串”模式，请注意');
+      }
+      if (SettingPanel.state.replyExtraDefault === '连续') {
+        window.replyModeState.extra = '连续';
+        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+      }
     } else {
       setMode(SettingPanel.state.replyModeDefault, {silent: true});
       // extra 模式
@@ -17904,15 +18555,12 @@ ${markedSwatchHtml}
             const tRaw = tResp && (tResp.response || tResp.responseText);
             const t = typeof tRaw === 'string' ? JSON.parse(tRaw) : tRaw;
             if (!t || t.success === false) throw new Error((t && t.error) || 'API error');
-            let tailReplies = Array.isArray(t.Replies) ? t.Replies.slice() : [];
+            let tailReplies = (Array.isArray(t.Replies) ? t.Replies : []).filter(r => r && Number(r.id) !== 9999999);
             // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
-
             const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
             if (!allOldNodes.length) return;
             // 用第一个节点的最后一条回复 ID 作为 API 数据范围的基准
-
             const firstNode = allOldNodes[0];
-
             const firstReplyEls = Array.from(firstNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
             const lastOldId = firstReplyEls.length ? Number(firstReplyEls[firstReplyEls.length - 1].getAttribute('data-threads-id')) : 0;
             // Step 4: 定位 lastOldId 并确定新回复范围
@@ -17930,7 +18578,7 @@ ${markedSwatchHtml}
                   const pResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + (tailPage - 1), 'json');
                   const pRaw = pResp && (pResp.response || pResp.responseText);
                   const p = typeof pRaw === 'string' ? JSON.parse(pRaw) : pRaw;
-                  const prevReplies = Array.isArray(p && p.Replies) ? p.Replies : [];
+                  const prevReplies = (Array.isArray(p && p.Replies) ? p.Replies : []).filter(r => r && Number(r.id) !== 9999999);
                   // 合并两页：倒数第二页 + 末页
                   const merged = prevReplies.concat(tailReplies);
                   const mIdx = merged.findIndex(r => r && Number(r.id) === lastOldId);
@@ -20082,8 +20730,16 @@ ${markedSwatchHtml}
     menu.querySelectorAll('a[data-thread-id]').forEach(link => {
       const tid = link.dataset.threadId;
       if (tid) {
-        const url = getLatestThreadHistoryUrl(tid);
-        if (url) link.href = url;
+        const store = getThreadHistoryStore();
+        const candidates = ['normal', 'po']
+          .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
+          .filter(Boolean)
+          .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
+        if (candidates.length) {
+          const item = candidates[0];
+          const page = item.maxVisitedPage || item.page || 1;
+          link.href = buildThreadHistoryPageUrl(item.mode, tid, page);
+        }
       }
     });
   }
@@ -20125,12 +20781,6 @@ ${markedSwatchHtml}
         transition: filter 0.15s;
       }
       .xdex-feed-display-uuid:empty { display: none; }
-      .xdex-feed-selector-wrap:hover .xdex-feed-display-uuid {
-        filter: none;
-      }
-      .xdex-feed-display-uuid.xdex-feed-uuid-visible {
-        filter: none;
-      }
       .xdex-feed-selector-dropdown {
         position: absolute; top: 100%; left: 0; right: 0;
         margin-top: 2px;
@@ -20424,8 +21074,8 @@ ${markedSwatchHtml}
         });
       }
     });
-    $m.find('#cookie-confirm-cancel').on('click', () => { $m.remove(); onCancel(); });
-    $m.find('.cookie-confirm-backdrop').on('click', () => { $m.remove(); onCancel(); });
+    $m.find('#cookie-confirm-cancel').on('click', () => { $m.remove(); onCancel(); document.querySelector('textarea.h-post-form-textarea')?.focus(); });
+    $m.find('.cookie-confirm-backdrop').on('click', () => { $m.remove(); onCancel(); document.querySelector('textarea.h-post-form-textarea')?.focus(); });
     $('body').append($m);
     $m[0].focus();
     // 应用引用格式拓展和标记饼干
@@ -20472,10 +21122,10 @@ ${markedSwatchHtml}
         e.stopPropagation();
         $m.remove();
         onCancel();
+        document.querySelector('textarea.h-post-form-textarea')?.focus();
       }
     });
   }
-
   // ── 串内饼干偏好存储 ──
     const THREAD_COOKIE_PREFS_KEY = 'xdex_thread_cookie_prefs';
     // 一次性清理旧的脏数据（调试期间写入的错误偏好）
@@ -20574,7 +21224,6 @@ ${markedSwatchHtml}
       replyRow.classList.add('uk-width-4-5');
       replyRow.style.display = 'flex';
       replyRow.style.alignItems = 'center';
-
       // 串号 font 元素撑满，把 area 推到右侧
       const fontEl = replyRow.querySelector('font');
       if (fontEl) fontEl.style.flex = '1';
@@ -20626,7 +21275,8 @@ ${markedSwatchHtml}
     totalPageCount: 0,
     gridImages: [],          // {id, imgUrl, thumbUrl, isGif, userHash, name, title, content, contentRaw, now, page} // contentRaw: 原始HTML，用于详情页显示
 
-    loadedPages: new Set(),
+    fetchedPages: new Set(), // 已请求过的页码（防重复请求，包含无图片的页）
+    loadedPages: new Set(),  // 有图片的已加载页码（用于显示"已加载 X 页"）
     loading: false,
     currentDetailIndex: -1,  // 当前详情查看的图片索引
     rotation: 0,
@@ -20754,7 +21404,7 @@ ${markedSwatchHtml}
     const pages = [];
     for (let i = 0; i < count; i++) {
       const p = startPage + i;
-      if (ImageViewer.loadedPages.has(p) || p < 1) continue;
+      if (ImageViewer.fetchedPages.has(p) || p < 1) continue;
       pages.push(p);
     }
     if (!pages.length) return;
@@ -20769,7 +21419,7 @@ ${markedSwatchHtml}
       const replies = Array.isArray(thread.Replies) ? thread.Replies : [];
       // 记录PO主hash（从串的user_hash获取）
       if (!ImageViewer.poHash && thread.user_hash) ImageViewer.poHash = thread.user_hash;
-      ImageViewer.loadedPages.add(page);
+      ImageViewer.fetchedPages.add(page); // 标记已请求
       let pageIdx = 0;
       replies.forEach(rep => {
         if (!rep || !rep.img || !rep.ext || rep.id === 9999999) return;
@@ -20791,6 +21441,7 @@ ${markedSwatchHtml}
         });
         appended++;
       });
+      if (appended > 0) ImageViewer.loadedPages.add(page); // 只有含图片的页才计入已加载页数
       // 按页码+页内序号排序，保证 gridImages 始终是页码顺序（向上翻页加载的页面也能正确插入）
       ImageViewer.gridImages.sort((a, b) => a.page - b.page || (a.pageIdx || 0) - (b.pageIdx || 0));
       // 详情页打开时，sort 会改变索引，通过图片 ID 重新定位
@@ -20912,7 +21563,8 @@ ${markedSwatchHtml}
     ImageViewer.threadId = threadId;
     ImageViewer.poHash = '';
     ImageViewer.gridImages = [];
-    ImageViewer.loadedPages = new Set();
+    ImageViewer.fetchedPages = new Set(); // 已请求过的页码（含无图片页）
+    ImageViewer.loadedPages = new Set();  // 有图片的已加载页码
     ImageViewer.loading = false;
     ImageViewer.currentDetailIndex = -1;
     ImageViewer.totalPageCount = 0;
@@ -20930,6 +21582,19 @@ ${markedSwatchHtml}
     loadViewerPages(threadId, startPage, 2).then(async () => {
       await preloadThumbnailSizes();
       renderGridImages();
+      // 图片太少撑不满视口时，自动继续加载直到填满或没有更多页
+      const scroll = document.querySelector('.xv-grid-scroll');
+      const maxIter = 20; // 防止无限循环
+      for (let i = 0; i < maxIter; i++) {
+        if (!scroll || scroll.scrollHeight > scroll.clientHeight + 10) break;
+        const maxFetched = Math.max(...Array.from(ImageViewer.fetchedPages), 0);
+        if (ImageViewer.totalPageCount > 0 && maxFetched >= ImageViewer.totalPageCount) break;
+        await new Promise(r => setTimeout(r, 300)); // 限速，避免触发服务端风控
+        const loaded = await loadViewerPages(threadId, maxFetched + 1, 2);
+        if (!loaded) break;
+        await preloadThumbnailSizes();
+        renderGridImages();
+      }
     });
   }
   // ── 关闭阅览器 ──
@@ -20937,6 +21602,7 @@ ${markedSwatchHtml}
     ImageViewer.active = false;
     ImageViewer.threadId = '';
     ImageViewer.gridImages = [];
+    ImageViewer.fetchedPages = new Set();
     ImageViewer.loadedPages = new Set();
     ImageViewer.currentDetailIndex = -1;
     ImageViewer.renderedKeys.clear();
@@ -21030,6 +21696,29 @@ ${markedSwatchHtml}
     let colWidth = Math.floor((containerWidth - (numCols - 1) * gap) / numCols);
     colWidth = Math.max(160, Math.min(300, colWidth));
     return { numCols, colWidth, gap };
+  }
+  function pickShortestColumn(vHeights) {
+    let minIdx = 0;
+    for (let c = 1; c < vHeights.length; c++) {
+      if (vHeights[c] < vHeights[minIdx]) minIdx = c;
+    }
+    return minIdx;
+  }
+  function pickUpwardGapColumn(vHeights, usedCols) {
+    // 向上容器是 flex-end：列高越短，视觉顶部空白越大，少图页应优先补这些空白。
+    const containerH = Math.max(...vHeights, 1);
+    let bestIdx = -1;
+    let bestGap = -Infinity;
+    for (let c = 0; c < vHeights.length; c++) {
+      if (usedCols && usedCols.has(c) && usedCols.size < vHeights.length) continue;
+      const gap = containerH - vHeights[c];
+      if (gap > bestGap) {
+        bestGap = gap;
+        bestIdx = c;
+      }
+    }
+    if (bestIdx >= 0) return bestIdx;
+    return pickShortestColumn(vHeights);
   }
   function buildPageSeparator(pageNum, colHeights, colWidth) {
     colWidth = colWidth || (ImageViewer._colWidth || 200);
@@ -21136,20 +21825,23 @@ ${markedSwatchHtml}
     const pageItems = images
       .map((img, index) => ({ img, index }))
       .filter(item => item.img.page === pageNum && !ImageViewer.renderedKeys.has(item.img.id));
-    if (!pageItems.length) return; // 该页所有图片已渲染，直接跳过
+    if (!pageItems.length) return 0; // 该页所有图片已渲染，直接跳过，避免 scrollTop += undefined
     // 按显示高度降序排列
     pageItems.sort((a, b) => (b.img._displayH || 200) - (a.img._displayH || 200));
     // LPT 分配到各列（插入到列最前面）
-    const vHeights = cols.map(() => 0);
+    // 用真实列高做 LPT 基准，这样新图片会优先填到最矮的列（考虑旧内容）
+    const vHeights = cols.map(c => c.offsetHeight);
+    const isSparseUpwardPage = pageItems.length < cols.length;
+    const usedCols = new Set();
     for (const item of pageItems) {
-      let minIdx = 0;
-      for (let c = 1; c < vHeights.length; c++) {
-        if (vHeights[c] < vHeights[minIdx]) minIdx = c;
-      }
+      // 旧逻辑：所有向上页都按最短列 LPT 分配。少图页连续出现时，flex-end 顶部空白不会被优先补齐。
+      // const minIdx = pickShortestColumn(vHeights);
+      const minIdx = isSparseUpwardPage ? pickUpwardGapColumn(vHeights, usedCols) : pickShortestColumn(vHeights);
       const card = buildGridCard(item.img, item.index);
       cols[minIdx].insertBefore(card, cols[minIdx].firstChild);
       ImageViewer.renderedKeys.add(item.img.id);  // 标记已渲染
       vHeights[minIdx] += (item.img._displayH || 200) + gap;
+      if (isSparseUpwardPage) usedCols.add(minIdx);
     }
     // 分隔线：标记第 pageNum 页的顶部等高线
     //
@@ -21188,75 +21880,82 @@ ${markedSwatchHtml}
   // ── 向下加载下一页 ──
   async function loadNextGridPages() {
     if (ImageViewer.loading) return;
-    const nextPages = [];
-    const maxLoaded = Math.max(...Array.from(ImageViewer.loadedPages), 0);
-    for (let i = 1; i <= 2; i++) {
-      const p = maxLoaded + i;
-      if (!ImageViewer.loadedPages.has(p)) nextPages.push(p);
-    }
-    if (!nextPages.length) return;
     ImageViewer.loading = true;
-    await loadViewerPages(ImageViewer.threadId, nextPages[0], nextPages.length);
-    await preloadThumbnailSizes();
-    // 详情页打开时瀑布流 display:none，offsetHeight 全为 0，此时渲染分隔线位置会全部错误
-    // 延迟到返回瀑布流时再渲染
-    if (ImageViewer.currentDetailIndex >= 0) {
-      ImageViewer._pendingGridRender = true;
-    } else {
-      renderGridImages();
+    const scroll = document.querySelector(".xv-grid-scroll");
+    const maxIter = 20;
+    for (let iter = 0; iter < maxIter; iter++) {
+      const maxFetched = Math.max(...Array.from(ImageViewer.fetchedPages), 0);
+      const nextPages = [];
+      for (let i = 1; i <= 2; i++) {
+        const p = maxFetched + i;
+        if (!ImageViewer.fetchedPages.has(p)) nextPages.push(p);
+      }
+      if (!nextPages.length) break;
+      if (iter > 0) await new Promise(r => setTimeout(r, 300)); // 限速
+      await loadViewerPages(ImageViewer.threadId, nextPages[0], nextPages.length);
+      await preloadThumbnailSizes();
+      if (ImageViewer.currentDetailIndex >= 0) {
+        ImageViewer._pendingGridRender = true;
+      } else {
+        renderGridImages();
+      }
+      // 内容撑满视口后停止自动加载，交给滚动事件触发
+      if (scroll && scroll.scrollHeight > scroll.clientHeight + 10) break;
     }
     ImageViewer.loading = false;
   }
   // ── 向上加载上一页 ──
   async function loadPrevGridPages() {
     if (ImageViewer.loading) return;
-    const minLoaded = Math.min(...Array.from(ImageViewer.loadedPages));
-    if (minLoaded <= 1) return; // 已经是第一页
-    const prevPage = minLoaded - 1;
-    if (ImageViewer.loadedPages.has(prevPage)) return;
     ImageViewer.loading = true;
-    const scroll = document.querySelector('.xv-grid-scroll');
-    // console.log("[xv-up] loadPrevGridPages START", "scrollTop=" + scroll.scrollTop, "scrollHeight=" + scroll.scrollHeight, "upwardH=" + (scroll.querySelector(".xv-masonry-upward")||{}).offsetHeight);
-    await loadViewerPages(ImageViewer.threadId, prevPage, 1);
-    await preloadThumbnailSizes();
-    // 详情页打开时瀑布流 display:none，offsetHeight 全为 0，此时渲染分隔线位置会全部错误
-    // 延迟到返回瀑布流时再渲染（和 loadNextGridPages 同理）
-    if (ImageViewer.currentDetailIndex >= 0) {
-      ImageViewer._pendingUpwardPages.add(prevPage);
-    } else {
-      // prependGridImages 返回向上容器高度增量（内部同步测量，不受 await 期间其他容器变化干扰）
-      const upwardDelta = prependGridImages(prevPage);
-      scroll.scrollTop += upwardDelta;
-      if (ImageViewer._lastUpwardH !== undefined) ImageViewer._lastUpwardH = scroll.querySelector(".xv-masonry-upward").offsetHeight; // 同步 ResizeObserver 基准，避免双重补偿
+    const scroll = document.querySelector(".xv-grid-scroll");
+    const maxIter = 20;
+    for (let iter = 0; iter < maxIter; iter++) {
+      const minFetched = Math.min(...Array.from(ImageViewer.fetchedPages));
+      if (minFetched <= 1) break;
+      const prevPage = minFetched - 1;
+      if (ImageViewer.fetchedPages.has(prevPage)) break;
+      if (iter > 0) await new Promise(r => setTimeout(r, 300));
+      await loadViewerPages(ImageViewer.threadId, prevPage, 1);
+      await preloadThumbnailSizes();
+      if (ImageViewer.currentDetailIndex >= 0) {
+        ImageViewer._pendingUpwardPages.add(prevPage);
+      } else {
+        const upwardDelta = prependGridImages(prevPage);
+        scroll.scrollTop += upwardDelta;
+        if (ImageViewer._lastUpwardH !== undefined) {
+          ImageViewer._lastUpwardH = scroll.querySelector(".xv-masonry-upward").offsetHeight;
+        }
+      }
+      // 内容撑满视口后停止自动加载
+      if (scroll && scroll.scrollHeight > scroll.clientHeight + 10) break;
     }
-    // console.log("[xv-up] AFTER compensate", "scrollTop=" + scroll.scrollTop, "scrollHeight=" + scroll.scrollHeight);
-    // 监听向上容器高度变化（图片异步加载可能导致列高变化），自动补偿滚动位置
-    const upwardContainer = scroll.querySelector('.xv-masonry-upward');
+    // ResizeObserver 初始化（只执行一次）
+    const upwardContainer = scroll.querySelector(".xv-masonry-upward");
     if (upwardContainer && !ImageViewer._upwardResizeObserver) {
       ImageViewer._lastUpwardH = upwardContainer.offsetHeight;
       ImageViewer._upwardResizeObserver = new ResizeObserver(() => {
         if (!ImageViewer.active) return;
         const newH = upwardContainer.offsetHeight;
         const dh = newH - ImageViewer._lastUpwardH;
-    // console.log("[xv-ro] resize", "newH=" + newH, "lastH=" + ImageViewer._lastUpwardH, "dh=" + dh, "scrollTop=" + scroll.scrollTop);
         ImageViewer._lastUpwardH = newH;
-        if (dh > 0) scroll.scrollTop += dh; // 向下补偿，保持视口稳定
+        if (dh > 0) scroll.scrollTop += dh;
       });
       ImageViewer._upwardResizeObserver.observe(upwardContainer);
     }
-    ImageViewer.loading = false;
     // 如果已经加载到第1页，自动关闭向上模式
-    if (Math.min(...Array.from(ImageViewer.loadedPages)) <= 1) {
+    if (Math.min(...Array.from(ImageViewer.fetchedPages)) <= 1) {
       ImageViewer.upwardEnabled = false;
-      const upwardBtn = document.querySelector('.xv-upward-btn');
+      const upwardBtn = document.querySelector(".xv-upward-btn");
       if (upwardBtn) {
-        upwardBtn.style.opacity = '0.4';
-        upwardBtn.style.background = 'var(--muted-foreground,#444)';
-        upwardBtn.title = '已到第1页';
+        upwardBtn.style.opacity = "0.4";
+        upwardBtn.style.background = "var(--muted-foreground,#444)";
+        upwardBtn.title = "已到第1页";
         upwardBtn.disabled = true;
       }
-      // toast('已加载到首页');
+      toast("已加载到第1页");
     }
+    ImageViewer.loading = false;
   }
   // ── 详情层：打开 ──
   function openDetailLayer(index) {
@@ -21578,6 +22277,116 @@ ${markedSwatchHtml}
   }
 
   /* --------------------------------------------------
+   * tag 27. 关闭引用
+   * -------------------------------------------------- */
+  // 阻止URL中r=参数导致的自动引用插入（网站原生行为）
+  // 开关：设置面板 → 关闭引用（disableAutoQuote），实时生效
+  function initDisableAutoQuote() {
+    const rParam = new URLSearchParams(location.search).get('r');
+    if (!rParam) return;
+    const rEsc = rParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const quoteRe = new RegExp('^\\s*>>No\\.' + rEsc + '\\s*\\n?');
+    // 读取实时设置（支持面板切换后即时生效）
+    function isEnabled() {
+      try {
+        const s = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        return s.disableAutoQuote !== false; // 默认 true（开启拦截）
+      } catch (e) { return true; }
+    }
+    // 值班室/举报表单需要保留 r= 自动引用，以便精准举报
+    function shouldPreserveAutoQuoteForReport() {
+      try {
+        const decodedPath = decodeURIComponent(location.pathname || '');
+        if (/^\/f\/值班室(?:\/|$)/.test(decodedPath)) return true;
+      } catch (e) {}
+      try {
+        return !!document.querySelector('form[action="/Home/Forum/doReplyThread.html"] #h-report-switch, form[action="/Home/Forum/doPostThread.html"] #h-report-switch, #h-report-switch');
+      } catch (e) {
+        return false;
+      }
+    }
+    // 检查草稿是否本身以该引用号开头（如果是，说明引用来自草稿而非网站自动插入）
+    function draftHasQuote() {
+      try {
+        if (typeof readDraftValue === 'function') {
+          const draft = readDraftValue();
+          return typeof draft === 'string' && quoteRe.test(draft);
+        }
+      } catch (e) {}
+      return false;
+    }
+    function interceptTextarea(ta) {
+      if (ta.__quoteIntercepted) return;
+      ta.__quoteIntercepted = true;
+      const desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+      Object.defineProperty(ta, 'value', {
+        configurable: true, enumerable: true,
+        get() { return desc.get.call(this); },
+        set(v) {
+          // 仅在拦截开启 且 草稿本身不含此引用号 且 非值班室/举报场景时才剥离
+          if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(v)) {
+            v = v.replace(quoteRe, '');
+          }
+          desc.set.call(this, v);
+        }
+      });
+      // 初始清理（仅在开启且草稿不含该引用且非值班室/举报场景时）
+      if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(ta.value)) {
+        const cleaned = ta.value.replace(quoteRe, '');
+        desc.set.call(ta, cleaned);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+    const obs = new MutationObserver(() => {
+      const ta = document.querySelector('textarea.h-post-form-textarea');
+      if (ta) { interceptTextarea(ta); obs.disconnect(); }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => { const ta = document.querySelector('textarea.h-post-form-textarea'); if (ta) interceptTextarea(ta); }, 1000);
+  }
+
+  /* --------------------------------------------------
+   * tag 28. 值班室自动选择理由
+   * -------------------------------------------------- */
+  // 举报理由：自动补充并默认选择“其他”，避免值班室/举报表单未选理由时阻止发送
+  function autoSelectReportReason(root = document) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const selects = [];
+    if (scope.matches && scope.matches('select#h-report-switch')) selects.push(scope);
+    scope.querySelectorAll?.('select#h-report-switch').forEach(sel => selects.push(sel));
+    selects.forEach(sel => {
+      if (sel.__xdexReportReasonHandled) return;
+      sel.__xdexReportReasonHandled = true;
+      const customValue = '其他';
+      let option = Array.from(sel.options || []).find(opt => opt.value === customValue || opt.textContent.trim() === customValue);
+      if (!option) {
+        option = document.createElement('option');
+        option.value = customValue;
+        option.textContent = customValue;
+        sel.appendChild(option);
+      }
+      if (!sel.value || sel.value === '-1') {
+        sel.value = option.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const form = sel.closest('form');
+      const info = (form || document).querySelector('#h-report-info');
+      if (info && sel.value && sel.value !== '-1') info.style.display = 'none';
+    });
+    if (!autoSelectReportReason.__observerInstalled && root === document && document.body) {
+      autoSelectReportReason.__observerInstalled = true;
+      const observer = new MutationObserver(mutations => {
+        mutations.forEach(m => {
+          m.addedNodes.forEach(node => {
+            if (node && node.nodeType === 1) autoSelectReportReason(node);
+          });
+        });
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   window.addEventListener('load', () => {
@@ -21586,6 +22395,7 @@ ${markedSwatchHtml}
     startupPerfDebug.mark('window.load.end', startupPerfDebug.summarizeRoot(document));
   });
   installEarlyStartupObserver();
+  installEarlyCriticalVisualPass();
   installEarlyEnhanceIslandAutoTitle();
 
   $(document).ready(() => {
@@ -21598,6 +22408,7 @@ ${markedSwatchHtml}
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
+    initDisableAutoQuote(); //关闭引用：阻止URL中?r=参数自动插入引用号
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     // 串内饼干偏好初始化
@@ -21635,6 +22446,7 @@ ${markedSwatchHtml}
     }
     interceptReplyForm();                                            //拦截回复中间页
     enhancePostFormLayout();                                         //发帖UI调整
+    autoSelectReportReason();                                        //举报理由默认选择“其他”
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
     renderFavoriteThreadsMenu();                                      //常用串
     if (isThreadHistoryPageActive()) {
@@ -21759,5 +22571,4 @@ ${markedSwatchHtml}
   });
   }
   scheduleXDexStartup();
-
 })(jQuery);
