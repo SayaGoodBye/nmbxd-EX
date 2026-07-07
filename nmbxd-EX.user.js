@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.7.0
+// @version      3.9.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增“关闭引用”开关，在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号。\n\n修复\n1.排除版块页快速回复api拉取的数据中可能混杂的Tips。\n2.修复订阅面板中切换订阅号后没有重新作用模糊遮罩的问题。\n
+// @changelog    新增\n1.新增“关闭引用”开关，在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号（值班室版块默认关闭）。\n2.新增标题/作者/E-mail/正文字数统计与提醒。\n\n优化\n1.优化脚本加载时机、加载顺序等，减少首次打开页面时候用户等待时间。\n2.值班室举报理由新增“其他”理由并默认选中，以便快速提交，如有更适合的理由请手动选择。\n3.值班室板块内快捷回复默认为“发串”模式，以便用户按预期提交举报。\n4.页码栏拓展为最长七个页码按钮。\n5.优化阅图模式瀑布流，打开页面图片较少时继续获取，尽可能填满当前页面。\n6.部分功能支持6/7位串号以及8位饼干。\n\n修复\n1.排除版块页快速回复api拉取的数据中可能混杂的Tips。\n2.修复订阅面板中切换订阅号后没有重新作用模糊遮罩的问题。\n3.修复侧边栏常用串标题溢出问题。\n4.修复常用串链接没有优先指向浏览历史中该串最远页码的问题。\n5.修复阅图模式瀑布流在图片较少时，更多图片集中在某一列的问题。\n6.修复原生/拓展引用浮窗中未作用标记饼干的问题。\n7.修复串内检查回复是否更新结果toast可能被覆盖的问题。
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -3901,17 +3901,20 @@
   function showImmediateToast(msg, duration = 900, key = 'default') {
     const safeKey = String(key || 'default').replace(/[^a-z0-9_-]/gi, '-');
     let $t = $(`#xdex-immediate-toast-${safeKey}`);
-    if ($t.length) {
-      $t.stop(true, true).text(msg).show().delay(duration).fadeOut(160, () => $t.remove());
-      return $t;
+    if (!$t.length) {
+      $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
+        position:fixed;top:10px;left:50%;transform:translateX(-50%);
+        background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
+        border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
+      $('body').append($t);
     }
-    $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
-      position:fixed;top:10px;left:50%;transform:translateX(-50%);
-      background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
-      border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
-    $t.text(msg);
-    $('body').append($t);
-    $t.fadeIn(120).delay(duration).fadeOut(160, () => $t.remove());
+    const el = $t[0];
+    const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
+    el.__xdexImmediateToastSeq = seq;
+    $t.stop(true, false).text(msg).show();
+    $t.delay(duration).fadeOut(160, () => {
+      if (el.__xdexImmediateToastSeq === seq) $t.remove();
+    });
     return $t;
   }
   const Utils = {
@@ -4529,7 +4532,7 @@ ${markedSwatchHtml}
     if (!title || title.__xdexSettingEasterEggBound) return;
     title.__xdexSettingEasterEggBound = true;
     const CLICK_WINDOW_MS = 3000;
-    const REQUIRED_CLICKS = 5;
+    const REQUIRED_CLICKS = 3;
     const EASTER_EGG_TID = '68811442';
     let clicks = [];
     title.addEventListener('click', () => {
@@ -7096,15 +7099,15 @@ ${markedSwatchHtml}
       if (!document.getElementById('sp_update_log')) {
         const $log = $(
           '<div id=\"sp_update_log\" style=\"display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10001;\">' +
-            '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;background:var(--xdex-sp-panel-bg);border:1px solid var(--xdex-sp-border);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow);\">' +
-              '<div style=\"padding:10px 12px;border-bottom:1px solid var(--xdex-sp-border);display:flex;align-items:center;justify-content:space-between;\">' +
+            '<div style=\"position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(640px, calc(100vw - 48px));max-height:calc(100vh - 96px);display:flex;flex-direction:column;overflow:hidden;background:var(--xdex-sp-panel-bg);border:1px solid var(--xdex-sp-border);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow);\">' +
+              '<div style=\"padding:10px 12px;border-bottom:1px solid var(--xdex-sp-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;\">' +
                 '<span class=\"xdex-update-log-title\" style=\"font-weight:bold;\">更新日志</span>' +
                 '<span id=\"sp_update_log_close\" style=\"cursor:pointer;\">✕</span>' +
               '</div>' +
-              '<div class=\"xdex-update-log-body\" style=\"padding:12px;font-size:12px;white-space:pre-line;\">' +
+              '<div class=\"xdex-update-log-body\" style=\"padding:12px;font-size:12px;white-space:pre-line;overflow:auto;flex:1 1 auto;min-height:0;\">' +
                 (CHANGELOG || '暂无更新说明') +
               '</div>' +
-              '<div class=\"xdex-update-log-actions\" style=\"display:none;padding:0 12px 12px;gap:8px;justify-content:flex-end;\">' +
+              '<div class=\"xdex-update-log-actions\" style=\"display:none;padding:0 12px 12px;gap:8px;justify-content:flex-end;flex-shrink:0;\">' +
                 '<button id=\"sp_update_log_update_now\" style=\"padding:4px 10px;\">立即更新</button>' +
                 '<button id=\"sp_update_log_ignore_version\" style=\"padding:4px 10px;\">忽略此版本</button>' +
                 '<button id=\"sp_update_log_dismiss_today\" style=\"padding:4px 10px;\">今日关闭</button>' +
@@ -10647,7 +10650,7 @@ ${markedSwatchHtml}
         // 如果用户回复 < 19 => 肯定是最后一页
         if (userCount < 19) {
           const result = { status: 'last', hasUpdate };
-          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新");
+          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
           if (typeof done === 'function') done(result);
           addRefreshButtonIfNeeded();
           return;
@@ -10655,12 +10658,12 @@ ${markedSwatchHtml}
         // 用户回复满 19 条：若解析到的最新页码 > 当前已知 lastLoadedPage，则说明出现下一页
         if (parsedLastFromReturned && parsedLastFromReturned > lastLoadedPage) {
           const result = { status: 'hasNext', nextPage: lastLoadedPage + 1, hasUpdate };
-          if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新");
+          if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
           if (typeof done === 'function') done(result);
           return;
         } else {
           const result = { status: 'last', hasUpdate };
-          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新");
+          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
           if (typeof done === 'function') done(result);
           addRefreshButtonIfNeeded();
           return;
