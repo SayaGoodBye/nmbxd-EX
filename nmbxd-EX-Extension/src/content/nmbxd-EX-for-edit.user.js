@@ -9737,9 +9737,6 @@ ${markedSwatchHtml}
       if (liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root || document);
     } catch (e) {}
     try {
-      if (typeof enablePostExpand === 'function') enablePostExpand(root || document);
-    } catch (e) {}
-    try {
       if (typeof autoSelectReportReason === 'function') autoSelectReportReason(root || document);
     } catch (e) {}
     try {
@@ -18909,7 +18906,8 @@ ${markedSwatchHtml}
         html, body {
           overflow-y: scroll !important;
         }
-        .h-threads-item-index.expanded {
+        .h-threads-item-index.expanded,
+        html.xdex-post-expand-all .h-threads-item-index:not(.xdex-post-expand-collapsed) {
           max-height: none !important;
           overflow-y: scroll !important;
           overflow-anchor: none !important;
@@ -18918,8 +18916,9 @@ ${markedSwatchHtml}
       document.head.appendChild(style);
     })();
     let lastExpandedItem = null;
-    // 根据 SettingPanel.state 读取是否开启“全部展开”模式
+    // 根据 SettingPanel.state 读取是否开启“全部展开”模式；用根节点 class 表达全局展开，避免逐串同步改 class 堵塞版块页
     const expandAllMode = !!(typeof SettingPanel !== 'undefined' && SettingPanel.state && SettingPanel.state.enablePostExpandAll);
+    document.documentElement.classList.toggle('xdex-post-expand-all', expandAllMode);
     // 外部点击收起：兼容两种模式（常规 / 全部展开）
     function outsideHandler(e) {
       // 忽略公用折叠占位符点击
@@ -19013,9 +19012,10 @@ ${markedSwatchHtml}
           if (d < min) { min = d; target = t; }
         }
       }
-      if (target && target.classList.contains('expanded')) {
+      if (target && !target.classList.contains('xdex-post-expand-collapsed')) {
         const btn = target.querySelector('.h-threads-info .js-toggle-mode');
         if (btn) btn.textContent = '展开';
+        target.classList.add('xdex-post-expand-collapsed');
         collapseWithoutShift(target);
       }
     }
@@ -19035,40 +19035,37 @@ ${markedSwatchHtml}
       btn.type = 'button';
       btn.className = 'js-toggle-mode';
       btn.style.cssText = 'display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;';
-      btn.textContent = '展开';
-      // 如果是“全部展开”模式，启动就设为展开状态
-      if (expandAllMode) {
+      btn.textContent = expandAllMode && !item.classList.contains('xdex-post-expand-collapsed') ? '收起' : '展开';
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const isAllMode = document.documentElement.classList.contains('xdex-post-expand-all');
+        if (isAllMode) {
+          const willExpand = item.classList.contains('xdex-post-expand-collapsed');
+          if (willExpand) {
+            item.classList.remove('xdex-post-expand-collapsed');
+            btn.textContent = '收起';
+            lastExpandedItem = item;
+          } else {
+            btn.textContent = '展开';
+            item.classList.add('xdex-post-expand-collapsed');
+            collapseWithoutShift(item);
+            if (lastExpandedItem === item) lastExpandedItem = null;
+          }
+          return;
+        }
+        const willExpand = !item.classList.contains('expanded');
+        if (willExpand) {
           item.classList.add('expanded');
           btn.textContent = '收起';
+          lastExpandedItem = item;
+        } else {
+          btn.textContent = '展开';
+          collapseWithoutShift(item);
+          if (lastExpandedItem === item) lastExpandedItem = null;
         }
-            btn.addEventListener('click', e => {
-              e.stopPropagation();
-              const willExpand = !item.classList.contains('expanded');
-              if (willExpand) {
-                item.classList.add('expanded');
-                btn.textContent = '收起';
-                lastExpandedItem = item;
-              } else {
-                btn.textContent = '展开';
-                collapseWithoutShift(item);
-                if (lastExpandedItem === item) lastExpandedItem = null;
-              }
-            });
+      });
       infoBar.appendChild(btn);
     });
-    // === 初始化时根据设置自动全部展开 ===
-    try {
-        const expandAll = !!(typeof SettingPanel !== 'undefined' && SettingPanel.state && SettingPanel.state.enablePostExpandAll);
-        if (expandAll) {
-          scanTargets.forEach(item => {
-            if (!item.classList.contains('expanded')) item.classList.add('expanded');
-            const btn = item.querySelector('.h-threads-info .js-toggle-mode');
-            if (btn) btn.textContent = '收起';
-          });
-        }
-      } catch (err) {
-        console.warn('自动全部展开失败：', err);
-      }
     // 绑定外部点击
     const hContent = document.getElementById('h-content');
     if (hContent) {
@@ -22544,24 +22541,32 @@ ${markedSwatchHtml}
     // 全局：在运行时立即应用“全部展开 / 全部收起”模式
     window.applyPostExpandAllMode = function(enable) {
       const threads = Array.from(document.querySelectorAll('.h-threads-item-index'));
+      document.documentElement.classList.toggle('xdex-post-expand-all', !!enable);
       if (!threads.length) return;
       if (enable) {
-        // 全部展开（立即把每个 item 加上 expanded，并把按钮设为 收起）
-        threads.forEach(item => {
-          const btn = item.querySelector('.h-threads-info .js-toggle-mode');
-          if (!item.classList.contains('expanded')) item.classList.add('expanded');
-          if (btn) btn.textContent = '收起';
-        });
+        // 全部展开：只切根节点 class；按钮文字分帧更新，避免同步逐串改 expanded 堵塞版块页。
+        threads.forEach(item => item.classList.remove('xdex-post-expand-collapsed'));
+        let idx = 0;
+        const updateButtons = () => {
+          const end = Math.min(idx + 12, threads.length);
+          for (; idx < end; idx++) {
+            const btn = threads[idx].querySelector('.h-threads-info .js-toggle-mode');
+            if (btn) btn.textContent = '收起';
+          }
+          if (idx < threads.length) requestAnimationFrame(updateButtons);
+        };
+        requestAnimationFrame(updateButtons);
       } else {
-        // 全部收起：对每个已展开的串依次调用 collapseWithoutShift，
-        // 用 setTimeout 分批执行以给每次补偿留出一帧时间，尽量避免跳动累积。
+        // 全部收起：取消根节点 class，并分批收起仍处于单串 expanded 的项目。
         let delayIdx = 0;
         threads.forEach(item => {
-          if (!item.classList.contains('expanded')) return;
+          item.classList.remove('xdex-post-expand-collapsed');
+          const shouldCollapse = item.classList.contains('expanded');
           const d = delayIdx++ * 45; // 45ms 间隔（经验值）
           setTimeout(() => {
             const btn = item.querySelector('.h-threads-info .js-toggle-mode');
             if (btn) btn.textContent = '展开';
+            if (!shouldCollapse) return;
             try { collapseWithoutShift(item); } catch (err) { // 防守
               try { item.classList.remove('expanded'); } catch(e){}
             }
