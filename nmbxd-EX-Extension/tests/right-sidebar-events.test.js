@@ -62,7 +62,7 @@ function extractBetween(startNeedle, endNeedle) {
 
 function testReplyControllerIsLazy() {
   assert(source.includes('function ensureRightSidebarReplyController()'), 'reply controller factory must exist');
-  const replaceBody = extractBetween('function replaceRightSidebar()', '/* --------------------------------------------------\n   * tag 11. 拦截回复中间页');
+  const replaceBody = extractBetween('function replaceRightSidebar()', 'function interceptReplyForm()');
   assert(!replaceBody.includes('function ensureOverlay'), 'replaceRightSidebar should not define overlay setup eagerly');
   assert(!replaceBody.includes('function closeOverlay'), 'replaceRightSidebar should not define overlay close eagerly');
   assert(!replaceBody.includes('function enableDragForReply'), 'replaceRightSidebar should not define drag handlers eagerly');

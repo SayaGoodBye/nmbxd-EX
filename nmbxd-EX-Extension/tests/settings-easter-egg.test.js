@@ -33,7 +33,7 @@ function testSettingsTitleHasStableEasterEggSelector() {
 function testEasterEggClickWindowAndCount() {
   const body = extractFunction('installSettingPanelEasterEgg');
   assert(body.includes('3000'), 'easter egg should use a 3 second click window');
-  assert(body.includes('5'), 'easter egg should require five clicks');
+  assert(body.includes('REQUIRED_CLICKS = 3') || body.includes('const REQUIRED_CLICKS = 3'), 'easter egg should require three clicks');
   assert(body.includes('68811442'), 'easter egg should open quote tid 68811442');
   assert(body.includes('fromPOImage: true'), 'easter egg should request active image state via fromPOImage');
   assert(body.includes('__xdexSettingEasterEggBound'), 'easter egg title binding should be idempotent');
