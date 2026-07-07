@@ -13,9 +13,27 @@ function sliceBetween(startNeedle, endNeedle) {
   return script.slice(start, end);
 }
 
-const expandSection = sliceBetween('function enablePostExpand(root = document)', '/* --------------------------------------------------\n   * tag 17.');
+function sliceAssignmentFunction(name) {
+  const startNeedle = `${name} = function`;
+  const start = script.indexOf(startNeedle);
+  assert(start >= 0, `${startNeedle} must exist`);
+  let brace = script.indexOf('{', start);
+  assert(brace > start, `${name} body must exist`);
+  let depth = 0;
+  for (let i = brace; i < script.length; i += 1) {
+    const ch = script[i];
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return script.slice(start, i + 1);
+    }
+  }
+  throw new Error(`Unable to extract ${name}`);
+}
+
+const expandSection = sliceBetween('function enablePostExpand(root = document)', 'function searchServiceBy4sY()');
 const criticalSection = sliceBetween('function runCriticalVisualEnhancements(root, cfg)', 'function runEarlyStartupPass(root)');
-const runtimeApplySection = sliceBetween('window.applyPostExpandAllMode = function(enable)', '};\n  });');
+const runtimeApplySection = sliceAssignmentFunction('window.applyPostExpandAllMode');
 
 assert(script.includes('xdex-post-expand-all'), 'all-expanded mode must be represented by a root-level CSS class');
 assert(script.includes('xdex-post-expand-collapsed'), 'all-expanded mode must support per-thread collapsed exceptions');

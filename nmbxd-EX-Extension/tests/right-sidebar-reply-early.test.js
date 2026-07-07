@@ -13,9 +13,27 @@ function sliceBetween(startNeedle, endNeedle) {
   return script.slice(start, end);
 }
 
+function sliceFunction(name) {
+  const startNeedle = `function ${name}`;
+  const start = script.indexOf(startNeedle);
+  assert(start >= 0, `${startNeedle} must exist`);
+  let brace = script.indexOf('{', start);
+  assert(brace > start, `${name} body must exist`);
+  let depth = 0;
+  for (let i = brace; i < script.length; i += 1) {
+    const ch = script[i];
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return script.slice(start, i + 1);
+    }
+  }
+  throw new Error(`Unable to extract ${name}`);
+}
+
 const shellBind = sliceBetween('function bindRightSidebarShellButtons(docker)', 'function tryReplaceRightSidebarEarly()');
 const earlyReplace = sliceBetween('function tryReplaceRightSidebarEarly()', 'function ensureRightSidebarReplyController()');
-const fullReplace = sliceBetween('function replaceRightSidebar()', '/* --------------------------------------------------\n   * tag 11.');
+const fullReplace = sliceFunction('replaceRightSidebar()');
 
 assert(script.includes('function openRightSidebarReplyWhenReady'), 'reply should use a safe wait-for-form opener');
 assert(script.includes('function bindRightSidebarReplyButton'), 'reply binding should be extracted for reuse by early and full sidebar setup');
