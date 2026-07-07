@@ -9308,8 +9308,8 @@ ${markedSwatchHtml}
     const href = String(sampleHref || '');
     if (/[?&]page=\d+/.test(href)) return href.replace(/page=\d+/, `page=${pageNum}`);
     if (/\/page\/\d+\.html/.test(href)) return href.replace(/\/page\/\d+\.html/, `/page/${pageNum}.html`);
-    if (/^\/f\//.test(location.pathname) || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
-      const base = location.pathname.replace(/\/page\/\d+\.html$/, '');
+    if (isBoardPaginationContext() || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
+      const base = location.pathname.replace(/\/page\/\d+\.html$/, '').replace(/\.html$/, '');
       return `${base}/page/${pageNum}.html`;
     }
     return href;
@@ -9351,6 +9351,7 @@ ${markedSwatchHtml}
     let totalPages = 0;
     // 回退1：末页链接的 href
     const lastLink = Array.from(pag.querySelectorAll('a')).find(a => (a.textContent || '').trim().startsWith('末页'));
+    const hasExplicitLastPage = !!lastLink;
     if (lastLink) {
       const lastHref = lastLink.getAttribute('href') || '';
       totalPages = parsePaginationPageNum(lastHref) || 0;
@@ -9368,9 +9369,9 @@ ${markedSwatchHtml}
       });
       totalPages = maxPage;
     }
-    // 版块页最多 100 页；若没有末页信息，按 100 兜底（少于 100 页的板块会由末页链接覆盖）
+    // 版块页最多展示最近 100 页；/f/ 通常没有“末页”链接，不能把当前 DOM 的 1/2/3 误判为总页数
     if (isBoardPaginationContext()) {
-      totalPages = totalPages ? Math.min(100, totalPages) : 100;
+      totalPages = hasExplicitLastPage && totalPages ? Math.min(100, totalPages) : 100;
       if (currentPage > totalPages) totalPages = Math.min(100, currentPage);
     }
     // 关键修正：如果"下一页"被禁用（uk-disabled），说明当前就是末页
@@ -9443,11 +9444,11 @@ ${markedSwatchHtml}
     // 标记已重建，避免延迟重扫或 MutationObserver 重复处理
     pag.setAttribute('data-xdex-rebuilt', '1');
   }
-  function enablePaginationDuplication  (){
+  function enablePaginationDuplication(cloneTitlePagination = true){
     // 获取所有分页栏，而不是只获取一个
     const pags = Array.from(document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
     if(!pags.length) return;
-    const tit = document.querySelector('h2.h-title');
+    const tit = cloneTitlePagination ? document.querySelector('h2.h-title') : null;
     let titlePag = null;
     if (tit) {
       // early pass 和 ready 兜底都可能运行；标题后页码栏全页只保留一条
@@ -22421,7 +22422,7 @@ ${markedSwatchHtml}
       }
     }
     injectImageViewerButton();                                    //阅图模式入口
-    if (cfg.enablePaginationDuplication) enablePaginationDuplication();     //添加页首页码
+    enablePaginationDuplication(!!cfg.enablePaginationDuplication); //页码栏拓展为 7 个；开关仅控制是否添加页首页码
     if (cfg.disableWatermark)            disableWatermark();        //关闭图片水印
     if (cfg.updatePreviewCookie)         updatePreviewCookieId();   //预览真实饼干
     if (cfg.hideEmptyTitleEmail) {hideEmptyTitleAndEmail();         //隐藏无名氏/无标题/回复/发串/版规
