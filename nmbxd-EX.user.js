@@ -18143,6 +18143,24 @@ ${markedSwatchHtml}
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').text('连续');
       }
+    } else if (/^\/f\/值班室(?:\/|$)/.test(decodeURIComponent(location.pathname))) {
+      // 值班室版块强制发串模式，方便快速举报（不修改设置项，用户仍可手动切换回复模式）
+      setMode('发串', {silent: true});
+      try {
+        const today = new Date().toLocaleDateString('sv-SE');
+        const toastKey = 'xdex_duty_room_post_mode_toast_date';
+        const lastShown = typeof GM_getValue === 'function' ? GM_getValue(toastKey, '') : '';
+        if (lastShown !== today) {
+          toast('值班室版块默认为“发串”模式，请注意');
+          if (typeof GM_setValue === 'function') GM_setValue(toastKey, today);
+        }
+      } catch (e) {
+        toast('值班室版块默认为“发串”模式，请注意');
+      }
+      if (SettingPanel.state.replyExtraDefault === '连续') {
+        window.replyModeState.extra = '连续';
+        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+      }
     } else {
       setMode(SettingPanel.state.replyModeDefault, {silent: true});
       // extra 模式
