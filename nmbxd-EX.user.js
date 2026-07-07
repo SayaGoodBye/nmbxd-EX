@@ -5294,6 +5294,7 @@ ${markedSwatchHtml}
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -7017,11 +7018,10 @@ ${markedSwatchHtml}
       });
       //鼠标悬浮在具体功能上显示提示
       // ====== 1. 定义功能描述映射表 ======
-
       const spDescriptions = {
         sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
         sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送。',
-        sp_enablePaginationDuplication: '在串首页添加页码导航栏',
+        sp_enablePaginationDuplication: '在串首页添加页码导航栏，并拓展为最长七个页码按钮',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
         sp_hideEmptyTitleEmail: '隐藏帖内无标题、无名氏和版规提示，优化显示效果，减少版面占用',
@@ -7048,7 +7048,7 @@ ${markedSwatchHtml}
         sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片。',
         sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
-        sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面',
+        sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面，添加标题/作者/E-mail/正文的字数统计与提醒',
         sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则\n折叠：匹配到的串/回复显示为可展开的按钮\n隐藏：匹配到的串/回复完全隐藏',
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
         sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间。',
@@ -7063,7 +7063,8 @@ ${markedSwatchHtml}
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
-        sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号'
+        sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，保留高亮的同时控制其是否在输入框中自动添加引用号，值班室版块默认不生效',
+        sp_autoSelectReportReason: '值班室默认选择“其他”理由，且在值班室版块快捷回复面板中默认为“发串”模式以便提交举报',
       };
       // 更新日志弹窗（放在 spDescriptions 之后，避免引用未定义）
       if (!document.getElementById('sp_update_log')) {
@@ -9415,21 +9416,40 @@ ${markedSwatchHtml}
   }
   function enablePaginationDuplication  (){
     // 获取所有分页栏，而不是只获取一个
-    const pags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+    const pags = Array.from(document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
     if(!pags.length) return;
-    pags.forEach(pag => {
+    const tit = document.querySelector('h2.h-title');
+    let titlePag = null;
+    if (tit) {
+      // early pass 和 ready 兜底都可能运行；标题后页码栏全页只保留一条
+      const titlePags = pags.filter(pag => pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling === tit);
+      titlePags.forEach((pag, idx) => {
+        if (idx === 0) {
+          titlePag = pag;
+          titlePag.dataset.xdexTitleClone = '1';
+        } else {
+          pag.remove();
+        }
+      });
+    }
+    const sourcePags = pags.filter(pag => pag.isConnected && pag.dataset.xdexTitleClone !== '1' && pag.previousElementSibling !== tit);
+    sourcePags.forEach(pag => {
       // 重建页码（显示 7 个页码，当前页居中）
       rebuildPaginationPages(pag);
       // 末页补全
       processPagination(pag);
-      const tit = document.querySelector('h2.h-title');
-      if(!tit || !pag) return;
-      // 克隆分页栏并插入标题后
-      const clone = pag.cloneNode(true);
-      tit.parentNode.insertBefore(clone, tit.nextSibling);
-      // 对克隆分页栏执行末页补全（页码已随克隆复制）
-      processPagination(clone);
     });
+    if (tit && !titlePag && sourcePags.length) {
+      // 克隆分页栏并插入标题后
+      titlePag = sourcePags[0].cloneNode(true);
+      titlePag.dataset.xdexTitleClone = '1';
+      tit.parentNode.insertBefore(titlePag, tit.nextSibling);
+    }
+    if (titlePag && titlePag.isConnected) {
+      rebuildPaginationPages(titlePag);
+      // 对克隆分页栏执行末页补全（页码已随克隆复制）
+      processPagination(titlePag);
+    }
     // 延迟重建：防止其他功能（如无缝翻页初始化）在之后覆盖分页栏
     function rescanAndRebuild() {
       document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination:not([data-xdex-rebuilt])').forEach(pag => {
@@ -9465,6 +9485,21 @@ ${markedSwatchHtml}
         if (pagDebounceTimers.has(pag)) clearTimeout(pagDebounceTimers.get(pag));
         pagDebounceTimers.set(pag, setTimeout(() => {
           pagDebounceTimers.delete(pag);
+          if (pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling?.matches?.('h2.h-title')) {
+            const tit = document.querySelector('h2.h-title');
+            const titlePags = Array.from(document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'))
+              .filter(p => p.dataset.xdexTitleClone === '1' || p.previousElementSibling === tit);
+            titlePags.forEach((p, idx) => {
+              if (idx === 0) {
+                p.dataset.xdexTitleClone = '1';
+                rebuildPaginationPages(p);
+                processPagination(p);
+              } else {
+                p.remove();
+              }
+            });
+            return;
+          }
           rebuildPaginationPages(pag);
           processPagination(pag);
         }, 50));
@@ -9559,12 +9594,151 @@ ${markedSwatchHtml}
     Utils.collapse($root.find('form[action="/Home/Forum/doReplyThread.html"]').addBack('form[action="/Home/Forum/doReplyThread.html"]'), '『回复』');
     Utils.collapse($root.find('form[action="/Home/Forum/doPostThread.html"]').addBack('form[action="/Home/Forum/doPostThread.html"]'), '『发串』');
   }
-  function runEarlyStartupPass(root) {
-    const cfg = getEarlyStartupConfig();
-    if (cfg.hideEmptyTitleEmail) {
-      hideEmptyTitleAndEmail(root);
-      collapseEarlyStartupBlocks(root, cfg);
+  function buildEnhanceIslandPreviewHtml() {
+    // 从 cookie-switcher 里取当前饼干
+    const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
+    const cookieText = cookieDisplay ? cookieDisplay.textContent.trim() : '--';
+    return `
+      <div class="h-preview-box" data-xdex-early-preview="1">
+        <div class="h-threads-item">
+          <div class="h-threads-item-replies">
+            <div class="h-threads-item-reply">
+              <div class="h-threads-item-reply-main">
+                <div class="h-threads-img-box">
+                  <div class="h-threads-img-tool uk-animation-slide-top">
+                    <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
+                    <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
+                    <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
+                    <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
+                  </div>
+                  <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
+                </div>
+                <div class="h-threads-info">
+                  <span class="h-threads-info-title"></span>
+                  <span class="h-threads-info-email"></span>
+                  <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
+                  <span class="h-threads-info-uid">ID:${cookieText}</span>
+                  <span class="h-threads-info-report-btn">
+                    [<a href="/f/值班室" target="_blank">举报</a>]
+                  </span>
+                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                </div>
+                <div class="h-threads-content"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  function applyEarlyPreviewBoxStyle(previewEl) {
+    if (!previewEl) return;
+    previewEl.style.width = '100%';
+    previewEl.style.boxSizing = 'border-box';
+    const content = previewEl.querySelector('.h-threads-content');
+    if (content) {
+      content.style.overflowWrap = 'break-word';
+      content.style.wordBreak = 'break-word';
+      content.style.whiteSpace = 'normal';
     }
+  }
+  function tryInsertPreviewBoxEarly() {
+    if (!document.body || document.querySelector('.h-preview-box')) return false;
+    const form = document.querySelector('#h-post-form form');
+    if (!form) return false;
+    form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml());
+    const previewEl = form.nextElementSibling && form.nextElementSibling.classList?.contains('h-preview-box')
+      ? form.nextElementSibling
+      : document.querySelector('.h-preview-box');
+    applyEarlyPreviewBoxStyle(previewEl);
+    if (typeof updatePreviewCookieId === 'function') {
+      try { updatePreviewCookieId(); } catch (e) {}
+    }
+    return !!previewEl;
+  }
+  function tryEnablePaginationDuplicationEarly(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const tit = document.querySelector('h2.h-title');
+    const pags = [];
+    if (scope.matches && scope.matches('ul.uk-pagination.uk-pagination-left.h-pagination')) pags.push(scope);
+    scope.querySelectorAll?.('ul.uk-pagination.uk-pagination-left.h-pagination').forEach(p => pags.push(p));
+    if (!pags.length) return false;
+    let titlePag = null;
+    if (tit) {
+      const titlePags = pags.filter(pag => pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling === tit);
+      titlePags.forEach((pag, idx) => {
+        if (idx === 0) {
+          titlePag = pag;
+          titlePag.dataset.xdexTitleClone = '1';
+        } else {
+          pag.remove();
+        }
+      });
+    }
+    let changed = false;
+    pags.forEach(pag => {
+      if (!pag.isConnected) return;
+      try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(pag); } catch (e) {}
+      try { if (typeof processPagination === 'function') processPagination(pag); } catch (e) {}
+      if (!tit || titlePag || pag.dataset.xdexTitleClone === '1' || pag.previousElementSibling === tit) return;
+      const clone = pag.cloneNode(true);
+      clone.dataset.xdexTitleClone = '1';
+      tit.parentNode.insertBefore(clone, tit.nextSibling);
+      try { if (typeof processPagination === 'function') processPagination(clone); } catch (e) {}
+      titlePag = clone;
+      changed = true;
+    });
+    return changed;
+  }
+  function runCriticalVisualEnhancements(root, cfg) {
+    const liveCfg = cfg || getEarlyStartupConfig();
+    try {
+      if (liveCfg.hideEmptyTitleEmail && typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(root);
+    } catch (e) {}
+    try {
+      if (liveCfg.hideEmptyTitleEmail) collapseEarlyStartupBlocks(root, liveCfg);
+    } catch (e) {}
+    try {
+      if (typeof highlightPO === 'function') highlightPO(root);
+    } catch (e) {}
+    try {
+      if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(liveCfg, root || document);
+    } catch (e) {}
+    try {
+      if (liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root || document);
+    } catch (e) {}
+    try {
+      if (typeof enablePostExpand === 'function') enablePostExpand(root || document);
+    } catch (e) {}
+    try {
+      if (typeof autoSelectReportReason === 'function') autoSelectReportReason(root || document);
+    } catch (e) {}
+    try {
+      if (liveCfg.enablePaginationDuplication) tryEnablePaginationDuplicationEarly(root);
+    } catch (e) {}
+    try {
+      if (liveCfg.updatePreviewCookie) tryInsertPreviewBoxEarly();
+    } catch (e) {}
+    try {
+      if (typeof tryReplaceRightSidebarEarly === 'function') tryReplaceRightSidebarEarly();
+    } catch (e) {}
+  }
+  function runEarlyStartupPass(root) {
+    runCriticalVisualEnhancements(root, getEarlyStartupConfig());
+  }
+  function installEarlyCriticalVisualPass() {
+    const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const duration = 800;
+    let rafId = 0;
+    function now() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
+    function pass() {
+      rafId = 0;
+      try { runCriticalVisualEnhancements(document, getEarlyStartupConfig()); } catch (e) {}
+      if (now() - startedAt < duration) {
+        rafId = requestAnimationFrame(pass);
+      }
+    }
+    pass();
+    setTimeout(() => { if (rafId) cancelAnimationFrame(rafId); }, duration + 250);
   }
   function getEnhanceIslandOriginalTitle() {
     const root = document.documentElement;
@@ -9657,7 +9831,21 @@ ${markedSwatchHtml}
     }
   }
   function installEarlyStartupObserver() {
-    const relevantSelector = '.h-threads-info-title, .h-threads-info-email, .h-forum-header, form[action="/Home/Forum/doReplyThread.html"], form[action="/Home/Forum/doPostThread.html"]';
+    const relevantSelector = [
+      '.h-threads-list',
+      '.h-threads-item',
+      '.h-threads-item-replies',
+      '.h-threads-item-reply',
+      '.h-threads-info-title',
+      '.h-threads-info-email',
+      '.h-threads-info-uid',
+      '.h-threads-item-reply-icon',
+      '.h-forum-header',
+      'ul.uk-pagination.uk-pagination-left.h-pagination',
+      'form[action="/Home/Forum/doReplyThread.html"]',
+      'form[action="/Home/Forum/doPostThread.html"]',
+      '#h-report-switch'
+    ].join(',');
     let observer = null;
     let rafId = 0;
     let passCount = 0;
@@ -10026,12 +10214,7 @@ ${markedSwatchHtml}
   // 插入 DOM 前可安全执行的同步增强：避免用户看到原始 DOM → 增强后 DOM 的闪烁过程
   function preprocessPageEnhancementsBeforeInsert(root, cfg) {
     const liveCfg = getPageEnhancementConfig(cfg);
-    try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
-    try { if (typeof highlightPO === 'function') highlightPO(root); } catch (e) {}
-    try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig(liveCfg).markedGroups || [], root); } catch (e) {}
-    try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
-    try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
-    try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
+    try { if (typeof runCriticalVisualEnhancements === 'function') runCriticalVisualEnhancements(root, liveCfg); } catch (e) {}
     try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
     try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
   }
@@ -12935,6 +13118,68 @@ ${markedSwatchHtml}
   /* --------------------------------------------------
    * tag 10. 创建拓展坞+reply按钮呼出回复悬浮窗
    * -------------------------------------------------- */
+  function buildRightSidebarDockerHtml() {
+    return `
+        <div class="hld__docker">
+            <div class="hld__docker-sidebar">
+                <svg viewBox="0 0 1024 1024" width="64" height="64">
+                    <path d="M518.3 824.05c-7.88 0-15.76-2.97-21.69-9L215.25 533.65c-5.73-5.73-9-13.61-9-21.69s3.27-15.96 9-21.69l281.4-281.4c11.97-11.97 31.41-11.97 43.39 0s11.97 31.41 0 43.39L280.33 511.95l259.71 259.71c11.97 11.97 11.97 31.41 0 43.39-5.94 6.04-13.72 9-21.69 9z" fill="#888"/>
+                    <path d="M787.16 772.89c-7.88 0-15.76-2.97-21.69-9L535.23 533.65c-11.97-11.97-11.97-31.41 0-43.39l230.24-230.24c11.97-11.97 31.41-11.97 43.39 0s11.97 31.41 0 43.39L600.31 511.95l208.55 208.55c11.97 11.97 11.97 31.41 0 43.39-5.94 6.04-13.72 9-21.69 9z" fill="#888"/>
+                </svg>
+            </div>
+            <div class="hld__docker-btns">
+                <div data-type="TOP">↑</div>
+                <div data-type="REPLY">↩</div>
+                <div data-type="BOTTOM">↓</div>
+            </div>
+        </div>
+    `;
+  }
+  function ensureRightSidebarShellStyle() {
+    if (document.getElementById('xdex-right-sidebar-shell-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-right-sidebar-shell-style';
+    style.textContent = `
+      #h-tool { display: none !important; }
+      .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
+      .hld__docker:hover,
+      .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
+      .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
+      .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
+      .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+      .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
+      .hld__docker:hover .hld__docker-btns>div,
+      .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
+      .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
+      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
+      .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+  function bindRightSidebarShellButtons(docker) {
+    if (!docker || docker.dataset.xdexSidebarShellBound === '1') return;
+    docker.dataset.xdexSidebarShellBound = '1';
+    docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
+    docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+    const topBtn = docker.querySelector('[data-type="TOP"]');
+    const bottomBtn = docker.querySelector('[data-type="BOTTOM"]');
+    topBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    bottomBtn?.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
+  }
+  function tryReplaceRightSidebarEarly() {
+    if (!document.body) return false;
+    ensureRightSidebarShellStyle();
+    const nativeTool = document.querySelector('#h-tool');
+    if (nativeTool) nativeTool.remove();
+    let docker = document.querySelector('.hld__docker');
+    if (!docker) {
+      document.body.insertAdjacentHTML('beforeend', buildRightSidebarDockerHtml());
+      docker = document.querySelector('.hld__docker');
+      if (docker) docker.dataset.xdexEarlyDocker = '1';
+    }
+    bindRightSidebarShellButtons(docker);
+    return !!docker;
+  }
   function replaceRightSidebar() {
     const logRightSidebar = (stage, detail) => {
       console.log('[replaceRightSidebar]', stage, detail || {});
@@ -12946,8 +13191,8 @@ ${markedSwatchHtml}
       readyState: document.readyState,
       href: location.href,
     });
-    // 移除原始工具栏
-    $('#h-tool').remove();
+    // 移除原始工具栏；early shell 可能已经处理过，这里兜底
+    tryReplaceRightSidebarEarly();
     logRightSidebar('original-toolbar-removed', {
       remainingToolbarCount: $('#h-tool').length,
     });
@@ -13139,42 +13384,17 @@ ${markedSwatchHtml}
       });
       replaceRightSidebar.__darkReaderObserver = observer;
     }
-    // 扩展坞 DOM
-    const dockerDom = $(`
-        <div class="hld__docker">
-            <div class="hld__docker-sidebar">
-                <svg viewBox="0 0 1024 1024" width="64" height="64">
-                    <path d="M518.3 824.05c-7.88 0-15.76-2.97-21.69-9L215.25 533.65c-5.73-5.73-9-13.61-9-21.69s3.27-15.96 9-21.69l281.4-281.4c11.97-11.97 31.41-11.97 43.39 0s11.97 31.41 0 43.39L280.33 511.95l259.71 259.71c11.97 11.97 11.97 31.41 0 43.39-5.94 6.04-13.72 9-21.69 9z" fill="#888"/>
-                    <path d="M787.16 772.89c-7.88 0-15.76-2.97-21.69-9L535.23 533.65c-11.97-11.97-11.97-31.41 0-43.39l230.24-230.24c11.97-11.97 31.41-11.97 43.39 0s11.97 31.41 0 43.39L600.31 511.95l208.55 208.55c11.97 11.97 11.97 31.41 0 43.39-5.94 6.04-13.72 9-21.69 9z" fill="#888"/>
-                </svg>
-            </div>
-            <div class="hld__docker-btns">
-                <div data-type="TOP">↑</div>
-                <div data-type="REPLY">↩</div>
-                <div data-type="BOTTOM">↓</div>
-            </div>
-        </div>
-    `);
-    $('body').append(dockerDom);
-    logRightSidebar('docker-appended', {
+    // 扩展坞 DOM：复用 early shell，避免加载时重复插入和重复重绘
+    let dockerDom = $('.hld__docker').first();
+    if (!dockerDom.length) {
+      dockerDom = $(buildRightSidebarDockerHtml()).appendTo('body');
+      bindRightSidebarShellButtons(dockerDom[0]);
+    }
+    logRightSidebar('docker-ready', {
       拓展坞数: $('.hld__docker').length,
       按钮数: dockerDom.find('.hld__docker-btns>div').length,
+      早期插入: dockerDom[0]?.dataset.xdexEarlyDocker === '1',
       支持Has选择器: !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))')),
-    });
-    dockerDom
-      .on('mouseenter', () => {
-        dockerDom.addClass('is-hover');
-      })
-      .on('mouseleave', () => {
-        dockerDom.removeClass('is-hover');
-      });
-    logRightSidebar('hover-bound', {
-      targetClass: 'hld__docker',
-      fallbackClass: 'is-hover',
-    });
-    // 顶部按钮
-    dockerDom.find('[data-type="TOP"]').on('click', () => {
-        $('html, body').animate({ scrollTop: 0 }, 500);
     });
     // 悬浮窗引用
     let overlay;
@@ -13350,7 +13570,7 @@ ${markedSwatchHtml}
       });
     }
     // REPLY 按钮
-    dockerDom.find('[data-type="REPLY"]').on('click', () => {
+    dockerDom.find('[data-type="REPLY"]').off('click.xdexReplyDock').on('click.xdexReplyDock', () => {
       let formEl = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]');
       let previewEl = document.querySelector('.h-preview-box');
       // 如果串内没找到表单，尝试板块页发串表单
@@ -13639,10 +13859,7 @@ ${markedSwatchHtml}
           }
       }
     });
-    // 底部按钮：平滑滚动到最底部，不污染 URL
-    dockerDom.find('[data-type="BOTTOM"]').on('click', () => {
-        $('html, body').animate({ scrollTop: $(document).height() - $(window).height() }, 500);
-    });
+    // TOP/BOTTOM 在 early shell 阶段已绑定轻量滚动；这里不重复绑定，避免一次点击触发两套滚动。
   }
 
   /* --------------------------------------------------
@@ -16906,45 +17123,8 @@ ${markedSwatchHtml}
     const 路径分块 = 路径.split('/').splice(1);
     const isDraftEnabled = () => getDraftEnabledNow();
     let draftAutosaveBound = false;
-    // 动态生成预览区域 DOM
-    function buildPreviewHtml() {
-      // 从 cookie-switcher 里取当前饼干
-      const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
-      const cookieText = cookieDisplay ? cookieDisplay.textContent.trim() : '--';
-      return `
-      <div class="h-preview-box">
-        <div class="h-threads-item">
-          <div class="h-threads-item-replies">
-            <div class="h-threads-item-reply">
-              <div class="h-threads-item-reply-main">
-                <div class="h-threads-img-box">
-                  <div class="h-threads-img-tool uk-animation-slide-top">
-                    <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                    <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
-                    <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
-                    <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
-                  </div>
-                  <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
-                </div>
-                <div class="h-threads-info">
-                  <span class="h-threads-info-title"></span>
-                  <span class="h-threads-info-email"></span>
-                  <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
-                  <span class="h-threads-info-uid">ID:${cookieText}</span>
-                  <span class="h-threads-info-report-btn">
-                    [<a href="/f/值班室" target="_blank">举报</a>]
-                  </span>
-                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
-                </div>
-                <div class="h-threads-content"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>`;
-    }
     // 预览区域 DOM
-    const previewHtml = buildPreviewHtml();
+    const previewHtml = buildEnhanceIslandPreviewHtml();
     //previewBox.outerHTML = previewHtml;
     // 引用插入函数（与原脚本一致）
     function enhanceNode(root) {
@@ -16957,9 +17137,16 @@ ${markedSwatchHtml}
     function initPreviewBox() {
         if (!cfg.enablePreview) return;
         if (!$('#h-post-form form').length) return;
-        // 只创建一次预览框
-        if (!$('.h-preview-box').length) {
-            const $box = $(previewHtml).insertAfter('#h-post-form form');
+        // 只创建一次预览框；early skeleton 已存在时，替换为完整可绑定版本
+        const $existingEarlyBox = $('.h-preview-box[data-xdex-early-preview="1"]').first();
+        if (!$('.h-preview-box').length || $existingEarlyBox.length) {
+            let $box;
+            if ($existingEarlyBox.length) {
+                $box = $(previewHtml).removeAttr('data-xdex-early-preview');
+                $existingEarlyBox.replaceWith($box);
+            } else {
+                $box = $(previewHtml).removeAttr('data-xdex-early-preview').insertAfter('#h-post-form form');
+            }
             setTimeout(() => {
               startupPerfDebug.measure('enhanceIsland.deferEnhanceNode', () => enhanceNode($box[0]), () => startupPerfDebug.summarizeRoot($box[0]));
             }, 0);
@@ -22137,7 +22324,7 @@ ${markedSwatchHtml}
       const info = (form || document).querySelector('#h-report-info');
       if (info && sel.value && sel.value !== '-1') info.style.display = 'none';
     });
-    if (!autoSelectReportReason.__observerInstalled && root === document) {
+    if (!autoSelectReportReason.__observerInstalled && root === document && document.body) {
       autoSelectReportReason.__observerInstalled = true;
       const observer = new MutationObserver(mutations => {
         mutations.forEach(m => {
@@ -22159,6 +22346,7 @@ ${markedSwatchHtml}
     startupPerfDebug.mark('window.load.end', startupPerfDebug.summarizeRoot(document));
   });
   installEarlyStartupObserver();
+  installEarlyCriticalVisualPass();
   installEarlyEnhanceIslandAutoTitle();
 
   $(document).ready(() => {
