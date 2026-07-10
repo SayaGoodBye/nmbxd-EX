@@ -9855,6 +9855,11 @@ ${markedSwatchHtml}
     try {
       if (typeof tryReplaceRightSidebarEarly === 'function') tryReplaceRightSidebarEarly();
     } catch (e) {}
+    // 顶栏刷新点击：越早越好，不依赖 batch2
+    try {
+      if (typeof installOverrideTopImageClickEarly === 'function') installOverrideTopImageClickEarly();
+      else if (typeof overrideTopImageClick === 'function') overrideTopImageClick();
+    } catch (e) {}
   }
   function runEarlyStartupPass(root) {
     runCriticalVisualEnhancements(root, getEarlyStartupConfig());
@@ -14360,8 +14365,9 @@ ${markedSwatchHtml}
         if (movedInput && movedInput.files && movedInput.files[0]) {
           updatePreviewImageFromFile(movedInput.files[0]);
         }
-        // 滞后预览框搬入后，重新贴合一次，避免表单/预览空隙或遮挡
+        // 滞后预览框搬入后：立刻贴合，避免用户先看到只有表单的矮窗再被撑高
         ensureReplyPanelAutoFitObserver(ov);
+        if (!ov.__userSizedPanel) fitReplyPanelToContent(ov, { save: true });
         scheduleReplyPanelAutoFit(ov);
       }, 0);
       // 浮窗内立即处理扩展引用，保证可点击引用弹窗
@@ -14379,11 +14385,10 @@ ${markedSwatchHtml}
       ov.__previewEl = previewEl;
       // 显示 overlay 前再同步一次主题，确保 darkreader 配色首帧就位
       if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
-      // 显示 overlay
-      ov.style.display = 'block';
       // 恢复/应用整窗布局，并绑定四边移动 + 四角缩放
       // 若上次是用户四角拉伸过，继续尊重其尺寸；
-      // 非手动尺寸只保留位置/宽度，高度走空高 + 快速 autofit
+      // 非手动尺寸：先隐藏测量真实内容高，再露出，避免“先空高再撑高”的跳变
+
       let layoutRect = null;
       if (ov.__savedPanelRect && ov.__savedPanelRect.userSized) {
         ov.__userSizedPanel = true;
@@ -14394,15 +14399,27 @@ ${markedSwatchHtml}
         const base = getReplyPanelDefaults();
         layoutRect = {
           width: saved && saved.width ? saved.width : base.width,
-          height: base.height, // 空高，不被上次预览撑高粘住
+          height: base.height, // 仅作测量前的初始几何；真正露出前会 fit 成内容高
           left: saved && Number.isFinite(Number(saved.left)) ? saved.left : base.left,
           top: saved && Number.isFinite(Number(saved.top)) ? saved.top : base.top,
           userSized: false
         };
       }
+      // 先不可见地挂到布局树，量准高度后再显示，避免用户看到尺寸变化
+      ov.style.visibility = 'hidden';
+      ov.style.display = 'block';
       applyReplyPanelLayout(ov, layoutRect);
       bindReplyPanelFrame(ov);
+      if (!ov.__userSizedPanel) {
+        // 同步贴合：此时 form/preview 已在 DOM，且 display=block，可量到真实高度
+        fitReplyPanelToContent(ov, { save: true });
+      }
+      // 强制一次 reflow，再露出最终尺寸
+      void (ov.offsetHeight);
+      ov.style.visibility = '';
+      // 观察器只负责后续内容变化（输入/粘贴图/引用展开），不再承担“首开定高”
       ensureReplyPanelAutoFitObserver(ov);
+      // 轻量跟一次：处理图片/字体等晚一帧才稳定的情况（首帧已是内容高，通常几乎无跳变）
       scheduleReplyPanelAutoFit(ov);
       // 显示归位按钮
       const resetBtn = ov.querySelector('.qp-reset-btn');
@@ -14428,21 +14445,13 @@ ${markedSwatchHtml}
           if (form && !ta.__qpCtrlEnterBound) {
               ta.__qpCtrlEnterBound = true;
               // 保留：提交成功后关闭浮窗，并清掉发送锁/超时器
-
               document.addEventListener('replySuccess', () => {
-
                   if (form.__submitLockTimer) {
-
                     clearTimeout(form.__submitLockTimer);
-
                     form.__submitLockTimer = 0;
-
                   }
-
                   form.__submitting = false;
-
                   closeOverlay();
-
               });
               // 新增：调用抽取的绑定函数
               bindCtrlEnter(ta);
@@ -15997,171 +16006,88 @@ ${markedSwatchHtml}
         });
       }
       // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
-
       const SUBMIT_LOCK_TIMEOUT_MS = 15000;
-
       const clearSubmitLockTimer = (f) => {
-
         if (f && f.__submitLockTimer) {
-
           clearTimeout(f.__submitLockTimer);
-
           f.__submitLockTimer = 0;
-
         }
-
       };
-
       const unlockSubmit = (f) => {
-
         clearSubmitLockTimer(f);
-
         if (f) f.__submitting = false;
-
       };
-
       const lockSubmit = (f) => {
-
         if (!f) return;
-
         f.__submitting = true;
-
         clearSubmitLockTimer(f);
-
         // 点击发送后 15s 仍无 doSubmit 成功/失败结果 → 主动解除，避免永久卡死
-
         f.__submitLockTimer = setTimeout(() => {
-
           f.__submitLockTimer = 0;
-
           if (!f.__submitting) return;
-
           f.__submitting = false;
-
           toast('提交可能失败，请检查网络，或者刷新后重试');
-
         }, SUBMIT_LOCK_TIMEOUT_MS);
-
       };
-
       if (form.__submitting) {
-
         toast('发送中，请勿重复提交……');
-
         return;
-
       }
-
       lockSubmit(form);
-
       // ── 发送前饼干确认（含串内偏好检查） ──
-
       const _cookieConfirmCfg = typeof getFilterConfig === "function" ? getFilterConfig() : {};
-
       const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
-
       if (_cookieConfirmEnabled) {
-
         const _resto = (formData.get("resto") || "").toString().trim();
-
         const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-
         const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
-
         if (_threadId && _threadId !== '20011114' && /^\d{6,8}$/.test(_threadId)) {
-
           const _pref = getThreadCookiePref(_threadId);
-
           const _doSend = () => {
-
             resetIllegalRetryState({ clearOriginalContent: false });
-
             const _ta = form.querySelector("textarea[name='content']");
-
             form.__originalContent = _ta ? _ta.value : (formData.get("content") || "").toString();
-
             toast("正在发送……");
-
             doSubmit(formData, false).finally(() => { unlockSubmit(form); });
-
           };
-
           if (_pref) {
-
             const _cookieList = getCookiesList();
-
             if (!findCookieByHash(_cookieList, _pref.hash)) {
-
               // 默认饼干已失效
-
               toast('本串默认饼干已失效，请重新选择');
-
               showCookieConfirmDialog(_threadId, (selectedHash) => {
-
                 setThreadCookiePref(_threadId, selectedHash);
-
                 _doSend();
-
               }, () => { unlockSubmit(form); }, { mode: 'setDefault' });
-
               return;
-
             }
-
             const _curCookie = getCurrentCookie();
-
             const _curHash = _curCookie ? abbreviateName(_curCookie.name) : '';
-
             if (_curHash === _pref.hash) {
-
               // 匹配 → 直接发送
-
               _doSend();
-
               return;
-
             }
-
             // 不匹配 → 弹窗，预选偏好饼干
-
             showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
-
               if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
-
               _doSend();
-
             }, () => { unlockSubmit(form); }, { preselectHash: _pref.hash });
-
             return;
-
           }
-
           // 无偏好 → 直接发送
-
           _doSend();
-
           return;
-
         }
-
       }
-
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
-
       resetIllegalRetryState({ clearOriginalContent: false });
-
       const textarea = form.querySelector('textarea[name="content"]');
-
       form.__originalContent = textarea
-
         ? textarea.value
-
         : (formData.get('content') || '').toString();
-
       toast('正在发送……');
-
       doSubmit(formData, false).finally(() => { unlockSubmit(form); });
-
     }, true);
     // ————— helpers —————
     function getRealThreadsList(root = document) {
@@ -19815,7 +19741,10 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   function overrideTopImageClick() {
     const topImgLink = document.querySelector('#h-menu-top-img');
-    if (!topImgLink) return;
+    if (!topImgLink) return false;
+    // 幂等：early / ready 可能各跑一次
+    if (topImgLink.dataset.xdexTopImgClickBound === '1') return true;
+    topImgLink.dataset.xdexTopImgClickBound = '1';
     // 判断是否是串内页
     function isThreadPage(path) {
         return /\/t\/\d{4,}/.test(path) || /^\/Forum\/po\/id\/\d+/.test(path);
@@ -19824,8 +19753,11 @@ ${markedSwatchHtml}
     function isBoardPage(path) {
         return /^\/f\//.test(path) || /^\/Forum\/timeline\/id\/\d+/.test(path);
     }
+    // capture 阶段抢先，避免原站默认跳转先触发
     topImgLink.addEventListener('click', function(e) {
         e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
         const path = location.pathname;
         let url = location.href;
         if (isThreadPage(path)) {
@@ -19835,15 +19767,55 @@ ${markedSwatchHtml}
             // 板块页：跳转到第一页
             if (/\/Forum\/timeline\/id\/\d+\/page\/\d+\.html/.test(url)) {
                 url = url.replace(/\/page\/\d+\.html/, '/page/1.html');
-            } else if (/\/f\/.+\?page=\d+/.test(url)) {
-                url = url.replace(/page=\d+/, 'page=1');
+            } else if (/[?&]page=\d+/.test(url)) {
+                url = url.replace(/([?&])page=\d+/, '$1page=1');
+            } else if (/\/Forum\/timeline\/id\/\d+/.test(path) || /^\/f\//.test(path)) {
+                // 已是第一页或无 page 参数：仍强制回第一页语义
+                try {
+                  const u = new URL(url, location.origin);
+                  u.searchParams.set('page', '1');
+                  url = u.toString();
+                } catch (_) {}
             }
             location.href = url;
         } else {
             // 其他情况：跳转首页
             location.href = '/';
         }
+    }, true);
+    return true;
+  }
+  // early 安装：顶栏节点一出现就绑；若尚未出现则短时观察，避免等 document.ready/batch2
+  function installOverrideTopImageClickEarly() {
+    if (installOverrideTopImageClickEarly.__done) return;
+    if (overrideTopImageClick()) {
+      installOverrideTopImageClickEarly.__done = true;
+      return;
+    }
+    if (installOverrideTopImageClickEarly.__observing) return;
+    const root = document.documentElement || document;
+    if (!root || typeof MutationObserver === 'undefined') return;
+    installOverrideTopImageClickEarly.__observing = true;
+    const obs = new MutationObserver(() => {
+      if (overrideTopImageClick()) {
+        installOverrideTopImageClickEarly.__done = true;
+        installOverrideTopImageClickEarly.__observing = false;
+        try { obs.disconnect(); } catch (_) {}
+      }
     });
+    try {
+      obs.observe(root, { childList: true, subtree: true });
+    } catch (_) {
+      installOverrideTopImageClickEarly.__observing = false;
+    }
+    // 兜底：最长观察 8s，避免永久挂着 observer
+    setTimeout(() => {
+      if (installOverrideTopImageClickEarly.__done) return;
+      try { obs.disconnect(); } catch (_) {}
+      installOverrideTopImageClickEarly.__observing = false;
+      overrideTopImageClick();
+    }, 8000);
+
   }
   /* --------------------------------------------------
    * tag 20. 默认/模糊/无图/Tips模式
@@ -23047,6 +23019,11 @@ ${markedSwatchHtml}
         window.__xdexUpdateCheckTimer = 0;
       }
     }
+    // 顶栏刷新：ready 同步阶段再兜底一次（幂等），不必等 batch2 50ms 队列
+    try {
+      if (typeof installOverrideTopImageClickEarly === 'function') installOverrideTopImageClickEarly();
+      else if (typeof overrideTopImageClick === 'function') overrideTopImageClick();
+    } catch (e) {}
     interceptReplyForm();                                            //拦截回复中间页
     enhancePostFormLayout();                                         //发帖UI调整
     autoSelectReportReason();                                        //举报理由默认选择“其他”
@@ -23089,6 +23066,7 @@ ${markedSwatchHtml}
       { label: 'startup.batch2.initExtendedContent', run: () => initExtendedContent(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.searchServiceBy4sY', run: () => searchServiceBy4sY(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.monitorRefView', run: () => monitorRefView(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      // overrideTopImageClick 已提前到 early/ready 同步阶段；这里仅作幂等兜底
       { label: 'startup.batch2.overrideTopImageClick', run: () => overrideTopImageClick(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.enhanceIsland', run: () => enhanceIsland({ enablePreview: true, enableDraft: true, enableAutoTitle: true, enableRelativeTime: true, timeDisplayMode: cfg.timeDisplayMode, enableQuoteInsert: true, enablePasteImage: true }), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.initContent(document)', run: () => initContent(document), meta: () => startupPerfDebug.summarizeRoot(document) },
