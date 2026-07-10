@@ -14427,10 +14427,22 @@ ${markedSwatchHtml}
           const form = ta.closest('form');
           if (form && !ta.__qpCtrlEnterBound) {
               ta.__qpCtrlEnterBound = true;
-              // 保留：提交成功后关闭浮窗
+              // 保留：提交成功后关闭浮窗，并清掉发送锁/超时器
+
               document.addEventListener('replySuccess', () => {
+
+                  if (form.__submitLockTimer) {
+
+                    clearTimeout(form.__submitLockTimer);
+
+                    form.__submitLockTimer = 0;
+
+                  }
+
                   form.__submitting = false;
+
                   closeOverlay();
+
               });
               // 新增：调用抽取的绑定函数
               bindCtrlEnter(ta);
@@ -15984,66 +15996,172 @@ ${markedSwatchHtml}
           }
         });
       }
-      // 防重复提交
-      if (form.__submitting) {
-        toast('发送中，请勿重复提交……');
-        return;
-      }
-      form.__submitting = true;
-      // ── 发送前饼干确认（含串内偏好检查） ──
-      const _cookieConfirmCfg = typeof getFilterConfig === "function" ? getFilterConfig() : {};
-      const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
-      if (_cookieConfirmEnabled) {
-        const _resto = (formData.get("resto") || "").toString().trim();
-        const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-        const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
-        if (_threadId && _threadId !== '20011114' && /^\d{6,8}$/.test(_threadId)) {
-          const _pref = getThreadCookiePref(_threadId);
-          const _doSend = () => {
-            resetIllegalRetryState({ clearOriginalContent: false });
-            const _ta = form.querySelector("textarea[name='content']");
-            form.__originalContent = _ta ? _ta.value : (formData.get("content") || "").toString();
-            toast("正在发送……");
-            doSubmit(formData, false).finally(() => { form.__submitting = false; });
-          };
-          if (_pref) {
-            const _cookieList = getCookiesList();
-            if (!findCookieByHash(_cookieList, _pref.hash)) {
-              // 默认饼干已失效
-              toast('本串默认饼干已失效，请重新选择');
-              showCookieConfirmDialog(_threadId, (selectedHash) => {
-                setThreadCookiePref(_threadId, selectedHash);
-                _doSend();
-              }, () => { form.__submitting = false; }, { mode: 'setDefault' });
-              return;
-            }
-            const _curCookie = getCurrentCookie();
-            const _curHash = _curCookie ? abbreviateName(_curCookie.name) : '';
-            if (_curHash === _pref.hash) {
-              // 匹配 → 直接发送
-              _doSend();
-              return;
-            }
-            // 不匹配 → 弹窗，预选偏好饼干
-            showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
-              if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
-              _doSend();
-            }, () => { form.__submitting = false; }, { preselectHash: _pref.hash });
-            return;
-          }
-          // 无偏好 → 直接发送
-          _doSend();
-          return;
+      // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
+
+      const SUBMIT_LOCK_TIMEOUT_MS = 15000;
+
+      const clearSubmitLockTimer = (f) => {
+
+        if (f && f.__submitLockTimer) {
+
+          clearTimeout(f.__submitLockTimer);
+
+          f.__submitLockTimer = 0;
+
         }
+
+      };
+
+      const unlockSubmit = (f) => {
+
+        clearSubmitLockTimer(f);
+
+        if (f) f.__submitting = false;
+
+      };
+
+      const lockSubmit = (f) => {
+
+        if (!f) return;
+
+        f.__submitting = true;
+
+        clearSubmitLockTimer(f);
+
+        // 点击发送后 15s 仍无 doSubmit 成功/失败结果 → 主动解除，避免永久卡死
+
+        f.__submitLockTimer = setTimeout(() => {
+
+          f.__submitLockTimer = 0;
+
+          if (!f.__submitting) return;
+
+          f.__submitting = false;
+
+          toast('提交可能失败，请检查网络，或者刷新后重试');
+
+        }, SUBMIT_LOCK_TIMEOUT_MS);
+
+      };
+
+      if (form.__submitting) {
+
+        toast('发送中，请勿重复提交……');
+
+        return;
+
       }
+
+      lockSubmit(form);
+
+      // ── 发送前饼干确认（含串内偏好检查） ──
+
+      const _cookieConfirmCfg = typeof getFilterConfig === "function" ? getFilterConfig() : {};
+
+      const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
+
+      if (_cookieConfirmEnabled) {
+
+        const _resto = (formData.get("resto") || "").toString().trim();
+
+        const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
+
+        const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
+
+        if (_threadId && _threadId !== '20011114' && /^\d{6,8}$/.test(_threadId)) {
+
+          const _pref = getThreadCookiePref(_threadId);
+
+          const _doSend = () => {
+
+            resetIllegalRetryState({ clearOriginalContent: false });
+
+            const _ta = form.querySelector("textarea[name='content']");
+
+            form.__originalContent = _ta ? _ta.value : (formData.get("content") || "").toString();
+
+            toast("正在发送……");
+
+            doSubmit(formData, false).finally(() => { unlockSubmit(form); });
+
+          };
+
+          if (_pref) {
+
+            const _cookieList = getCookiesList();
+
+            if (!findCookieByHash(_cookieList, _pref.hash)) {
+
+              // 默认饼干已失效
+
+              toast('本串默认饼干已失效，请重新选择');
+
+              showCookieConfirmDialog(_threadId, (selectedHash) => {
+
+                setThreadCookiePref(_threadId, selectedHash);
+
+                _doSend();
+
+              }, () => { unlockSubmit(form); }, { mode: 'setDefault' });
+
+              return;
+
+            }
+
+            const _curCookie = getCurrentCookie();
+
+            const _curHash = _curCookie ? abbreviateName(_curCookie.name) : '';
+
+            if (_curHash === _pref.hash) {
+
+              // 匹配 → 直接发送
+
+              _doSend();
+
+              return;
+
+            }
+
+            // 不匹配 → 弹窗，预选偏好饼干
+
+            showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
+
+              if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
+
+              _doSend();
+
+            }, () => { unlockSubmit(form); }, { preselectHash: _pref.hash });
+
+            return;
+
+          }
+
+          // 无偏好 → 直接发送
+
+          _doSend();
+
+          return;
+
+        }
+
+      }
+
       // 每次用户触发的新提交，重置重试计数并记录当前原始内容
+
       resetIllegalRetryState({ clearOriginalContent: false });
+
       const textarea = form.querySelector('textarea[name="content"]');
+
       form.__originalContent = textarea
+
         ? textarea.value
+
         : (formData.get('content') || '').toString();
+
       toast('正在发送……');
-      doSubmit(formData, false).finally(() => { form.__submitting = false; });
+
+      doSubmit(formData, false).finally(() => { unlockSubmit(form); });
+
     }, true);
     // ————— helpers —————
     function getRealThreadsList(root = document) {
