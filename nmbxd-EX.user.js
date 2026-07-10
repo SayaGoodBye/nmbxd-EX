@@ -12616,16 +12616,17 @@ ${markedSwatchHtml}
           padding: 6px 12px; border-radius: 6px; cursor: pointer; z-index: 10000;
           user-select: none;
         }
-        .qp-quote {
+        .qp-overlay-quote .qp-quote {
           position: absolute;
           top: 0; left: 0;
           width: 100%; max-height: 100%;
           overflow: auto;
-          background: #FFFFEE;
-          border: 1px solid #ccc;
-          outline: 2px solid #fff;
+          /* 走 darkreader 兼容 token，避免写死 #FFFFEE */
+          background: var(--xdex-qp-shell-bg, #FFFFEE);
+          border: 1px solid var(--xdex-qp-border, #ccc);
+          outline: 2px solid var(--xdex-qp-outline, #fff);
           border-radius: 8px;
-          box-shadow: 0 8px 24px rgba(0,0,0,.24);
+          box-shadow: 0 8px 24px var(--xdex-qp-shadow, rgba(0,0,0,.24));
           padding: 18px 20px 20px;
           box-sizing: border-box;
         }
@@ -12637,15 +12638,33 @@ ${markedSwatchHtml}
           background: transparent; /* ✅ 改为透明背景 */
           z-index: 2;
         }
-        .qp-level {
-          font-size: 12px; color: #333; background: #eee; border-radius: 4px; padding: 2px 6px;
+        .qp-overlay-quote .qp-level {
+          font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 35%, transparent); border-radius: 4px; padding: 2px 6px;
         }
-        .qp-back {
-          font-size: 12px; color: #333; background: #f0f0f0;
-          border: 1px solid #ccc; border-radius: 4px; padding: 2px 6px;
+        .qp-overlay-quote .qp-back {
+          font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 22%, transparent);
+          border: 1px solid var(--xdex-qp-border, #ccc); border-radius: 4px; padding: 2px 6px;
           cursor: pointer;
         }
-        .qp-quote.is-dragging { cursor: grabbing !important; }
+        .qp-overlay-quote .qp-quote.is-dragging,
+        .qp-overlay-quote .qp-quote.is-resizing { cursor: grabbing !important; user-select: none !important; }
+        /* 引用浮窗四角拉伸（与回复浮窗一致：角=缩放，边=拖动） */
+        .qp-overlay-quote .qp-resize-corner {
+          position: absolute;
+          width: 14px;
+          height: 14px;
+          z-index: 5;
+          pointer-events: auto;
+          background: transparent;
+        }
+        .qp-overlay-quote .qp-resize-corner.nw { top: 0; left: 0; cursor: nwse-resize; }
+        .qp-overlay-quote .qp-resize-corner.ne { top: 0; right: 0; cursor: nesw-resize; }
+        .qp-overlay-quote .qp-resize-corner.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+        .qp-overlay-quote .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; }
+        .qp-overlay-quote .qp-drag-edge.top    { top: 0;    left: 14px; right: 14px; height: 10px; }
+        .qp-overlay-quote .qp-drag-edge.bottom { bottom: 0; left: 14px; right: 14px; height: 10px; }
+        .qp-overlay-quote .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
+        .qp-overlay-quote .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
         #h-ref-view { pointer-events: none !important; }
         #h-ref-view {
           z-index: 20000 !important; /* 保证原生引用框在浮窗之上 */
@@ -12774,18 +12793,26 @@ ${markedSwatchHtml}
       const $content = stripIds($('<div></div>').html(html));
       simplifyQuoteInfoIdLinks($content);
       $quote.append($content.contents());
-      // 在 $quote 内添加四条边框拖拽手柄
+      // 在 $quote 内添加四条边框拖拽手柄 + 四角拉伸手柄
+
       const $edges = $(
         '<div class="qp-drag-edge top"></div>' +
         '<div class="qp-drag-edge bottom"></div>' +
         '<div class="qp-drag-edge left"></div>' +
-        '<div class="qp-drag-edge right"></div>'
+        '<div class="qp-drag-edge right"></div>' +
+        '<div class="qp-resize-corner nw" data-dir="nw"></div>' +
+        '<div class="qp-resize-corner ne" data-dir="ne"></div>' +
+        '<div class="qp-resize-corner sw" data-dir="sw"></div>' +
+        '<div class="qp-resize-corner se" data-dir="se"></div>'
       );
       $quote.append($edges);
       // 仅在标题栏 + 四边手柄上触发拖拽
       enableDragForTop($quote, $quote.find('.qp-header, .qp-drag-edge'));
+      // 四角拉伸（与回复浮窗一致）
+      enableResizeForQuote($quote);
       $stack.append($quote);
       $overlay.fadeIn(160);
+      if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
       enableHDImageAndLayoutFix($quote[0]);
       if (typeof extendQuote === 'function') extendQuote($quote[0]);
       if (typeof initExtendedContent === 'function') initExtendedContent($quote[0]);
@@ -12881,6 +12908,73 @@ ${markedSwatchHtml}
         }, 100);
         // 不要解绑 document 的事件，因为可能有多个引用框
         // $(document).off('mousemove.qpdrag mouseup.qpdrag');
+      });
+    }
+    // 引用浮窗四角拉伸：对角锚定，与回复浮窗交互一致
+    function enableResizeForQuote($quote) {
+      const QUOTE_MIN_W = 280;
+      const QUOTE_MIN_H = 160;
+      $quote.find('.qp-resize-corner').off('mousedown.qpresize').on('mousedown.qpresize', function (e) {
+        if (e.button !== 0) return;
+        const dir = this.getAttribute('data-dir') || '';
+        if (!dir) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startRect = $quote[0].getBoundingClientRect();
+        const startTop = parseFloat($quote.css('top')) || 0;
+        const startLeft = parseFloat($quote.css('left')) || 0;
+        const startW = startRect.width;
+        const startH = startRect.height;
+        $quote.addClass('is-resizing');
+        $overlay.data('isDragging', true); // 避免缩放结束点到遮罩误关
+        const onMove = (ev) => {
+          ev.preventDefault();
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let w = startW;
+          let h = startH;
+          let top = startTop;
+          let left = startLeft;
+          if (dir.indexOf('e') !== -1) w = startW + dx;
+          if (dir.indexOf('s') !== -1) h = startH + dy;
+          if (dir.indexOf('w') !== -1) {
+            w = startW - dx;
+            left = startLeft + dx;
+          }
+          if (dir.indexOf('n') !== -1) {
+            h = startH - dy;
+            top = startTop + dy;
+          }
+          if (w < QUOTE_MIN_W) {
+            if (dir.indexOf('w') !== -1) left = startLeft + (startW - QUOTE_MIN_W);
+            w = QUOTE_MIN_W;
+          }
+          if (h < QUOTE_MIN_H) {
+            if (dir.indexOf('n') !== -1) top = startTop + (startH - QUOTE_MIN_H);
+            h = QUOTE_MIN_H;
+          }
+          const maxW = window.innerWidth;
+          const maxH = window.innerHeight;
+          if (w > maxW) w = maxW;
+          if (h > maxH) h = maxH;
+          $quote.css({
+            width: w + 'px',
+            height: h + 'px',
+            maxHeight: 'none',
+            top: top + 'px',
+            left: left + 'px'
+          });
+        };
+        const onUp = () => {
+          $quote.removeClass('is-resizing');
+          setTimeout(() => { $overlay.data('isDragging', false); }, 100);
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
       });
     }
     $(document).off('click.qp').on('click.qp', 'font[color="#789922"]', function(e){
@@ -13429,9 +13523,15 @@ ${markedSwatchHtml}
   // early open 也必须立刻注入浮窗样式；不能等 batch2 的 replaceRightSidebar。
   // 否则早期点 REPLY 会出现：表单先裸奔到左上角 → 浮窗壳后到 → 再被样式/暗色主题二次重绘。
   function ensureReplyOverlayStyle() {
-    if (!document.getElementById('qp-style')) {
-      const style = document.createElement('style');
+    // 始终刷新样式文本：脚本热更新后若只判断 id 存在，会继续用旧 CSS（如 height:80vh）
+    let style = document.getElementById('qp-style');
+
+    const styleExisted = !!style;
+    if (!style) {
+      style = document.createElement('style');
       style.id = 'qp-style';
+    }
+    {
       style.textContent = `
           :root {
             --xdex-qp-shell-bg: #FFFFEE;
@@ -13459,22 +13559,28 @@ ${markedSwatchHtml}
             position: fixed; inset: 0; z-index: 9000;
             background: rgba(0,0,0,.45); display: none;
           }
-          .qp-stack {
+          /* 仅回复浮窗：引用弹窗也用 .qp-stack，不能共用 height/overflow */
+          .qp-overlay > .qp-stack {
             position: fixed; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             width: min(90vw, 820px);   /* 初始宽度为视口的90%，最大820px */
             min-width: 0;              /* 不设固定值，由 JS 动态控制 */
             max-width: none;           /* 允许用户手动扩展 */
-            height: 80vh;
+            /* 默认不锁 80vh：由内容贴合，避免表单与预览之间被撑出大空隙 */
+            height: auto;
+            max-height: min(80vh, calc(100vh - 40px));
             overflow: visible; box-sizing: border-box;
           }
-          .qp-quote {
+          /* 仅作用于回复浮窗壳：不要污染引用弹窗的 .qp-quote */
+          .qp-overlay .qp-stack > .qp-quote {
             position: absolute;
             top: 0; left: 0;
             width: 100%;
+            height: 100%;
             max-height: 100%;
-          overflow-x: hidden;  /* 隐藏横向滚动条 */
-          overflow-y: auto;    /* 保留竖向滚动条 */
+            /* 达上限后由回复浮窗整体滚动，不是预览单独滚动 */
+            overflow-x: hidden;
+            overflow-y: auto;
             background: var(--xdex-qp-shell-bg);
             border: 1px solid var(--xdex-qp-border);
             outline: 2px solid var(--xdex-qp-outline);
@@ -13482,32 +13588,59 @@ ${markedSwatchHtml}
             box-shadow: 0 8px 24px var(--xdex-qp-shadow);
             padding: 18px 20px 20px;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
           }
-          .qp-quote textarea[name="content"] {
-            resize: both;           /* 允许双向调节 */
-            min-width: 90%;        /* 最小宽度为容器宽度 */
-            max-width: none;       /* 通过 JS 动态控制，这里不限制 */
+          .qp-overlay .qp-stack > .qp-quote textarea[name="content"] {
+            resize: vertical !important; /* 允许纵向缩放；宽度跟浮窗走 */
+            min-width: 0 !important;
+            width: 100% !important;
+            max-width: none;
             box-sizing: border-box;
+            flex: none !important; /* 不要被 flex 拉高造成假空隙 */
           }
-          /* 仅在浮窗中允许拖动改变宽度 */
+          /* 浮窗内 textarea：允许纵向缩放 */
           .qp-body .h-post-form-textarea {
-              resize: horizontal;   /* 允许左右拉伸 */
-              min-width: px;     /* 原始宽度为最小值，避免变太窄 */
-              max-width: 100%;      /* 防止超过容器太多 */
+              resize: vertical !important;
+              min-width: 0;
+              max-width: 100%;
               box-sizing: border-box;
+              flex: none !important;
           }
-          /* 拖拽手柄：四边窄条，仅在手柄区域显示"移动"指针 */
+          /* 四边中段：移动浮窗（角部留给缩放） */
           .qp-drag-edge {
             position: absolute;
             pointer-events: auto;
             z-index: 3;
             cursor: move;
           }
-          .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 8px; }
-          .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 8px; } 
-          .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 8px; }
-          .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 8px; } 
-          .qp-quote.is-dragging { cursor: grabbing !important; }
+          .qp-drag-edge.top    { top: 0;    left: 14px; right: 14px; height: 10px; }
+          .qp-drag-edge.bottom { bottom: 0; left: 14px; right: 14px; height: 10px; }
+          .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
+          .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
+          /* 四角：拉伸浮窗 */
+          .qp-resize-corner {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            z-index: 5;
+            pointer-events: auto;
+            background: transparent;
+          }
+          .qp-resize-corner.nw { top: 0; left: 0; cursor: nwse-resize; }
+          .qp-resize-corner.ne { top: 0; right: 0; cursor: nesw-resize; }
+          .qp-resize-corner.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+          .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; }
+          .qp-overlay .qp-quote.is-dragging,
+          .qp-overlay .qp-quote.is-resizing { user-select: none !important; }
+          .qp-overlay .qp-quote.is-dragging { cursor: grabbing !important; }
+          .qp-body {
+            flex: 0 0 auto; /* 贴内容高度，达上限后由 .qp-quote 整体滚动 */
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: visible;
+          }
           /* 归位按钮 */
           .qp-reset-btn {
             position: fixed; right: 12px; bottom: 12px;
@@ -13523,21 +13656,34 @@ ${markedSwatchHtml}
             flex-direction: column;
             gap: 10px;
             max-width: none;       /* 改为 none，不限制最大宽度 */
-            margin: 0 auto;
+            margin: 0;
             background: var(--xdex-qp-form-bg);
+            /* 默认贴内容高度；只有手动拉高浮窗时才填满可用空间 */
+            flex: 0 0 auto;
+            min-height: 0;
+            width: 100%;
+            height: auto;
+            overflow: visible; /* 不裁剪内容；超长时由回复浮窗 .qp-quote 整体滚动 */
           }
           .qp-body .qp-content-wrap form {
             max-width: 100%;
             box-sizing: border-box;
             background: var(--xdex-qp-form-bg);
+            display: block; /* 保持站点原生表单流，避免 flex 把内部行拉开 */
+            flex: 0 0 auto; /* 表单按内容高度，不吃掉空隙、也不被压扁 */
+            min-height: auto;
+            order: 0;
+            position: relative;
+            z-index: 2; /* 缩小空间时表单盖在预览上方，避免被盖住 */
           }
-          /* textarea 可以双向调整 */
+          /* textarea 宽度跟浮窗走，允许纵向缩放；高度由内容/用户拖拽决定，不 flex 撑满 */
           .qp-body .qp-content-wrap textarea[name="content"] {
-            resize: both;
-            min-width: 600px;   /* 给个合理的最小值 */
-            min-height: 100px;   /* 给个合理的最小值 */
-            width: auto;        /* 不要强制 100% */
-            max-width: none;    /* 允许无限扩展 */
+            resize: vertical !important;
+            min-width: 0 !important;
+            min-height: 120px;
+            width: 100% !important;
+            max-width: none;
+            flex: none !important;
             box-sizing: border-box;
             background: var(--xdex-qp-textarea-bg);
           }
@@ -13546,6 +13692,31 @@ ${markedSwatchHtml}
             overflow-wrap: break-word; /* 长单词/长链接换行 */
             word-break: break-word;    /* 兼容性处理 */
             white-space: normal;       /* 允许正常换行 */
+            /* 关键：预览默认不 flex 撑满，否则会在表单下方制造大空隙 */
+            flex: 0 1 auto;
+            min-height: 0;
+            max-height: none;
+            overflow: visible; /* 预览不单独滚动；超长时由回复浮窗整体滚动 */
+            order: 1;
+            position: relative;
+            z-index: 1;
+          }
+          /* 用户手动拉高浮窗后：允许 wrap/预览吃掉剩余高度 */
+          /* 用户手动拉高：仅让表单区保持自然高度；内容超高时仍走整窗滚动 */
+          .qp-overlay > .qp-stack.qp-user-sized .qp-content-wrap {
+            flex: 0 0 auto;
+            height: auto;
+          }
+          .qp-overlay > .qp-stack.qp-user-sized .qp-content-wrap .h-preview-box {
+            flex: 0 0 auto;
+            overflow: visible;
+          }
+          /* 兜底：引用弹窗保持内容自适应，不被回复浮窗规则压扁 */
+          .qp-overlay-quote .qp-quote {
+            height: auto !important;
+            max-height: 100% !important;
+            overflow: auto !important;
+            display: block !important;
           }
           /* 浮窗内预览框及其子层级全部占满宽度 */
           .qp-body .qp-content-wrap .h-preview-box,
@@ -13583,7 +13754,9 @@ ${markedSwatchHtml}
           .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
           .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
         `;
-      (document.head || document.documentElement).appendChild(style);
+      if (!style.parentNode) {
+        (document.head || document.documentElement).appendChild(style);
+      }
     }
     window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
     ensureDarkReaderThemeObserver();
@@ -13605,6 +13778,10 @@ ${markedSwatchHtml}
                       <div class="qp-drag-edge bottom"></div>
                       <div class="qp-drag-edge left"></div>
                       <div class="qp-drag-edge right"></div>
+                      <div class="qp-resize-corner nw" data-dir="nw"></div>
+                      <div class="qp-resize-corner ne" data-dir="ne"></div>
+                      <div class="qp-resize-corner sw" data-dir="sw"></div>
+                      <div class="qp-resize-corner se" data-dir="se"></div>
                       <div class="qp-body"></div>
                   </div>
               </div>
@@ -13644,46 +13821,60 @@ ${markedSwatchHtml}
             // 若没有颜文字面板打开，则关闭回复浮窗
             closeOverlay();
           });
-          // 归位按钮事件
+          // 归位按钮事件：恢复默认居中尺寸（并重新贴合内容）
           const resetBtn = overlay.querySelector('.qp-reset-btn');
           resetBtn.addEventListener('click', (e) => {
               e.stopPropagation(); // 阻止事件冒泡，避免触发 overlay 的关闭逻辑
-              const quote = overlay.querySelector('.qp-quote');
-              quote.style.top = '0px';
-              quote.style.left = '0px';
+              overlay.__savedPanelRect = null;
+              overlay.__userSizedPanel = false;
+              applyReplyPanelLayout(overlay, null);
+              scheduleReplyPanelAutoFit(overlay);
           });
       }
       return overlay;
-   }
+    }
     function closeOverlay() {
       if (!overlay) return;
-      // 清理 ResizeObserver
+      // 清理 ResizeObserver（旧链路兜底）
       if (overlay.__resizeObserver) {
         overlay.__resizeObserver.disconnect();
         overlay.__resizeObserver = null;
       }
-      // 清理 stack 的 ResizeObserver
-      if (overlay.__stackObserver) {
-        overlay.__stackObserver.disconnect();
-        overlay.__stackObserver = null;
+      // 清理内容贴合观察
+      if (overlay.__autoFitRO) {
+        try { overlay.__autoFitRO.disconnect(); } catch (_) {}
+        overlay.__autoFitRO = null;
       }
-      // 保存当前浮窗和textarea的尺寸（保存计算后的实际值）
-      const stack = overlay.querySelector('.qp-stack');
-      const ta = overlay.querySelector('textarea[name="content"]');
-      if (stack && ta) {
-        const taRect = ta.getBoundingClientRect();
-        overlay.__savedStackWidth = stack.style.width;
-        overlay.__savedTextareaWidth = taRect.width + 'px'; // 保存实际宽度
-        overlay.__savedTextareaHeight = taRect.height + 'px'; // 保存实际高度
-        // 在移回原位置之前，先应用尺寸到 textarea
-        ta.style.width = taRect.width + 'px';
-        ta.style.height = taRect.height + 'px';
+      if (overlay.__autoFitRaf) {
+        cancelAnimationFrame(overlay.__autoFitRaf);
+        overlay.__autoFitRaf = 0;
+      }
+      // 页面内记住整窗位置/尺寸（不写 GM_setValue）
+      // 仅手动四角拉伸过的尺寸需要保留；内容自然撑高的高度关闭后丢弃，下次快速回空高
+      if (overlay.__userSizedPanel) {
+        saveReplyPanelRect(overlay);
+      } else {
+        const stack = overlay.querySelector('.qp-stack');
+        if (stack) {
+          const rect = stack.getBoundingClientRect();
+          // 只记位置/宽度，高度不记，避免被预览撑开的高度“粘住”
+          overlay.__savedPanelRect = {
+            width: Math.round(rect.width),
+            left: Math.round(rect.left),
+            top: Math.round(rect.top),
+            userSized: false
+            // height 故意不写：open 时走默认空高 + 快速 autofit
+          };
+        } else {
+          overlay.__savedPanelRect = null;
+        }
+        overlay.__userSizedPanel = false;
       }
       overlay.style.display = 'none';
       // 隐藏归位按钮
       const resetBtn = overlay.querySelector('.qp-reset-btn');
       if (resetBtn) resetBtn.style.display = 'none';
-      // 清理窗口 resize 监听
+      // 清理窗口 resize 监听（旧链路兜底）
       if (overlay.__windowResizeHandler) {
         window.removeEventListener('resize', overlay.__windowResizeHandler);
         overlay.__windowResizeHandler = null;
@@ -13723,57 +13914,304 @@ ${markedSwatchHtml}
         overlay.__previewEl.__placeholder.parentNode.insertBefore(overlay.__previewEl, overlay.__previewEl.__placeholder);
       }
     }
-    // 新增：回复浮窗拖拽函数
-    function enableDragForReply($quote, $handles) {
-      // 确保初始位置居中
-      $quote.css({
-          top: '0px',
-          left: '0px',
-          position: 'absolute' // 确保是相对于 stack 定位
+    // 回复浮窗：整窗拖拽 + 四角缩放（页面内记忆，不写 GM_setValue）
+    const REPLY_PANEL_MIN_WIDTH = 400;
+    const REPLY_PANEL_MIN_HEIGHT = 280;
+    const REPLY_PANEL_MAX_VH = 0.8;
+    // 默认垂直位置：0.5=正中，越小越靠上。0.28 ≈ 偏上约 1/3
+    const REPLY_PANEL_DEFAULT_TOP_RATIO = 0.28;
+    function getReplyPanelMaxHeight() {
+      return Math.max(REPLY_PANEL_MIN_HEIGHT, Math.min(window.innerHeight * REPLY_PANEL_MAX_VH, window.innerHeight - 40));
+    }
+    function getReplyPanelDefaultTop(height) {
+      const h = Math.max(REPLY_PANEL_MIN_HEIGHT, Number(height) || REPLY_PANEL_MIN_HEIGHT);
+      // 比垂直居中更靠上，同时保证不贴顶、底部也留一点余量
+      const raw = Math.round((window.innerHeight - h) * REPLY_PANEL_DEFAULT_TOP_RATIO);
+      return Math.max(8, Math.min(raw, window.innerHeight - h - 8));
+    }
+    function getReplyPanelDefaults() {
+      const width = Math.max(REPLY_PANEL_MIN_WIDTH, Math.min(window.innerWidth * 0.9, 820));
+      // 默认高度不再固定 80vh，只给一个贴合内容的保守初值；open 后会 auto-fit
+      // 0.45 仍然偏高，会在表单/预览间留空；用更贴内容的初值
+      const height = Math.max(REPLY_PANEL_MIN_HEIGHT, Math.min(Math.round(window.innerHeight * 0.32), getReplyPanelMaxHeight()));
+      const left = Math.max(0, Math.round((window.innerWidth - width) / 2));
+      const top = getReplyPanelDefaultTop(height);
+      return { width, height, left, top };
+    }
+    function measureReplyPanelContentHeight(ov) {
+      const quote = ov && ov.querySelector('.qp-quote');
+      const wrap = ov && ov.querySelector('.qp-content-wrap');
+      if (!quote || !wrap) return REPLY_PANEL_MIN_HEIGHT;
+      const cs = window.getComputedStyle(quote);
+      const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
+        + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      const form = wrap.querySelector('form');
+      const preview = wrap.querySelector('.h-preview-box');
+      const gap = 10; // 与 .qp-content-wrap 的 gap 对齐
+      let contentH = 0;
+      if (form) contentH += form.offsetHeight || form.getBoundingClientRect().height || 0;
+      if (preview) {
+        // 预览在 flex/overflow 约束下 offsetHeight 可能是被裁后的值，临时放开量真实内容高
+        const prev = {
+          maxHeight: preview.style.maxHeight,
+          height: preview.style.height,
+          overflow: preview.style.overflow,
+          flex: preview.style.flex
+        };
+        preview.style.maxHeight = 'none';
+        preview.style.height = 'auto';
+        preview.style.overflow = 'visible';
+        preview.style.flex = 'none';
+        contentH += preview.scrollHeight || preview.offsetHeight || 0;
+        preview.style.maxHeight = prev.maxHeight;
+        preview.style.height = prev.height;
+        preview.style.overflow = prev.overflow;
+        preview.style.flex = prev.flex;
+      } else {
+        // 无预览时仍量 wrap 自身
+        contentH = Math.max(contentH, wrap.scrollHeight || wrap.offsetHeight || 0);
+      }
+      if (form && preview) contentH += gap;
+      return Math.max(REPLY_PANEL_MIN_HEIGHT, Math.ceil(contentH + padY + 2));
+    }
+    function fitReplyPanelToContent(ov, opts) {
+      if (!ov || ov.__userSizedPanel) return;
+      const stack = ov.querySelector('.qp-stack');
+      if (!stack || ov.style.display === 'none') return;
+      const options = opts || {};
+      const maxH = getReplyPanelMaxHeight();
+      const needed = Math.min(measureReplyPanelContentHeight(ov), maxH);
+      const rect = stack.getBoundingClientRect();
+      let left = rect.left;
+      let top = rect.top;
+      let width = rect.width || getReplyPanelDefaults().width;
+      // 未手动缩放时：优先向下扩展（顶边不动），避免“预览往上挤表单”
+      if (!Number.isFinite(left)) left = Math.max(0, Math.round((window.innerWidth - width) / 2));
+      if (!Number.isFinite(top) || top < 0) top = getReplyPanelDefaultTop(needed);
+      // 只有底部真的装不下时才上移；否则保持 top，让高度向下长
+      if (top + needed > window.innerHeight - 8) {
+        top = Math.max(8, window.innerHeight - needed - 8);
+      }
+      // 宽度无效时回退默认
+      if (!width || width < REPLY_PANEL_MIN_WIDTH) width = getReplyPanelDefaults().width;
+      applyReplyPanelLayout(ov, {
+        width,
+        height: needed,
+        left,
+        top
+      }, { preserveUserSized: true, fromAutoFit: true });
+      if (options.save !== false) {
+        // auto-fit 只记当前几何，不把 userSized 标真
+        const r = stack.getBoundingClientRect();
+        ov.__savedPanelRect = {
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          left: Math.round(r.left),
+          top: Math.round(r.top),
+          userSized: false
+        };
+      }
+    }
+    function scheduleReplyPanelAutoFit(ov) {
+      if (!ov || ov.__userSizedPanel) return;
+      if (ov.__autoFitRaf) cancelAnimationFrame(ov.__autoFitRaf);
+      // 双 rAF：等一帧布局完成后再量高，避免 open/粘贴图后量到半成品高度
+      ov.__autoFitRaf = requestAnimationFrame(() => {
+        ov.__autoFitRaf = requestAnimationFrame(() => {
+          ov.__autoFitRaf = 0;
+          fitReplyPanelToContent(ov);
+        });
       });
-      //let dragging = false, dx = 0, dy = 0;
-      let dx = 0, dy = 0;
-      // 移除旧的事件监听（避免重复绑定）
-      $handles.off('mousedown.qpdrag-reply');
-      $handles.on('mousedown.qpdrag-reply', function(e){
-          //dragging = true;
-          $quote.data('dragging', true);  // ← 使用 data 存储
-          $quote.addClass('is-dragging');
-          // 获取当前的 top 和 left 值
-          const currentTop = parseInt($quote.css('top')) || 0;
-          const currentLeft = parseInt($quote.css('left')) || 0;
-          dx = e.pageX - currentLeft - $quote.parent().offset().left;
-          dy = e.pageY - currentTop - $quote.parent().offset().top;
-          e.preventDefault();
-          function onDragMove(e) {
-              //if (!dragging) return;
-              if (!$quote.data('dragging')) return;  // ← 从 data 读取
-              e.preventDefault();  // ← 在这里添加
-              e.stopPropagation(); // ← 在这里添加
-              const $stack = $quote.parent();
-              const stackOff = $stack.offset();
-              const stackWidth = $stack.width();
-              const stackHeight = $stack.height();
-              const quoteWidth = $quote.outerWidth();
-              const quoteHeight = $quote.outerHeight();
-              let top = e.pageY - dy - stackOff.top;
-              let left = e.pageX - dx - stackOff.left;
-              // 限制拖拽范围，允许向左和向上拖出一部分
-              top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
-              left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
-              $quote.css({ top: top + 'px', left: left + 'px' });
+    }
+    function ensureReplyPanelAutoFitObserver(ov) {
+      if (!ov) return;
+      if (ov.__autoFitRO) {
+        try { ov.__autoFitRO.disconnect(); } catch (_) {}
+        ov.__autoFitRO = null;
+      }
+      const wrap = ov.querySelector('.qp-content-wrap');
+      const ta = ov.querySelector('textarea[name="content"]');
+      if (!wrap || typeof ResizeObserver === 'undefined') return;
+      const ro = new ResizeObserver(() => scheduleReplyPanelAutoFit(ov));
+      ro.observe(wrap);
+      if (ta) {
+        ro.observe(ta);
+        if (!ta.__qpAutoFitInputBound) {
+          ta.__qpAutoFitInputBound = true;
+          ta.addEventListener('input', () => scheduleReplyPanelAutoFit(ov));
+        }
+      }
+      // 预览内容变化（粘贴图/引用展开）也跟
+      const preview = ov.querySelector('.h-preview-box');
+      if (preview) ro.observe(preview);
+      ov.__autoFitRO = ro;
+    }
+    function applyReplyPanelLayout(ov, rect, opts) {
+      const stack = ov && ov.querySelector('.qp-stack');
+      const quote = ov && ov.querySelector('.qp-quote');
+      if (!stack) return;
+      const options = opts || {};
+      const base = getReplyPanelDefaults();
+      const r = rect && typeof rect === 'object' ? rect : base;
+      let width = Math.max(REPLY_PANEL_MIN_WIDTH, Number(r.width) || base.width);
+      let height = Math.max(REPLY_PANEL_MIN_HEIGHT, Number(r.height) || base.height);
+      width = Math.min(width, window.innerWidth);
+      // 未手动缩放时，高度上限 80vh；手动缩放后允许到视口高
+      const maxH = ov && ov.__userSizedPanel ? window.innerHeight : getReplyPanelMaxHeight();
+      height = Math.min(height, maxH);
+      let left = Number.isFinite(Number(r.left)) ? Number(r.left) : base.left;
+      let top = Number.isFinite(Number(r.top)) ? Number(r.top) : base.top;
+      // 允许略微拖出视口，但至少保留 50px 可抓取
+      left = Math.min(Math.max(left, -width + 50), window.innerWidth - 50);
+      top = Math.min(Math.max(top, -height + 50), window.innerHeight - 50);
+      stack.style.position = 'fixed';
+      stack.style.transform = 'none';
+      stack.style.width = width + 'px';
+      stack.style.height = height + 'px';
+      stack.style.left = left + 'px';
+      stack.style.top = top + 'px';
+      stack.style.maxWidth = 'none';
+      stack.style.minWidth = REPLY_PANEL_MIN_WIDTH + 'px';
+      stack.style.maxHeight = maxH + 'px';
+      // 用户手动尺寸时允许内部 flex 填满；自动贴合时保持内容高度，避免预览被拉出空隙
+      if (ov.__userSizedPanel) stack.classList.add('qp-user-sized');
+      else stack.classList.remove('qp-user-sized');
+      if (quote) {
+        quote.style.top = '0px';
+        quote.style.left = '0px';
+        quote.style.width = '100%';
+        quote.style.height = '100%';
+      }
+      if (!options.preserveUserSized && r && r.userSized) {
+        ov.__userSizedPanel = true;
+        stack.classList.add('qp-user-sized');
+      }
+    }
+    function saveReplyPanelRect(ov) {
+      const stack = ov && ov.querySelector('.qp-stack');
+      if (!stack || !ov) return;
+      const rect = stack.getBoundingClientRect();
+      ov.__savedPanelRect = {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        userSized: !!ov.__userSizedPanel
+      };
+    }
+
+    function bindReplyPanelFrame(ov) {
+      if (!ov || ov.__replyPanelFrameBound) return;
+      const stack = ov.querySelector('.qp-stack');
+      const quote = ov.querySelector('.qp-quote');
+      if (!stack || !quote) return;
+      ov.__replyPanelFrameBound = true;
+
+      const onEdgeDown = (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startRect = stack.getBoundingClientRect();
+        quote.classList.add('is-dragging');
+        ov.__isResizing = true; // 避免拖拽结束瞬间点到遮罩关闭
+
+        const onMove = (ev) => {
+          ev.preventDefault();
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let left = startRect.left + dx;
+          let top = startRect.top + dy;
+          left = Math.min(Math.max(left, -startRect.width + 50), window.innerWidth - 50);
+          top = Math.min(Math.max(top, -startRect.height + 50), window.innerHeight - 50);
+          stack.style.transform = 'none';
+          stack.style.left = left + 'px';
+          stack.style.top = top + 'px';
+        };
+        const onUp = () => {
+          quote.classList.remove('is-dragging');
+          setTimeout(() => { ov.__isResizing = false; }, 100);
+          saveReplyPanelRect(ov);
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      };
+      const onCornerDown = (e) => {
+        if (e.button !== 0) return;
+        const dir = e.currentTarget.getAttribute('data-dir') || '';
+        if (!dir) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startRect = stack.getBoundingClientRect();
+        // 对角锚定：拖动某角时，对侧角位置保持不动
+        const anchorRight = startRect.right;
+        const anchorBottom = startRect.bottom;
+        quote.classList.add('is-resizing');
+        ov.__isResizing = true;
+        // 用户一旦四角拉伸，就关闭内容自动贴合高度
+        ov.__userSizedPanel = true;
+        const onMove = (ev) => {
+          ev.preventDefault();
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let left = startRect.left;
+          let top = startRect.top;
+          let width = startRect.width;
+          let height = startRect.height;
+
+          if (dir.indexOf('e') !== -1) {
+            width = startRect.width + dx;
           }
-          function onDragEnd(e) {
-              //if (!dragging) return;
-              if (!$quote.data('dragging')) return;  // ← 从 data 读取
-              e.preventDefault();
-              //dragging = false;
-              $quote.data('dragging', false);  // ← 使用 data 存储
-              $quote.removeClass('is-dragging');
-              window.removeEventListener('mousemove', onDragMove);
+          if (dir.indexOf('s') !== -1) {
+            height = startRect.height + dy;
           }
-          window.addEventListener('mousemove', onDragMove);
-          window.addEventListener('mouseup', onDragEnd, { once: true });
+          if (dir.indexOf('w') !== -1) {
+            width = startRect.width - dx;
+            left = anchorRight - width;
+          }
+          if (dir.indexOf('n') !== -1) {
+            height = startRect.height - dy;
+            top = anchorBottom - height;
+          }
+
+          if (width < REPLY_PANEL_MIN_WIDTH) {
+            if (dir.indexOf('w') !== -1) left = anchorRight - REPLY_PANEL_MIN_WIDTH;
+            width = REPLY_PANEL_MIN_WIDTH;
+          }
+          if (height < REPLY_PANEL_MIN_HEIGHT) {
+            if (dir.indexOf('n') !== -1) top = anchorBottom - REPLY_PANEL_MIN_HEIGHT;
+            height = REPLY_PANEL_MIN_HEIGHT;
+          }
+          if (width > window.innerWidth) width = window.innerWidth;
+          if (height > window.innerHeight) height = window.innerHeight;
+
+          stack.style.transform = 'none';
+          stack.style.left = left + 'px';
+          stack.style.top = top + 'px';
+          stack.style.width = width + 'px';
+          stack.style.height = height + 'px';
+          stack.style.maxHeight = window.innerHeight + 'px';
+        };
+        const onUp = () => {
+          quote.classList.remove('is-resizing');
+          setTimeout(() => { ov.__isResizing = false; }, 100);
+          saveReplyPanelRect(ov);
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      };
+      quote.querySelectorAll('.qp-drag-edge').forEach((el) => {
+        el.addEventListener('mousedown', onEdgeDown);
+      });
+      quote.querySelectorAll('.qp-resize-corner').forEach((el) => {
+        el.addEventListener('mousedown', onCornerDown);
       });
     }
     // REPLY 按钮
@@ -13922,6 +14360,9 @@ ${markedSwatchHtml}
         if (movedInput && movedInput.files && movedInput.files[0]) {
           updatePreviewImageFromFile(movedInput.files[0]);
         }
+        // 滞后预览框搬入后，重新贴合一次，避免表单/预览空隙或遮挡
+        ensureReplyPanelAutoFitObserver(ov);
+        scheduleReplyPanelAutoFit(ov);
       }, 0);
       // 浮窗内立即处理扩展引用，保证可点击引用弹窗
       if (typeof extendQuote === 'function') {
@@ -13940,186 +14381,40 @@ ${markedSwatchHtml}
       if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
       // 显示 overlay
       ov.style.display = 'block';
-      // 初始化时检查是否需要调整浮窗宽度（确保不超出当前浏览器宽度）
-      const currentResponsiveWidth = Math.max(400, Math.min(window.innerWidth * 0.9, 820));
-      const stackElement = ov.querySelector('.qp-stack');
-      const currentWidth = stackElement.getBoundingClientRect().width;
-      if (currentWidth > currentResponsiveWidth) {
-        stackElement.style.width = currentResponsiveWidth + 'px';
+      // 恢复/应用整窗布局，并绑定四边移动 + 四角缩放
+      // 若上次是用户四角拉伸过，继续尊重其尺寸；
+      // 非手动尺寸只保留位置/宽度，高度走空高 + 快速 autofit
+      let layoutRect = null;
+      if (ov.__savedPanelRect && ov.__savedPanelRect.userSized) {
+        ov.__userSizedPanel = true;
+        layoutRect = ov.__savedPanelRect;
+      } else {
+        ov.__userSizedPanel = false;
+        const saved = ov.__savedPanelRect || null;
+        const base = getReplyPanelDefaults();
+        layoutRect = {
+          width: saved && saved.width ? saved.width : base.width,
+          height: base.height, // 空高，不被上次预览撑高粘住
+          left: saved && Number.isFinite(Number(saved.left)) ? saved.left : base.left,
+          top: saved && Number.isFinite(Number(saved.top)) ? saved.top : base.top,
+          userSized: false
+        };
       }
-      // // 恢复之前保存的尺寸（需要在 ResizeObserver 创建之前恢复）
-      // const stackForRestore = ov.querySelector('.qp-stack');
-      // const restoredTa = ov.querySelector('textarea[name="content"]');
-      // // 先恢复 textarea 的尺寸
-      // if (ov.__savedTextareaWidth && restoredTa) {
-      //   restoredTa.style.width = ov.__savedTextareaWidth;
-      //   restoredTa.style.minWidth = ov.__savedTextareaWidth; // 确保不会被缩小
-      // }
-      // if (ov.__savedTextareaHeight && restoredTa) {
-      //   restoredTa.style.height = ov.__savedTextareaHeight;
-      // }
-      // // 再恢复 stack 的宽度
-      // if (ov.__savedStackWidth && stackForRestore) {
-      //   stackForRestore.style.width = ov.__savedStackWidth;
-      // }
+      applyReplyPanelLayout(ov, layoutRect);
+      bindReplyPanelFrame(ov);
+      ensureReplyPanelAutoFitObserver(ov);
+      scheduleReplyPanelAutoFit(ov);
       // 显示归位按钮
       const resetBtn = ov.querySelector('.qp-reset-btn');
       if (resetBtn) resetBtn.style.display = 'block';
-      // 启用拖拽功能
-      const $quote = $(ov.querySelector('.qp-quote'));
-      const $handles = $quote.find('.qp-drag-edge');
-      enableDragForReply($quote, $handles);
       const ta = ov.querySelector('textarea[name="content"]');
-      // ---------- BEGIN 插入（替换旧的 ResizeObserver 逻辑） ----------
+
       if (ta) {
-        // 先恢复之前保存的尺寸，再设置其他属性
-        if (ov.__savedTextareaWidth) {
-          ta.style.width = ov.__savedTextareaWidth;
-        }
-        if (ov.__savedTextareaHeight) {
-          ta.style.height = ov.__savedTextareaHeight;
-        }
-        ta.style.resize = 'both';
+        // 允许垂直缩放；宽度仍跟浮窗走
+        ta.style.resize = 'vertical';
         ta.style.fontSize = '14px';
-        // 不设置 maxWidth，让它自由调整
+        ta.style.flex = 'none';
       }
-      // 监听 textarea 调整大小的开始和结束
-      if (ta) {
-        ta.addEventListener('mousedown', function(e) {
-          // 检测是否点击在右下角调整区域（通常是最后 15px 范围）
-          const rect = ta.getBoundingClientRect();
-          const offsetX = e.clientX - rect.left;
-          const offsetY = e.clientY - rect.top;
-          const isResizeCorner = (offsetX > rect.width - 15) && (offsetY > rect.height - 15);
-          const isResizeRight = offsetX > rect.width - 15;
-          const isResizeBottom = offsetY > rect.height - 15;
-          if (isResizeCorner || isResizeRight || isResizeBottom) {
-            ov.__isResizing = true;
-            // 监听鼠标释放，标记调整结束
-            const onMouseUp = function() {
-              // 延迟一点清除标记，避免释放瞬间的点击事件触发关闭
-              setTimeout(() => {
-                ov.__isResizing = false;
-              }, 100);
-              document.removeEventListener('mouseup', onMouseUp);
-            };
-            document.addEventListener('mouseup', onMouseUp);
-          }
-        });
-      }
-      const stack = ov.querySelector('.qp-stack');
-      const quote = ov.querySelector('.qp-quote');
-      // 绝对最小宽度（不能再小）
-      const ABSOLUTE_MIN_WIDTH = 400;
-      // 动态计算当前应有的宽度（视口90%，但不小于400px，不大于820px）
-      function getResponsiveWidth() {
-        return Math.max(ABSOLUTE_MIN_WIDTH, Math.min(window.innerWidth * 0.9, 820));
-      }
-      // 初始化时记录用户可能扩展到的最大宽度
-      // 如果有保存的宽度，使用保存的；否则使用响应式宽度
-      let userMaxWidth = ov.__savedStackWidth ? parseFloat(ov.__savedStackWidth) : getResponsiveWidth();
-      // 定义安全边距（textarea 与浮窗边框之间的最小距离）
-      const SAFE_MARGIN = 30;
-      const ro = new ResizeObserver(entries => {
-        for (const entry of entries) {
-          const taRect = ta.getBoundingClientRect();
-          const taWidth = Math.round(taRect.width);
-          const stackRect = stack.getBoundingClientRect();
-          // 获取 quote 的 padding
-          const quoteStyle = window.getComputedStyle(quote);
-          const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
-          const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
-          // 计算 textarea 左边距（相对于 quote）
-          const quoteRect = quote.getBoundingClientRect();
-          const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
-          // 计算 textarea 右边界（相对于 quote 左边界）
-          const taRightEdge = taLeftOffset + taWidth;
-          // 计算 quote 的内部可用宽度
-          const quoteInnerWidth = quoteRect.width - quotePaddingLeft - quotePaddingRight;
-          // 获取视口宽度和当前响应式宽度
-          const maxAllowedWidth = window.innerWidth;
-          const responsiveWidth = getResponsiveWidth();
-          // 如果 textarea 右边界超过了安全区域，需要扩展 stack
-          const safeRightBound = quoteInnerWidth - SAFE_MARGIN - 20;
-          if (taRightEdge > safeRightBound) {
-            // 计算需要的新 stack 宽度
-            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
-            // 限制不超过视口宽度
-            const finalWidth = Math.min(neededQuoteWidth, maxAllowedWidth);
-            stack.style.width = finalWidth + 'px';
-            quote.style.width = '100%';
-            // 更新用户扩展到的最大宽度
-            userMaxWidth = Math.max(finalWidth, userMaxWidth);
-            // 如果达到最大宽度，限制 textarea 不能继续变宽
-            if (finalWidth >= maxAllowedWidth) {
-              const maxTaWidth = maxAllowedWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-              ta.style.maxWidth = Math.max(maxTaWidth, 200) + 'px';
-            } else {
-              ta.style.maxWidth = 'none';
-            }
-          }
-          // 如果 textarea 缩小了，也缩小 stack
-          else {
-            // 计算当前实际需要的宽度
-            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
-            const currentStackWidth = stackRect.width;
-            // 只有当需要的宽度明显小于当前宽度时才缩小
-            if (neededQuoteWidth < currentStackWidth - 10) {
-              // 使用响应式宽度作为下限
-              const finalWidth = Math.max(neededQuoteWidth, responsiveWidth);
-              stack.style.width = finalWidth + 'px';
-              quote.style.width = '100%';
-              // 同步调整 textarea 宽度，使其适应浮窗
-              if (finalWidth <= responsiveWidth) {
-                const maxTaWidth = finalWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-                if (taWidth > maxTaWidth) {
-                  ta.style.width = Math.max(maxTaWidth, 200) + 'px';
-                }
-              }
-            }
-            // 缩小时也要检查是否需要解除 maxWidth 限制
-            if (stackRect.width < maxAllowedWidth) {
-              ta.style.maxWidth = 'none';
-            }
-          }
-        }
-      });
-      if (ta) {
-        ro.observe(ta);
-        ov.__resizeObserver = ro;
-      }
-      // 最后恢复 stack 的宽度（在 ResizeObserver 创建之后）
-      const stackForRestore = ov.querySelector('.qp-stack');
-      if (ov.__savedStackWidth && stackForRestore) {
-        stackForRestore.style.width = ov.__savedStackWidth;
-        // 监听窗口大小变化，动态调整浮窗和 textarea
-      const handleWindowResize = function() {
-        const responsiveWidth = getResponsiveWidth(); // 当前浏览器宽度对应的响应式宽度
-        const currentStackWidth = stack.getBoundingClientRect().width;
-        // 关键：只在浏览器宽度变窄、且当前浮窗宽度超出响应式宽度时，才缩小浮窗
-        if (responsiveWidth < currentStackWidth) {
-          // 将浮窗宽度设置为响应式宽度（会随浏览器变窄而变窄）
-          stack.style.width = responsiveWidth + 'px';
-          // 同时调整 textarea，确保不超出新的浮窗宽度
-          if (ta) {
-            const taRect = ta.getBoundingClientRect();
-            const quoteStyle = window.getComputedStyle(quote);
-            const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
-            const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
-            const quoteRect = quote.getBoundingClientRect();
-            const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
-            const maxTaWidth = responsiveWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-            if (taRect.width > maxTaWidth) {
-              ta.style.width = Math.max(maxTaWidth, 200) + 'px';
-            }
-          }
-        }
-        // 浏览器变宽时不做任何调整（保持用户设置的宽度）
-      };
-      window.addEventListener('resize', handleWindowResize);
-      ov.__windowResizeHandler = handleWindowResize;
-      }
-      // ---------- END 插入 ----------
       // 聚焦 textarea
       if (ta) {
           ta.focus();
