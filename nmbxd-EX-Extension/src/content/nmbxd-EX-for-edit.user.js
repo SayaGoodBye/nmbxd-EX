@@ -16739,6 +16739,7 @@ ${markedSwatchHtml}
         Array.from(row.querySelectorAll('input[type="text"], textarea'))
       );
       const POST_FORM_OPTIONAL_MAX_LENGTH = 15;
+      const POST_FORM_EMAIL_MAX_LENGTH = 100;
       noPersistInputs.forEach(input => {
         input.setAttribute('autocomplete', 'off');
         input.setAttribute('autocapitalize', 'off');
@@ -16747,14 +16748,25 @@ ${markedSwatchHtml}
         input.setAttribute('aria-autocomplete', 'none');
         input.setAttribute('data-lpignore', 'true');
         input.setAttribute('data-form-type', 'other');
+        // 标题/名称：15 字，超限红字提醒；E-mail：100 字，maxlength 拦住后不再标红
+        const isEmailInput = (input.getAttribute('name') || '').toLowerCase() === 'email';
+        const maxLen = isEmailInput ? POST_FORM_EMAIL_MAX_LENGTH : POST_FORM_OPTIONAL_MAX_LENGTH;
+        if (isEmailInput) {
+          input.setAttribute('maxlength', String(POST_FORM_EMAIL_MAX_LENGTH));
+        } else {
+          // 标题/名称保持可输入并超限提示，不强制 maxlength 卡住
+          input.removeAttribute('maxlength');
+        }
         const inputCell = input.closest('.h-post-form-input');
         if (inputCell) {
+          inputCell.style.position = 'relative';
           inputCell.style.display = 'flex';
           inputCell.style.alignItems = 'center';
-          inputCell.style.gap = '6px';
           inputCell.style.minWidth = '0';
           input.style.flex = '1 1 auto';
           input.style.minWidth = '0';
+          // 右侧留空给绝对定位的计数器，避免输入文字被遮挡
+          input.style.paddingRight = '64px';
         }
         let counter = input.nextElementSibling && input.nextElementSibling.classList?.contains('xdex-post-form-char-count')
           ? input.nextElementSibling
@@ -16762,13 +16774,14 @@ ${markedSwatchHtml}
         if (!counter) {
           counter = document.createElement('span');
           counter.className = 'xdex-post-form-char-count';
-          counter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+          counter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;position:absolute;right:6px;top:50%;transform:translateY(-50%);pointer-events:none;';
           input.insertAdjacentElement('afterend', counter);
         }
         const updateCounter = () => {
           const len = String(input.value || '').length;
-          counter.textContent = len + '/' + POST_FORM_OPTIONAL_MAX_LENGTH;
-          counter.style.color = len > POST_FORM_OPTIONAL_MAX_LENGTH ? '#e53935' : '#888';
+          counter.textContent = len + '/' + maxLen;
+          // E-mail 到 100 已被 maxlength 拦住，保持灰色；标题/名称超 15 才标红
+          counter.style.color = (!isEmailInput && len > maxLen) ? '#e53935' : '#888';
         };
         if (input.__xdexPostFormCharCounter) {
           input.removeEventListener('input', input.__xdexPostFormCharCounter);
@@ -16788,11 +16801,20 @@ ${markedSwatchHtml}
           rowsToCollapse[0].before(wrapper);
           rowsToCollapse.forEach(r => wrapper.appendChild(r));
         }
-        const isOptionalToggle = (el) => !!(el
-          && el.classList
-          && el.classList.contains('xdex-placeholder')
-          && el.classList.contains('xdex-generic-toggle')
-          && /可选项/.test(el.textContent || ''));
+        // 注意：Utils.collapse 展开后文案会变成「点击折叠」，不再含「可选项」
+        // 若仍只按 /可选项/ 识别，会误判 toggle 丢失 → removeData 后再次 collapse → 多出一个按钮
+        const isOptionalToggle = (el) => {
+          if (!el || !el.classList) return false;
+          if (!el.classList.contains('xdex-placeholder') || !el.classList.contains('xdex-generic-toggle')) return false;
+          if (el.dataset && el.dataset.xdexOptionalToggle === '1') return true;
+          const t = el.textContent || '';
+          if (/可选项/.test(t)) return true;
+          // 展开态：文案只剩「点击折叠/点击展开」，靠紧邻 collapse-wrapper 判定
+          const next = el.nextElementSibling;
+          if (next && next.classList && next.classList.contains('collapse-wrapper')
+              && /点击折叠|点击展开/.test(t)) return true;
+          return false;
+        };
         // 合法位置：wrapper 前（Utils.collapse 默认）
         // 兼容旧逻辑误挪到 form 前（wrap 内）的情况，只保留一个
         const nearby = [];
@@ -16819,18 +16841,28 @@ ${markedSwatchHtml}
         if (typeof Utils !== 'undefined' && typeof Utils.collapse === 'function' && typeof $ === 'function') {
           const $wrapper = $(wrapper);
           if (keepToggle) {
+            keepToggle.dataset.xdexOptionalToggle = '1';
             keepToggle.style.display = '';
-            if (!$wrapper.data('xdex-collapsed')) {
+            // 已有 toggle 时：只同步标记，不要在用户展开后把内容又藏回去
+            // Utils.collapse 的 data 在展开后仍会保留；真正展开/收起交给原 click 处理
+            if (!$wrapper.data('xdex-collapsed') && !$wrapper.is(':visible')) {
               $wrapper.hide().data('xdex-collapsed', true);
+              wrapper.classList.add('xdex-generic-collapsed');
+            } else if ($wrapper.data('xdex-collapsed') || $wrapper.is(':hidden')) {
               wrapper.classList.add('xdex-generic-collapsed');
             }
           } else {
+            // 真的没有 toggle 才补；若 data 还在但按钮丢了，先清再 fold，避免永久卡死
             if ($wrapper.data('xdex-collapsed')) {
               $wrapper.removeData('xdex-collapsed');
               wrapper.classList.remove('xdex-generic-collapsed');
               $wrapper.show();
             }
-            Utils.collapse($wrapper, '可选项');
+            const $ph = Utils.collapse($wrapper, '可选项');
+            const phEl = ($ph && $ph[0]) || wrapper.previousElementSibling;
+            if (phEl && phEl.classList && phEl.classList.contains('xdex-generic-toggle')) {
+              phEl.dataset.xdexOptionalToggle = '1';
+            }
           }
         }
       }
