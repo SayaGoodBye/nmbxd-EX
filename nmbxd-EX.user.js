@@ -13604,9 +13604,9 @@ ${markedSwatchHtml}
             width: 100%;
             height: 100%;
             max-height: 100%;
-            /* 达上限后由回复浮窗整体滚动，不是预览单独滚动 */
+            /* 自动贴高默认隐藏滚动条；达上限/手动缩放后再滚动，避免预览空→有时右侧滚动条闪一下 */
             overflow-x: hidden;
-            overflow-y: auto;
+            overflow-y: hidden;
             background: var(--xdex-qp-shell-bg);
             border: 1px solid var(--xdex-qp-border);
             outline: 2px solid var(--xdex-qp-outline);
@@ -13616,6 +13616,10 @@ ${markedSwatchHtml}
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
+          }
+          .qp-overlay > .qp-stack.qp-user-sized > .qp-quote,
+          .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
+            overflow-y: auto;
           }
           .qp-overlay .qp-stack > .qp-quote textarea[name="content"] {
             resize: vertical !important; /* 允许纵向缩放；宽度跟浮窗走 */
@@ -14001,50 +14005,82 @@ ${markedSwatchHtml}
       return Math.max(REPLY_PANEL_MIN_HEIGHT, Math.ceil(contentH + padY + 2));
     }
     function fitReplyPanelToContent(ov, opts) {
-      if (!ov || ov.__userSizedPanel) return;
+      if (!ov || ov.__userSizedPanel || ov.__autoFitting) return;
       const stack = ov.querySelector('.qp-stack');
       if (!stack || ov.style.display === 'none') return;
       const options = opts || {};
-      const maxH = getReplyPanelMaxHeight();
-      const needed = Math.min(measureReplyPanelContentHeight(ov), maxH);
-      const rect = stack.getBoundingClientRect();
-      let left = rect.left;
-      let top = rect.top;
-      let width = rect.width || getReplyPanelDefaults().width;
-      // 未手动缩放时：优先向下扩展（顶边不动），避免“预览往上挤表单”
-      if (!Number.isFinite(left)) left = Math.max(0, Math.round((window.innerWidth - width) / 2));
-      if (!Number.isFinite(top) || top < 0) top = getReplyPanelDefaultTop(needed);
-      // 只有底部真的装不下时才上移；否则保持 top，让高度向下长
-      if (top + needed > window.innerHeight - 8) {
-        top = Math.max(8, window.innerHeight - needed - 8);
-      }
-      // 宽度无效时回退默认
-      if (!width || width < REPLY_PANEL_MIN_WIDTH) width = getReplyPanelDefaults().width;
-      applyReplyPanelLayout(ov, {
-        width,
-        height: needed,
-        left,
-        top
-      }, { preserveUserSized: true, fromAutoFit: true });
-      if (options.save !== false) {
-        // auto-fit 只记当前几何，不把 userSized 标真
-        const r = stack.getBoundingClientRect();
-        ov.__savedPanelRect = {
-          width: Math.round(r.width),
-          height: Math.round(r.height),
-          left: Math.round(r.left),
-          top: Math.round(r.top),
-          userSized: false
-        };
+      // 量高会临时改 preview 样式，期间屏蔽 RO，避免“量高→RO→再 fit”反馈环
+      ov.__autoFitting = true;
+      try {
+        const maxH = getReplyPanelMaxHeight();
+        const needed = Math.min(measureReplyPanelContentHeight(ov), maxH);
+        const rect = stack.getBoundingClientRect();
+        // 高度几乎不变时不写 style；no-op 时不要开静默窗，否则会吞掉紧随其后的预览增高
+        const heightDelta = Math.abs((rect.height || 0) - needed);
+        const atCap = needed >= maxH - 1;
+        stack.classList.toggle('qp-content-scroll', atCap);
+        if (heightDelta < 2) {
+          if (options.save !== false) {
+            ov.__savedPanelRect = {
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              left: Math.round(rect.left),
+              top: Math.round(rect.top),
+              userSized: false
+            };
+          }
+          ov.__skipAutoFitQuiet = true;
+          return;
+        }
+        let left = rect.left;
+        let top = rect.top;
+        let width = rect.width || getReplyPanelDefaults().width;
+        // 未手动缩放时：优先向下扩展（顶边不动），避免“预览往上挤表单”
+        if (!Number.isFinite(left)) left = Math.max(0, Math.round((window.innerWidth - width) / 2));
+        if (!Number.isFinite(top) || top < 0) top = getReplyPanelDefaultTop(needed);
+        // 只有底部真的装不下时才上移；否则保持 top，让高度向下长
+        if (top + needed > window.innerHeight - 8) {
+          top = Math.max(8, window.innerHeight - needed - 8);
+        }
+        // 宽度无效时回退默认
+        if (!width || width < REPLY_PANEL_MIN_WIDTH) width = getReplyPanelDefaults().width;
+        applyReplyPanelLayout(ov, {
+          width,
+          height: needed,
+          left,
+          top
+        }, { preserveUserSized: true, fromAutoFit: true });
+        if (options.save !== false) {
+          // auto-fit 只记当前几何，不把 userSized 标真
+          const r = stack.getBoundingClientRect();
+          ov.__savedPanelRect = {
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            left: Math.round(r.left),
+            top: Math.round(r.top),
+            userSized: false
+          };
+        }
+      } finally {
+        ov.__autoFitting = false;
+        // 仅在真正改了尺寸时短时静默；no-op 贴高不能静默，否则挡住预览写完后的二次贴高
+        if (ov.__skipAutoFitQuiet) {
+          ov.__skipAutoFitQuiet = false;
+        } else {
+          ov.__autoFitQuietUntil = performance.now() + 48;
+        }
       }
     }
     function scheduleReplyPanelAutoFit(ov) {
-      if (!ov || ov.__userSizedPanel) return;
+      if (!ov || ov.__userSizedPanel || ov.__autoFitting) return;
+      if (ov.__autoFitQuietUntil && performance.now() < ov.__autoFitQuietUntil) return;
       if (ov.__autoFitRaf) cancelAnimationFrame(ov.__autoFitRaf);
-      // 双 rAF：等一帧布局完成后再量高，避免 open/粘贴图后量到半成品高度
+      // 双 rAF：等布局/预览重建完成后再量高，合并同一帧内的多次 input/RO
       ov.__autoFitRaf = requestAnimationFrame(() => {
         ov.__autoFitRaf = requestAnimationFrame(() => {
           ov.__autoFitRaf = 0;
+          if (ov.__userSizedPanel || ov.__autoFitting) return;
+          if (ov.__autoFitQuietUntil && performance.now() < ov.__autoFitQuietUntil) return;
           fitReplyPanelToContent(ov);
         });
       });
@@ -14058,19 +14094,21 @@ ${markedSwatchHtml}
       const wrap = ov.querySelector('.qp-content-wrap');
       const ta = ov.querySelector('textarea[name="content"]');
       if (!wrap || typeof ResizeObserver === 'undefined') return;
-      const ro = new ResizeObserver(() => scheduleReplyPanelAutoFit(ov));
+      const onMaybeAutoFit = () => {
+        if (ov.__userSizedPanel || ov.__autoFitting) return;
+        if (ov.__autoFitQuietUntil && performance.now() < ov.__autoFitQuietUntil) return;
+        scheduleReplyPanelAutoFit(ov);
+      };
+      const ro = new ResizeObserver(onMaybeAutoFit);
+      // 只观察 wrap/preview。不要监听 textarea input：
+      // input 时预览尚未更新，会先 no-op 贴高并制造滚动条闪动窗口。
       ro.observe(wrap);
-      if (ta) {
-        ro.observe(ta);
-        if (!ta.__qpAutoFitInputBound) {
-          ta.__qpAutoFitInputBound = true;
-          ta.addEventListener('input', () => scheduleReplyPanelAutoFit(ov));
-        }
-      }
-      // 预览内容变化（粘贴图/引用展开）也跟
+      // 预览内容变化（首次出字/粘贴图/引用展开）也跟
       const preview = ov.querySelector('.h-preview-box');
       if (preview) ro.observe(preview);
       ov.__autoFitRO = ro;
+      // 暴露给 renderContent：预览写完后立刻排队贴高
+      window.__xdexScheduleReplyPanelFit = () => scheduleReplyPanelAutoFit(ov);
     }
     function applyReplyPanelLayout(ov, rect, opts) {
       const stack = ov && ov.querySelector('.qp-stack');
@@ -18078,18 +18116,24 @@ ${markedSwatchHtml}
           clearTimeout(previewEnhanceTimer);
           previewEnhanceTimer = null;
         }
+        try {
+          if (typeof window.__xdexScheduleReplyPanelFit === 'function') {
+            window.__xdexScheduleReplyPanelFit();
+          }
+        } catch (_) {}
         return;
       }
-      previewContent.text('');
+      // 离屏拼好再一次写回，避免先清空再填充导致回复浮窗首字高度闪一下
+      const $frag = $('<div></div>');
       previewContent[0]?.setAttribute('data-xdex-preview-spoiler-rendered', '1');
       function appendPreviewText(text, className) {
         if (text === '') return;
         const span = $('<span></span>').text(text);
         if (className) span.addClass(className);
-        previewContent.append(span);
+        $frag.append(span);
       }
       function appendPreviewQuoteLine(line) {
-        previewContent.append($('<font color="#789922"></font>').text(line));
+        $frag.append($('<font color="#789922"></font>').text(line));
       }
       for (let i of raw.split('\n')) {
         i = i.replace(/ +/g, ' ');
@@ -18112,14 +18156,23 @@ ${markedSwatchHtml}
             appendPreviewText(i);
           }
         }
-        previewContent.append('<br>');
+        $frag.append('<br>');
       }
-      const renderedHtml = previewContent[0]?.innerHTML || '';
+      const renderedHtml = $frag[0]?.innerHTML || '';
       const previewChanged = renderedHtml !== lastPreviewRenderedHtml;
       lastPreviewRenderedHtml = renderedHtml;
       if (previewChanged) {
+        // 旧：previewContent.text(''); 再逐段 append
+        // 一次替换，减少中间空高被 auto-fit 量到
+        previewContent.empty().append($frag.contents());
         bindPreviewQuoteHover(previewContent[0]);
         schedulePreviewEnhance(previewContent[0]);
+        // 预览空→有 后立刻排队贴高，避免 RO 晚到期间 overflow:auto 闪滚动条
+        try {
+          if (typeof window.__xdexScheduleReplyPanelFit === 'function') {
+            window.__xdexScheduleReplyPanelFit();
+          }
+        } catch (_) {}
       }
       // 自动识别链接
       if (typeof runAutoUrlLinkify === 'function') {
