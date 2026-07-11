@@ -12745,8 +12745,10 @@ ${markedSwatchHtml}
       if (!$top.length) { $overlay.fadeOut(160); return; }
       // 1) 如果点击发生在最上层引用框内部，忽略
       if ($(e.target).closest($top).length) return;
-      // 2) 如果正在/刚刚拖拽，避免误触关闭
-      if ($top.hasClass('is-dragging') || $('.qp-quote.is-dragging').length) return;
+      // 2) 如果正在/刚刚拖拽或拉伸，避免误触关闭
+      if ($top.hasClass('is-dragging') || $top.hasClass('is-resizing') ||
+          $('.qp-quote.is-dragging').length || $('.qp-quote.is-resizing').length ||
+          $overlay.data('isDragging')) return;
       // 3) 点击最上层框之外：仅移除最上层
       $top.remove();
       if ($stack.children('.qp-quote').length === 0) $overlay.fadeOut(160);
@@ -12983,7 +12985,17 @@ ${markedSwatchHtml}
         };
         const onUp = () => {
           $quote.removeClass('is-resizing');
-          setTimeout(() => { $overlay.data('isDragging', false); }, 100);
+          // 在捕获阶段拦截紧随 mouseup 的 click，防止误触关闭引用浮窗
+          const overlayEl = $overlay[0];
+          const eatClick = (ev) => {
+            ev.stopPropagation();
+            overlayEl.removeEventListener('click', eatClick, true);
+          };
+          overlayEl.addEventListener('click', eatClick, true);
+          setTimeout(() => {
+            $overlay.data('isDragging', false);
+            overlayEl.removeEventListener('click', eatClick, true); // 兜底清理
+          }, 200);
           window.removeEventListener('mousemove', onMove);
           window.removeEventListener('mouseup', onUp);
         };
