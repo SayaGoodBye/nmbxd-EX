@@ -18272,7 +18272,11 @@ ${markedSwatchHtml}
           })();
           正文框.val(_newVal);
         }
+        // 旧：正文框.trigger('input', '');
+        // jQuery .trigger('input') 不会触发原生 addEventListener('input')，
+        // 导致 tag6 字数统计要等用户继续输入才刷新
         正文框.trigger('input', '');
+        if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
         保存编辑();
         // 光标定位到引用号之后——必须延迟到 click 事件彻底结束，
         // 否则浏览器会把焦点还给被点击的 <a> 元素
@@ -19191,7 +19195,11 @@ ${markedSwatchHtml}
         } else {
           newVal = `${left}\n${ref}${right}`;
         }
+        // 旧：$textarea.val(newVal).trigger('input');
+        // 同步派发原生 input，保证字数统计即时刷新
         $textarea.val(newVal).trigger('input');
+        const taEl = $textarea[0];
+        if (taEl) taEl.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
     // ---------- 公用：重新应用页面增强（保持原样） ----------
