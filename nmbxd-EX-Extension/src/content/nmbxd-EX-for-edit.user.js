@@ -5552,6 +5552,7 @@ ${markedSwatchHtml}
                       <div id="sp_feeds_selector_display" class="xdex-feed-selector-display" role="combobox" aria-haspopup="listbox" aria-expanded="false">
                         <span class="xdex-feed-display-desc"></span>
                         <span class="xdex-feed-display-uuid"></span>
+                        <svg class="xdex-feed-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 2.5L4 6L8 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                       </div>
                       <div id="sp_feeds_selector_dropdown" class="xdex-feed-selector-dropdown" role="listbox" style="display:none;"></div>
                     </div>
@@ -21659,13 +21660,21 @@ ${markedSwatchHtml}
         transition: filter 0.15s;
       }
       .xdex-feed-display-uuid:empty { display: none; }
+      .xdex-feed-chevron {
+        flex: 0 0 auto; margin-left: auto;
+        color: #C61200; transition: transform .15s ease;
+        transform: rotate(0deg);
+      }
+      .xdex-feed-selector-display[aria-expanded="true"] .xdex-feed-chevron {
+        transform: rotate(-90deg);
+      }
       .xdex-feed-selector-dropdown {
         position: absolute; top: 100%; left: 0; right: 0;
         margin-top: 2px;
         border: 1px solid var(--xdex-sp-border, #bfa58f);
         border-radius: 8px;
-        background: #FFFFEE;
-        box-shadow: 0 2px 8px rgba(0,0,0,.15);
+        background: var(--xdex-sp-panel-bg, #FFFFEE);
+        box-shadow: 0 2px 8px var(--xdex-sp-shadow, rgba(0,0,0,.15));
         z-index: 100;
         max-height: 200px; overflow-y: auto;
       }
@@ -21673,10 +21682,13 @@ ${markedSwatchHtml}
         padding: 6px 8px;
         cursor: pointer;
         font-size: 13px;
+        color: var(--foreground, #333);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
       .xdex-feed-option:hover { background: #F0E0D6; }
-      .xdex-feed-option.active { background: #e8d5c0; font-weight: bold; }
+      .xdex-feed-option.active { background: #F0E0D6; font-weight: bold; }
+      :root.xdex-darkreader-active .xdex-feed-option:hover { background: #3d3530; }
+      :root.xdex-darkreader-active .xdex-feed-option.active { background: #483327; }
     `;
     document.head.appendChild(style);
   }
