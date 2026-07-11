@@ -15738,7 +15738,8 @@ ${markedSwatchHtml}
             }
           }
           if (successMsg) {
-            toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'));
+            // 与触底/手动局部刷新一致：快速即时 toast，不走默认队列
+            toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'), 900, { queue: false, key: 'send-status' });
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
             // 清空输入框
             const textarea = form.querySelector('textarea[name="content"]');
@@ -16156,7 +16157,7 @@ ${markedSwatchHtml}
             resetIllegalRetryState({ clearOriginalContent: false });
             const _ta = form.querySelector("textarea[name='content']");
             form.__originalContent = _ta ? _ta.value : (formData.get("content") || "").toString();
-            toast("正在发送……");
+            toast('正在发送……', 1500, { queue: false, key: 'send-status' });
             doSubmit(formData, false).finally(() => { unlockSubmit(form); });
           };
           if (_pref) {
@@ -16195,7 +16196,7 @@ ${markedSwatchHtml}
       form.__originalContent = textarea
         ? textarea.value
         : (formData.get('content') || '').toString();
-      toast('正在发送……');
+      toast('正在发送……', 1500, { queue: false, key: 'send-status' });
       doSubmit(formData, false).finally(() => { unlockSubmit(form); });
     }, true);
     // ————— helpers —————
