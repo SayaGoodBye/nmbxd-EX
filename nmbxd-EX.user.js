@@ -14503,6 +14503,12 @@ ${markedSwatchHtml}
           const val = ta.value;
           ta.value = '';
           ta.value = val;
+          // 恢复引用追记保存的光标位置（关闭浮窗时点引用号，focus 会失败，
+          // 所以在引用追记中把期望光标位置暂存在元素上，这里再恢复）
+          if (ta.__pendingQuoteCursorPos != null) {
+            ta.setSelectionRange(ta.__pendingQuoteCursorPos, ta.__pendingQuoteCursorPos);
+            ta.__pendingQuoteCursorPos = null;
+          }
       }
       // Ctrl+Enter 发送并在成功后关闭浮窗
       if (ta) {
@@ -18234,24 +18240,57 @@ ${markedSwatchHtml}
           return;
         }
         if (!正文框.length) return;
+        // 失焦时 selectionEnd 可能跳到文本末尾，先聚焦再读取准确选区
+        const el = 正文框[0];
+        const wasActive = document.activeElement;
+        if (el && document.activeElement !== el) el.focus();
         const start = 正文框.prop('selectionStart');
         const end = 正文框.prop('selectionEnd');
-        const len = end - start;
         const str = 正文框.val();
         const left = str.substring(0, start);
         const right = str.substring(end);
         const ref = `>>${e.currentTarget.textContent.trim()}`;
-        正文框.val(
-          start === 0
-            ? `${ref}\n${right}`
-            : end === str.length
-              ? `${left}\n${ref}\n`
-              : len > 0
-                ? `${left} ${ref} ${right}`
-                : `${left}\n${ref}`
-        );
+        console.log('[引用追记]', {
+          wasActive: wasActive?.tagName,
+          didFocus: document.activeElement !== wasActive,
+          start, end, strLen: str.length,
+          hasSelection: start !== end,
+          leftLen: left.length, rightLen: right.length, ref
+        });
+        if (start !== end) {
+          // 有选区 → 替换选区内容
+          console.log('[引用追记] 走替换选区分支, left长度:', left.length, 'right长度:', right.length);
+          正文框.val(`${left}${ref}${right}`);
+        } else {
+          // 无选区 → 根据光标位置插入
+          const branch = start === 0 ? '开头' : start === str.length ? '末尾' : '中间';
+          console.log('[引用追记] 走无选区分支:', branch, 'start:', start);
+          const _newVal = (() => {
+            if (start === 0)          return `${ref}\n${right}`;
+            if (start === str.length) return `${left}\n${ref}\n`;
+            return `${left}\n${ref}\n${right}`;
+          })();
+          正文框.val(_newVal);
+        }
         正文框.trigger('input', '');
         保存编辑();
+        // 光标定位到引用号之后——必须延迟到 click 事件彻底结束，
+        // 否则浏览器会把焦点还给被点击的 <a> 元素
+        // 旧：const _cursorPos = left.length + ref.length + (start !== end ? 0 : 1);
+        // 无选区时插入形态为（开头）`ref\n` 或（非开头）`\nref\n`，光标需落在引用号后的那个换行之后
+        const _cursorPos = start !== end
+          ? left.length + ref.length
+          : left.length + (start === 0 ? 0 : 1) + ref.length + 1;
+        // 保存期望光标位置，供浮窗重新打开时恢复
+        el.__pendingQuoteCursorPos = _cursorPos;
+        setTimeout(() => {
+          el.focus();
+          el.setSelectionRange(_cursorPos, _cursorPos);
+          // 若 focus 成功，清除 pending 标记
+          if (document.activeElement === el) {
+            el.__pendingQuoteCursorPos = null;
+          }
+        }, 0);
       });
     }
     // 粘贴图片到文件输入（保持原选择器）
