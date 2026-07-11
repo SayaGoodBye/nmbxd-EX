@@ -3944,8 +3944,10 @@
       },
       collapse($elem, hint) {
         if (!$elem.length || $elem.data('xdex-collapsed')) return;
-        // REPLY 浮窗内的表单 / 已搬进浮窗的表单不要再折叠，否则 early open 后会被 early pass 再次折成按钮
-        if ($elem.hasClass('qp-reply-form') || $elem.closest('.qp-body').length) return;
+        // 整表单不要在浮窗内被 early pass 再折成『回复/发串』按钮；
+        // 但 .collapse-wrapper（标题/名称/E-mail 可选项）即使已在 .qp-body 内也必须允许折叠
+        if ($elem.hasClass('qp-reply-form')) return;
+        if ($elem.closest('.qp-body').length && !$elem.hasClass('collapse-wrapper')) return;
         const $icons = $elem.find('.h-threads-item-reply-icon');
         let nums = '';
         if ($icons.length) {
@@ -9778,10 +9780,17 @@ ${markedSwatchHtml}
       content.style.whiteSpace = 'normal';
     }
   }
-  function tryInsertPreviewBoxEarly() {
-    if (!document.body || document.querySelector('.h-preview-box')) return false;
-    const form = document.querySelector('#h-post-form form');
-    if (!form) return false;
+  function tryInsertPreviewBoxEarly(formOpt) {
+    if (!document.body) return false;
+    // 已有预览框则复用（浮窗内优先）
+    const existing = document.querySelector('.qp-body .h-preview-box')
+      || document.querySelector('.h-preview-box');
+    if (existing) return true;
+    const form = formOpt
+      || document.querySelector('#h-post-form form')
+      || document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
+      || document.querySelector('form[action="/Home/Forum/doPostThread.html"]');
+    if (!form || !form.parentNode) return false;
     form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml());
     const previewEl = form.nextElementSibling && form.nextElementSibling.classList?.contains('h-preview-box')
       ? form.nextElementSibling
@@ -14320,10 +14329,42 @@ ${markedSwatchHtml}
           // 折叠按钮留在原位隐藏即可；不要带进浮窗
           formEl.__collapseToggleEl.style.display = 'none';
         }
-        // 浮窗内若因时序残留了折叠按钮，清掉
-        wrap.querySelectorAll('.xdex-placeholder.xdex-generic-toggle').forEach((el) => {
-          if (el !== formEl.__placeholder) el.remove();
-        });
+        // 只清理整表单『回复/发串』折叠按钮；不要删 form 内的「可选项」按钮
+        if (formEl.__collapseToggleEl && wrap.contains(formEl.__collapseToggleEl)) {
+          formEl.__collapseToggleEl.remove();
+          formEl.__collapseToggleEl = null;
+        }
+      }
+      // early open：ready/batch2 可能还没跑 enhancePostFormLayout，
+      // 导致浮窗内没有“可选项”(标题/名称/E-mail)折叠按钮、送出按钮也还在标题行。
+      // 这里对当前 form 同步补做一次（函数内部已幂等）。
+      try {
+        if (typeof enhancePostFormLayout === 'function') enhancePostFormLayout(formEl);
+      } catch (e) {}
+      // early open：若预览框尚未创建，立刻按当前 form 补一个 skeleton，
+      // 避免用户先看到无预览表单，再等 enhanceIsland/batch2。
+      if (!previewEl || !previewEl.isConnected || !wrap.contains(previewEl)) {
+        try {
+          if (typeof tryInsertPreviewBoxEarly === 'function') tryInsertPreviewBoxEarly(formEl);
+        } catch (e) {}
+        // 优先取紧邻当前 form 的预览，再兜底全局
+        previewEl = (formEl.nextElementSibling && formEl.nextElementSibling.classList?.contains('h-preview-box'))
+          ? formEl.nextElementSibling
+          : (wrap.querySelector('.h-preview-box')
+            || document.querySelector('.qp-body .h-preview-box')
+            || document.querySelector('.h-preview-box'));
+        if (previewEl && !wrap.contains(previewEl)) {
+          if (!previewEl.__placeholder) {
+            const ph2 = document.createElement('div');
+            ph2.style.display = 'none';
+            if (previewEl.parentNode) previewEl.parentNode.insertBefore(ph2, previewEl);
+            previewEl.__placeholder = ph2;
+          }
+          previewEl.style.width = '100%';
+          previewEl.style.maxWidth = 'none';
+          previewEl.style.margin = '0';
+          wrap.appendChild(previewEl);
+        }
       }
       // 确保粘贴图片预览已绑定（幂等），即使 enhanceIsland 尚未初始化，
       // 早期打开浮窗时粘贴图片也能被捕获并更新到当前活跃预览框。
@@ -14332,27 +14373,30 @@ ${markedSwatchHtml}
       // 若 open() 执行时页面还没有 .h-preview-box（enhanceIsland 尚未初始化），
       // 之后 enhanceIsland 会把新的预览框插到浮窗外（原位置）。如果此时浮窗里
       // 还没有预览框，就把浮窗外的那个搬进来，否则粘贴图片的预览会更新到
-      // 用户看不见的框。用延时检查一次即可，不依赖重复轮询。
-      setTimeout(() => {
+      // 用户看不见的框。短时重试几次，覆盖 batch2 稍晚创建的情况。
+      const adoptStrayPreviewIntoPanel = () => {
         const bodyNow = ov.querySelector('.qp-body');
-        if (!bodyNow) return;
-        if (bodyNow.querySelector('.h-preview-box')) return; // 浮窗内已有，无需搬运
+        if (!bodyNow) return false;
+        const wrapNow = bodyNow.querySelector('.qp-content-wrap') || wrap;
+        if (bodyNow.querySelector('.h-preview-box')) {
+          // 浮窗内已有：仍补一次表单布局（幂等），防止只补了预览漏了可选项
+          try { if (typeof enhancePostFormLayout === 'function') enhancePostFormLayout(formEl); } catch (e) {}
+          return true;
+        }
         const stray = document.querySelector('.h-preview-box');
-        if (!stray || stray.closest('.qp-body')) return; // 没有，或已在别的浮窗
+        if (!stray || stray.closest('.qp-body')) return false; // 没有，或已在别的浮窗
         // 记录占位符（与 closeOverlay 的还原逻辑对应）
         if (!stray.__placeholder) {
           const ph = document.createElement('div');
           ph.style.display = 'none';
-          stray.parentNode.insertBefore(ph, stray);
+          if (stray.parentNode) stray.parentNode.insertBefore(ph, stray);
           stray.__placeholder = ph;
         }
         stray.style.width = '100%';
         stray.style.maxWidth = 'none';
         stray.style.margin = '0';
-        const wrapNow = document.createElement('div');
-        wrapNow.className = 'qp-content-wrap';
+        // 放进同一个 content wrap，避免再叠一个 wrap 导致布局错乱
         wrapNow.appendChild(stray);
-        bodyNow.appendChild(wrapNow);
         ov.__previewEl = stray;
         if (typeof extendQuote === 'function') extendQuote(stray);
         if (typeof initContent === 'function') {
@@ -14360,7 +14404,7 @@ ${markedSwatchHtml}
         }
         // 搬运完成后，如果 file input 里已有图片（用户在 enhanceIsland 之前就粘贴了），
         // 立即补渲染到刚搬进浮窗的预览框，避免“图片已插入但预览不显示”。
-        const movedInput = stray.closest('.qp-content-wrap')?.querySelector('input[type="file"][name="image"]')
+        const movedInput = wrapNow.querySelector('input[type="file"][name="image"]')
           || document.querySelector('.qp-body input[type="file"][name="image"]');
         if (movedInput && movedInput.files && movedInput.files[0]) {
           updatePreviewImageFromFile(movedInput.files[0]);
@@ -14369,7 +14413,16 @@ ${markedSwatchHtml}
         ensureReplyPanelAutoFitObserver(ov);
         if (!ov.__userSizedPanel) fitReplyPanelToContent(ov, { save: true });
         scheduleReplyPanelAutoFit(ov);
-      }, 0);
+        return true;
+      };
+      // 立刻试一次 + 短时重试（enhanceIsland 在 batch2，可能比 open 晚几十~几百 ms）
+      if (!adoptStrayPreviewIntoPanel()) {
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries += 1;
+          if (adoptStrayPreviewIntoPanel() || tries >= 12) clearInterval(timer);
+        }, 50);
+      }
       // 浮窗内立即处理扩展引用，保证可点击引用弹窗
       if (typeof extendQuote === 'function') {
         extendQuote(previewEl || wrap);
@@ -16545,8 +16598,11 @@ ${markedSwatchHtml}
   highlightPO();
 
   //回复表单UI调整
-  function enhancePostFormLayout() {
-     const form = document.querySelector('form[action*="doReplyThread"], form[action*="doPostThread"]');
+  function enhancePostFormLayout(formOpt) {
+     // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点
+     const form = formOpt
+      || document.querySelector('.qp-body form[action*="doReplyThread"], .qp-body form[action*="doPostThread"]')
+      || document.querySelector('form[action*="doReplyThread"], form[action*="doPostThread"]');
       if (!form) return;
       // 定位“标题”行与“颜文字”行
       const allRows = Array.from(form.querySelectorAll('.h-post-form-grid'));
@@ -16559,7 +16615,9 @@ ${markedSwatchHtml}
         }
       }
       // 1) 先把送出按钮移到“颜文字”行，并让整行用 flex 不换行，按钮推到行最右
-      if (titleRow && emoticonRow) {
+      // 已搬过则跳过，避免 early open / ready 重复搬
+      if (titleRow && emoticonRow && !emoticonRow.querySelector('input[type="submit"]')) {
+
         const sendBtnCell = titleRow.querySelector('.h-post-form-option');
         const sendBtn = sendBtnCell?.querySelector('input[type="submit"]');
         if (sendBtn) {
@@ -16662,18 +16720,64 @@ ${markedSwatchHtml}
         input.addEventListener('input', updateCounter);
         updateCounter();
       });
+      // 已折叠过就不要再包一层（early open 与 ready 都会跑）
+      // 若 toggle 丢失或 Utils.collapse 曾被 .qp-body 守卫挡掉，则补折叠；并清理重复按钮
       if (rowsToCollapse.length) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'collapse-wrapper';
-        wrapper.style.width = '100%';
-        // 将折叠目标打包进容器
-        rowsToCollapse[0].before(wrapper);
-        rowsToCollapse.forEach(r => wrapper.appendChild(r));
-        // 使用现有 collapse 能力（依赖 jQuery）
+        let wrapper = form.querySelector('.collapse-wrapper');
+        if (!wrapper) {
+          wrapper = document.createElement('div');
+          wrapper.className = 'collapse-wrapper';
+          wrapper.style.width = '100%';
+          rowsToCollapse[0].before(wrapper);
+          rowsToCollapse.forEach(r => wrapper.appendChild(r));
+        }
+        const isOptionalToggle = (el) => !!(el
+          && el.classList
+          && el.classList.contains('xdex-placeholder')
+          && el.classList.contains('xdex-generic-toggle')
+          && /可选项/.test(el.textContent || ''));
+        // 合法位置：wrapper 前（Utils.collapse 默认）
+        // 兼容旧逻辑误挪到 form 前（wrap 内）的情况，只保留一个
+        const nearby = [];
+        if (isOptionalToggle(wrapper.previousElementSibling)) nearby.push(wrapper.previousElementSibling);
+        if (form.previousElementSibling && form.previousElementSibling !== wrapper.previousElementSibling
+            && isOptionalToggle(form.previousElementSibling)) {
+          nearby.push(form.previousElementSibling);
+        }
+        // 浮窗 wrap 内再扫一遍，防止残留重复
+        const host = form.closest('.qp-content-wrap') || form.parentElement;
+        if (host && host.querySelectorAll) {
+          host.querySelectorAll('.xdex-placeholder.xdex-generic-toggle').forEach((el) => {
+            if (isOptionalToggle(el) && !nearby.includes(el)) nearby.push(el);
+          });
+        }
+        let keepToggle = nearby.find((el) => el.nextElementSibling === wrapper) || nearby[0] || null;
+        nearby.forEach((el) => {
+          if (el !== keepToggle) el.remove();
+        });
+        // 若误挪到 form 外，搬回 wrapper 前，保证位置正确且 hasToggle 判定稳定
+        if (keepToggle && keepToggle.nextElementSibling !== wrapper) {
+          wrapper.before(keepToggle);
+        }
         if (typeof Utils !== 'undefined' && typeof Utils.collapse === 'function' && typeof $ === 'function') {
-          Utils.collapse($(wrapper), '可选项');
+          const $wrapper = $(wrapper);
+          if (keepToggle) {
+            keepToggle.style.display = '';
+            if (!$wrapper.data('xdex-collapsed')) {
+              $wrapper.hide().data('xdex-collapsed', true);
+              wrapper.classList.add('xdex-generic-collapsed');
+            }
+          } else {
+            if ($wrapper.data('xdex-collapsed')) {
+              $wrapper.removeData('xdex-collapsed');
+              wrapper.classList.remove('xdex-generic-collapsed');
+              $wrapper.show();
+            }
+            Utils.collapse($wrapper, '可选项');
+          }
         }
       }
+      form.dataset.xdexPostFormLayoutEnhanced = '1';
     }
 
   /* --------------------------------------------------
