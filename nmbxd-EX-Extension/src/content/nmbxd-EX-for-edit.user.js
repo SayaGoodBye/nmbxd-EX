@@ -17016,56 +17016,110 @@ ${markedSwatchHtml}
           // 用“显示文本 + 实际值”作为唯一键，避免脚本扩展颜文字（尤其富文本）统计丢失或冲突
           return `k:${text}\nv:${value}`;
         }
+        // 同一颜文字可能同时存在多种历史 key：
+        // - sk:extra:xxx / sk:rich:xxx（扩展注入后）
+        // - k:显示文本\nv:实际值（注入前/原生 option）
+        // - 仅显示文本（更旧版本）
+        // 排序/记录时必须合并，否则“最近”会看起来乱跳
+        function listKaomojiStatAliases(opt) {
+          const label = (opt?.textContent || '').trim();
+          const value = normalizeKaomojiValue(opt?.value);
+          const aliases = [];
+          const push = (k) => {
+            if (!k || aliases.includes(k)) return;
+            aliases.push(k);
+          };
+          push(kaomojiKeyFromOption(opt));
+          if (label) {
+            push(label); // legacy
+            push(`k:${label}\nv:${value}`);
+            // 富文本插入时 value 可能带首尾换行，兼容去换行后的 key
+            const bareVal = value.replace(/^\n+/, '').replace(/\n+$/, '');
+            if (bareVal !== value) push(`k:${label}\nv:${bareVal}`);
+            // 扩展项稳定 key 的两种常见形态
+            push(`sk:extra:${label}`);
+            push(`sk:rich:${label}`);
+          }
+          const stableKey = (opt?.dataset?.kaoKey || '').trim();
+          if (stableKey) push(`sk:${stableKey}`);
+          return aliases;
+        }
+        function readKaomojiStatEntry(stats, key) {
+          const st = stats && key ? stats[key] : null;
+          if (!st || typeof st !== 'object') return { count: 0, lastUsed: 0 };
+          return {
+            count: Number.isFinite(Number(st.count)) ? Number(st.count) : 0,
+            lastUsed: Number.isFinite(Number(st.lastUsed)) ? Number(st.lastUsed) : 0
+          };
+        }
+        function mergeKaomojiStatEntries(entries) {
+          let count = 0;
+          let lastUsed = 0;
+          (entries || []).forEach((st) => {
+            count += Number(st && st.count) || 0;
+            lastUsed = Math.max(lastUsed, Number(st && st.lastUsed) || 0);
+          });
+          return { count, lastUsed };
+        }
+        // 把别名统计折叠进主 key，避免排序只读到“空壳 sk key”而丢掉真正的 lastUsed
+        function coalesceKaomojiStatsForOption(stats, opt) {
+          const primary = kaomojiKeyFromOption(opt);
+          const aliases = listKaomojiStatAliases(opt);
+          const merged = mergeKaomojiStatEntries(aliases.map((k) => readKaomojiStatEntry(stats, k)));
+          stats[primary] = merged;
+          aliases.forEach((k) => {
+            if (k !== primary && stats[k]) delete stats[k];
+          });
+          return merged;
+        }
+        function getKaomojiStatForOption(stats, opt) {
+          const primary = kaomojiKeyFromOption(opt);
+          // 已折叠过则直接读主 key；若仍有别名残留则按合并值排序
+          if (stats && stats[primary] && typeof stats[primary] === 'object') {
+            const aliases = listKaomojiStatAliases(opt);
+            const hasAliasResidue = aliases.some((k) => k !== primary && stats[k]);
+            if (!hasAliasResidue) return readKaomojiStatEntry(stats, primary);
+            return mergeKaomojiStatEntries(aliases.map((k) => readKaomojiStatEntry(stats, k)));
+          }
+          return mergeKaomojiStatEntries(listKaomojiStatAliases(opt).map((k) => readKaomojiStatEntry(stats, k)));
+        }
         function syncKaomojiStatsWithOptions(options) {
           const stats = loadKaomojiStats();
-          const keysOnPage = new Set();
-          // 收集当前页面所有颜文字 key（而非仅当前 select），避免多 select 场景误删扩展项统计
+          // 收集当前页面所有颜文字（而非仅当前 select），避免多 select 场景漏合并
+          const allOpts = [];
           document.querySelectorAll(SELECTOR).forEach(sel => {
             Array.from(sel.options || []).forEach(opt => {
               const label = (opt?.textContent || '').trim();
               if (!label || label === '无') return;
-              keysOnPage.add(kaomojiKeyFromOption(opt));
+              allOpts.push(opt);
             });
           });
-          options.forEach(opt => {
+          (options || []).forEach(opt => {
             const label = (opt?.textContent || '').trim();
-            const key = kaomojiKeyFromOption(opt);
             if (!label || label === '无') return;
-            // 兼容旧版本（仅按 text 存储）统计，迁移到新 key
-            const legacyKey = label;
-            if (!stats[key] && stats[legacyKey] && typeof stats[legacyKey] === 'object') {
-              stats[key] = {
-                count: Number(stats[legacyKey].count) || 0,
-                lastUsed: Number(stats[legacyKey].lastUsed) || 0
-              };
-              delete stats[legacyKey];
-            }
-            const fallbackKey = `k:${label}\nv:${normalizeKaomojiValue(opt?.value)}`;
-            if (key !== fallbackKey && !stats[key] && stats[fallbackKey] && typeof stats[fallbackKey] === 'object') {
-              stats[key] = {
-                count: Number(stats[fallbackKey].count) || 0,
-                lastUsed: Number(stats[fallbackKey].lastUsed) || 0
-              };
-              delete stats[fallbackKey];
-            }
-            if (!stats[key]) stats[key] = { count: 0, lastUsed: 0 };
-            if (!Number.isFinite(Number(stats[key].count))) stats[key].count = 0;
-            if (!Number.isFinite(Number(stats[key].lastUsed))) stats[key].lastUsed = 0;
+            if (!allOpts.includes(opt)) allOpts.push(opt);
           });
-          // 不主动删除缺失 key：时间线等场景下，扩展颜文字可能晚于首次渲染注入，
-          // 若此处清理会把“扩展项统计”反复删掉，表现为计数长期为 0。
-          // 如需清理可后续增加手动/定时 GC，而不是在每次渲染时做强清理。
+          allOpts.forEach(opt => {
+            const label = (opt?.textContent || '').trim();
+            if (!label || label === '无') return;
+            coalesceKaomojiStatsForOption(stats, opt);
+          });
+          // 不主动删除“当前页完全见不到”的孤立 key：扩展颜文字可能晚注入。
+          // 但同 option 的别名已在 coalesce 中折叠进主 key。
           saveKaomojiStats(stats);
           return stats;
         }
         function recordKaomojiUsage(opt) {
           const label = (opt?.textContent || '').trim();
-          const key = kaomojiKeyFromOption(opt);
           if (!label || label === '无') return;
+          const key = kaomojiKeyFromOption(opt);
           const stats = loadKaomojiStats();
-          if (!stats[key]) stats[key] = { count: 0, lastUsed: 0 };
-          stats[key].count = (Number(stats[key].count) || 0) + 1;
-          stats[key].lastUsed = Date.now();
+          // 先合并历史别名，再累加到主 key，避免“记到 A、排到 B”
+          const merged = coalesceKaomojiStatsForOption(stats, opt);
+          stats[key] = {
+            count: (Number(merged.count) || 0) + 1,
+            lastUsed: Date.now()
+          };
           saveKaomojiStats(stats);
         }
         function getSortedKaomojiOptions(select) {
@@ -17081,8 +17135,8 @@ ${markedSwatchHtml}
           const stats = syncKaomojiStatsWithOptions(base.map(x => x.opt));
           if (mode === 'freq') {
             base.sort((a, b) => {
-              const sa = stats[a.key] || { count: 0, lastUsed: 0 };
-              const sb = stats[b.key] || { count: 0, lastUsed: 0 };
+              const sa = getKaomojiStatForOption(stats, a.opt);
+              const sb = getKaomojiStatForOption(stats, b.opt);
               const dc = (Number(sb.count) || 0) - (Number(sa.count) || 0);
               if (dc !== 0) return dc;
               // 常用模式：频次相同 -> 最近使用优先
@@ -17097,13 +17151,13 @@ ${markedSwatchHtml}
             const used = [];
             const unused = [];
             base.forEach(x => {
-              const st = stats[x.key] || { count: 0, lastUsed: 0 };
+              const st = getKaomojiStatForOption(stats, x.opt);
               if ((Number(st.lastUsed) || 0) > 0) used.push(x);
               else unused.push(x);
             });
             used.sort((a, b) => {
-              const sa = stats[a.key] || { count: 0, lastUsed: 0 };
-              const sb = stats[b.key] || { count: 0, lastUsed: 0 };
+              const sa = getKaomojiStatForOption(stats, a.opt);
+              const sb = getKaomojiStatForOption(stats, b.opt);
               const dt = (Number(sb.lastUsed) || 0) - (Number(sa.lastUsed) || 0);
               if (dt !== 0) return dt;
               const dc = (Number(sb.count) || 0) - (Number(sa.count) || 0);
