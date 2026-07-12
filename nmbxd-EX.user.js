@@ -2142,11 +2142,11 @@
     const tid = String(threadId || '').trim();
     if (!isValidThreadId(tid)) return '';
     const store = getThreadHistoryStore();
-    const candidates = ['normal', 'po']
-      .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
-      .filter(Boolean)
-      .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
-    return candidates.length ? buildThreadHistoryItemUrl(candidates[0]) : '';
+    // 常用串/浏览历史联动：优先普通模式，没有再回退只看 PO；都没有返回空（调用方回退普通第 1 页）
+    const normal = store.items[getThreadHistoryKey('normal', tid)];
+    if (normal) return buildThreadHistoryItemUrl(normal);
+    const po = store.items[getThreadHistoryKey('po', tid)];
+    return po ? buildThreadHistoryItemUrl(po) : '';
   }
   function appendThreadHistoryText(parent, tagName, className, text) {
     const el = document.createElement(tagName);
@@ -21618,14 +21618,14 @@ ${markedSwatchHtml}
       const tid = link.dataset.threadId;
       if (tid) {
         const store = getThreadHistoryStore();
-        const candidates = ['normal', 'po']
-          .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
-          .filter(Boolean)
-          .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
-        if (candidates.length) {
-          const item = candidates[0];
+        // 优先普通模式，没有再回退只看 PO；都没有则指向普通第 1 页
+        const normal = store.items[getThreadHistoryKey('normal', tid)];
+        const item = normal || store.items[getThreadHistoryKey('po', tid)];
+        if (item) {
           const page = item.maxVisitedPage || item.page || 1;
           link.href = buildThreadHistoryPageUrl(item.mode, tid, page);
+        } else {
+          link.href = buildThreadHistoryPageUrl('normal', tid, 1);
         }
       }
     });
