@@ -19328,6 +19328,8 @@ ${markedSwatchHtml}
         }
       });
       function insertQuote($textarea, rid) {
+        // 手动追记：放行关闭引用拦截，避免 >>No.{r} 被剥掉
+        if (typeof allowManualQuoteInsert === 'function') allowManualQuoteInsert(rid);
         const start = $textarea.prop('selectionStart');
         const end   = $textarea.prop('selectionEnd');
         const str   = $textarea.val();
@@ -23184,6 +23186,47 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   // 阻止URL中r=参数导致的自动引用插入（网站原生行为）
   // 开关：设置面板 → 关闭引用（disableAutoQuote），实时生效
+  // 方案 B：仍拦截自动插入，但用户手动点串号时短暂放行
+  let xdexManualQuoteBypass = null; // { rid: string|null, until: number }
+  function allowManualQuoteInsert(rid, ttlMs = 2000) {
+    xdexManualQuoteBypass = {
+      rid: rid != null && rid !== '' ? String(rid) : null,
+      until: Date.now() + (Number(ttlMs) > 0 ? Number(ttlMs) : 2000)
+    };
+  }
+  function shouldBypassAutoQuoteStrip(value, quoteRe, rParam) {
+    const state = xdexManualQuoteBypass;
+    if (!state) return false;
+    if (Date.now() > state.until) {
+      xdexManualQuoteBypass = null;
+      return false;
+    }
+    // 未指定 rid：放行任何手动写入；指定了则仅当写入内容匹配对应引用时放行
+    if (!state.rid) return true;
+    if (String(state.rid) === String(rParam || '') && quoteRe && quoteRe.test(String(value || ''))) return true;
+    try {
+      const esc = String(state.rid).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp('^\\s*>>No\\.' + esc + '\\s*\\n?').test(String(value || ''));
+    } catch (e) {
+      return false;
+    }
+  }
+  function extractQuoteIdFromClickTarget(target) {
+    if (!target || !target.closest) return '';
+    const a = target.closest('a.h-threads-info-id, a[href*="r="], a[href*="/t/"]');
+    if (!a) return '';
+    // 仅关注串号/引用链接，避免误伤普通导航
+    const href = a.getAttribute('href') || '';
+    try {
+      const url = new URL(href, location.origin);
+      const rid = url.searchParams.get('r');
+      if (rid) return String(rid);
+    } catch (e) {}
+    const textMatch = String(a.textContent || '').match(/No\.(\d{4,8})/i);
+    if (textMatch) return textMatch[1];
+    const hrefMatch = href.match(/(?:[?&]r=|No\.)(\d{4,8})/i);
+    return hrefMatch ? hrefMatch[1] : '';
+  }
   function initDisableAutoQuote() {
     const rParam = new URLSearchParams(location.search).get('r');
     if (!rParam) return;
@@ -23218,6 +23261,13 @@ ${markedSwatchHtml}
       } catch (e) {}
       return false;
     }
+    function shouldStripAutoQuote(v) {
+      if (!isEnabled() || draftHasQuote() || shouldPreserveAutoQuoteForReport()) return false;
+      if (!quoteRe.test(String(v || ''))) return false;
+      // 用户手动点击/手动追记：短暂放行
+      if (shouldBypassAutoQuoteStrip(v, quoteRe, rParam)) return false;
+      return true;
+    }
     function interceptTextarea(ta) {
       if (ta.__quoteIntercepted) return;
       ta.__quoteIntercepted = true;
@@ -23226,19 +23276,30 @@ ${markedSwatchHtml}
         configurable: true, enumerable: true,
         get() { return desc.get.call(this); },
         set(v) {
-          // 仅在拦截开启 且 草稿本身不含此引用号 且 非值班室/举报场景时才剥离
-          if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(v)) {
-            v = v.replace(quoteRe, '');
+          // 仅剥离 URL r= 导致的自动引用；手动点串号追记不拦
+          if (shouldStripAutoQuote(v)) {
+            v = String(v).replace(quoteRe, '');
           }
           desc.set.call(this, v);
         }
       });
       // 初始清理（仅在开启且草稿不含该引用且非值班室/举报场景时）
-      if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(ta.value)) {
-        const cleaned = ta.value.replace(quoteRe, '');
+      if (shouldStripAutoQuote(ta.value)) {
+        const cleaned = String(ta.value).replace(quoteRe, '');
         desc.set.call(ta, cleaned);
         ta.dispatchEvent(new Event('input', { bubbles: true }));
       }
+    }
+    // 捕获阶段监听点击：先于站点/自己的写入逻辑设好放行标记
+    if (!initDisableAutoQuote.__manualClickBound) {
+      initDisableAutoQuote.__manualClickBound = true;
+      document.addEventListener('click', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        const rid = extractQuoteIdFromClickTarget(e.target);
+        if (!rid) return;
+        // 只需要放行与 URL r= 相同的那条（其他 No. 本来就不会被剥）
+        if (String(rid) === String(rParam)) allowManualQuoteInsert(rid);
+      }, true);
     }
     const obs = new MutationObserver(() => {
       const ta = document.querySelector('textarea.h-post-form-textarea');
