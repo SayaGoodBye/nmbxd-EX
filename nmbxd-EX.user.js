@@ -2935,7 +2935,9 @@
     $sel.val(selected);
     const activeFeed = feeds.find(f => f.uuid === selected);
     $desc.text(activeFeed && activeFeed.desc ? activeFeed.desc : '');
-    $uuid.text(activeFeed && activeFeed.desc ? activeFeed.uuid : '');
+    // 无备注时也要显示订阅号（打码），避免选择框看起来是空的
+    $uuid.text(activeFeed && activeFeed.uuid ? activeFeed.uuid : '');
+    $uuid.toggleClass('xdex-feed-uuid-light-blur', !!(activeFeed && activeFeed.uuid && !activeFeed.desc));
     $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
     return selected;
   }
@@ -3156,8 +3158,11 @@
       $('#sp_feeds_selector').val(uuid).trigger('change.subscriptionFeed');
       const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
       const feed = feeds.find(f => f.uuid === uuid);
+      const $uuidEl = $display.find('.xdex-feed-display-uuid');
       $display.find('.xdex-feed-display-desc').text(feed && feed.desc ? feed.desc : '');
-      $display.find('.xdex-feed-display-uuid').text(feed && feed.desc ? feed.uuid : '');
+      // 无备注时也显示打码订阅号
+      $uuidEl.text(feed && feed.uuid ? feed.uuid : '');
+      $uuidEl.toggleClass('xdex-feed-uuid-light-blur', !!(feed && feed.uuid && !feed.desc));
       $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
@@ -21658,6 +21663,11 @@ ${markedSwatchHtml}
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         filter: blur(4px);
         transition: filter 0.15s;
+      }
+      /* 无备注时仅显示订阅号：模糊稍浅，能感知有内容被打码，但看不清具体字符 */
+      .xdex-feed-display-uuid.xdex-feed-uuid-light-blur {
+        filter: blur(2.5px);
+        opacity: 0.85;
       }
       .xdex-feed-display-uuid:empty { display: none; }
       .xdex-feed-chevron {
