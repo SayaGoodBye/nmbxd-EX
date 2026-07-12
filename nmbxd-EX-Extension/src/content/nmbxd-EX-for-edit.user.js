@@ -1433,7 +1433,8 @@
       return null;
     }
     const path = url.pathname || '';
-    const normalMatch = path.match(/\/t\/(\d{6,8})(?:\/(\d+))?/);
+    // 普通串支持 /t/12345678 与 /t/12345678/page/323（不再识别笔误的 /t/12345678/323）
+    const normalMatch = path.match(/\/t\/(\d{6,8})(?:\/page\/(\d+))?/);
     const poMatch = path.match(/\/Forum\/po\/id\/(\d{6,8})(?:\/page\/(\d+)\.html)?/);
     const match = normalMatch || poMatch;
     if (!match) return null;
@@ -1451,7 +1452,9 @@
     const pageNum = Math.max(1, Number(page) || 1);
     if (!tid) return location.href;
     if (mode === 'po') return `${location.origin}/Forum/po/id/${tid}/page/${pageNum}.html`;
-    return `${location.origin}/t/${tid}?page=${pageNum}`;
+    // 普通串页码路径：/t/{id}/page/{n}（第 1 页保留 /t/{id}）
+    if (pageNum <= 1) return `${location.origin}/t/${tid}`;
+    return `${location.origin}/t/${tid}/page/${pageNum}`;
   }
   function parseThreadHistoryPageNumberFromElement(el) {
     if (!el) return 0;
