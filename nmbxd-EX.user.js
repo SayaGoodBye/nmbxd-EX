@@ -18318,19 +18318,57 @@ ${markedSwatchHtml}
       const migratedLegacy = migrateLegacyDraftIfNeeded(key);
       let draft = readDraftValue(key);
       if (!draft && migratedLegacy) draft = migratedLegacy;
-      // 检查 URL 参数 r
-      if (搜索参数.r) {
-        const quote = `>>No.${搜索参数.r}\n`;
-        if (!draft.startsWith(quote)) {
+      if (typeof draft !== 'string') draft = '';
+      const ta = 正文框[0];
+      const current = ta ? String(ta.value || '') : '';
+      const rId = 搜索参数 && 搜索参数.r ? String(搜索参数.r) : '';
+      const autoQuote = rId ? `>>No.${rId}\n` : '';
+      const currentTrim = current.trim();
+      // 仅当文本框为空，或仍是站点/脚本自动插入的单独引用行时，才允许草稿覆盖
+      // 避免页面未完全加载时用户已输入内容被 载入编辑 整框冲掉
+      const currentIsOnlyAutoQuote = !!(rId && (
+        current === autoQuote
+        || currentTrim === `>>No.${rId}`
+      ));
+      if (currentTrim !== '' && !currentIsOnlyAutoQuote) {
+        return;
+      }
+      // 关闭引用开启时：不在草稿载入阶段强制前置 r= 自动引用（与 tag27 一致）
+      // 值班室/举报表单仍保留自动引用，方便精准举报
+      let shouldAutoPrependQuote = !!rId;
+      if (shouldAutoPrependQuote) {
+        try {
+          const s = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+          const disableAutoQuote = s.disableAutoQuote !== false;
+          if (disableAutoQuote) {
+            let preserveForReport = false;
+            try {
+              const decodedPath = decodeURIComponent(location.pathname || '');
+              if (/^\/f\/值班室(?:\/|$)/.test(decodedPath)) preserveForReport = true;
+            } catch (e) {}
+            if (!preserveForReport) {
+              try {
+                preserveForReport = !!document.querySelector('form[action="/Home/Forum/doReplyThread.html"] #h-report-switch, form[action="/Home/Forum/doPostThread.html"] #h-report-switch, #h-report-switch');
+              } catch (e) {}
+            }
+            if (!preserveForReport) shouldAutoPrependQuote = false;
+          }
+        } catch (e) {}
+      }
+      if (shouldAutoPrependQuote) {
+        const quote = `>>No.${rId}\n`;
+        if (!String(draft).startsWith(quote) && !String(draft).startsWith(`>>No.${rId}`)) {
           draft = quote + draft;
         }
       }
+      // 内容没变化则不写回，减少无意义 input/草稿回写
+      if (current === draft) return;
       正文框.val(draft);
       // 触发 input 事件，让字数计数器同步更新（jQuery .val() 不会触发原生事件）
       正文框[0]?.dispatchEvent(new Event('input', { bubbles: true }));
     }
     // 草稿：注册自动保存 + 初始化一次保存触发（原脚本用 $(保存编辑)）
-    function 注册自动保存编辑() {
+function 注册自动保存编辑() {
       if (draftAutosaveBound) {
         保存编辑();
         return;
