@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.9.0
+// @version      3.10.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增\n1.新增“关闭引用”开关，在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，控制其是否在输入框中自动添加引用号（值班室版块默认关闭）。\n2.新增标题/作者/E-mail/正文字数统计与提醒。\n\n优化\n1.优化脚本加载时机、加载顺序等，减少首次打开页面时候用户等待时间。\n2.值班室举报理由新增“其他”理由并默认选中，以便快速提交，如有更适合的理由请手动选择。\n3.值班室板块内快捷回复默认为“发串”模式，以便用户按预期提交举报。\n4.页码栏拓展为最长七个页码按钮。\n5.优化阅图模式瀑布流，打开页面图片较少时继续获取，尽可能填满当前页面。\n6.部分功能支持6/7位串号以及8位饼干。\n\n修复\n1.排除版块页快速回复api拉取的数据中可能混杂的Tips。\n2.修复订阅面板中切换订阅号后没有重新作用模糊遮罩的问题。\n3.修复侧边栏常用串标题溢出问题。\n4.修复常用串链接没有优先指向浏览历史中该串最远页码的问题。\n5.修复阅图模式瀑布流在图片较少时，更多图片集中在某一列的问题。\n6.修复原生/拓展引用浮窗中未作用标记饼干的问题。\n7.修复串内检查回复是否更新结果toast可能被覆盖的问题。
+// @changelog    优化\n\n1.允许改变回复浮窗/引用浮窗的宽高，刷新后恢复。\n2.优化提交锁，当前15秒后还未提交成功会解锁并提示检查网络或刷新页面。\n3.将“标题/作者/E-mail”字数提示位置移动至输入框内部。\n4.常用串与浏览历史的联动中优先使用主串模式的数据，仅在无主串浏览历史但有只看Po模式数据时使用后者。\n5.浏览历史新增/t/67024789/page/23的网址格式的识别。\n6.订阅面板选择器添加提示下拉UI。\n7.加快回复后toast的出现与更新速度。\n\n修复\n\n1.修复插入引用追记时正文计数未能及时更新的问题。\n2.修复在文本内部插入引用追记时后方内容被清空的问题。\n3.修复旧key参与排序导致的最近使用颜文字排序错误的问题。\n4.修复浏览历史无法识别类似/t/67024789/page/23的网址格式的问题。\n5.修复在开启“关闭引用”时，无法通过点击网址中r=参数对应的引用号添加引用追记的问题。\n6.修复无备注的订阅号在订阅面板选择下拉框中不显示的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -1433,7 +1433,8 @@
       return null;
     }
     const path = url.pathname || '';
-    const normalMatch = path.match(/\/t\/(\d{6,8})(?:\/(\d+))?/);
+    // 普通串支持 /t/12345678 与 /t/12345678/page/323（不再识别笔误的 /t/12345678/323）
+    const normalMatch = path.match(/\/t\/(\d{6,8})(?:\/page\/(\d+))?/);
     const poMatch = path.match(/\/Forum\/po\/id\/(\d{6,8})(?:\/page\/(\d+)\.html)?/);
     const match = normalMatch || poMatch;
     if (!match) return null;
@@ -1451,7 +1452,9 @@
     const pageNum = Math.max(1, Number(page) || 1);
     if (!tid) return location.href;
     if (mode === 'po') return `${location.origin}/Forum/po/id/${tid}/page/${pageNum}.html`;
-    return `${location.origin}/t/${tid}?page=${pageNum}`;
+    // 普通串页码路径：/t/{id}/page/{n}（第 1 页保留 /t/{id}）
+    if (pageNum <= 1) return `${location.origin}/t/${tid}`;
+    return `${location.origin}/t/${tid}/page/${pageNum}`;
   }
   function parseThreadHistoryPageNumberFromElement(el) {
     if (!el) return 0;
@@ -2139,11 +2142,11 @@
     const tid = String(threadId || '').trim();
     if (!isValidThreadId(tid)) return '';
     const store = getThreadHistoryStore();
-    const candidates = ['normal', 'po']
-      .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
-      .filter(Boolean)
-      .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
-    return candidates.length ? buildThreadHistoryItemUrl(candidates[0]) : '';
+    // 常用串/浏览历史联动：优先普通模式，没有再回退只看 PO；都没有返回空（调用方回退普通第 1 页）
+    const normal = store.items[getThreadHistoryKey('normal', tid)];
+    if (normal) return buildThreadHistoryItemUrl(normal);
+    const po = store.items[getThreadHistoryKey('po', tid)];
+    return po ? buildThreadHistoryItemUrl(po) : '';
   }
   function appendThreadHistoryText(parent, tagName, className, text) {
     const el = document.createElement(tagName);
@@ -2935,7 +2938,9 @@
     $sel.val(selected);
     const activeFeed = feeds.find(f => f.uuid === selected);
     $desc.text(activeFeed && activeFeed.desc ? activeFeed.desc : '');
-    $uuid.text(activeFeed && activeFeed.desc ? activeFeed.uuid : '');
+    // 无备注时也要显示订阅号（打码），避免选择框看起来是空的
+    $uuid.text(activeFeed && activeFeed.uuid ? activeFeed.uuid : '');
+    $uuid.toggleClass('xdex-feed-uuid-light-blur', !!(activeFeed && activeFeed.uuid && !activeFeed.desc));
     $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
     return selected;
   }
@@ -3156,8 +3161,11 @@
       $('#sp_feeds_selector').val(uuid).trigger('change.subscriptionFeed');
       const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
       const feed = feeds.find(f => f.uuid === uuid);
+      const $uuidEl = $display.find('.xdex-feed-display-uuid');
       $display.find('.xdex-feed-display-desc').text(feed && feed.desc ? feed.desc : '');
-      $display.find('.xdex-feed-display-uuid').text(feed && feed.desc ? feed.uuid : '');
+      // 无备注时也显示打码订阅号
+      $uuidEl.text(feed && feed.uuid ? feed.uuid : '');
+      $uuidEl.toggleClass('xdex-feed-uuid-light-blur', !!(feed && feed.uuid && !feed.desc));
       $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
       $dropdown.hide();
       $display.attr('aria-expanded', 'false');
@@ -3944,6 +3952,10 @@
       },
       collapse($elem, hint) {
         if (!$elem.length || $elem.data('xdex-collapsed')) return;
+        // 整表单不要在浮窗内被 early pass 再折成『回复/发串』按钮；
+        // 但 .collapse-wrapper（标题/名称/E-mail 可选项）即使已在 .qp-body 内也必须允许折叠
+        if ($elem.hasClass('qp-reply-form')) return;
+        if ($elem.closest('.qp-body').length && !$elem.hasClass('collapse-wrapper')) return;
         const $icons = $elem.find('.h-threads-item-reply-icon');
         let nums = '';
         if ($icons.length) {
@@ -5548,6 +5560,7 @@ ${markedSwatchHtml}
                       <div id="sp_feeds_selector_display" class="xdex-feed-selector-display" role="combobox" aria-haspopup="listbox" aria-expanded="false">
                         <span class="xdex-feed-display-desc"></span>
                         <span class="xdex-feed-display-uuid"></span>
+                        <svg class="xdex-feed-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 2.5L4 6L8 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                       </div>
                       <div id="sp_feeds_selector_dropdown" class="xdex-feed-selector-dropdown" role="listbox" style="display:none;"></div>
                     </div>
@@ -9624,6 +9637,111 @@ ${markedSwatchHtml}
     Utils.collapse($root.find('form[action="/Home/Forum/doReplyThread.html"]').addBack('form[action="/Home/Forum/doReplyThread.html"]'), '『回复』');
     Utils.collapse($root.find('form[action="/Home/Forum/doPostThread.html"]').addBack('form[action="/Home/Forum/doPostThread.html"]'), '『发串』');
   }
+  // === 全局：实时定位当前真正在屏幕上的预览框（浮窗内优先）===
+  function getLivePreviewBox() {
+    return document.querySelector('.qp-body .h-preview-box')
+        || document.querySelector('#h-post-form .h-preview-box')
+        || document.querySelector('.h-preview-box');
+  }
+  // === 全局：把图片文件渲染到当前活跃预览框 ===
+  // 不依赖任何闭包快照，每次实时查询预览框与所在位置，避免 REPLY 浮窗
+  // open() 早于 enhanceIsland 初始化时，粘贴图片更新到看不见的框。
+  function updatePreviewImageFromFile(file) {
+    const liveBox = getLivePreviewBox();
+    if (!liveBox) return;
+    const $liveBox = $(liveBox);
+    const imgEl = $liveBox.find('.h-threads-img')[0];
+    const imgLink = $liveBox.find('.h-threads-img-a')[0];
+    const toolLarge = $liveBox.find('.h-threads-img-tool-large')[0];
+    const imgBox = $liveBox.find('.h-threads-img-box')[0];
+    if (!imgEl) return;
+    if (imgEl.dataset.prevObjectUrl) {
+      URL.revokeObjectURL(imgEl.dataset.prevObjectUrl);
+      delete imgEl.dataset.prevObjectUrl;
+    }
+    if (file) {
+      const objectUrl = URL.createObjectURL(file);
+      imgEl.src = objectUrl;
+      imgEl.dataset.prevObjectUrl = objectUrl;
+      imgEl.style.display = 'block';
+      if (imgLink) imgLink.href = objectUrl;
+      if (toolLarge) toolLarge.href = objectUrl;
+      if (imgBox) imgBox.classList.remove('h-active');
+      imgEl.dataset.rotateIndex = '0';
+      imgEl.style.transform = '';
+      imgEl.style.top = '0px';
+      imgEl.style.left = '0px';
+      imgEl.style.width = 'auto';
+      imgEl.style.height = 'auto';
+      const isInOverlay = !!$liveBox.closest('.qp-body').length;
+      if (isInOverlay) {
+        const wrapEl = $liveBox.closest('.qp-content-wrap')[0];
+        if (wrapEl) {
+          const wrapWidth = wrapEl.getBoundingClientRect().width;
+          imgEl.style.maxWidth = (wrapWidth / 3) + 'px';
+          imgEl.style.height = 'auto';
+        }
+      } else {
+        const formEl = document.querySelector('#h-post-form form');
+        if (formEl) {
+          const formWidth = formEl.getBoundingClientRect().width;
+          imgEl.style.maxWidth = (formWidth / 2) + 'px';
+          imgEl.style.height = 'auto';
+        }
+      }
+    } else {
+      imgEl.removeAttribute('src');
+      imgEl.style.display = 'none';
+      imgEl.style.maxWidth = '';
+      imgEl.style.width = '';
+      imgEl.style.height = '';
+      imgEl.style.transform = '';
+      imgEl.style.top = '0px';
+      imgEl.style.left = '0px';
+      delete imgEl.dataset.rotateIndex;
+      if (imgLink) {
+        imgLink.removeAttribute('href');
+        imgLink.style.height = '';
+      }
+      if (toolLarge) toolLarge.href = 'javascript:;';
+      if (imgBox) imgBox.classList.remove('h-active');
+    }
+  }
+  // === 全局：绑定粘贴图片预览（幂等），供 enhanceIsland 与 REPLY 浮窗 open() 共用 ===
+  function bindPasteImagePreviewOnce() {
+    if (bindPasteImagePreviewOnce.__bound) return;
+    bindPasteImagePreviewOnce.__bound = true;
+    document.addEventListener('paste', function (e) {
+      const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items || [];
+      if (!items.length) return;
+      let file = null;
+      for (const it of items) {
+        if (it.kind === 'file') {
+          const f = it.getAsFile();
+          if (f && f.type.startsWith('image/')) {
+            file = f;
+            break;
+          }
+        }
+      }
+      if (!file) return;
+      // 优先取浮窗内的 file input，否则取原表单的
+      const fileInput = document.querySelector('.qp-body input[type="file"][name="image"]')
+        || document.querySelector('#h-post-form input[type="file"][name="image"]')
+        || document.querySelector('input[type="file"][name="image"]');
+      if (fileInput) {
+        try {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          fileInput.files = dt.files;
+        } catch (_) {}
+      }
+      updatePreviewImageFromFile(file);
+      if (fileInput) {
+        try { fileInput.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+      }
+    }, true);
+  }
   function buildEnhanceIslandPreviewHtml() {
     // 从 cookie-switcher 里取当前饼干
     const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
@@ -9671,10 +9789,17 @@ ${markedSwatchHtml}
       content.style.whiteSpace = 'normal';
     }
   }
-  function tryInsertPreviewBoxEarly() {
-    if (!document.body || document.querySelector('.h-preview-box')) return false;
-    const form = document.querySelector('#h-post-form form');
-    if (!form) return false;
+  function tryInsertPreviewBoxEarly(formOpt) {
+    if (!document.body) return false;
+    // 已有预览框则复用（浮窗内优先）
+    const existing = document.querySelector('.qp-body .h-preview-box')
+      || document.querySelector('.h-preview-box');
+    if (existing) return true;
+    const form = formOpt
+      || document.querySelector('#h-post-form form')
+      || document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
+      || document.querySelector('form[action="/Home/Forum/doPostThread.html"]');
+    if (!form || !form.parentNode) return false;
     form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml());
     const previewEl = form.nextElementSibling && form.nextElementSibling.classList?.contains('h-preview-box')
       ? form.nextElementSibling
@@ -9747,6 +9872,11 @@ ${markedSwatchHtml}
     } catch (e) {}
     try {
       if (typeof tryReplaceRightSidebarEarly === 'function') tryReplaceRightSidebarEarly();
+    } catch (e) {}
+    // 顶栏刷新点击：越早越好，不依赖 batch2
+    try {
+      if (typeof installOverrideTopImageClickEarly === 'function') installOverrideTopImageClickEarly();
+      else if (typeof overrideTopImageClick === 'function') overrideTopImageClick();
     } catch (e) {}
   }
   function runEarlyStartupPass(root) {
@@ -12509,16 +12639,17 @@ ${markedSwatchHtml}
           padding: 6px 12px; border-radius: 6px; cursor: pointer; z-index: 10000;
           user-select: none;
         }
-        .qp-quote {
+        .qp-overlay-quote .qp-quote {
           position: absolute;
           top: 0; left: 0;
           width: 100%; max-height: 100%;
           overflow: auto;
-          background: #FFFFEE;
-          border: 1px solid #ccc;
-          outline: 2px solid #fff;
+          /* 走 darkreader 兼容 token，避免写死 #FFFFEE */
+          background: var(--xdex-qp-shell-bg, #FFFFEE);
+          border: 1px solid var(--xdex-qp-border, #ccc);
+          outline: 2px solid var(--xdex-qp-outline, #fff);
           border-radius: 8px;
-          box-shadow: 0 8px 24px rgba(0,0,0,.24);
+          box-shadow: 0 8px 24px var(--xdex-qp-shadow, rgba(0,0,0,.24));
           padding: 18px 20px 20px;
           box-sizing: border-box;
         }
@@ -12530,15 +12661,33 @@ ${markedSwatchHtml}
           background: transparent; /* ✅ 改为透明背景 */
           z-index: 2;
         }
-        .qp-level {
-          font-size: 12px; color: #333; background: #eee; border-radius: 4px; padding: 2px 6px;
+        .qp-overlay-quote .qp-level {
+          font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 35%, transparent); border-radius: 4px; padding: 2px 6px;
         }
-        .qp-back {
-          font-size: 12px; color: #333; background: #f0f0f0;
-          border: 1px solid #ccc; border-radius: 4px; padding: 2px 6px;
+        .qp-overlay-quote .qp-back {
+          font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 22%, transparent);
+          border: 1px solid var(--xdex-qp-border, #ccc); border-radius: 4px; padding: 2px 6px;
           cursor: pointer;
         }
-        .qp-quote.is-dragging { cursor: grabbing !important; }
+        .qp-overlay-quote .qp-quote.is-dragging,
+        .qp-overlay-quote .qp-quote.is-resizing { cursor: grabbing !important; user-select: none !important; }
+        /* 引用浮窗四角拉伸（与回复浮窗一致：角=缩放，边=拖动） */
+        .qp-overlay-quote .qp-resize-corner {
+          position: absolute;
+          width: 14px;
+          height: 14px;
+          z-index: 5;
+          pointer-events: auto;
+          background: transparent;
+        }
+        .qp-overlay-quote .qp-resize-corner.nw { top: 0; left: 0; cursor: nwse-resize; }
+        .qp-overlay-quote .qp-resize-corner.ne { top: 0; right: 0; cursor: nesw-resize; }
+        .qp-overlay-quote .qp-resize-corner.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+        .qp-overlay-quote .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; }
+        .qp-overlay-quote .qp-drag-edge.top    { top: 0;    left: 14px; right: 14px; height: 10px; }
+        .qp-overlay-quote .qp-drag-edge.bottom { bottom: 0; left: 14px; right: 14px; height: 10px; }
+        .qp-overlay-quote .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
+        .qp-overlay-quote .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
         #h-ref-view { pointer-events: none !important; }
         #h-ref-view {
           z-index: 20000 !important; /* 保证原生引用框在浮窗之上 */
@@ -12605,8 +12754,10 @@ ${markedSwatchHtml}
       if (!$top.length) { $overlay.fadeOut(160); return; }
       // 1) 如果点击发生在最上层引用框内部，忽略
       if ($(e.target).closest($top).length) return;
-      // 2) 如果正在/刚刚拖拽，避免误触关闭
-      if ($top.hasClass('is-dragging') || $('.qp-quote.is-dragging').length) return;
+      // 2) 如果正在/刚刚拖拽或拉伸，避免误触关闭
+      if ($top.hasClass('is-dragging') || $top.hasClass('is-resizing') ||
+          $('.qp-quote.is-dragging').length || $('.qp-quote.is-resizing').length ||
+          $overlay.data('isDragging')) return;
       // 3) 点击最上层框之外：仅移除最上层
       $top.remove();
       if ($stack.children('.qp-quote').length === 0) $overlay.fadeOut(160);
@@ -12667,18 +12818,26 @@ ${markedSwatchHtml}
       const $content = stripIds($('<div></div>').html(html));
       simplifyQuoteInfoIdLinks($content);
       $quote.append($content.contents());
-      // 在 $quote 内添加四条边框拖拽手柄
+      // 在 $quote 内添加四条边框拖拽手柄 + 四角拉伸手柄
+
       const $edges = $(
         '<div class="qp-drag-edge top"></div>' +
         '<div class="qp-drag-edge bottom"></div>' +
         '<div class="qp-drag-edge left"></div>' +
-        '<div class="qp-drag-edge right"></div>'
+        '<div class="qp-drag-edge right"></div>' +
+        '<div class="qp-resize-corner nw" data-dir="nw"></div>' +
+        '<div class="qp-resize-corner ne" data-dir="ne"></div>' +
+        '<div class="qp-resize-corner sw" data-dir="sw"></div>' +
+        '<div class="qp-resize-corner se" data-dir="se"></div>'
       );
       $quote.append($edges);
       // 仅在标题栏 + 四边手柄上触发拖拽
       enableDragForTop($quote, $quote.find('.qp-header, .qp-drag-edge'));
+      // 四角拉伸（与回复浮窗一致）
+      enableResizeForQuote($quote);
       $stack.append($quote);
       $overlay.fadeIn(160);
+      if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
       enableHDImageAndLayoutFix($quote[0]);
       if (typeof extendQuote === 'function') extendQuote($quote[0]);
       if (typeof initExtendedContent === 'function') initExtendedContent($quote[0]);
@@ -12774,6 +12933,83 @@ ${markedSwatchHtml}
         }, 100);
         // 不要解绑 document 的事件，因为可能有多个引用框
         // $(document).off('mousemove.qpdrag mouseup.qpdrag');
+      });
+    }
+    // 引用浮窗四角拉伸：对角锚定，与回复浮窗交互一致
+    function enableResizeForQuote($quote) {
+      const QUOTE_MIN_W = 280;
+      const QUOTE_MIN_H = 160;
+      $quote.find('.qp-resize-corner').off('mousedown.qpresize').on('mousedown.qpresize', function (e) {
+        if (e.button !== 0) return;
+        const dir = this.getAttribute('data-dir') || '';
+        if (!dir) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startRect = $quote[0].getBoundingClientRect();
+        const startTop = parseFloat($quote.css('top')) || 0;
+        const startLeft = parseFloat($quote.css('left')) || 0;
+        const startW = startRect.width;
+        const startH = startRect.height;
+        $quote.addClass('is-resizing');
+        $overlay.data('isDragging', true); // 避免缩放结束点到遮罩误关
+        const onMove = (ev) => {
+          ev.preventDefault();
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let w = startW;
+          let h = startH;
+          let top = startTop;
+          let left = startLeft;
+          if (dir.indexOf('e') !== -1) w = startW + dx;
+          if (dir.indexOf('s') !== -1) h = startH + dy;
+          if (dir.indexOf('w') !== -1) {
+            w = startW - dx;
+            left = startLeft + dx;
+          }
+          if (dir.indexOf('n') !== -1) {
+            h = startH - dy;
+            top = startTop + dy;
+          }
+          if (w < QUOTE_MIN_W) {
+            if (dir.indexOf('w') !== -1) left = startLeft + (startW - QUOTE_MIN_W);
+            w = QUOTE_MIN_W;
+          }
+          if (h < QUOTE_MIN_H) {
+            if (dir.indexOf('n') !== -1) top = startTop + (startH - QUOTE_MIN_H);
+            h = QUOTE_MIN_H;
+          }
+          const maxW = window.innerWidth;
+          const maxH = window.innerHeight;
+          if (w > maxW) w = maxW;
+          if (h > maxH) h = maxH;
+          $quote.css({
+            width: w + 'px',
+            height: h + 'px',
+            maxHeight: 'none',
+            top: top + 'px',
+            left: left + 'px'
+          });
+        };
+        const onUp = () => {
+          $quote.removeClass('is-resizing');
+          // 在捕获阶段拦截紧随 mouseup 的 click，防止误触关闭引用浮窗
+          const overlayEl = $overlay[0];
+          const eatClick = (ev) => {
+            ev.stopPropagation();
+            overlayEl.removeEventListener('click', eatClick, true);
+          };
+          overlayEl.addEventListener('click', eatClick, true);
+          setTimeout(() => {
+            $overlay.data('isDragging', false);
+            overlayEl.removeEventListener('click', eatClick, true); // 兜底清理
+          }, 200);
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
       });
     }
     $(document).off('click.qp').on('click.qp', 'font[color="#789922"]', function(e){
@@ -13232,6 +13468,340 @@ ${markedSwatchHtml}
     bindRightSidebarShellButtons(docker);
     return !!docker;
   }
+  function isDarkReaderActive() {
+    const root = document.documentElement;
+    if (!root) return false;
+    const mode = root.getAttribute('data-darkreader-mode');
+    const scheme = root.getAttribute('data-darkreader-scheme');
+    return !!(mode && mode !== 'off') || !!(scheme && scheme !== 'off');
+  }
+  function getReplyOverlayThemeTokens(dark) {
+    // 用 !important 写回具体颜色，避免 Dark Reader 后续改写 CSS 变量 / 反色后边框跑偏。
+    return dark ? {
+      shellBg: '#2b2c2d',
+      formBg: '#2b2c2d',
+      previewBg: '#483327',
+      textareaBg: '#1f2021',
+      border: '#4b4d50',
+      outline: '#3a3c3f',
+      shadow: 'rgba(0,0,0,.55)',
+      resetBg: 'rgba(19,20,21,.88)',
+      resetColor: '#e8e6e3',
+    } : {
+      shellBg: '#FFFFEE',
+      formBg: '#FFFFEE',
+      previewBg: '#F0E0D6',
+      textareaBg: '#fff',
+      border: '#ccc',
+      outline: '#fff',
+      shadow: 'rgba(0,0,0,.24)',
+      resetBg: 'rgba(0,0,0,.6)',
+      resetColor: '#fff',
+    };
+  }
+  function syncQuotePopupTheme() {
+    const root = document.documentElement;
+    if (!root) return;
+    const dark = isDarkReaderActive();
+    root.classList.toggle('xdex-darkreader-active', dark);
+    const theme = getReplyOverlayThemeTokens(dark);
+    // CSS 变量兜底（未打开浮窗时也保持一致）
+    root.style.setProperty('--xdex-qp-shell-bg', theme.shellBg);
+    root.style.setProperty('--xdex-qp-form-bg', theme.formBg);
+    root.style.setProperty('--xdex-qp-preview-bg', theme.previewBg);
+    root.style.setProperty('--xdex-qp-textarea-bg', theme.textareaBg);
+    root.style.setProperty('--xdex-qp-border', theme.border);
+    root.style.setProperty('--xdex-qp-outline', theme.outline);
+    root.style.setProperty('--xdex-qp-shadow', theme.shadow);
+    root.style.setProperty('--xdex-qp-reset-bg', theme.resetBg);
+    root.style.setProperty('--xdex-qp-reset-color', theme.resetColor);
+    // 浮窗壳/边框/描边：Dark Reader 后处理常会改 border-color，必须 !important 钉死
+    document.querySelectorAll('.qp-quote').forEach((el) => {
+      el.style.setProperty('background', theme.shellBg, 'important');
+      el.style.setProperty('border-color', theme.border, 'important');
+      el.style.setProperty('outline-color', theme.outline, 'important');
+      el.style.setProperty('box-shadow', `0 8px 24px ${theme.shadow}`, 'important');
+    });
+    document.querySelectorAll('.qp-body .qp-content-wrap, .qp-body .qp-content-wrap form').forEach((el) => {
+      el.style.setProperty('background', theme.formBg, 'important');
+    });
+    document.querySelectorAll('.qp-body .qp-content-wrap textarea[name="content"]').forEach((el) => {
+      el.style.setProperty('background', theme.textareaBg, 'important');
+    });
+    document.querySelectorAll('.qp-reset-btn').forEach((el) => {
+      el.style.setProperty('background', theme.resetBg, 'important');
+      el.style.setProperty('color', theme.resetColor, 'important');
+    });
+    document.querySelectorAll('.qp-body .qp-content-wrap .h-preview-box, .qp-body .qp-content-wrap .h-preview-box .h-threads-item, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main').forEach((el) => {
+      el.style.setProperty('background', theme.previewBg, 'important');
+    });
+  }
+  // early open 也要能监听 Dark Reader 后续属性变化；只盯 html 上的 darkreader 属性，避免 subtree style 风暴。
+  function ensureDarkReaderThemeObserver() {
+    if (window.__xdexDarkReaderThemeObserver) return window.__xdexDarkReaderThemeObserver;
+    let scheduled = 0;
+    const scheduleSync = () => {
+      if (scheduled) return;
+      scheduled = requestAnimationFrame(() => {
+        scheduled = 0;
+        syncQuotePopupTheme();
+      });
+    };
+    const observer = new MutationObserver(scheduleSync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'class'],
+    });
+    window.__xdexDarkReaderThemeObserver = observer;
+    return observer;
+  }
+  // early open 也必须立刻注入浮窗样式；不能等 batch2 的 replaceRightSidebar。
+  // 否则早期点 REPLY 会出现：表单先裸奔到左上角 → 浮窗壳后到 → 再被样式/暗色主题二次重绘。
+  function ensureReplyOverlayStyle() {
+    // 始终刷新样式文本：脚本热更新后若只判断 id 存在，会继续用旧 CSS（如 height:80vh）
+    let style = document.getElementById('qp-style');
+
+    const styleExisted = !!style;
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'qp-style';
+    }
+    {
+      style.textContent = `
+          :root {
+            --xdex-qp-shell-bg: #FFFFEE;
+            --xdex-qp-form-bg: #FFFFEE;
+            --xdex-qp-preview-bg: #F0E0D6;
+            --xdex-qp-textarea-bg: #fff;
+            --xdex-qp-border: #ccc;
+            --xdex-qp-outline: #fff;
+            --xdex-qp-shadow: rgba(0,0,0,.24);
+            --xdex-qp-reset-bg: rgba(0,0,0,.6);
+            --xdex-qp-reset-color: #fff;
+          }
+          :root.xdex-darkreader-active {
+            --xdex-qp-shell-bg: #2b2c2d;
+            --xdex-qp-form-bg: #2b2c2d;
+            --xdex-qp-preview-bg: #483327;
+            --xdex-qp-textarea-bg: #1f2021;
+            --xdex-qp-border: #4b4d50;
+            --xdex-qp-outline: #3a3c3f;
+            --xdex-qp-shadow: rgba(0,0,0,.55);
+            --xdex-qp-reset-bg: rgba(19,20,21,.88);
+            --xdex-qp-reset-color: #e8e6e3;
+          }
+          .qp-overlay {
+            position: fixed; inset: 0; z-index: 9000;
+            background: rgba(0,0,0,.45); display: none;
+          }
+          /* 仅回复浮窗：引用弹窗也用 .qp-stack，不能共用 height/overflow */
+          .qp-overlay > .qp-stack {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(90vw, 820px);   /* 初始宽度为视口的90%，最大820px */
+            min-width: 0;              /* 不设固定值，由 JS 动态控制 */
+            max-width: none;           /* 允许用户手动扩展 */
+            /* 默认不锁 80vh：由内容贴合，避免表单与预览之间被撑出大空隙 */
+            height: auto;
+            max-height: min(80vh, calc(100vh - 40px));
+            overflow: visible; box-sizing: border-box;
+          }
+          /* 仅作用于回复浮窗壳：不要污染引用弹窗的 .qp-quote */
+          .qp-overlay .qp-stack > .qp-quote {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            max-height: 100%;
+            /* 自动贴高默认隐藏滚动条；达上限/手动缩放后再滚动，避免预览空→有时右侧滚动条闪一下 */
+            overflow-x: hidden;
+            overflow-y: hidden;
+            background: var(--xdex-qp-shell-bg);
+            border: 1px solid var(--xdex-qp-border);
+            outline: 2px solid var(--xdex-qp-outline);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px var(--xdex-qp-shadow);
+            padding: 18px 20px 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+          }
+          .qp-overlay > .qp-stack.qp-user-sized > .qp-quote,
+          .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
+            overflow-y: auto;
+          }
+          .qp-overlay .qp-stack > .qp-quote textarea[name="content"] {
+            resize: vertical !important; /* 允许纵向缩放；宽度跟浮窗走 */
+            min-width: 0 !important;
+            width: 100% !important;
+            max-width: none;
+            box-sizing: border-box;
+            flex: none !important; /* 不要被 flex 拉高造成假空隙 */
+          }
+          /* 浮窗内 textarea：允许纵向缩放 */
+          .qp-body .h-post-form-textarea {
+              resize: vertical !important;
+              min-width: 0;
+              max-width: 100%;
+              box-sizing: border-box;
+              flex: none !important;
+          }
+          /* 四边中段：移动浮窗（角部留给缩放） */
+          .qp-drag-edge {
+            position: absolute;
+            pointer-events: auto;
+            z-index: 3;
+            cursor: move;
+          }
+          .qp-drag-edge.top    { top: 0;    left: 14px; right: 14px; height: 10px; }
+          .qp-drag-edge.bottom { bottom: 0; left: 14px; right: 14px; height: 10px; }
+          .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
+          .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
+          /* 四角：拉伸浮窗 */
+          .qp-resize-corner {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            z-index: 5;
+            pointer-events: auto;
+            background: transparent;
+          }
+          .qp-resize-corner.nw { top: 0; left: 0; cursor: nwse-resize; }
+          .qp-resize-corner.ne { top: 0; right: 0; cursor: nesw-resize; }
+          .qp-resize-corner.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+          .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; }
+          .qp-overlay .qp-quote.is-dragging,
+          .qp-overlay .qp-quote.is-resizing { user-select: none !important; }
+          .qp-overlay .qp-quote.is-dragging { cursor: grabbing !important; }
+          .qp-body {
+            flex: 0 0 auto; /* 贴内容高度，达上限后由 .qp-quote 整体滚动 */
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: visible;
+          }
+          /* 归位按钮 */
+          .qp-reset-btn {
+            position: fixed; right: 12px; bottom: 12px;
+            font-size: 20px; line-height: 1;
+            color: var(--xdex-qp-reset-color); background: var(--xdex-qp-reset-bg);
+            padding: 6px 12px; border-radius: 6px; cursor: pointer;
+            z-index: 9001; /* 比 overlay 高 */
+            user-select: none;
+            display: none;
+          }
+          .qp-body .qp-content-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: none;       /* 改为 none，不限制最大宽度 */
+            margin: 0;
+            background: var(--xdex-qp-form-bg);
+            /* 默认贴内容高度；只有手动拉高浮窗时才填满可用空间 */
+            flex: 0 0 auto;
+            min-height: 0;
+            width: 100%;
+            height: auto;
+            overflow: visible; /* 不裁剪内容；超长时由回复浮窗 .qp-quote 整体滚动 */
+          }
+          .qp-body .qp-content-wrap form {
+            max-width: 100%;
+            box-sizing: border-box;
+            background: var(--xdex-qp-form-bg);
+            display: block; /* 保持站点原生表单流，避免 flex 把内部行拉开 */
+            flex: 0 0 auto; /* 表单按内容高度，不吃掉空隙、也不被压扁 */
+            min-height: auto;
+            order: 0;
+            position: relative;
+            z-index: 2; /* 缩小空间时表单盖在预览上方，避免被盖住 */
+          }
+          /* textarea 宽度跟浮窗走，允许纵向缩放；高度由内容/用户拖拽决定，不 flex 撑满 */
+          .qp-body .qp-content-wrap textarea[name="content"] {
+            resize: vertical !important;
+            min-width: 0 !important;
+            min-height: 120px;
+            width: 100% !important;
+            max-width: none;
+            flex: none !important;
+            box-sizing: border-box;
+            background: var(--xdex-qp-textarea-bg);
+          }
+          .qp-body .qp-content-wrap .h-preview-box {
+            width: 100% !important;   /* 始终和容器一致 */
+            overflow-wrap: break-word; /* 长单词/长链接换行 */
+            word-break: break-word;    /* 兼容性处理 */
+            white-space: normal;       /* 允许正常换行 */
+            /* 关键：预览默认不 flex 撑满，否则会在表单下方制造大空隙 */
+            flex: 0 1 auto;
+            min-height: 0;
+            max-height: none;
+            overflow: visible; /* 预览不单独滚动；超长时由回复浮窗整体滚动 */
+            order: 1;
+            position: relative;
+            z-index: 1;
+          }
+          /* 用户手动拉高浮窗后：允许 wrap/预览吃掉剩余高度 */
+          /* 用户手动拉高：仅让表单区保持自然高度；内容超高时仍走整窗滚动 */
+          .qp-overlay > .qp-stack.qp-user-sized .qp-content-wrap {
+            flex: 0 0 auto;
+            height: auto;
+          }
+          .qp-overlay > .qp-stack.qp-user-sized .qp-content-wrap .h-preview-box {
+            flex: 0 0 auto;
+            overflow: visible;
+          }
+          /* 兜底：引用弹窗保持内容自适应，不被回复浮窗规则压扁 */
+          .qp-overlay-quote .qp-quote {
+            height: auto !important;
+            max-height: 100% !important;
+            overflow: auto !important;
+            display: block !important;
+          }
+          /* 浮窗内预览框及其子层级全部占满宽度 */
+          .qp-body .qp-content-wrap .h-preview-box,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply,
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main {
+              width: 100% !important;
+              max-width: none !important;
+              margin: 0 !important;
+              box-sizing: border-box;
+              display: block;
+              background: var(--xdex-qp-preview-bg);
+          }
+          /* 浮窗内：仅在非 h-active 状态下限制缩略图宽度 */
+          .qp-body .qp-content-wrap .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
+            max-width: 33% !important;
+            height: auto !important;
+          }
+          /* 表单内：仅在非 h-active 状态下限制缩略图宽度 */
+          #h-post-form .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
+            max-width: 50% !important;
+            height: auto !important;
+          }
+          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
+          .hld__docker:hover,
+          .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
+          .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
+          .hld__docker:hover .hld__docker-btns>div,
+          .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
+          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
+          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
+          .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+        `;
+      if (!style.parentNode) {
+        (document.head || document.documentElement).appendChild(style);
+      }
+    }
+    window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
+    ensureDarkReaderThemeObserver();
+    syncQuotePopupTheme();
+    return !!document.getElementById('qp-style');
+  }
   function ensureRightSidebarReplyController() {
     if (window.__xdexRightSidebarReplyController) return window.__xdexRightSidebarReplyController;
     // 悬浮窗引用
@@ -13247,6 +13817,10 @@ ${markedSwatchHtml}
                       <div class="qp-drag-edge bottom"></div>
                       <div class="qp-drag-edge left"></div>
                       <div class="qp-drag-edge right"></div>
+                      <div class="qp-resize-corner nw" data-dir="nw"></div>
+                      <div class="qp-resize-corner ne" data-dir="ne"></div>
+                      <div class="qp-resize-corner sw" data-dir="sw"></div>
+                      <div class="qp-resize-corner se" data-dir="se"></div>
                       <div class="qp-body"></div>
                   </div>
               </div>
@@ -13286,46 +13860,60 @@ ${markedSwatchHtml}
             // 若没有颜文字面板打开，则关闭回复浮窗
             closeOverlay();
           });
-          // 归位按钮事件
+          // 归位按钮事件：恢复默认居中尺寸（并重新贴合内容）
           const resetBtn = overlay.querySelector('.qp-reset-btn');
           resetBtn.addEventListener('click', (e) => {
               e.stopPropagation(); // 阻止事件冒泡，避免触发 overlay 的关闭逻辑
-              const quote = overlay.querySelector('.qp-quote');
-              quote.style.top = '0px';
-              quote.style.left = '0px';
+              overlay.__savedPanelRect = null;
+              overlay.__userSizedPanel = false;
+              applyReplyPanelLayout(overlay, null);
+              scheduleReplyPanelAutoFit(overlay);
           });
       }
       return overlay;
-   }
+    }
     function closeOverlay() {
       if (!overlay) return;
-      // 清理 ResizeObserver
+      // 清理 ResizeObserver（旧链路兜底）
       if (overlay.__resizeObserver) {
         overlay.__resizeObserver.disconnect();
         overlay.__resizeObserver = null;
       }
-      // 清理 stack 的 ResizeObserver
-      if (overlay.__stackObserver) {
-        overlay.__stackObserver.disconnect();
-        overlay.__stackObserver = null;
+      // 清理内容贴合观察
+      if (overlay.__autoFitRO) {
+        try { overlay.__autoFitRO.disconnect(); } catch (_) {}
+        overlay.__autoFitRO = null;
       }
-      // 保存当前浮窗和textarea的尺寸（保存计算后的实际值）
-      const stack = overlay.querySelector('.qp-stack');
-      const ta = overlay.querySelector('textarea[name="content"]');
-      if (stack && ta) {
-        const taRect = ta.getBoundingClientRect();
-        overlay.__savedStackWidth = stack.style.width;
-        overlay.__savedTextareaWidth = taRect.width + 'px'; // 保存实际宽度
-        overlay.__savedTextareaHeight = taRect.height + 'px'; // 保存实际高度
-        // 在移回原位置之前，先应用尺寸到 textarea
-        ta.style.width = taRect.width + 'px';
-        ta.style.height = taRect.height + 'px';
+      if (overlay.__autoFitRaf) {
+        cancelAnimationFrame(overlay.__autoFitRaf);
+        overlay.__autoFitRaf = 0;
+      }
+      // 页面内记住整窗位置/尺寸（不写 GM_setValue）
+      // 仅手动四角拉伸过的尺寸需要保留；内容自然撑高的高度关闭后丢弃，下次快速回空高
+      if (overlay.__userSizedPanel) {
+        saveReplyPanelRect(overlay);
+      } else {
+        const stack = overlay.querySelector('.qp-stack');
+        if (stack) {
+          const rect = stack.getBoundingClientRect();
+          // 只记位置/宽度，高度不记，避免被预览撑开的高度“粘住”
+          overlay.__savedPanelRect = {
+            width: Math.round(rect.width),
+            left: Math.round(rect.left),
+            top: Math.round(rect.top),
+            userSized: false
+            // height 故意不写：open 时走默认空高 + 快速 autofit
+          };
+        } else {
+          overlay.__savedPanelRect = null;
+        }
+        overlay.__userSizedPanel = false;
       }
       overlay.style.display = 'none';
       // 隐藏归位按钮
       const resetBtn = overlay.querySelector('.qp-reset-btn');
       if (resetBtn) resetBtn.style.display = 'none';
-      // 清理窗口 resize 监听
+      // 清理窗口 resize 监听（旧链路兜底）
       if (overlay.__windowResizeHandler) {
         window.removeEventListener('resize', overlay.__windowResizeHandler);
         overlay.__windowResizeHandler = null;
@@ -13341,72 +13929,362 @@ ${markedSwatchHtml}
           taInForm.style.removeProperty('max-width');
         }
           if (overlay.__formEl.__wasCollapsed) {
-            const $form = $(overlay.__formEl);
-            const hint = overlay.__formEl.action.includes('doReplyThread') ? '『回复』' : '『发串』';
-            // 如果原位置已经有占位符，就直接隐藏并标记折叠
-            if ($form.prev('.xdex-placeholder').length) {
+            const formEl = overlay.__formEl;
+            const $form = $(formEl);
+            const hint = formEl.action.includes('doReplyThread') ? '『回复』' : '『发串』';
+            // 优先还原 early collapse 留下的折叠按钮；否则走通用 collapse
+            const toggleEl = formEl.__collapseToggleEl
+              || ($form.prev('.xdex-placeholder.xdex-generic-toggle')[0] || null);
+            if (toggleEl && toggleEl.parentNode) {
+              formEl.classList.add('xdex-generic-collapsed');
+              $form.hide().data('xdex-collapsed', true);
+              toggleEl.style.display = '';
+              toggleEl.innerHTML = `${hint}（点击展开）`;
+            } else if ($form.prev('.xdex-placeholder').length) {
                 $form.hide().data('xdex-collapsed', true);
             } else if (typeof Utils !== 'undefined' && typeof Utils.collapse === 'function') {
                 Utils.collapse($form, hint);
             }
-            overlay.__formEl.__wasCollapsed = false;
+            formEl.__wasCollapsed = false;
+            formEl.__collapseToggleEl = null;
         }
       }
       if (overlay.__previewEl && overlay.__previewEl.__placeholder) {
         overlay.__previewEl.__placeholder.parentNode.insertBefore(overlay.__previewEl, overlay.__previewEl.__placeholder);
       }
     }
-    // 新增：回复浮窗拖拽函数
-    function enableDragForReply($quote, $handles) {
-      // 确保初始位置居中
-      $quote.css({
-          top: '0px',
-          left: '0px',
-          position: 'absolute' // 确保是相对于 stack 定位
+    // 回复浮窗：整窗拖拽 + 四角缩放（页面内记忆，不写 GM_setValue）
+    const REPLY_PANEL_MIN_WIDTH = 400;
+    const REPLY_PANEL_MIN_HEIGHT = 280;
+    const REPLY_PANEL_MAX_VH = 0.8;
+    // 默认垂直位置：0.5=正中，越小越靠上。0.28 ≈ 偏上约 1/3
+    const REPLY_PANEL_DEFAULT_TOP_RATIO = 0.28;
+    function getReplyPanelMaxHeight() {
+      return Math.max(REPLY_PANEL_MIN_HEIGHT, Math.min(window.innerHeight * REPLY_PANEL_MAX_VH, window.innerHeight - 40));
+    }
+    function getReplyPanelDefaultTop(height) {
+      const h = Math.max(REPLY_PANEL_MIN_HEIGHT, Number(height) || REPLY_PANEL_MIN_HEIGHT);
+      // 比垂直居中更靠上，同时保证不贴顶、底部也留一点余量
+      const raw = Math.round((window.innerHeight - h) * REPLY_PANEL_DEFAULT_TOP_RATIO);
+      return Math.max(8, Math.min(raw, window.innerHeight - h - 8));
+    }
+    function getReplyPanelDefaults() {
+      const width = Math.max(REPLY_PANEL_MIN_WIDTH, Math.min(window.innerWidth * 0.9, 820));
+      // 默认高度不再固定 80vh，只给一个贴合内容的保守初值；open 后会 auto-fit
+      // 0.45 仍然偏高，会在表单/预览间留空；用更贴内容的初值
+      const height = Math.max(REPLY_PANEL_MIN_HEIGHT, Math.min(Math.round(window.innerHeight * 0.32), getReplyPanelMaxHeight()));
+      const left = Math.max(0, Math.round((window.innerWidth - width) / 2));
+      const top = getReplyPanelDefaultTop(height);
+      return { width, height, left, top };
+    }
+    function measureReplyPanelContentHeight(ov) {
+      const quote = ov && ov.querySelector('.qp-quote');
+      const wrap = ov && ov.querySelector('.qp-content-wrap');
+      if (!quote || !wrap) return REPLY_PANEL_MIN_HEIGHT;
+      const cs = window.getComputedStyle(quote);
+      const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
+        + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      const form = wrap.querySelector('form');
+      const preview = wrap.querySelector('.h-preview-box');
+      const gap = 10; // 与 .qp-content-wrap 的 gap 对齐
+      let contentH = 0;
+      if (form) contentH += form.offsetHeight || form.getBoundingClientRect().height || 0;
+      if (preview) {
+        // 预览在 flex/overflow 约束下 offsetHeight 可能是被裁后的值，临时放开量真实内容高
+        const prev = {
+          maxHeight: preview.style.maxHeight,
+          height: preview.style.height,
+          overflow: preview.style.overflow,
+          flex: preview.style.flex
+        };
+        preview.style.maxHeight = 'none';
+        preview.style.height = 'auto';
+        preview.style.overflow = 'visible';
+        preview.style.flex = 'none';
+        contentH += preview.scrollHeight || preview.offsetHeight || 0;
+        preview.style.maxHeight = prev.maxHeight;
+        preview.style.height = prev.height;
+        preview.style.overflow = prev.overflow;
+        preview.style.flex = prev.flex;
+      } else {
+        // 无预览时仍量 wrap 自身
+        contentH = Math.max(contentH, wrap.scrollHeight || wrap.offsetHeight || 0);
+      }
+      if (form && preview) contentH += gap;
+      return Math.max(REPLY_PANEL_MIN_HEIGHT, Math.ceil(contentH + padY + 2));
+    }
+    function fitReplyPanelToContent(ov, opts) {
+      if (!ov || ov.__userSizedPanel || ov.__autoFitting) return;
+      const stack = ov.querySelector('.qp-stack');
+      if (!stack || ov.style.display === 'none') return;
+      const options = opts || {};
+      // 量高会临时改 preview 样式，期间屏蔽 RO，避免“量高→RO→再 fit”反馈环
+      ov.__autoFitting = true;
+      try {
+        const maxH = getReplyPanelMaxHeight();
+        const needed = Math.min(measureReplyPanelContentHeight(ov), maxH);
+        const rect = stack.getBoundingClientRect();
+        // 高度几乎不变时不写 style；no-op 时不要开静默窗，否则会吞掉紧随其后的预览增高
+        const heightDelta = Math.abs((rect.height || 0) - needed);
+        const atCap = needed >= maxH - 1;
+        stack.classList.toggle('qp-content-scroll', atCap);
+        if (heightDelta < 2) {
+          if (options.save !== false) {
+            ov.__savedPanelRect = {
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              left: Math.round(rect.left),
+              top: Math.round(rect.top),
+              userSized: false
+            };
+          }
+          ov.__skipAutoFitQuiet = true;
+          return;
+        }
+        let left = rect.left;
+        let top = rect.top;
+        let width = rect.width || getReplyPanelDefaults().width;
+        // 未手动缩放时：优先向下扩展（顶边不动），避免“预览往上挤表单”
+        if (!Number.isFinite(left)) left = Math.max(0, Math.round((window.innerWidth - width) / 2));
+        if (!Number.isFinite(top) || top < 0) top = getReplyPanelDefaultTop(needed);
+        // 只有底部真的装不下时才上移；否则保持 top，让高度向下长
+        if (top + needed > window.innerHeight - 8) {
+          top = Math.max(8, window.innerHeight - needed - 8);
+        }
+        // 宽度无效时回退默认
+        if (!width || width < REPLY_PANEL_MIN_WIDTH) width = getReplyPanelDefaults().width;
+        applyReplyPanelLayout(ov, {
+          width,
+          height: needed,
+          left,
+          top
+        }, { preserveUserSized: true, fromAutoFit: true });
+        if (options.save !== false) {
+          // auto-fit 只记当前几何，不把 userSized 标真
+          const r = stack.getBoundingClientRect();
+          ov.__savedPanelRect = {
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            left: Math.round(r.left),
+            top: Math.round(r.top),
+            userSized: false
+          };
+        }
+      } finally {
+        ov.__autoFitting = false;
+        // 仅在真正改了尺寸时短时静默；no-op 贴高不能静默，否则挡住预览写完后的二次贴高
+        if (ov.__skipAutoFitQuiet) {
+          ov.__skipAutoFitQuiet = false;
+        } else {
+          ov.__autoFitQuietUntil = performance.now() + 48;
+        }
+      }
+    }
+    function scheduleReplyPanelAutoFit(ov) {
+      if (!ov || ov.__userSizedPanel || ov.__autoFitting) return;
+      if (ov.__autoFitQuietUntil && performance.now() < ov.__autoFitQuietUntil) return;
+      if (ov.__autoFitRaf) cancelAnimationFrame(ov.__autoFitRaf);
+      // 双 rAF：等布局/预览重建完成后再量高，合并同一帧内的多次 input/RO
+      ov.__autoFitRaf = requestAnimationFrame(() => {
+        ov.__autoFitRaf = requestAnimationFrame(() => {
+          ov.__autoFitRaf = 0;
+          if (ov.__userSizedPanel || ov.__autoFitting) return;
+          if (ov.__autoFitQuietUntil && performance.now() < ov.__autoFitQuietUntil) return;
+          fitReplyPanelToContent(ov);
+        });
       });
-      //let dragging = false, dx = 0, dy = 0;
-      let dx = 0, dy = 0;
-      // 移除旧的事件监听（避免重复绑定）
-      $handles.off('mousedown.qpdrag-reply');
-      $handles.on('mousedown.qpdrag-reply', function(e){
-          //dragging = true;
-          $quote.data('dragging', true);  // ← 使用 data 存储
-          $quote.addClass('is-dragging');
-          // 获取当前的 top 和 left 值
-          const currentTop = parseInt($quote.css('top')) || 0;
-          const currentLeft = parseInt($quote.css('left')) || 0;
-          dx = e.pageX - currentLeft - $quote.parent().offset().left;
-          dy = e.pageY - currentTop - $quote.parent().offset().top;
-          e.preventDefault();
-          function onDragMove(e) {
-              //if (!dragging) return;
-              if (!$quote.data('dragging')) return;  // ← 从 data 读取
-              e.preventDefault();  // ← 在这里添加
-              e.stopPropagation(); // ← 在这里添加
-              const $stack = $quote.parent();
-              const stackOff = $stack.offset();
-              const stackWidth = $stack.width();
-              const stackHeight = $stack.height();
-              const quoteWidth = $quote.outerWidth();
-              const quoteHeight = $quote.outerHeight();
-              let top = e.pageY - dy - stackOff.top;
-              let left = e.pageX - dx - stackOff.left;
-              // 限制拖拽范围，允许向左和向上拖出一部分
-              top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
-              left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
-              $quote.css({ top: top + 'px', left: left + 'px' });
+    }
+    function ensureReplyPanelAutoFitObserver(ov) {
+      if (!ov) return;
+      if (ov.__autoFitRO) {
+        try { ov.__autoFitRO.disconnect(); } catch (_) {}
+        ov.__autoFitRO = null;
+      }
+      const wrap = ov.querySelector('.qp-content-wrap');
+      const ta = ov.querySelector('textarea[name="content"]');
+      if (!wrap || typeof ResizeObserver === 'undefined') return;
+      const onMaybeAutoFit = () => {
+        if (ov.__userSizedPanel || ov.__autoFitting) return;
+        if (ov.__autoFitQuietUntil && performance.now() < ov.__autoFitQuietUntil) return;
+        scheduleReplyPanelAutoFit(ov);
+      };
+      const ro = new ResizeObserver(onMaybeAutoFit);
+      // 只观察 wrap/preview。不要监听 textarea input：
+      // input 时预览尚未更新，会先 no-op 贴高并制造滚动条闪动窗口。
+      ro.observe(wrap);
+      // 预览内容变化（首次出字/粘贴图/引用展开）也跟
+      const preview = ov.querySelector('.h-preview-box');
+      if (preview) ro.observe(preview);
+      ov.__autoFitRO = ro;
+      // 暴露给 renderContent：预览写完后立刻排队贴高
+      window.__xdexScheduleReplyPanelFit = () => scheduleReplyPanelAutoFit(ov);
+    }
+    function applyReplyPanelLayout(ov, rect, opts) {
+      const stack = ov && ov.querySelector('.qp-stack');
+      const quote = ov && ov.querySelector('.qp-quote');
+      if (!stack) return;
+      const options = opts || {};
+      const base = getReplyPanelDefaults();
+      const r = rect && typeof rect === 'object' ? rect : base;
+      let width = Math.max(REPLY_PANEL_MIN_WIDTH, Number(r.width) || base.width);
+      let height = Math.max(REPLY_PANEL_MIN_HEIGHT, Number(r.height) || base.height);
+      width = Math.min(width, window.innerWidth);
+      // 未手动缩放时，高度上限 80vh；手动缩放后允许到视口高
+      const maxH = ov && ov.__userSizedPanel ? window.innerHeight : getReplyPanelMaxHeight();
+      height = Math.min(height, maxH);
+      let left = Number.isFinite(Number(r.left)) ? Number(r.left) : base.left;
+      let top = Number.isFinite(Number(r.top)) ? Number(r.top) : base.top;
+      // 允许略微拖出视口，但至少保留 50px 可抓取
+      left = Math.min(Math.max(left, -width + 50), window.innerWidth - 50);
+      top = Math.min(Math.max(top, -height + 50), window.innerHeight - 50);
+      stack.style.position = 'fixed';
+      stack.style.transform = 'none';
+      stack.style.width = width + 'px';
+      stack.style.height = height + 'px';
+      stack.style.left = left + 'px';
+      stack.style.top = top + 'px';
+      stack.style.maxWidth = 'none';
+      stack.style.minWidth = REPLY_PANEL_MIN_WIDTH + 'px';
+      stack.style.maxHeight = maxH + 'px';
+      // 用户手动尺寸时允许内部 flex 填满；自动贴合时保持内容高度，避免预览被拉出空隙
+      if (ov.__userSizedPanel) stack.classList.add('qp-user-sized');
+      else stack.classList.remove('qp-user-sized');
+      if (quote) {
+        quote.style.top = '0px';
+        quote.style.left = '0px';
+        quote.style.width = '100%';
+        quote.style.height = '100%';
+      }
+      if (!options.preserveUserSized && r && r.userSized) {
+        ov.__userSizedPanel = true;
+        stack.classList.add('qp-user-sized');
+      }
+    }
+    function saveReplyPanelRect(ov) {
+      const stack = ov && ov.querySelector('.qp-stack');
+      if (!stack || !ov) return;
+      const rect = stack.getBoundingClientRect();
+      ov.__savedPanelRect = {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        userSized: !!ov.__userSizedPanel
+      };
+    }
+
+    function bindReplyPanelFrame(ov) {
+      if (!ov || ov.__replyPanelFrameBound) return;
+      const stack = ov.querySelector('.qp-stack');
+      const quote = ov.querySelector('.qp-quote');
+      if (!stack || !quote) return;
+      ov.__replyPanelFrameBound = true;
+
+      const onEdgeDown = (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startRect = stack.getBoundingClientRect();
+        quote.classList.add('is-dragging');
+        ov.__isResizing = true; // 避免拖拽结束瞬间点到遮罩关闭
+
+        const onMove = (ev) => {
+          ev.preventDefault();
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let left = startRect.left + dx;
+          let top = startRect.top + dy;
+          left = Math.min(Math.max(left, -startRect.width + 50), window.innerWidth - 50);
+          top = Math.min(Math.max(top, -startRect.height + 50), window.innerHeight - 50);
+          stack.style.transform = 'none';
+          stack.style.left = left + 'px';
+          stack.style.top = top + 'px';
+        };
+        const onUp = () => {
+          quote.classList.remove('is-dragging');
+          setTimeout(() => { ov.__isResizing = false; }, 100);
+          saveReplyPanelRect(ov);
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      };
+      const onCornerDown = (e) => {
+        if (e.button !== 0) return;
+        const dir = e.currentTarget.getAttribute('data-dir') || '';
+        if (!dir) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startRect = stack.getBoundingClientRect();
+        // 对角锚定：拖动某角时，对侧角位置保持不动
+        const anchorRight = startRect.right;
+        const anchorBottom = startRect.bottom;
+        quote.classList.add('is-resizing');
+        ov.__isResizing = true;
+        // 用户一旦四角拉伸，就关闭内容自动贴合高度
+        ov.__userSizedPanel = true;
+        const onMove = (ev) => {
+          ev.preventDefault();
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let left = startRect.left;
+          let top = startRect.top;
+          let width = startRect.width;
+          let height = startRect.height;
+
+          if (dir.indexOf('e') !== -1) {
+            width = startRect.width + dx;
           }
-          function onDragEnd(e) {
-              //if (!dragging) return;
-              if (!$quote.data('dragging')) return;  // ← 从 data 读取
-              e.preventDefault();
-              //dragging = false;
-              $quote.data('dragging', false);  // ← 使用 data 存储
-              $quote.removeClass('is-dragging');
-              window.removeEventListener('mousemove', onDragMove);
+          if (dir.indexOf('s') !== -1) {
+            height = startRect.height + dy;
           }
-          window.addEventListener('mousemove', onDragMove);
-          window.addEventListener('mouseup', onDragEnd, { once: true });
+          if (dir.indexOf('w') !== -1) {
+            width = startRect.width - dx;
+            left = anchorRight - width;
+          }
+          if (dir.indexOf('n') !== -1) {
+            height = startRect.height - dy;
+            top = anchorBottom - height;
+          }
+
+          if (width < REPLY_PANEL_MIN_WIDTH) {
+            if (dir.indexOf('w') !== -1) left = anchorRight - REPLY_PANEL_MIN_WIDTH;
+            width = REPLY_PANEL_MIN_WIDTH;
+          }
+          if (height < REPLY_PANEL_MIN_HEIGHT) {
+            if (dir.indexOf('n') !== -1) top = anchorBottom - REPLY_PANEL_MIN_HEIGHT;
+            height = REPLY_PANEL_MIN_HEIGHT;
+          }
+          if (width > window.innerWidth) width = window.innerWidth;
+          if (height > window.innerHeight) height = window.innerHeight;
+
+          stack.style.transform = 'none';
+          stack.style.left = left + 'px';
+          stack.style.top = top + 'px';
+          stack.style.width = width + 'px';
+          stack.style.height = height + 'px';
+          stack.style.maxHeight = window.innerHeight + 'px';
+        };
+        const onUp = () => {
+          quote.classList.remove('is-resizing');
+          setTimeout(() => { ov.__isResizing = false; }, 100);
+          saveReplyPanelRect(ov);
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      };
+      quote.querySelectorAll('.qp-drag-edge').forEach((el) => {
+        el.addEventListener('mousedown', onEdgeDown);
+      });
+      quote.querySelectorAll('.qp-resize-corner').forEach((el) => {
+        el.addEventListener('mousedown', onCornerDown);
       });
     }
     // REPLY 按钮
@@ -13425,6 +14303,8 @@ ${markedSwatchHtml}
           toast && toast('未找到回复/发串表单');
           return;
       }
+      // early open 也必须先注入浮窗样式/主题，避免表单先以无样式状态闪一下
+      ensureReplyOverlayStyle();
       const ov = ensureOverlay();
       const body = ov.querySelector('.qp-body');
       body.innerHTML = '';
@@ -13441,12 +14321,29 @@ ${markedSwatchHtml}
           previewEl.parentNode.insertBefore(ph2, previewEl);
           previewEl.__placeholder = ph2;
       }
-      // 如果表单是折叠状态，展开它（不影响原位置的占位符）
-      if ($(formEl).data('xdex-collapsed')) {
+      // 折叠表单先只记状态，不要在原位 show()——否则 early open 时表单会先裸奔到页面上。
+      // 真正展开放到 body.appendChild(wrap) 之后、overlay 显示之前。
+      // 同时处理 Utils.collapse 留下的可见折叠按钮，避免它留在原位/被误搬进浮窗。
+      const $formEl = $(formEl);
+      const wasCollapsedForOpen = !!$formEl.data('xdex-collapsed') || formEl.classList.contains('xdex-generic-collapsed');
+      if (wasCollapsedForOpen) {
           formEl.__wasCollapsed = true; // ★ 记录原本是折叠的
-          $(formEl).show().removeData('xdex-collapsed');
+          let collapseToggleEl = null;
+          const prev = formEl.previousElementSibling;
+          if (prev && prev.classList.contains('xdex-placeholder') && prev.classList.contains('xdex-generic-toggle')) {
+            collapseToggleEl = prev;
+          } else {
+            const $ph = $formEl.prev('.xdex-placeholder.xdex-generic-toggle');
+            if ($ph.length) collapseToggleEl = $ph[0];
+          }
+          if (collapseToggleEl) {
+            collapseToggleEl.style.display = 'none';
+            formEl.__collapseToggleEl = collapseToggleEl;
+          }
+          $formEl.removeData('xdex-collapsed');
+          formEl.classList.remove('xdex-generic-collapsed');
       }
-      // === 新增：给表单打标记，避免被板块页展开逻辑误处理 ===
+      // === 新增：给表单打标记，避免被板块页展开逻辑 / early collapse 误处理 ===
       formEl.classList.add('qp-reply-form');
       // 包装容器，防止 UI 松散
       const wrap = document.createElement('div');
@@ -13482,6 +14379,109 @@ ${markedSwatchHtml}
         }
       }
       body.appendChild(wrap);
+      // 表单已进浮窗后再展开，避免原位闪现/拆碎漂在左上角；
+      // 同时确保 early collapse 的折叠按钮不会出现在浮窗里。
+      if (wasCollapsedForOpen) {
+        $(formEl).show();
+        formEl.classList.remove('xdex-generic-collapsed');
+        if (formEl.__collapseToggleEl && formEl.__collapseToggleEl.parentNode) {
+          // 折叠按钮留在原位隐藏即可；不要带进浮窗
+          formEl.__collapseToggleEl.style.display = 'none';
+        }
+        // 只清理整表单『回复/发串』折叠按钮；不要删 form 内的「可选项」按钮
+        if (formEl.__collapseToggleEl && wrap.contains(formEl.__collapseToggleEl)) {
+          formEl.__collapseToggleEl.remove();
+          formEl.__collapseToggleEl = null;
+        }
+      }
+      // early open：ready/batch2 可能还没跑 enhancePostFormLayout，
+      // 导致浮窗内没有“可选项”(标题/名称/E-mail)折叠按钮、送出按钮也还在标题行。
+      // 这里对当前 form 同步补做一次（函数内部已幂等）。
+      try {
+        if (typeof enhancePostFormLayout === 'function') enhancePostFormLayout(formEl);
+      } catch (e) {}
+      // early open：若预览框尚未创建，立刻按当前 form 补一个 skeleton，
+      // 避免用户先看到无预览表单，再等 enhanceIsland/batch2。
+      if (!previewEl || !previewEl.isConnected || !wrap.contains(previewEl)) {
+        try {
+          if (typeof tryInsertPreviewBoxEarly === 'function') tryInsertPreviewBoxEarly(formEl);
+        } catch (e) {}
+        // 优先取紧邻当前 form 的预览，再兜底全局
+        previewEl = (formEl.nextElementSibling && formEl.nextElementSibling.classList?.contains('h-preview-box'))
+          ? formEl.nextElementSibling
+          : (wrap.querySelector('.h-preview-box')
+            || document.querySelector('.qp-body .h-preview-box')
+            || document.querySelector('.h-preview-box'));
+        if (previewEl && !wrap.contains(previewEl)) {
+          if (!previewEl.__placeholder) {
+            const ph2 = document.createElement('div');
+            ph2.style.display = 'none';
+            if (previewEl.parentNode) previewEl.parentNode.insertBefore(ph2, previewEl);
+            previewEl.__placeholder = ph2;
+          }
+          previewEl.style.width = '100%';
+          previewEl.style.maxWidth = 'none';
+          previewEl.style.margin = '0';
+          wrap.appendChild(previewEl);
+        }
+      }
+      // 确保粘贴图片预览已绑定（幂等），即使 enhanceIsland 尚未初始化，
+      // 早期打开浮窗时粘贴图片也能被捕获并更新到当前活跃预览框。
+      if (typeof bindPasteImagePreviewOnce === 'function') bindPasteImagePreviewOnce();
+      // === 全面修复：搬运“滞后出现的预览框”进浮窗 ===
+      // 若 open() 执行时页面还没有 .h-preview-box（enhanceIsland 尚未初始化），
+      // 之后 enhanceIsland 会把新的预览框插到浮窗外（原位置）。如果此时浮窗里
+      // 还没有预览框，就把浮窗外的那个搬进来，否则粘贴图片的预览会更新到
+      // 用户看不见的框。短时重试几次，覆盖 batch2 稍晚创建的情况。
+      const adoptStrayPreviewIntoPanel = () => {
+        const bodyNow = ov.querySelector('.qp-body');
+        if (!bodyNow) return false;
+        const wrapNow = bodyNow.querySelector('.qp-content-wrap') || wrap;
+        if (bodyNow.querySelector('.h-preview-box')) {
+          // 浮窗内已有：仍补一次表单布局（幂等），防止只补了预览漏了可选项
+          try { if (typeof enhancePostFormLayout === 'function') enhancePostFormLayout(formEl); } catch (e) {}
+          return true;
+        }
+        const stray = document.querySelector('.h-preview-box');
+        if (!stray || stray.closest('.qp-body')) return false; // 没有，或已在别的浮窗
+        // 记录占位符（与 closeOverlay 的还原逻辑对应）
+        if (!stray.__placeholder) {
+          const ph = document.createElement('div');
+          ph.style.display = 'none';
+          if (stray.parentNode) stray.parentNode.insertBefore(ph, stray);
+          stray.__placeholder = ph;
+        }
+        stray.style.width = '100%';
+        stray.style.maxWidth = 'none';
+        stray.style.margin = '0';
+        // 放进同一个 content wrap，避免再叠一个 wrap 导致布局错乱
+        wrapNow.appendChild(stray);
+        ov.__previewEl = stray;
+        if (typeof extendQuote === 'function') extendQuote(stray);
+        if (typeof initContent === 'function') {
+          try { initContent(stray); } catch (e) {}
+        }
+        // 搬运完成后，如果 file input 里已有图片（用户在 enhanceIsland 之前就粘贴了），
+        // 立即补渲染到刚搬进浮窗的预览框，避免“图片已插入但预览不显示”。
+        const movedInput = wrapNow.querySelector('input[type="file"][name="image"]')
+          || document.querySelector('.qp-body input[type="file"][name="image"]');
+        if (movedInput && movedInput.files && movedInput.files[0]) {
+          updatePreviewImageFromFile(movedInput.files[0]);
+        }
+        // 滞后预览框搬入后：立刻贴合，避免用户先看到只有表单的矮窗再被撑高
+        ensureReplyPanelAutoFitObserver(ov);
+        if (!ov.__userSizedPanel) fitReplyPanelToContent(ov, { save: true });
+        scheduleReplyPanelAutoFit(ov);
+        return true;
+      };
+      // 立刻试一次 + 短时重试（enhanceIsland 在 batch2，可能比 open 晚几十~几百 ms）
+      if (!adoptStrayPreviewIntoPanel()) {
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries += 1;
+          if (adoptStrayPreviewIntoPanel() || tries >= 12) clearInterval(timer);
+        }, 50);
+      }
       // 浮窗内立即处理扩展引用，保证可点击引用弹窗
       if (typeof extendQuote === 'function') {
         extendQuote(previewEl || wrap);
@@ -13495,202 +14495,79 @@ ${markedSwatchHtml}
       // 保存引用
       ov.__formEl = formEl;
       ov.__previewEl = previewEl;
-      // 显示 overlay
-      ov.style.display = 'block';
-      // 初始化时检查是否需要调整浮窗宽度（确保不超出当前浏览器宽度）
-      const currentResponsiveWidth = Math.max(400, Math.min(window.innerWidth * 0.9, 820));
-      const stackElement = ov.querySelector('.qp-stack');
-      const currentWidth = stackElement.getBoundingClientRect().width;
-      if (currentWidth > currentResponsiveWidth) {
-        stackElement.style.width = currentResponsiveWidth + 'px';
+      // 显示 overlay 前再同步一次主题，确保 darkreader 配色首帧就位
+      if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
+      // 恢复/应用整窗布局，并绑定四边移动 + 四角缩放
+      // 若上次是用户四角拉伸过，继续尊重其尺寸；
+      // 非手动尺寸：先隐藏测量真实内容高，再露出，避免“先空高再撑高”的跳变
+
+      let layoutRect = null;
+      if (ov.__savedPanelRect && ov.__savedPanelRect.userSized) {
+        ov.__userSizedPanel = true;
+        layoutRect = ov.__savedPanelRect;
+      } else {
+        ov.__userSizedPanel = false;
+        const saved = ov.__savedPanelRect || null;
+        const base = getReplyPanelDefaults();
+        layoutRect = {
+          width: saved && saved.width ? saved.width : base.width,
+          height: base.height, // 仅作测量前的初始几何；真正露出前会 fit 成内容高
+          left: saved && Number.isFinite(Number(saved.left)) ? saved.left : base.left,
+          top: saved && Number.isFinite(Number(saved.top)) ? saved.top : base.top,
+          userSized: false
+        };
       }
-      // // 恢复之前保存的尺寸（需要在 ResizeObserver 创建之前恢复）
-      // const stackForRestore = ov.querySelector('.qp-stack');
-      // const restoredTa = ov.querySelector('textarea[name="content"]');
-      // // 先恢复 textarea 的尺寸
-      // if (ov.__savedTextareaWidth && restoredTa) {
-      //   restoredTa.style.width = ov.__savedTextareaWidth;
-      //   restoredTa.style.minWidth = ov.__savedTextareaWidth; // 确保不会被缩小
-      // }
-      // if (ov.__savedTextareaHeight && restoredTa) {
-      //   restoredTa.style.height = ov.__savedTextareaHeight;
-      // }
-      // // 再恢复 stack 的宽度
-      // if (ov.__savedStackWidth && stackForRestore) {
-      //   stackForRestore.style.width = ov.__savedStackWidth;
-      // }
+      // 先不可见地挂到布局树，量准高度后再显示，避免用户看到尺寸变化
+      ov.style.visibility = 'hidden';
+      ov.style.display = 'block';
+      applyReplyPanelLayout(ov, layoutRect);
+      bindReplyPanelFrame(ov);
+      if (!ov.__userSizedPanel) {
+        // 同步贴合：此时 form/preview 已在 DOM，且 display=block，可量到真实高度
+        fitReplyPanelToContent(ov, { save: true });
+      }
+      // 强制一次 reflow，再露出最终尺寸
+      void (ov.offsetHeight);
+      ov.style.visibility = '';
+      // 观察器只负责后续内容变化（输入/粘贴图/引用展开），不再承担“首开定高”
+      ensureReplyPanelAutoFitObserver(ov);
+      // 轻量跟一次：处理图片/字体等晚一帧才稳定的情况（首帧已是内容高，通常几乎无跳变）
+      scheduleReplyPanelAutoFit(ov);
       // 显示归位按钮
       const resetBtn = ov.querySelector('.qp-reset-btn');
       if (resetBtn) resetBtn.style.display = 'block';
-      // 启用拖拽功能
-      const $quote = $(ov.querySelector('.qp-quote'));
-      const $handles = $quote.find('.qp-drag-edge');
-      enableDragForReply($quote, $handles);
       const ta = ov.querySelector('textarea[name="content"]');
-      // ---------- BEGIN 插入（替换旧的 ResizeObserver 逻辑） ----------
+
       if (ta) {
-        // 先恢复之前保存的尺寸，再设置其他属性
-        if (ov.__savedTextareaWidth) {
-          ta.style.width = ov.__savedTextareaWidth;
-        }
-        if (ov.__savedTextareaHeight) {
-          ta.style.height = ov.__savedTextareaHeight;
-        }
-        ta.style.resize = 'both';
+        // 允许垂直缩放；宽度仍跟浮窗走
+        ta.style.resize = 'vertical';
         ta.style.fontSize = '14px';
-        // 不设置 maxWidth，让它自由调整
+        ta.style.flex = 'none';
       }
-      // 监听 textarea 调整大小的开始和结束
-      if (ta) {
-        ta.addEventListener('mousedown', function(e) {
-          // 检测是否点击在右下角调整区域（通常是最后 15px 范围）
-          const rect = ta.getBoundingClientRect();
-          const offsetX = e.clientX - rect.left;
-          const offsetY = e.clientY - rect.top;
-          const isResizeCorner = (offsetX > rect.width - 15) && (offsetY > rect.height - 15);
-          const isResizeRight = offsetX > rect.width - 15;
-          const isResizeBottom = offsetY > rect.height - 15;
-          if (isResizeCorner || isResizeRight || isResizeBottom) {
-            ov.__isResizing = true;
-            // 监听鼠标释放，标记调整结束
-            const onMouseUp = function() {
-              // 延迟一点清除标记，避免释放瞬间的点击事件触发关闭
-              setTimeout(() => {
-                ov.__isResizing = false;
-              }, 100);
-              document.removeEventListener('mouseup', onMouseUp);
-            };
-            document.addEventListener('mouseup', onMouseUp);
-          }
-        });
-      }
-      const stack = ov.querySelector('.qp-stack');
-      const quote = ov.querySelector('.qp-quote');
-      // 绝对最小宽度（不能再小）
-      const ABSOLUTE_MIN_WIDTH = 400;
-      // 动态计算当前应有的宽度（视口90%，但不小于400px，不大于820px）
-      function getResponsiveWidth() {
-        return Math.max(ABSOLUTE_MIN_WIDTH, Math.min(window.innerWidth * 0.9, 820));
-      }
-      // 初始化时记录用户可能扩展到的最大宽度
-      // 如果有保存的宽度，使用保存的；否则使用响应式宽度
-      let userMaxWidth = ov.__savedStackWidth ? parseFloat(ov.__savedStackWidth) : getResponsiveWidth();
-      // 定义安全边距（textarea 与浮窗边框之间的最小距离）
-      const SAFE_MARGIN = 30;
-      const ro = new ResizeObserver(entries => {
-        for (const entry of entries) {
-          const taRect = ta.getBoundingClientRect();
-          const taWidth = Math.round(taRect.width);
-          const stackRect = stack.getBoundingClientRect();
-          // 获取 quote 的 padding
-          const quoteStyle = window.getComputedStyle(quote);
-          const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
-          const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
-          // 计算 textarea 左边距（相对于 quote）
-          const quoteRect = quote.getBoundingClientRect();
-          const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
-          // 计算 textarea 右边界（相对于 quote 左边界）
-          const taRightEdge = taLeftOffset + taWidth;
-          // 计算 quote 的内部可用宽度
-          const quoteInnerWidth = quoteRect.width - quotePaddingLeft - quotePaddingRight;
-          // 获取视口宽度和当前响应式宽度
-          const maxAllowedWidth = window.innerWidth;
-          const responsiveWidth = getResponsiveWidth();
-          // 如果 textarea 右边界超过了安全区域，需要扩展 stack
-          const safeRightBound = quoteInnerWidth - SAFE_MARGIN - 20;
-          if (taRightEdge > safeRightBound) {
-            // 计算需要的新 stack 宽度
-            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
-            // 限制不超过视口宽度
-            const finalWidth = Math.min(neededQuoteWidth, maxAllowedWidth);
-            stack.style.width = finalWidth + 'px';
-            quote.style.width = '100%';
-            // 更新用户扩展到的最大宽度
-            userMaxWidth = Math.max(finalWidth, userMaxWidth);
-            // 如果达到最大宽度，限制 textarea 不能继续变宽
-            if (finalWidth >= maxAllowedWidth) {
-              const maxTaWidth = maxAllowedWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-              ta.style.maxWidth = Math.max(maxTaWidth, 200) + 'px';
-            } else {
-              ta.style.maxWidth = 'none';
-            }
-          }
-          // 如果 textarea 缩小了，也缩小 stack
-          else {
-            // 计算当前实际需要的宽度
-            const neededQuoteWidth = taLeftOffset + taWidth + SAFE_MARGIN + 20 + quotePaddingLeft + quotePaddingRight;
-            const currentStackWidth = stackRect.width;
-            // 只有当需要的宽度明显小于当前宽度时才缩小
-            if (neededQuoteWidth < currentStackWidth - 10) {
-              // 使用响应式宽度作为下限
-              const finalWidth = Math.max(neededQuoteWidth, responsiveWidth);
-              stack.style.width = finalWidth + 'px';
-              quote.style.width = '100%';
-              // 同步调整 textarea 宽度，使其适应浮窗
-              if (finalWidth <= responsiveWidth) {
-                const maxTaWidth = finalWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-                if (taWidth > maxTaWidth) {
-                  ta.style.width = Math.max(maxTaWidth, 200) + 'px';
-                }
-              }
-            }
-            // 缩小时也要检查是否需要解除 maxWidth 限制
-            if (stackRect.width < maxAllowedWidth) {
-              ta.style.maxWidth = 'none';
-            }
-          }
-        }
-      });
-      if (ta) {
-        ro.observe(ta);
-        ov.__resizeObserver = ro;
-      }
-      // 最后恢复 stack 的宽度（在 ResizeObserver 创建之后）
-      const stackForRestore = ov.querySelector('.qp-stack');
-      if (ov.__savedStackWidth && stackForRestore) {
-        stackForRestore.style.width = ov.__savedStackWidth;
-        // 监听窗口大小变化，动态调整浮窗和 textarea
-      const handleWindowResize = function() {
-        const responsiveWidth = getResponsiveWidth(); // 当前浏览器宽度对应的响应式宽度
-        const currentStackWidth = stack.getBoundingClientRect().width;
-        // 关键：只在浏览器宽度变窄、且当前浮窗宽度超出响应式宽度时，才缩小浮窗
-        if (responsiveWidth < currentStackWidth) {
-          // 将浮窗宽度设置为响应式宽度（会随浏览器变窄而变窄）
-          stack.style.width = responsiveWidth + 'px';
-          // 同时调整 textarea，确保不超出新的浮窗宽度
-          if (ta) {
-            const taRect = ta.getBoundingClientRect();
-            const quoteStyle = window.getComputedStyle(quote);
-            const quotePaddingLeft = parseFloat(quoteStyle.paddingLeft);
-            const quotePaddingRight = parseFloat(quoteStyle.paddingRight);
-            const quoteRect = quote.getBoundingClientRect();
-            const taLeftOffset = taRect.left - quoteRect.left - quotePaddingLeft;
-            const maxTaWidth = responsiveWidth - taLeftOffset - SAFE_MARGIN - 20 - quotePaddingLeft - quotePaddingRight;
-            if (taRect.width > maxTaWidth) {
-              ta.style.width = Math.max(maxTaWidth, 200) + 'px';
-            }
-          }
-        }
-        // 浏览器变宽时不做任何调整（保持用户设置的宽度）
-      };
-      window.addEventListener('resize', handleWindowResize);
-      ov.__windowResizeHandler = handleWindowResize;
-      }
-      // ---------- END 插入 ----------
       // 聚焦 textarea
       if (ta) {
           ta.focus();
           const val = ta.value;
           ta.value = '';
           ta.value = val;
+          // 恢复引用追记保存的光标位置（关闭浮窗时点引用号，focus 会失败，
+          // 所以在引用追记中把期望光标位置暂存在元素上，这里再恢复）
+          if (ta.__pendingQuoteCursorPos != null) {
+            ta.setSelectionRange(ta.__pendingQuoteCursorPos, ta.__pendingQuoteCursorPos);
+            ta.__pendingQuoteCursorPos = null;
+          }
       }
       // Ctrl+Enter 发送并在成功后关闭浮窗
       if (ta) {
           const form = ta.closest('form');
           if (form && !ta.__qpCtrlEnterBound) {
               ta.__qpCtrlEnterBound = true;
-              // 保留：提交成功后关闭浮窗
+              // 保留：提交成功后关闭浮窗，并清掉发送锁/超时器
               document.addEventListener('replySuccess', () => {
+                  if (form.__submitLockTimer) {
+                    clearTimeout(form.__submitLockTimer);
+                    form.__submitLockTimer = 0;
+                  }
                   form.__submitting = false;
                   closeOverlay();
               });
@@ -13720,194 +14597,13 @@ ${markedSwatchHtml}
     logRightSidebar('original-toolbar-removed', {
       remainingToolbarCount: $('#h-tool').length,
     });
-      const isDarkReaderActive = () => {
-        const root = document.documentElement;
-        if (!root) return false;
-        const mode = root.getAttribute('data-darkreader-mode');
-        const scheme = root.getAttribute('data-darkreader-scheme');
-        return !!(mode && mode !== 'off') || !!(scheme && scheme !== 'off');
-      };
-      const syncQuotePopupTheme = () => {
-        const root = document.documentElement;
-        if (!root) return;
-        root.classList.toggle('xdex-darkreader-active', isDarkReaderActive());
-        const previewBg = isDarkReaderActive() ? '#483327' : '#F0E0D6';
-        document.querySelectorAll('.qp-body .qp-content-wrap .h-preview-box, .qp-body .qp-content-wrap .h-preview-box .h-threads-item, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main').forEach((el) => {
-          el.style.setProperty('background', previewBg, 'important');
-        });
-      };
-      window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
-    // 样式（只注入一次）
-    if (!document.getElementById('qp-style')) {
-        const style = document.createElement('style');
-        style.id = 'qp-style';
-        style.textContent = `
-          :root {
-            --xdex-qp-shell-bg: #FFFFEE;
-            --xdex-qp-form-bg: #FFFFEE;
-            --xdex-qp-preview-bg: #F0E0D6;
-            --xdex-qp-textarea-bg: #fff;
-            --xdex-qp-border: #ccc;
-            --xdex-qp-outline: #fff;
-            --xdex-qp-shadow: rgba(0,0,0,.24);
-            --xdex-qp-reset-bg: rgba(0,0,0,.6);
-            --xdex-qp-reset-color: #fff;
-          }
-          :root.xdex-darkreader-active {
-            --xdex-qp-shell-bg: #2b2c2d;
-            --xdex-qp-form-bg: #2b2c2d;
-            --xdex-qp-preview-bg: #483327;
-            --xdex-qp-textarea-bg: #1f2021;
-            --xdex-qp-border: #4b4d50;
-            --xdex-qp-outline: #3a3c3f;
-            --xdex-qp-shadow: rgba(0,0,0,.55);
-            --xdex-qp-reset-bg: rgba(19,20,21,.88);
-            --xdex-qp-reset-color: #e8e6e3;
-          }
-          .qp-overlay {
-            position: fixed; inset: 0; z-index: 9000;
-            background: rgba(0,0,0,.45); display: none;
-          }
-          .qp-stack {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: min(90vw, 820px);   /* 初始宽度为视口的90%，最大820px */
-            min-width: 0;              /* 不设固定值，由 JS 动态控制 */
-            max-width: none;           /* 允许用户手动扩展 */
-            height: 80vh;
-            overflow: visible; box-sizing: border-box;
-          }
-          .qp-quote {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%;
-            max-height: 100%;
-          overflow-x: hidden;  /* 隐藏横向滚动条 */
-          overflow-y: auto;    /* 保留竖向滚动条 */
-            background: var(--xdex-qp-shell-bg);
-            border: 1px solid var(--xdex-qp-border);
-            outline: 2px solid var(--xdex-qp-outline);
-            border-radius: 8px;
-            box-shadow: 0 8px 24px var(--xdex-qp-shadow);
-            padding: 18px 20px 20px;
-            box-sizing: border-box;
-          }
-          .qp-quote textarea[name="content"] {
-            resize: both;           /* 允许双向调节 */
-            min-width: 90%;        /* 最小宽度为容器宽度 */
-            max-width: none;       /* 通过 JS 动态控制，这里不限制 */
-            box-sizing: border-box;
-          }
-          /* 仅在浮窗中允许拖动改变宽度 */
-          .qp-body .h-post-form-textarea {
-              resize: horizontal;   /* 允许左右拉伸 */
-              min-width: px;     /* 原始宽度为最小值，避免变太窄 */
-              max-width: 100%;      /* 防止超过容器太多 */
-              box-sizing: border-box;
-          }
-          /* 拖拽手柄：四边窄条，仅在手柄区域显示"移动"指针 */
-          .qp-drag-edge {
-            position: absolute;
-            pointer-events: auto;
-            z-index: 3;
-            cursor: move;
-          }
-          .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 8px; }
-          .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 8px; } 
-          .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 8px; }
-          .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 8px; } 
-          .qp-quote.is-dragging { cursor: grabbing !important; }
-          /* 归位按钮 */
-          .qp-reset-btn {
-            position: fixed; right: 12px; bottom: 12px;
-            font-size: 20px; line-height: 1;
-            color: var(--xdex-qp-reset-color); background: var(--xdex-qp-reset-bg);
-            padding: 6px 12px; border-radius: 6px; cursor: pointer;
-            z-index: 9001; /* 比 overlay 高 */
-            user-select: none;
-            display: none;
-          }
-          .qp-body .qp-content-wrap {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            max-width: none;       /* 改为 none，不限制最大宽度 */
-            margin: 0 auto;
-            background: var(--xdex-qp-form-bg);
-          }
-          .qp-body .qp-content-wrap form {
-            max-width: 100%;
-            box-sizing: border-box;
-            background: var(--xdex-qp-form-bg);
-          }
-          /* textarea 可以双向调整 */
-          .qp-body .qp-content-wrap textarea[name="content"] {
-            resize: both;
-            min-width: 600px;   /* 给个合理的最小值 */
-            min-height: 100px;   /* 给个合理的最小值 */
-            width: auto;        /* 不要强制 100% */
-            max-width: none;    /* 允许无限扩展 */
-            box-sizing: border-box;
-            background: var(--xdex-qp-textarea-bg);
-          }
-          .qp-body .qp-content-wrap .h-preview-box {
-            width: 100% !important;   /* 始终和容器一致 */
-            overflow-wrap: break-word; /* 长单词/长链接换行 */
-            word-break: break-word;    /* 兼容性处理 */
-            white-space: normal;       /* 允许正常换行 */
-          }
-          /* 浮窗内预览框及其子层级全部占满宽度 */
-          .qp-body .qp-content-wrap .h-preview-box,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply,
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main {
-              width: 100% !important;
-              max-width: none !important;
-              margin: 0 !important;
-              box-sizing: border-box;
-              display: block;
-              background: var(--xdex-qp-preview-bg);
-          }
-          /* 浮窗内：仅在非 h-active 状态下限制缩略图宽度 */
-          .qp-body .qp-content-wrap .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
-            max-width: 33% !important;
-            height: auto !important;
-          }
-          /* 表单内：仅在非 h-active 状态下限制缩略图宽度 */
-          #h-post-form .h-preview-box .h-threads-img-box:not(.h-active) .h-threads-img {
-            max-width: 50% !important;
-            height: auto !important;
-          }
-          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
-          .hld__docker:hover,
-          .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
-          .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
-          .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
-          .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
-          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
-          .hld__docker:hover .hld__docker-btns>div,
-          .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
-          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
-          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
-          .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
-        `;
-        document.head.appendChild(style);
-        logRightSidebar('style-injected', { 样式ID: style.id });
-    } else {
-        logRightSidebar('style-reused', { 样式ID: 'qp-style' });
-    }
-    syncQuotePopupTheme();
-    if (!replaceRightSidebar.__darkReaderObserver) {
-      const observer = new MutationObserver(() => syncQuotePopupTheme());
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'style', 'class'],
-        childList: true,
-        subtree: true,
-      });
-      replaceRightSidebar.__darkReaderObserver = observer;
-    }
+      // 样式/主题：统一走 ensureReplyOverlayStyle，early open 与 batch2 共用同一入口
+    const styleExisted = !!document.getElementById('qp-style');
+    ensureReplyOverlayStyle();
+    logRightSidebar(styleExisted ? 'style-reused' : 'style-injected', { 样式ID: 'qp-style' });
+    // Dark Reader 监听已抽到 ensureDarkReaderThemeObserver（early open 也会装）
+    ensureDarkReaderThemeObserver();
+    replaceRightSidebar.__darkReaderObserver = window.__xdexDarkReaderThemeObserver || null;
     // 扩展坞 DOM：复用 early shell，避免加载时重复插入和重复重绘
     let dockerDom = $('.hld__docker').first();
     if (!dockerDom.length) {
@@ -15051,7 +15747,8 @@ ${markedSwatchHtml}
             }
           }
           if (successMsg) {
-            toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'));
+            // 与触底/手动局部刷新一致：快速即时 toast，不走默认队列
+            toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'), 900, { queue: false, key: 'send-status' });
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
             // 清空输入框
             const textarea = form.querySelector('textarea[name="content"]');
@@ -15427,12 +16124,35 @@ ${markedSwatchHtml}
           }
         });
       }
-      // 防重复提交
+      // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
+      const SUBMIT_LOCK_TIMEOUT_MS = 15000;
+      const clearSubmitLockTimer = (f) => {
+        if (f && f.__submitLockTimer) {
+          clearTimeout(f.__submitLockTimer);
+          f.__submitLockTimer = 0;
+        }
+      };
+      const unlockSubmit = (f) => {
+        clearSubmitLockTimer(f);
+        if (f) f.__submitting = false;
+      };
+      const lockSubmit = (f) => {
+        if (!f) return;
+        f.__submitting = true;
+        clearSubmitLockTimer(f);
+        // 点击发送后 15s 仍无 doSubmit 成功/失败结果 → 主动解除，避免永久卡死
+        f.__submitLockTimer = setTimeout(() => {
+          f.__submitLockTimer = 0;
+          if (!f.__submitting) return;
+          f.__submitting = false;
+          toast('提交可能失败，请检查网络，或者刷新后重试');
+        }, SUBMIT_LOCK_TIMEOUT_MS);
+      };
       if (form.__submitting) {
         toast('发送中，请勿重复提交……');
         return;
       }
-      form.__submitting = true;
+      lockSubmit(form);
       // ── 发送前饼干确认（含串内偏好检查） ──
       const _cookieConfirmCfg = typeof getFilterConfig === "function" ? getFilterConfig() : {};
       const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
@@ -15446,8 +16166,8 @@ ${markedSwatchHtml}
             resetIllegalRetryState({ clearOriginalContent: false });
             const _ta = form.querySelector("textarea[name='content']");
             form.__originalContent = _ta ? _ta.value : (formData.get("content") || "").toString();
-            toast("正在发送……");
-            doSubmit(formData, false).finally(() => { form.__submitting = false; });
+            toast('正在发送……', 1500, { queue: false, key: 'send-status' });
+            doSubmit(formData, false).finally(() => { unlockSubmit(form); });
           };
           if (_pref) {
             const _cookieList = getCookiesList();
@@ -15457,7 +16177,7 @@ ${markedSwatchHtml}
               showCookieConfirmDialog(_threadId, (selectedHash) => {
                 setThreadCookiePref(_threadId, selectedHash);
                 _doSend();
-              }, () => { form.__submitting = false; }, { mode: 'setDefault' });
+              }, () => { unlockSubmit(form); }, { mode: 'setDefault' });
               return;
             }
             const _curCookie = getCurrentCookie();
@@ -15471,7 +16191,7 @@ ${markedSwatchHtml}
             showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
               if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
               _doSend();
-            }, () => { form.__submitting = false; }, { preselectHash: _pref.hash });
+            }, () => { unlockSubmit(form); }, { preselectHash: _pref.hash });
             return;
           }
           // 无偏好 → 直接发送
@@ -15485,8 +16205,8 @@ ${markedSwatchHtml}
       form.__originalContent = textarea
         ? textarea.value
         : (formData.get('content') || '').toString();
-      toast('正在发送……');
-      doSubmit(formData, false).finally(() => { form.__submitting = false; });
+      toast('正在发送……', 1500, { queue: false, key: 'send-status' });
+      doSubmit(formData, false).finally(() => { unlockSubmit(form); });
     }, true);
     // ————— helpers —————
     function getRealThreadsList(root = document) {
@@ -15944,8 +16664,11 @@ ${markedSwatchHtml}
   highlightPO();
 
   //回复表单UI调整
-  function enhancePostFormLayout() {
-     const form = document.querySelector('form[action*="doReplyThread"], form[action*="doPostThread"]');
+  function enhancePostFormLayout(formOpt) {
+     // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点
+     const form = formOpt
+      || document.querySelector('.qp-body form[action*="doReplyThread"], .qp-body form[action*="doPostThread"]')
+      || document.querySelector('form[action*="doReplyThread"], form[action*="doPostThread"]');
       if (!form) return;
       // 定位“标题”行与“颜文字”行
       const allRows = Array.from(form.querySelectorAll('.h-post-form-grid'));
@@ -15958,7 +16681,9 @@ ${markedSwatchHtml}
         }
       }
       // 1) 先把送出按钮移到“颜文字”行，并让整行用 flex 不换行，按钮推到行最右
-      if (titleRow && emoticonRow) {
+      // 已搬过则跳过，避免 early open / ready 重复搬
+      if (titleRow && emoticonRow && !emoticonRow.querySelector('input[type="submit"]')) {
+
         const sendBtnCell = titleRow.querySelector('.h-post-form-option');
         const sendBtn = sendBtnCell?.querySelector('input[type="submit"]');
         if (sendBtn) {
@@ -16023,6 +16748,7 @@ ${markedSwatchHtml}
         Array.from(row.querySelectorAll('input[type="text"], textarea'))
       );
       const POST_FORM_OPTIONAL_MAX_LENGTH = 15;
+      const POST_FORM_EMAIL_MAX_LENGTH = 100;
       noPersistInputs.forEach(input => {
         input.setAttribute('autocomplete', 'off');
         input.setAttribute('autocapitalize', 'off');
@@ -16031,14 +16757,25 @@ ${markedSwatchHtml}
         input.setAttribute('aria-autocomplete', 'none');
         input.setAttribute('data-lpignore', 'true');
         input.setAttribute('data-form-type', 'other');
+        // 标题/名称：15 字，超限红字提醒；E-mail：100 字，maxlength 拦住后不再标红
+        const isEmailInput = (input.getAttribute('name') || '').toLowerCase() === 'email';
+        const maxLen = isEmailInput ? POST_FORM_EMAIL_MAX_LENGTH : POST_FORM_OPTIONAL_MAX_LENGTH;
+        if (isEmailInput) {
+          input.setAttribute('maxlength', String(POST_FORM_EMAIL_MAX_LENGTH));
+        } else {
+          // 标题/名称保持可输入并超限提示，不强制 maxlength 卡住
+          input.removeAttribute('maxlength');
+        }
         const inputCell = input.closest('.h-post-form-input');
         if (inputCell) {
+          inputCell.style.position = 'relative';
           inputCell.style.display = 'flex';
           inputCell.style.alignItems = 'center';
-          inputCell.style.gap = '6px';
           inputCell.style.minWidth = '0';
           input.style.flex = '1 1 auto';
           input.style.minWidth = '0';
+          // 右侧留空给绝对定位的计数器，避免输入文字被遮挡
+          input.style.paddingRight = '64px';
         }
         let counter = input.nextElementSibling && input.nextElementSibling.classList?.contains('xdex-post-form-char-count')
           ? input.nextElementSibling
@@ -16046,13 +16783,14 @@ ${markedSwatchHtml}
         if (!counter) {
           counter = document.createElement('span');
           counter.className = 'xdex-post-form-char-count';
-          counter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+          counter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;position:absolute;right:6px;top:50%;transform:translateY(-50%);pointer-events:none;';
           input.insertAdjacentElement('afterend', counter);
         }
         const updateCounter = () => {
           const len = String(input.value || '').length;
-          counter.textContent = len + '/' + POST_FORM_OPTIONAL_MAX_LENGTH;
-          counter.style.color = len > POST_FORM_OPTIONAL_MAX_LENGTH ? '#e53935' : '#888';
+          counter.textContent = len + '/' + maxLen;
+          // E-mail 到 100 已被 maxlength 拦住，保持灰色；标题/名称超 15 才标红
+          counter.style.color = (!isEmailInput && len > maxLen) ? '#e53935' : '#888';
         };
         if (input.__xdexPostFormCharCounter) {
           input.removeEventListener('input', input.__xdexPostFormCharCounter);
@@ -16061,18 +16799,83 @@ ${markedSwatchHtml}
         input.addEventListener('input', updateCounter);
         updateCounter();
       });
+      // 已折叠过就不要再包一层（early open 与 ready 都会跑）
+      // 若 toggle 丢失或 Utils.collapse 曾被 .qp-body 守卫挡掉，则补折叠；并清理重复按钮
       if (rowsToCollapse.length) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'collapse-wrapper';
-        wrapper.style.width = '100%';
-        // 将折叠目标打包进容器
-        rowsToCollapse[0].before(wrapper);
-        rowsToCollapse.forEach(r => wrapper.appendChild(r));
-        // 使用现有 collapse 能力（依赖 jQuery）
+        let wrapper = form.querySelector('.collapse-wrapper');
+        if (!wrapper) {
+          wrapper = document.createElement('div');
+          wrapper.className = 'collapse-wrapper';
+          wrapper.style.width = '100%';
+          rowsToCollapse[0].before(wrapper);
+          rowsToCollapse.forEach(r => wrapper.appendChild(r));
+        }
+        // 注意：Utils.collapse 展开后文案会变成「点击折叠」，不再含「可选项」
+        // 若仍只按 /可选项/ 识别，会误判 toggle 丢失 → removeData 后再次 collapse → 多出一个按钮
+        const isOptionalToggle = (el) => {
+          if (!el || !el.classList) return false;
+          if (!el.classList.contains('xdex-placeholder') || !el.classList.contains('xdex-generic-toggle')) return false;
+          if (el.dataset && el.dataset.xdexOptionalToggle === '1') return true;
+          const t = el.textContent || '';
+          if (/可选项/.test(t)) return true;
+          // 展开态：文案只剩「点击折叠/点击展开」，靠紧邻 collapse-wrapper 判定
+          const next = el.nextElementSibling;
+          if (next && next.classList && next.classList.contains('collapse-wrapper')
+              && /点击折叠|点击展开/.test(t)) return true;
+          return false;
+        };
+        // 合法位置：wrapper 前（Utils.collapse 默认）
+        // 兼容旧逻辑误挪到 form 前（wrap 内）的情况，只保留一个
+        const nearby = [];
+        if (isOptionalToggle(wrapper.previousElementSibling)) nearby.push(wrapper.previousElementSibling);
+        if (form.previousElementSibling && form.previousElementSibling !== wrapper.previousElementSibling
+            && isOptionalToggle(form.previousElementSibling)) {
+          nearby.push(form.previousElementSibling);
+        }
+        // 浮窗 wrap 内再扫一遍，防止残留重复
+        const host = form.closest('.qp-content-wrap') || form.parentElement;
+        if (host && host.querySelectorAll) {
+          host.querySelectorAll('.xdex-placeholder.xdex-generic-toggle').forEach((el) => {
+            if (isOptionalToggle(el) && !nearby.includes(el)) nearby.push(el);
+          });
+        }
+        let keepToggle = nearby.find((el) => el.nextElementSibling === wrapper) || nearby[0] || null;
+        nearby.forEach((el) => {
+          if (el !== keepToggle) el.remove();
+        });
+        // 若误挪到 form 外，搬回 wrapper 前，保证位置正确且 hasToggle 判定稳定
+        if (keepToggle && keepToggle.nextElementSibling !== wrapper) {
+          wrapper.before(keepToggle);
+        }
         if (typeof Utils !== 'undefined' && typeof Utils.collapse === 'function' && typeof $ === 'function') {
-          Utils.collapse($(wrapper), '可选项');
+          const $wrapper = $(wrapper);
+          if (keepToggle) {
+            keepToggle.dataset.xdexOptionalToggle = '1';
+            keepToggle.style.display = '';
+            // 已有 toggle 时：只同步标记，不要在用户展开后把内容又藏回去
+            // Utils.collapse 的 data 在展开后仍会保留；真正展开/收起交给原 click 处理
+            if (!$wrapper.data('xdex-collapsed') && !$wrapper.is(':visible')) {
+              $wrapper.hide().data('xdex-collapsed', true);
+              wrapper.classList.add('xdex-generic-collapsed');
+            } else if ($wrapper.data('xdex-collapsed') || $wrapper.is(':hidden')) {
+              wrapper.classList.add('xdex-generic-collapsed');
+            }
+          } else {
+            // 真的没有 toggle 才补；若 data 还在但按钮丢了，先清再 fold，避免永久卡死
+            if ($wrapper.data('xdex-collapsed')) {
+              $wrapper.removeData('xdex-collapsed');
+              wrapper.classList.remove('xdex-generic-collapsed');
+              $wrapper.show();
+            }
+            const $ph = Utils.collapse($wrapper, '可选项');
+            const phEl = ($ph && $ph[0]) || wrapper.previousElementSibling;
+            if (phEl && phEl.classList && phEl.classList.contains('xdex-generic-toggle')) {
+              phEl.dataset.xdexOptionalToggle = '1';
+            }
+          }
         }
       }
+      form.dataset.xdexPostFormLayoutEnhanced = '1';
     }
 
   /* --------------------------------------------------
@@ -16254,56 +17057,110 @@ ${markedSwatchHtml}
           // 用“显示文本 + 实际值”作为唯一键，避免脚本扩展颜文字（尤其富文本）统计丢失或冲突
           return `k:${text}\nv:${value}`;
         }
+        // 同一颜文字可能同时存在多种历史 key：
+        // - sk:extra:xxx / sk:rich:xxx（扩展注入后）
+        // - k:显示文本\nv:实际值（注入前/原生 option）
+        // - 仅显示文本（更旧版本）
+        // 排序/记录时必须合并，否则“最近”会看起来乱跳
+        function listKaomojiStatAliases(opt) {
+          const label = (opt?.textContent || '').trim();
+          const value = normalizeKaomojiValue(opt?.value);
+          const aliases = [];
+          const push = (k) => {
+            if (!k || aliases.includes(k)) return;
+            aliases.push(k);
+          };
+          push(kaomojiKeyFromOption(opt));
+          if (label) {
+            push(label); // legacy
+            push(`k:${label}\nv:${value}`);
+            // 富文本插入时 value 可能带首尾换行，兼容去换行后的 key
+            const bareVal = value.replace(/^\n+/, '').replace(/\n+$/, '');
+            if (bareVal !== value) push(`k:${label}\nv:${bareVal}`);
+            // 扩展项稳定 key 的两种常见形态
+            push(`sk:extra:${label}`);
+            push(`sk:rich:${label}`);
+          }
+          const stableKey = (opt?.dataset?.kaoKey || '').trim();
+          if (stableKey) push(`sk:${stableKey}`);
+          return aliases;
+        }
+        function readKaomojiStatEntry(stats, key) {
+          const st = stats && key ? stats[key] : null;
+          if (!st || typeof st !== 'object') return { count: 0, lastUsed: 0 };
+          return {
+            count: Number.isFinite(Number(st.count)) ? Number(st.count) : 0,
+            lastUsed: Number.isFinite(Number(st.lastUsed)) ? Number(st.lastUsed) : 0
+          };
+        }
+        function mergeKaomojiStatEntries(entries) {
+          let count = 0;
+          let lastUsed = 0;
+          (entries || []).forEach((st) => {
+            count += Number(st && st.count) || 0;
+            lastUsed = Math.max(lastUsed, Number(st && st.lastUsed) || 0);
+          });
+          return { count, lastUsed };
+        }
+        // 把别名统计折叠进主 key，避免排序只读到“空壳 sk key”而丢掉真正的 lastUsed
+        function coalesceKaomojiStatsForOption(stats, opt) {
+          const primary = kaomojiKeyFromOption(opt);
+          const aliases = listKaomojiStatAliases(opt);
+          const merged = mergeKaomojiStatEntries(aliases.map((k) => readKaomojiStatEntry(stats, k)));
+          stats[primary] = merged;
+          aliases.forEach((k) => {
+            if (k !== primary && stats[k]) delete stats[k];
+          });
+          return merged;
+        }
+        function getKaomojiStatForOption(stats, opt) {
+          const primary = kaomojiKeyFromOption(opt);
+          // 已折叠过则直接读主 key；若仍有别名残留则按合并值排序
+          if (stats && stats[primary] && typeof stats[primary] === 'object') {
+            const aliases = listKaomojiStatAliases(opt);
+            const hasAliasResidue = aliases.some((k) => k !== primary && stats[k]);
+            if (!hasAliasResidue) return readKaomojiStatEntry(stats, primary);
+            return mergeKaomojiStatEntries(aliases.map((k) => readKaomojiStatEntry(stats, k)));
+          }
+          return mergeKaomojiStatEntries(listKaomojiStatAliases(opt).map((k) => readKaomojiStatEntry(stats, k)));
+        }
         function syncKaomojiStatsWithOptions(options) {
           const stats = loadKaomojiStats();
-          const keysOnPage = new Set();
-          // 收集当前页面所有颜文字 key（而非仅当前 select），避免多 select 场景误删扩展项统计
+          // 收集当前页面所有颜文字（而非仅当前 select），避免多 select 场景漏合并
+          const allOpts = [];
           document.querySelectorAll(SELECTOR).forEach(sel => {
             Array.from(sel.options || []).forEach(opt => {
               const label = (opt?.textContent || '').trim();
               if (!label || label === '无') return;
-              keysOnPage.add(kaomojiKeyFromOption(opt));
+              allOpts.push(opt);
             });
           });
-          options.forEach(opt => {
+          (options || []).forEach(opt => {
             const label = (opt?.textContent || '').trim();
-            const key = kaomojiKeyFromOption(opt);
             if (!label || label === '无') return;
-            // 兼容旧版本（仅按 text 存储）统计，迁移到新 key
-            const legacyKey = label;
-            if (!stats[key] && stats[legacyKey] && typeof stats[legacyKey] === 'object') {
-              stats[key] = {
-                count: Number(stats[legacyKey].count) || 0,
-                lastUsed: Number(stats[legacyKey].lastUsed) || 0
-              };
-              delete stats[legacyKey];
-            }
-            const fallbackKey = `k:${label}\nv:${normalizeKaomojiValue(opt?.value)}`;
-            if (key !== fallbackKey && !stats[key] && stats[fallbackKey] && typeof stats[fallbackKey] === 'object') {
-              stats[key] = {
-                count: Number(stats[fallbackKey].count) || 0,
-                lastUsed: Number(stats[fallbackKey].lastUsed) || 0
-              };
-              delete stats[fallbackKey];
-            }
-            if (!stats[key]) stats[key] = { count: 0, lastUsed: 0 };
-            if (!Number.isFinite(Number(stats[key].count))) stats[key].count = 0;
-            if (!Number.isFinite(Number(stats[key].lastUsed))) stats[key].lastUsed = 0;
+            if (!allOpts.includes(opt)) allOpts.push(opt);
           });
-          // 不主动删除缺失 key：时间线等场景下，扩展颜文字可能晚于首次渲染注入，
-          // 若此处清理会把“扩展项统计”反复删掉，表现为计数长期为 0。
-          // 如需清理可后续增加手动/定时 GC，而不是在每次渲染时做强清理。
+          allOpts.forEach(opt => {
+            const label = (opt?.textContent || '').trim();
+            if (!label || label === '无') return;
+            coalesceKaomojiStatsForOption(stats, opt);
+          });
+          // 不主动删除“当前页完全见不到”的孤立 key：扩展颜文字可能晚注入。
+          // 但同 option 的别名已在 coalesce 中折叠进主 key。
           saveKaomojiStats(stats);
           return stats;
         }
         function recordKaomojiUsage(opt) {
           const label = (opt?.textContent || '').trim();
-          const key = kaomojiKeyFromOption(opt);
           if (!label || label === '无') return;
+          const key = kaomojiKeyFromOption(opt);
           const stats = loadKaomojiStats();
-          if (!stats[key]) stats[key] = { count: 0, lastUsed: 0 };
-          stats[key].count = (Number(stats[key].count) || 0) + 1;
-          stats[key].lastUsed = Date.now();
+          // 先合并历史别名，再累加到主 key，避免“记到 A、排到 B”
+          const merged = coalesceKaomojiStatsForOption(stats, opt);
+          stats[key] = {
+            count: (Number(merged.count) || 0) + 1,
+            lastUsed: Date.now()
+          };
           saveKaomojiStats(stats);
         }
         function getSortedKaomojiOptions(select) {
@@ -16319,8 +17176,8 @@ ${markedSwatchHtml}
           const stats = syncKaomojiStatsWithOptions(base.map(x => x.opt));
           if (mode === 'freq') {
             base.sort((a, b) => {
-              const sa = stats[a.key] || { count: 0, lastUsed: 0 };
-              const sb = stats[b.key] || { count: 0, lastUsed: 0 };
+              const sa = getKaomojiStatForOption(stats, a.opt);
+              const sb = getKaomojiStatForOption(stats, b.opt);
               const dc = (Number(sb.count) || 0) - (Number(sa.count) || 0);
               if (dc !== 0) return dc;
               // 常用模式：频次相同 -> 最近使用优先
@@ -16335,13 +17192,13 @@ ${markedSwatchHtml}
             const used = [];
             const unused = [];
             base.forEach(x => {
-              const st = stats[x.key] || { count: 0, lastUsed: 0 };
+              const st = getKaomojiStatForOption(stats, x.opt);
               if ((Number(st.lastUsed) || 0) > 0) used.push(x);
               else unused.push(x);
             });
             used.sort((a, b) => {
-              const sa = stats[a.key] || { count: 0, lastUsed: 0 };
-              const sb = stats[b.key] || { count: 0, lastUsed: 0 };
+              const sa = getKaomojiStatForOption(stats, a.opt);
+              const sb = getKaomojiStatForOption(stats, b.opt);
               const dt = (Number(sb.lastUsed) || 0) - (Number(sa.lastUsed) || 0);
               if (dt !== 0) return dt;
               const dc = (Number(sb.count) || 0) - (Number(sa.count) || 0);
@@ -17274,111 +18131,25 @@ ${markedSwatchHtml}
             });
             if (typeof updatePreviewCookieId === 'function') updatePreviewCookieId();
             // === 图片预览更新函数 ===
+            // 复用全局 updatePreviewImageFromFile（实时查询当前活跃预览框），
+            // 不再用闭包捕获的旧 $box，避免 REPLY 浮窗 open() 早于 enhanceIsland
+            // 时粘贴图片更新到看不见的框。
             function updatePreviewFromFile(file) {
-                const imgEl = $box.find('.h-threads-img')[0];
-                const imgLink = $box.find('.h-threads-img-a')[0];
-                const toolLarge = $box.find('.h-threads-img-tool-large')[0];
-                const imgBox = $box.find('.h-threads-img-box')[0];
-                if (!imgEl) return;
-                // 清理旧 URL
-                if (imgEl.dataset.prevObjectUrl) {
-                    URL.revokeObjectURL(imgEl.dataset.prevObjectUrl);
-                    delete imgEl.dataset.prevObjectUrl;
-                }
-                if (file) {
-                  const objectUrl = URL.createObjectURL(file);
-                  imgEl.src = objectUrl;
-                  imgEl.dataset.prevObjectUrl = objectUrl;
-                  imgEl.style.display = 'block';
-                  if (imgLink) imgLink.href = objectUrl;
-                  if (toolLarge) toolLarge.href = objectUrl;
-                  if (imgBox) imgBox.classList.remove('h-active');
-                  imgEl.dataset.rotateIndex = '0';
-                  imgEl.style.transform = '';
-                  imgEl.style.top = '0px';
-                  imgEl.style.left = '0px';
-                  // 清理默认宽度，避免占满
-                  imgEl.style.width = 'auto';
-                  imgEl.style.height = 'auto';
-                  // ★ 新增：根据所在位置限制缩略图大小
-                  const isInOverlay = !!$box.closest('.qp-body').length;
-                  if (isInOverlay) {
-                      // 在浮窗中：最大宽度为浮窗宽度的 1/3
-                      const wrapEl = $box.closest('.qp-content-wrap')[0];
-                      if (wrapEl) {
-                          const wrapWidth = wrapEl.getBoundingClientRect().width;
-                          imgEl.style.maxWidth = (wrapWidth / 3) + 'px';
-                          imgEl.style.height = 'auto';
-                      }
-                  } else {
-                      // 在表单中：最大宽度为表单宽度的 1/2
-                      const formEl = document.querySelector('#h-post-form form');
-                      if (formEl) {
-                          const formWidth = formEl.getBoundingClientRect().width;
-                          imgEl.style.maxWidth = (formWidth / 2) + 'px';
-                          imgEl.style.height = 'auto';
-                      }
-                  }
-              } else {
-                  imgEl.removeAttribute('src');
-                  imgEl.style.display = 'none';
-                  imgEl.style.maxWidth = '';
-                  imgEl.style.width = '';
-                  imgEl.style.height = '';
-                  imgEl.style.transform = '';
-                  imgEl.style.top = '0px';
-                  imgEl.style.left = '0px';
-                  delete imgEl.dataset.rotateIndex;
-                  if (imgLink) {
-                    imgLink.removeAttribute('href');
-                    imgLink.style.height = '';
-                  }
-                  if (toolLarge) toolLarge.href = 'javascript:;';
-                  if (imgBox) imgBox.classList.remove('h-active');
-              }
+                updatePreviewImageFromFile(file);
             }
             // === 监听文件选择 ===
             const fileInput = document.querySelector('input[type="file"][name="image"]');
             if (fileInput) {
-                fileInput.addEventListener('change', function () {
-                    const file = this.files && this.files[0] ? this.files[0] : null;
-                    updatePreviewFromFile(file);
-                });
+                function syncPreviewFromCurrentFileInput() {
+                    const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+                    updatePreviewImageFromFile(file);
+                }
+                fileInput.addEventListener('change', syncPreviewFromCurrentFileInput);
+                // 兼容粘贴事件先把图片写入 input.files、预览监听后绑定的竞态
+                syncPreviewFromCurrentFileInput();
             }
-            // === 监听粘贴图片（不依赖 change 事件）===
-            document.addEventListener('paste', function (e) {
-                const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items || [];
-                if (!items.length) return;
-                let file = null;
-                for (const it of items) {
-                    if (it.kind === 'file') {
-                        const f = it.getAsFile();
-                        if (f && f.type.startsWith('image/')) {
-                            file = f;
-                            break;
-                        }
-                    }
-                }
-                if (!file) return;
-                // 如果 input 存在，也同步到 input.files
-                if (fileInput) {
-                    try {
-                        const dt = new DataTransfer();
-                        dt.items.add(file);
-                        fileInput.files = dt.files;
-                    } catch (_) {
-                        // 某些浏览器不支持 DataTransfer 构造器
-                    }
-                }
-                // 直接更新预览
-                updatePreviewFromFile(file);
-                // 触发 change，让绑定在 file input 上的逻辑（如清除按钮）也能执行
-                if (fileInput) {
-                    try {
-                        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    } catch (_) {}
-                }
-            }, true);
+            // 粘贴图片预览：使用全局幂等绑定，确保 REPLY 浮窗 early 打开时也能捕获
+            bindPasteImagePreviewOnce();
         }
     }
     // 预览引用/隐藏文本渲染
@@ -17441,18 +18212,24 @@ ${markedSwatchHtml}
           clearTimeout(previewEnhanceTimer);
           previewEnhanceTimer = null;
         }
+        try {
+          if (typeof window.__xdexScheduleReplyPanelFit === 'function') {
+            window.__xdexScheduleReplyPanelFit();
+          }
+        } catch (_) {}
         return;
       }
-      previewContent.text('');
+      // 离屏拼好再一次写回，避免先清空再填充导致回复浮窗首字高度闪一下
+      const $frag = $('<div></div>');
       previewContent[0]?.setAttribute('data-xdex-preview-spoiler-rendered', '1');
       function appendPreviewText(text, className) {
         if (text === '') return;
         const span = $('<span></span>').text(text);
         if (className) span.addClass(className);
-        previewContent.append(span);
+        $frag.append(span);
       }
       function appendPreviewQuoteLine(line) {
-        previewContent.append($('<font color="#789922"></font>').text(line));
+        $frag.append($('<font color="#789922"></font>').text(line));
       }
       for (let i of raw.split('\n')) {
         i = i.replace(/ +/g, ' ');
@@ -17475,14 +18252,23 @@ ${markedSwatchHtml}
             appendPreviewText(i);
           }
         }
-        previewContent.append('<br>');
+        $frag.append('<br>');
       }
-      const renderedHtml = previewContent[0]?.innerHTML || '';
+      const renderedHtml = $frag[0]?.innerHTML || '';
       const previewChanged = renderedHtml !== lastPreviewRenderedHtml;
       lastPreviewRenderedHtml = renderedHtml;
       if (previewChanged) {
+        // 旧：previewContent.text(''); 再逐段 append
+        // 一次替换，减少中间空高被 auto-fit 量到
+        previewContent.empty().append($frag.contents());
         bindPreviewQuoteHover(previewContent[0]);
         schedulePreviewEnhance(previewContent[0]);
+        // 预览空→有 后立刻排队贴高，避免 RO 晚到期间 overflow:auto 闪滚动条
+        try {
+          if (typeof window.__xdexScheduleReplyPanelFit === 'function') {
+            window.__xdexScheduleReplyPanelFit();
+          }
+        } catch (_) {}
       }
       // 自动识别链接
       if (typeof runAutoUrlLinkify === 'function') {
@@ -17603,24 +18389,61 @@ ${markedSwatchHtml}
           return;
         }
         if (!正文框.length) return;
+        // 失焦时 selectionEnd 可能跳到文本末尾，先聚焦再读取准确选区
+        const el = 正文框[0];
+        const wasActive = document.activeElement;
+        if (el && document.activeElement !== el) el.focus();
         const start = 正文框.prop('selectionStart');
         const end = 正文框.prop('selectionEnd');
-        const len = end - start;
         const str = 正文框.val();
         const left = str.substring(0, start);
         const right = str.substring(end);
         const ref = `>>${e.currentTarget.textContent.trim()}`;
-        正文框.val(
-          start === 0
-            ? `${ref}\n${right}`
-            : end === str.length
-              ? `${left}\n${ref}\n`
-              : len > 0
-                ? `${left} ${ref} ${right}`
-                : `${left}\n${ref}`
-        );
+        console.log('[引用追记]', {
+          wasActive: wasActive?.tagName,
+          didFocus: document.activeElement !== wasActive,
+          start, end, strLen: str.length,
+          hasSelection: start !== end,
+          leftLen: left.length, rightLen: right.length, ref
+        });
+        if (start !== end) {
+          // 有选区 → 替换选区内容
+          console.log('[引用追记] 走替换选区分支, left长度:', left.length, 'right长度:', right.length);
+          正文框.val(`${left}${ref}${right}`);
+        } else {
+          // 无选区 → 根据光标位置插入
+          const branch = start === 0 ? '开头' : start === str.length ? '末尾' : '中间';
+          console.log('[引用追记] 走无选区分支:', branch, 'start:', start);
+          const _newVal = (() => {
+            if (start === 0)          return `${ref}\n${right}`;
+            if (start === str.length) return `${left}\n${ref}\n`;
+            return `${left}\n${ref}\n${right}`;
+          })();
+          正文框.val(_newVal);
+        }
+        // 旧：正文框.trigger('input', '');
+        // jQuery .trigger('input') 不会触发原生 addEventListener('input')，
+        // 导致 tag6 字数统计要等用户继续输入才刷新
         正文框.trigger('input', '');
+        if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
         保存编辑();
+        // 光标定位到引用号之后——必须延迟到 click 事件彻底结束，
+        // 否则浏览器会把焦点还给被点击的 <a> 元素
+        // 旧：const _cursorPos = left.length + ref.length + (start !== end ? 0 : 1);
+        // 无选区时插入形态为（开头）`ref\n` 或（非开头）`\nref\n`，光标需落在引用号后的那个换行之后
+        const _cursorPos = start !== end
+          ? left.length + ref.length
+          : left.length + (start === 0 ? 0 : 1) + ref.length + 1;
+        // 保存期望光标位置，供浮窗重新打开时恢复
+        el.__pendingQuoteCursorPos = _cursorPos;
+        setTimeout(() => {
+          el.focus();
+          el.setSelectionRange(_cursorPos, _cursorPos);
+          // 若 focus 成功，清除 pending 标记
+          if (document.activeElement === el) {
+            el.__pendingQuoteCursorPos = null;
+          }
+        }, 0);
       });
     }
     // 粘贴图片到文件输入（保持原选择器）
@@ -18505,6 +19328,8 @@ ${markedSwatchHtml}
         }
       });
       function insertQuote($textarea, rid) {
+        // 手动追记：放行关闭引用拦截，避免 >>No.{r} 被剥掉
+        if (typeof allowManualQuoteInsert === 'function') allowManualQuoteInsert(rid);
         const start = $textarea.prop('selectionStart');
         const end   = $textarea.prop('selectionEnd');
         const str   = $textarea.val();
@@ -18521,7 +19346,11 @@ ${markedSwatchHtml}
         } else {
           newVal = `${left}\n${ref}${right}`;
         }
+        // 旧：$textarea.val(newVal).trigger('input');
+        // 同步派发原生 input，保证字数统计即时刷新
         $textarea.val(newVal).trigger('input');
+        const taEl = $textarea[0];
+        if (taEl) taEl.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
     // ---------- 公用：重新应用页面增强（保持原样） ----------
@@ -19226,7 +20055,10 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   function overrideTopImageClick() {
     const topImgLink = document.querySelector('#h-menu-top-img');
-    if (!topImgLink) return;
+    if (!topImgLink) return false;
+    // 幂等：early / ready 可能各跑一次
+    if (topImgLink.dataset.xdexTopImgClickBound === '1') return true;
+    topImgLink.dataset.xdexTopImgClickBound = '1';
     // 判断是否是串内页
     function isThreadPage(path) {
         return /\/t\/\d{4,}/.test(path) || /^\/Forum\/po\/id\/\d+/.test(path);
@@ -19235,8 +20067,11 @@ ${markedSwatchHtml}
     function isBoardPage(path) {
         return /^\/f\//.test(path) || /^\/Forum\/timeline\/id\/\d+/.test(path);
     }
+    // capture 阶段抢先，避免原站默认跳转先触发
     topImgLink.addEventListener('click', function(e) {
         e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
         const path = location.pathname;
         let url = location.href;
         if (isThreadPage(path)) {
@@ -19246,15 +20081,55 @@ ${markedSwatchHtml}
             // 板块页：跳转到第一页
             if (/\/Forum\/timeline\/id\/\d+\/page\/\d+\.html/.test(url)) {
                 url = url.replace(/\/page\/\d+\.html/, '/page/1.html');
-            } else if (/\/f\/.+\?page=\d+/.test(url)) {
-                url = url.replace(/page=\d+/, 'page=1');
+            } else if (/[?&]page=\d+/.test(url)) {
+                url = url.replace(/([?&])page=\d+/, '$1page=1');
+            } else if (/\/Forum\/timeline\/id\/\d+/.test(path) || /^\/f\//.test(path)) {
+                // 已是第一页或无 page 参数：仍强制回第一页语义
+                try {
+                  const u = new URL(url, location.origin);
+                  u.searchParams.set('page', '1');
+                  url = u.toString();
+                } catch (_) {}
             }
             location.href = url;
         } else {
             // 其他情况：跳转首页
             location.href = '/';
         }
+    }, true);
+    return true;
+  }
+  // early 安装：顶栏节点一出现就绑；若尚未出现则短时观察，避免等 document.ready/batch2
+  function installOverrideTopImageClickEarly() {
+    if (installOverrideTopImageClickEarly.__done) return;
+    if (overrideTopImageClick()) {
+      installOverrideTopImageClickEarly.__done = true;
+      return;
+    }
+    if (installOverrideTopImageClickEarly.__observing) return;
+    const root = document.documentElement || document;
+    if (!root || typeof MutationObserver === 'undefined') return;
+    installOverrideTopImageClickEarly.__observing = true;
+    const obs = new MutationObserver(() => {
+      if (overrideTopImageClick()) {
+        installOverrideTopImageClickEarly.__done = true;
+        installOverrideTopImageClickEarly.__observing = false;
+        try { obs.disconnect(); } catch (_) {}
+      }
     });
+    try {
+      obs.observe(root, { childList: true, subtree: true });
+    } catch (_) {
+      installOverrideTopImageClickEarly.__observing = false;
+    }
+    // 兜底：最长观察 8s，避免永久挂着 observer
+    setTimeout(() => {
+      if (installOverrideTopImageClickEarly.__done) return;
+      try { obs.disconnect(); } catch (_) {}
+      installOverrideTopImageClickEarly.__observing = false;
+      overrideTopImageClick();
+    }, 8000);
+
   }
   /* --------------------------------------------------
    * tag 20. 默认/模糊/无图/Tips模式
@@ -20745,14 +21620,14 @@ ${markedSwatchHtml}
       const tid = link.dataset.threadId;
       if (tid) {
         const store = getThreadHistoryStore();
-        const candidates = ['normal', 'po']
-          .map((mode) => store.items[getThreadHistoryKey(mode, tid)])
-          .filter(Boolean)
-          .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
-        if (candidates.length) {
-          const item = candidates[0];
+        // 优先普通模式，没有再回退只看 PO；都没有则指向普通第 1 页
+        const normal = store.items[getThreadHistoryKey('normal', tid)];
+        const item = normal || store.items[getThreadHistoryKey('po', tid)];
+        if (item) {
           const page = item.maxVisitedPage || item.page || 1;
           link.href = buildThreadHistoryPageUrl(item.mode, tid, page);
+        } else {
+          link.href = buildThreadHistoryPageUrl('normal', tid, 1);
         }
       }
     });
@@ -20794,14 +21669,27 @@ ${markedSwatchHtml}
         filter: blur(4px);
         transition: filter 0.15s;
       }
+      /* 无备注时仅显示订阅号：模糊稍浅，能感知有内容被打码，但看不清具体字符 */
+      .xdex-feed-display-uuid.xdex-feed-uuid-light-blur {
+        filter: blur(2.5px);
+        opacity: 0.85;
+      }
       .xdex-feed-display-uuid:empty { display: none; }
+      .xdex-feed-chevron {
+        flex: 0 0 auto; margin-left: auto;
+        color: #C61200; transition: transform .15s ease;
+        transform: rotate(0deg);
+      }
+      .xdex-feed-selector-display[aria-expanded="true"] .xdex-feed-chevron {
+        transform: rotate(-90deg);
+      }
       .xdex-feed-selector-dropdown {
         position: absolute; top: 100%; left: 0; right: 0;
         margin-top: 2px;
         border: 1px solid var(--xdex-sp-border, #bfa58f);
         border-radius: 8px;
-        background: #FFFFEE;
-        box-shadow: 0 2px 8px rgba(0,0,0,.15);
+        background: var(--xdex-sp-panel-bg, #FFFFEE);
+        box-shadow: 0 2px 8px var(--xdex-sp-shadow, rgba(0,0,0,.15));
         z-index: 100;
         max-height: 200px; overflow-y: auto;
       }
@@ -20809,10 +21697,13 @@ ${markedSwatchHtml}
         padding: 6px 8px;
         cursor: pointer;
         font-size: 13px;
+        color: var(--foreground, #333);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
       .xdex-feed-option:hover { background: #F0E0D6; }
-      .xdex-feed-option.active { background: #e8d5c0; font-weight: bold; }
+      .xdex-feed-option.active { background: #F0E0D6; font-weight: bold; }
+      :root.xdex-darkreader-active .xdex-feed-option:hover { background: #3d3530; }
+      :root.xdex-darkreader-active .xdex-feed-option.active { background: #483327; }
     `;
     document.head.appendChild(style);
   }
@@ -22295,6 +23186,47 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   // 阻止URL中r=参数导致的自动引用插入（网站原生行为）
   // 开关：设置面板 → 关闭引用（disableAutoQuote），实时生效
+  // 方案 B：仍拦截自动插入，但用户手动点串号时短暂放行
+  let xdexManualQuoteBypass = null; // { rid: string|null, until: number }
+  function allowManualQuoteInsert(rid, ttlMs = 2000) {
+    xdexManualQuoteBypass = {
+      rid: rid != null && rid !== '' ? String(rid) : null,
+      until: Date.now() + (Number(ttlMs) > 0 ? Number(ttlMs) : 2000)
+    };
+  }
+  function shouldBypassAutoQuoteStrip(value, quoteRe, rParam) {
+    const state = xdexManualQuoteBypass;
+    if (!state) return false;
+    if (Date.now() > state.until) {
+      xdexManualQuoteBypass = null;
+      return false;
+    }
+    // 未指定 rid：放行任何手动写入；指定了则仅当写入内容匹配对应引用时放行
+    if (!state.rid) return true;
+    if (String(state.rid) === String(rParam || '') && quoteRe && quoteRe.test(String(value || ''))) return true;
+    try {
+      const esc = String(state.rid).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp('^\\s*>>No\\.' + esc + '\\s*\\n?').test(String(value || ''));
+    } catch (e) {
+      return false;
+    }
+  }
+  function extractQuoteIdFromClickTarget(target) {
+    if (!target || !target.closest) return '';
+    const a = target.closest('a.h-threads-info-id, a[href*="r="], a[href*="/t/"]');
+    if (!a) return '';
+    // 仅关注串号/引用链接，避免误伤普通导航
+    const href = a.getAttribute('href') || '';
+    try {
+      const url = new URL(href, location.origin);
+      const rid = url.searchParams.get('r');
+      if (rid) return String(rid);
+    } catch (e) {}
+    const textMatch = String(a.textContent || '').match(/No\.(\d{4,8})/i);
+    if (textMatch) return textMatch[1];
+    const hrefMatch = href.match(/(?:[?&]r=|No\.)(\d{4,8})/i);
+    return hrefMatch ? hrefMatch[1] : '';
+  }
   function initDisableAutoQuote() {
     const rParam = new URLSearchParams(location.search).get('r');
     if (!rParam) return;
@@ -22329,6 +23261,13 @@ ${markedSwatchHtml}
       } catch (e) {}
       return false;
     }
+    function shouldStripAutoQuote(v) {
+      if (!isEnabled() || draftHasQuote() || shouldPreserveAutoQuoteForReport()) return false;
+      if (!quoteRe.test(String(v || ''))) return false;
+      // 用户手动点击/手动追记：短暂放行
+      if (shouldBypassAutoQuoteStrip(v, quoteRe, rParam)) return false;
+      return true;
+    }
     function interceptTextarea(ta) {
       if (ta.__quoteIntercepted) return;
       ta.__quoteIntercepted = true;
@@ -22337,19 +23276,30 @@ ${markedSwatchHtml}
         configurable: true, enumerable: true,
         get() { return desc.get.call(this); },
         set(v) {
-          // 仅在拦截开启 且 草稿本身不含此引用号 且 非值班室/举报场景时才剥离
-          if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(v)) {
-            v = v.replace(quoteRe, '');
+          // 仅剥离 URL r= 导致的自动引用；手动点串号追记不拦
+          if (shouldStripAutoQuote(v)) {
+            v = String(v).replace(quoteRe, '');
           }
           desc.set.call(this, v);
         }
       });
       // 初始清理（仅在开启且草稿不含该引用且非值班室/举报场景时）
-      if (isEnabled() && !draftHasQuote() && !shouldPreserveAutoQuoteForReport() && quoteRe.test(ta.value)) {
-        const cleaned = ta.value.replace(quoteRe, '');
+      if (shouldStripAutoQuote(ta.value)) {
+        const cleaned = String(ta.value).replace(quoteRe, '');
         desc.set.call(ta, cleaned);
         ta.dispatchEvent(new Event('input', { bubbles: true }));
       }
+    }
+    // 捕获阶段监听点击：先于站点/自己的写入逻辑设好放行标记
+    if (!initDisableAutoQuote.__manualClickBound) {
+      initDisableAutoQuote.__manualClickBound = true;
+      document.addEventListener('click', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        const rid = extractQuoteIdFromClickTarget(e.target);
+        if (!rid) return;
+        // 只需要放行与 URL r= 相同的那条（其他 No. 本来就不会被剥）
+        if (String(rid) === String(rParam)) allowManualQuoteInsert(rid);
+      }, true);
     }
     const obs = new MutationObserver(() => {
       const ta = document.querySelector('textarea.h-post-form-textarea');
@@ -22458,6 +23408,11 @@ ${markedSwatchHtml}
         window.__xdexUpdateCheckTimer = 0;
       }
     }
+    // 顶栏刷新：ready 同步阶段再兜底一次（幂等），不必等 batch2 50ms 队列
+    try {
+      if (typeof installOverrideTopImageClickEarly === 'function') installOverrideTopImageClickEarly();
+      else if (typeof overrideTopImageClick === 'function') overrideTopImageClick();
+    } catch (e) {}
     interceptReplyForm();                                            //拦截回复中间页
     enhancePostFormLayout();                                         //发帖UI调整
     autoSelectReportReason();                                        //举报理由默认选择“其他”
@@ -22500,6 +23455,7 @@ ${markedSwatchHtml}
       { label: 'startup.batch2.initExtendedContent', run: () => initExtendedContent(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.searchServiceBy4sY', run: () => searchServiceBy4sY(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.monitorRefView', run: () => monitorRefView(), meta: () => startupPerfDebug.summarizeRoot(document) },
+      // overrideTopImageClick 已提前到 early/ready 同步阶段；这里仅作幂等兜底
       { label: 'startup.batch2.overrideTopImageClick', run: () => overrideTopImageClick(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.enhanceIsland', run: () => enhanceIsland({ enablePreview: true, enableDraft: true, enableAutoTitle: true, enableRelativeTime: true, timeDisplayMode: cfg.timeDisplayMode, enableQuoteInsert: true, enablePasteImage: true }), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch2.initContent(document)', run: () => initContent(document), meta: () => startupPerfDebug.summarizeRoot(document) },

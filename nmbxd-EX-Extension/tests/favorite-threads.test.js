@@ -8,12 +8,28 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function extractFunctionBody(source, functionName) {
+  const start = source.indexOf(`function ${functionName}(`);
+  assert(start !== -1, `${functionName} must exist`);
+  const braceStart = source.indexOf('{', start);
+  assert(braceStart !== -1, `${functionName} body must exist`);
+  let depth = 0;
+  for (let i = braceStart; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`${functionName} body not closed`);
+}
+
 function testAddCurrentThreadPageGate() {
   const helperIndex = script.indexOf('function isFavoriteThreadPageLocation()');
   const getterIndex = script.indexOf('function getCurrentFavoriteThreadId()');
   const domFallbackIndex = script.indexOf("document.querySelector('.h-threads-list .h-threads-item[data-threads-id]')", getterIndex);
-  const boardPatternIndex = script.indexOf('^\\/f\\/', helperIndex);
-  const timelinePatternIndex = script.indexOf('Forum\\/timeline', helperIndex);
+  const helperBody = extractFunctionBody(script, 'isFavoriteThreadPageLocation');
 
   assert(helperIndex !== -1, 'favorite threads must define a page-location gate');
   assert(getterIndex !== -1, 'favorite threads must define current thread id getter');
@@ -27,13 +43,15 @@ function testAddCurrentThreadPageGate() {
   assert(script.includes('openFavoriteThreadsSettingsPanel({ addEmptyGroup: true });'), 'non-thread add-current flow must open settings with a new empty group');
   assert(domFallbackIndex !== -1, 'thread pages may still use DOM thread id fallback');
   assert(getterIndex < domFallbackIndex, 'page-location gate must run before DOM fallback');
-  assert(boardPatternIndex === -1, 'board pages must not be treated as add-current thread pages');
-  assert(timelinePatternIndex === -1, 'timeline pages must not be treated as add-current thread pages');
+  // 只检查门控函数自身，不要扫到后面无关的 /f/ 值班室逻辑
+  assert(!/\\\/f\\\//.test(helperBody) && !helperBody.includes('/f/'), 'board pages must not be treated as add-current thread pages');
+  assert(!helperBody.includes('Forum\\/timeline') && !helperBody.includes('Forum/timeline'), 'timeline pages must not be treated as add-current thread pages');
 }
 
 function testThreadPagePatterns() {
-  assert(script.includes('^\\/t\\/\\d{8}(?:\\/\\d+)?\\/?$'), 'canonical /t/<id> pages must allow add-current auto add');
-  assert(script.includes('^\\/Forum\\/po\\/id\\/\\d{8}(?:\\/page\\/\\d+)?(?:\\.html)?$'), 'legacy /Forum/po/id/<id> pages must allow add-current auto add');
+  // 支持 6-8 位串号；普通串 /t/<id> 与可选旧式 /t/<id>/<n>；PO 串 /Forum/po/id/<id>(/page/n.html)?
+  assert(script.includes('^\\/t\\/\\d{6,8}(?:\\/\\d+)?\\/?$'), 'canonical /t/<id> pages must allow add-current auto add');
+  assert(script.includes('^\\/Forum\\/po\\/id\\/\\d{6,8}(?:\\/page\\/\\d+)?(?:\\.html)?$'), 'legacy /Forum/po/id/<id> pages must allow add-current auto add');
 }
 
 function testSettingsPanelFixedFavoriteThreadsItem() {
@@ -50,11 +68,18 @@ function testSettingsPanelFixedFavoriteThreadsItem() {
 }
 
 function testFavoriteThreadsHistoryLinkage() {
+  const latestBody = extractFunctionBody(script, 'getLatestThreadHistoryUrl');
+  const syncBody = extractFunctionBody(script, 'syncFavoriteThreadsLinks');
   assert(script.includes('function getLatestThreadHistoryUrl'), 'favorite threads must be able to look up latest browsing-history URL');
-  assert(script.includes("['normal', 'po']"), 'favorite history lookup must check both normal and PO history records');
-  assert(script.includes('getThreadHistoryKey(mode, tid)'), 'favorite history lookup must use stable history keys by mode/thread id');
-  assert(script.includes('buildThreadHistoryItemUrl(candidates[0])'), 'favorite history lookup must reuse the history URL builder for latest page jumps');
+  // 优先普通模式，没有再回退只看 PO；都没有由调用方回退普通第 1 页
+  assert(latestBody.includes("getThreadHistoryKey('normal', tid)"), 'favorite history lookup must prefer normal-mode history records');
+  assert(latestBody.includes("getThreadHistoryKey('po', tid)"), 'favorite history lookup may fall back to PO history records');
+  assert(latestBody.includes('buildThreadHistoryItemUrl(normal)'), 'favorite history lookup must reuse the history URL builder for normal mode');
+  assert(latestBody.includes('buildThreadHistoryItemUrl(po)'), 'favorite history lookup must reuse the history URL builder for PO fallback');
   assert(script.includes('link.href = getLatestThreadHistoryUrl(item.threadId) || makeFavoriteThreadUrl(item.threadId);'), 'favorite thread links must prefer latest history URL and fall back to first page');
+  assert(syncBody.includes("getThreadHistoryKey('normal', tid)"), 'syncing favorite links must prefer normal-mode history');
+  assert(syncBody.includes("getThreadHistoryKey('po', tid)"), 'syncing favorite links may fall back to PO history');
+  assert(syncBody.includes("buildThreadHistoryPageUrl('normal', tid, 1)"), 'syncing favorite links must fall back to normal page 1 when no history exists');
 }
 
 function testThreadHistoryMenuEntry() {
