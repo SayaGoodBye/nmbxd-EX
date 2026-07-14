@@ -28,7 +28,7 @@ function testFilterWiring() {
   assertContains('function flattenBlockedKeywords', 'script must flatten grouped keyword rules for text matching');
   assertContains('function findBlockedKeywordHit', 'script must use a central keyword hit helper');
   assertContains('function getFilterIdsForElement', 'script must collect thread/reply IDs for keyword matching');
-  assertContains('function isEightDigitKeyword', 'script must restrict ID matching to pure 8-digit keywords');
+  assert(script.includes('function isThreadIdKeyword') || script.includes('function isEightDigitKeyword'), 'script must support 7/8/9-digit keyword ID matching');
   assertContains('findBlockedKeywordHit(txt, blkKGroups, $el)', 'filter path must use grouped keyword hit helper');
   assert(!script.includes('const blkK = Utils.strToList(cfg.blockedKeywords);'), 'filter path must not parse blockedKeywords as a single string');
 }
@@ -78,8 +78,8 @@ function testExpectedKeywordBehavior() {
   };
   const flatten = (groups) => [...new Set(normalize(groups).flatMap((group) => strToList(group.value)))];
   const firstTextHit = (text, keywords) => keywords.find((k) => text.toLowerCase().includes(k.toLowerCase())) || null;
-  const isEightDigit = (keyword) => /^\d{8}$/.test(keyword);
-  const hit = (text, groups, ids) => firstTextHit(text, flatten(groups)) || flatten(groups).find((k) => isEightDigit(k) && ids.includes(k)) || null;
+  const isThreadIdKeyword = (keyword) => /^\d{7,9}$/.test(String(keyword || '').trim());
+  const hit = (text, groups, ids) => firstTextHit(text, flatten(groups)) || flatten(groups).find((k) => isThreadIdKeyword(k) && ids.includes(String(k || '').trim())) || null;
   const legacy = '欢迎来到X岛,一个半全新的二次元泛ACG讨论区,减肥串,https://dailyakari.com/';
   const escapedPhrase = '欢迎来到X岛\\，一个半全新的二次元泛ACG讨论区';
 
@@ -96,7 +96,10 @@ function testExpectedKeywordBehavior() {
   assert(hit('contains bar', [{ value: 'foo,bar' }], []) === 'bar', 'text keyword match must still work');
   assert(hit('欢迎来到X岛，一个半全新的二次元泛ACG讨论区', [{ value: legacy }], []) === '欢迎来到X岛', 'legacy raw first group must match body content');
   assert(hit('plain text', [{ value: '12345678' }], ['12345678']) === '12345678', '8-digit keyword must match thread/reply ID');
-  assert(hit('plain text', [{ value: '1234567,123456789' }], ['12345678']) === null, '7/9-digit keywords must not use ID matching');
+  assert(hit('plain text', [{ value: '1234567' }], ['1234567']) === '1234567', '7-digit keyword must match thread/reply ID');
+  assert(hit('plain text', [{ value: '123456789' }], ['123456789']) === '123456789', '9-digit keyword must match thread/reply ID');
+  assert(hit('plain text', [{ value: '123456' }], ['123456']) === null, '6-digit keyword must not use ID matching');
+  assert(hit('plain text', [{ value: '1234567890' }], ['1234567890']) === null, '10-digit keyword must not use ID matching');
 }
 
 testGroupedKeywordWiring();

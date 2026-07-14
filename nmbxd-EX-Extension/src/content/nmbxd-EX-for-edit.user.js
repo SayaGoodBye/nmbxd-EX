@@ -4319,7 +4319,7 @@
     const keywordText = typeof group.value === 'string'
       ? group.value
       : (Array.isArray(group.keywords) ? group.keywords.join(',') : '');
-    return buildCookieGroupRowHtml('blocked-keyword', index, keywordText, '关键词1,关键词2；8位数字同时也作为串号/回复号匹配');
+    return buildCookieGroupRowHtml('blocked-keyword', index, keywordText, '关键词1,关键词2；7/8/9位数字同时也作为串号/回复号匹配');
   }
   function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
     const desc = group.desc || '';
@@ -4487,9 +4487,12 @@ ${markedSwatchHtml}
   function flattenBlockedKeywords(groups) {
     return [...new Set(normalizeBlockedKeywordGroups(groups).flatMap((group) => Utils.strToList(group.value)))];
   }
-  function isEightDigitKeyword(keyword) {
-    return /^\d{8}$/.test(String(keyword || '').trim());
+  // 7/8/9 位纯数字关键词：除正文子串外，也按串号/回复号做 ID 匹配
+  function isThreadIdKeyword(keyword) {
+    return /^\d{7,9}$/.test(String(keyword || '').trim());
   }
+  // 兼容旧名
+  function isEightDigitKeyword(keyword) { return isThreadIdKeyword(keyword); }
   function normalizeMarkedGroups(val) {
     if (!val) return [];
     if (typeof val === 'string') {
@@ -5408,7 +5411,7 @@ ${markedSwatchHtml}
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-keyword-inputs-container"></div>
-                    <div style="font-size:12px;color:#888;text-align:center;">每组仍使用逗号分隔；8位纯数字会同时匹配正文、串号和回复号</div>
+                    <div style="font-size:12px;color:#888;text-align:center;">每组仍使用逗号分隔；7/8/9位纯数字会同时匹配正文、串号和回复号</div>
                   </div>
                 </div>
                 <!-- 常用串 -->
@@ -7524,8 +7527,12 @@ ${markedSwatchHtml}
     return hrefMatch ? hrefMatch[1].slice(0, 8) : '';
   }
   function addFilterId(ids, value) {
-    const match = String(value || '').match(/\d{8}/);
-    if (match && match[0] !== '99999999' && !ids.includes(match[0])) ids.push(match[0]);
+    // 抓取串号/回复号：支持 7/8/9 位（跳过系统 9999999/99999999）
+    const matches = String(value || '').match(/\d{7,9}/g) || [];
+    matches.forEach((id) => {
+      if (id === '9999999' || id === '99999999') return;
+      if (!ids.includes(id)) ids.push(id);
+    });
   }
   function getFilterIdsForElement($el) {
     const ids = [];
@@ -7542,7 +7549,7 @@ ${markedSwatchHtml}
     const textHit = Utils.firstHit(text || '', keywords);
     if (textHit) return textHit;
     const ids = getFilterIdsForElement($el);
-    return keywords.find((keyword) => isEightDigitKeyword(keyword) && ids.includes(keyword)) || null;
+    return keywords.find((keyword) => isThreadIdKeyword(keyword) && ids.includes(String(keyword || '').trim())) || null;
   }
   function getThreadWhitelistGroup(threadId, groups) {
     if (!threadId || !groups.length) return null;
