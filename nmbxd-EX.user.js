@@ -4315,11 +4315,35 @@
         </div>
       </div>`;
   }
+  function getBlockedKeywordPlaceholder(regexOn) {
+    return regexOn
+      ? '正则模式：整组作为一条正则，如 foo|bar 或 (串|回复)\\d+'
+      : '关键词1,关键词2；7/8/9位数字同时也作为串号/回复号匹配';
+  }
   function buildBlockedKeywordGroupRowHtml(index, group = {}) {
     const keywordText = typeof group.value === 'string'
       ? group.value
       : (Array.isArray(group.keywords) ? group.keywords.join(',') : '');
-    return buildCookieGroupRowHtml('blocked-keyword', index, keywordText, '关键词1,关键词2；7/8/9位数字同时也作为串号/回复号匹配');
+    const regexOn = isBlockedKeywordRegexGroup(group);
+    const placeholder = getBlockedKeywordPlaceholder(regexOn);
+    const checkedAttr = regexOn ? ' checked' : '';
+    const safeValue = Utils.escapeHTML ? Utils.escapeHTML(keywordText || '') : (keywordText || '');
+    const safePlaceholder = Utils.escapeHTML ? Utils.escapeHTML(placeholder) : placeholder;
+    // 右侧开关样式对齐设置页 xdex-switch；默认关闭=普通逗号关键词，开启=整组正则
+    return `
+      <div class="blocked-keyword-row" style="position:relative;margin:10px 0 8px;" data-regex="${regexOn ? '1' : '0'}">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input class="blocked-keyword-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${safePlaceholder}" value="${safeValue}">
+            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;">
+              <input type="checkbox" id="blocked-keyword-regex-${index}" class="xdex-switch blocked-keyword-regex" role="switch"${checkedAttr}>
+              <label for="blocked-keyword-regex-${index}" style="font-size:12px;color:#6f5d50;user-select:none;">正则</label>
+            </div>
+          </div>
+        </div>
+      </div>`;
   }
   function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
     const desc = group.desc || '';
@@ -4472,20 +4496,50 @@ ${markedSwatchHtml}
     if (Array.isArray(group.keywords)) return joinBlockedKeywordInputTokens(group.keywords);
     return '';
   }
+  function isBlockedKeywordRegexGroup(group) {
+    return !!(group && typeof group === 'object' && (group.regex === true || group.isRegex === true || group.useRegex === true));
+  }
   function normalizeBlockedKeywordGroups(val) {
     if (!val) return [];
     if (typeof val === 'string') {
       const value = normalizeBlockedKeywordGroupValue(val);
-      return Utils.strToList(value).length ? [{ value }] : [];
+      return Utils.strToList(value).length ? [{ value, regex: false }] : [];
     }
     if (!Array.isArray(val)) return [];
     return val.map((group) => {
       const value = normalizeBlockedKeywordGroupValue(group);
-      return { value };
-    }).filter((group) => Utils.strToList(group.value).length);
+      const regex = isBlockedKeywordRegexGroup(group);
+      return { value, regex };
+    }).filter((group) => {
+      if (!group.value) return false;
+      // 正则组：整段 pattern 原样保留；普通组：仍按逗号切词后判断是否为空
+      return group.regex ? true : Utils.strToList(group.value).length > 0;
+    });
   }
+  // 仅扁平化“普通关键词组”（正则组不参与逗号切分）
   function flattenBlockedKeywords(groups) {
-    return [...new Set(normalizeBlockedKeywordGroups(groups).flatMap((group) => Utils.strToList(group.value)))];
+    return [...new Set(
+      normalizeBlockedKeywordGroups(groups)
+        .filter((group) => !group.regex)
+        .flatMap((group) => Utils.strToList(group.value))
+    )];
+  }
+  // 编译屏蔽关键词正则；非法 pattern 返回 null（匹配时跳过，保存时再提示）
+  function compileBlockedKeywordRegex(pattern) {
+    const source = String(pattern || '').trim();
+    if (!source) return null;
+    try {
+      // 正文 textContent 常带前导/段落换行；默认 ignoreCase + dotAll，让 .* 可跨行
+      // 不用 m：^/$ 仍表示整段正文起止，而不是每一行
+      return new RegExp(source, 'is');
+    } catch (e) {
+      try {
+        // 极旧环境无 s 标志时回退到仅 i
+        return new RegExp(source, 'i');
+      } catch (e2) {
+        return null;
+      }
+    }
   }
   // 7/8/9 位纯数字关键词：除正文子串外，也按串号/回复号做 ID 匹配
   function isThreadIdKeyword(keyword) {
@@ -5411,7 +5465,7 @@ ${markedSwatchHtml}
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-keyword-inputs-container"></div>
-                    <div style="font-size:12px;color:#888;text-align:center;">每组仍使用逗号分隔；7/8/9位纯数字会同时匹配正文、串号和回复号</div>
+                    <div style="font-size:12px;color:#888;text-align:center;">默认逗号分隔关键词；开启“正则”后整组按正则匹配（不再逗号切分）</div>
                   </div>
                 </div>
                 <!-- 常用串 -->
@@ -5943,17 +5997,35 @@ ${markedSwatchHtml}
       };
       const collectBlockedKeywordGroupsFromPanel = () => {
         const parsed = [];
+        let valid = true;
         $('#blocked-keyword-inputs-container .blocked-keyword-row').each((idx, el)=>{
-          const rawValue = ($(el).find('.blocked-keyword-input').val() || '').trim();
-          if (Utils.strToList(rawValue).length) parsed.push({ value: rawValue });
+          const $row = $(el);
+          const rawValue = ($row.find('.blocked-keyword-input').val() || '').trim();
+          const regex = !!$row.find('.blocked-keyword-regex').prop('checked');
+          if (!rawValue) return;
+          if (regex) {
+            if (!compileBlockedKeywordRegex(rawValue)) {
+              toast(`第${idx + 1}组正则无效，请检查表达式`);
+              valid = false;
+              return false;
+            }
+            parsed.push({ value: rawValue, regex: true });
+            return;
+          }
+          if (Utils.strToList(rawValue).length) parsed.push({ value: rawValue, regex: false });
         });
-        return parsed;
+        return valid ? parsed : null;
       };
-      const saveBlockedKeywordGroups = ({ fromDelete = false } = {}) => {
-        this.state.blockedKeywords = collectBlockedKeywordGroupsFromPanel();
+      const saveBlockedKeywordGroups = ({ fromDelete = false, fromToggle = false, toggleIndex = 0, toggleOn = false } = {}) => {
+        const parsed = collectBlockedKeywordGroupsFromPanel();
+        if (!parsed) return false;
+        this.state.blockedKeywords = parsed;
         GM_setValue(this.key, this.state);
-        this.syncInputs();
-        toast(fromDelete ? '已删除关键词分组' : '屏蔽关键词已保存');
+        // 开关切换实时保存时避免 syncInputs 整表重绘打断当前行焦点
+        if (!fromToggle) this.syncInputs();
+        if (fromDelete) toast('已删除关键词分组');
+        else if (fromToggle) toast(`第${toggleIndex}组${toggleOn ? '开启' : '关闭'}正则`);
+        else toast('屏蔽关键词已保存');
         refreshFilterDisplay(this.state);
         return true;
       };
@@ -5995,7 +6067,22 @@ ${markedSwatchHtml}
         saveBlockedKeywordGroups({ fromDelete: true });
         return false;
       });
-      $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').on('click', '.favorite-thread-delete', (e) => {
+            // 正则开关：切换 placeholder，并实时保存 + 刷新过滤（无需点保存）
+      $('#blocked-keyword-inputs-container').off('change.blockedKeywordRegex', '.blocked-keyword-regex').on('change.blockedKeywordRegex', '.blocked-keyword-regex', function () {
+        const $sw = $(this);
+        const $row = $sw.closest('.blocked-keyword-row');
+        const on = !!$sw.prop('checked');
+        const toggleIndex = $('#blocked-keyword-inputs-container .blocked-keyword-row').index($row) + 1;
+        $row.attr('data-regex', on ? '1' : '0');
+        $row.find('.blocked-keyword-input').attr('placeholder', getBlockedKeywordPlaceholder(on));
+        // 实时写入配置并 applyFilters；失败（如正则非法）则回滚开关
+        if (!saveBlockedKeywordGroups({ fromToggle: true, toggleIndex, toggleOn: on })) {
+          $sw.prop('checked', !on);
+          $row.attr('data-regex', !on ? '1' : '0');
+          $row.find('.blocked-keyword-input').attr('placeholder', getBlockedKeywordPlaceholder(!on));
+        }
+      });
+$('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').on('click', '.favorite-thread-delete', (e) => {
         e.preventDefault();
         e.stopPropagation();
         $(e.currentTarget).closest('.favorite-thread-row').remove();
@@ -6487,12 +6574,26 @@ ${markedSwatchHtml}
         const localGroups = normalizeBlockedKeywordGroups(localValue);
         const importedGroups = normalizeBlockedKeywordGroups(importedValue);
         const allLocalKws = new Set(flattenBlockedKeywords(localGroups));
-        const result = localGroups.map((g) => ({ value: g.value }));
+        const localRegexKeys = new Set(
+          localGroups.filter((g) => g.regex).map((g) => String(g.value || ''))
+        );
+        const result = localGroups.map((g) => ({ value: g.value, regex: !!g.regex }));
         importedGroups.forEach((impGroup) => {
+          if (impGroup.regex) {
+            const key = String(impGroup.value || '');
+            if (key && !localRegexKeys.has(key)) {
+              result.push({ value: impGroup.value, regex: true });
+              localRegexKeys.add(key);
+            }
+            return;
+          }
           const impKws = Utils.strToList(impGroup.value);
           if (!impKws.length) return;
           const hasNew = impKws.some((kw) => !allLocalKws.has(kw));
-          if (hasNew) result.push({ value: impGroup.value });
+          if (hasNew) {
+            result.push({ value: impGroup.value, regex: false });
+            impKws.forEach((kw) => allLocalKws.add(kw));
+          }
         });
         return result;
       }
@@ -6962,7 +7063,9 @@ ${markedSwatchHtml}
       $('#sp_apply').off('click').on('click', ()=>{
         collectReloadRequiredSettingsFromPanel();
         let valid = true;
-        this.state.blockedKeywords = collectBlockedKeywordGroupsFromPanel();
+        const blockedKeywords = collectBlockedKeywordGroupsFromPanel();
+        if (!blockedKeywords) return;
+        this.state.blockedKeywords = blockedKeywords;
         const favoriteThreads = collectFavoriteThreadsFromPanel();
         if (!favoriteThreads) return;
         this.state.favoriteThreads = favoriteThreads;
@@ -7545,8 +7648,18 @@ ${markedSwatchHtml}
     return ids;
   }
   function findBlockedKeywordHit(text, groups, $el) {
-    const keywords = flattenBlockedKeywords(groups);
-    const textHit = Utils.firstHit(text || '', keywords);
+    const normalizedGroups = normalizeBlockedKeywordGroups(groups);
+    const body = String(text || '');
+    // 1) 正则组：整段 pattern 直接匹配正文（不走逗号切分，不做 7/8/9 位 ID 特判）
+    for (const group of normalizedGroups) {
+      if (!group.regex) continue;
+      const re = compileBlockedKeywordRegex(group.value);
+      if (!re) continue;
+      if (re.test(body)) return group.value;
+    }
+    // 2) 普通组：逗号切分后正文子串 + 7/8/9 位数字 ID 匹配
+    const keywords = flattenBlockedKeywords(normalizedGroups);
+    const textHit = Utils.firstHit(body, keywords);
     if (textHit) return textHit;
     const ids = getFilterIdsForElement($el);
     return keywords.find((keyword) => isThreadIdKeyword(keyword) && ids.includes(String(keyword || '').trim())) || null;
