@@ -460,8 +460,11 @@ function testPostHistoryStorageAndCompletionContract() {
   assert(upstream.includes("logPostHistory('confirmed'") && upstream.includes("logPostHistory('unconfirmed'"), 'post history must log final confirmed and unconfirmed outcomes');
   assert(upstream.includes("reject('type-mismatch'") && upstream.includes("reject('reply-resto-mismatch'") && upstream.includes("reject('missing-time'") && upstream.includes("reject('time-window-mismatch'"), 'post history match logs must expose rejection reason markers');
   assert(upstream.includes("window.confirm('确定要删除这条发言记录吗？')"), 'post history item deletion must ask for confirmation');
-  assert(upstream.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post history clear must ask for confirmation');
+
+  assert(upstream.includes('showClearHistoryWarningDialog') && upstream.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post history clear must use two-step confirmation');
+
   assert(!upstream.includes("'xdex_post_history',"), 'post history GM key must not be added to Extension sync key lists');
+
 }
 
 function testPostHistoryServerContentWinsContract() {
@@ -751,15 +754,38 @@ function testHistoryAndPostDeleteConfirmContract() {
   const postsClearStart = upstream.indexOf("$('#sp_posts_clear').off('click.xdex-post-history')");
   assert(historyDeleteStart !== -1 && historyClearStart !== -1 && postsDeleteStart !== -1 && postsClearStart !== -1, 'delete/clear handlers must be present for history and post history modules');
 
-  const historyDeleteHandler = upstream.slice(historyDeleteStart, historyClearStart);
-  const historyClearHandler = upstream.slice(historyClearStart, upstream.indexOf('});', historyClearStart) + 3);
-  const postsDeleteHandler = upstream.slice(postsDeleteStart, postsClearStart);
-  const postsClearHandler = upstream.slice(postsClearStart, upstream.indexOf('});', postsClearStart) + 3);
+  const historyDeleteHandler = upstream.slice(historyDeleteStart, historyClearStart);
+  // 二次确认后 handler 内有嵌套回调，取到外层 `});` 为止
+  const historyClearHandlerEnd = (() => {
+    const first = upstream.indexOf('});', historyClearStart);
+    const second = upstream.indexOf('});', first + 3);
+    return (second === -1 ? first : second) + 3;
+  })();
+  const historyClearHandler = upstream.slice(historyClearStart, historyClearHandlerEnd);
+  const postsDeleteHandler = upstream.slice(postsDeleteStart, postsClearStart);
+  const postsClearHandlerEnd = (() => {
+    const first = upstream.indexOf('});', postsClearStart);
+    const second = upstream.indexOf('});', first + 3);
+    return (second === -1 ? first : second) + 3;
+  })();
+  const postsClearHandler = upstream.slice(postsClearStart, postsClearHandlerEnd);
 
   assert(!historyDeleteHandler.includes('window.confirm('), 'single browsing-history deletion must remain direct without confirmation');
-  assert(historyClearHandler.includes("window.confirm('确定要清空全部浏览历史吗？')"), 'browsing-history clear must ask for confirmation');
+
+  assert(historyClearHandler.includes('showClearHistoryWarningDialog'), 'browsing-history clear must show the first-step warning dialog');
+
+  assert(historyClearHandler.includes("window.confirm('确定要清空全部浏览历史吗？')"), 'browsing-history clear must still ask for the second confirmation');
+
   assert(postsDeleteHandler.includes("window.confirm('确定要删除这条发言记录吗？')"), 'post-history item deletion must ask for confirmation');
-  assert(postsClearHandler.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post-history clear must ask for confirmation');
+
+  assert(postsClearHandler.includes('showClearHistoryWarningDialog'), 'post-history clear must show the first-step warning dialog');
+
+  assert(postsClearHandler.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post-history clear must still ask for the second confirmation');
+
+  assert(upstream.includes('function showClearHistoryWarningDialog'), 'userscript must define the clear-history warning dialog helper');
+
+  assert(upstream.includes('「清空」') && upstream.includes('无法恢复'), 'clear-history warning dialog must highlight irreversible clear wording');
+
 }
 
 function testBrowsingHistoryUrlParsingContract() {

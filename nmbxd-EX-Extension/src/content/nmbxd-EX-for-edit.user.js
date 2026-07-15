@@ -2433,6 +2433,53 @@
       if (cfg && cfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root);
     } catch (e) {}
   }
+  // 清空历史二次确认：首层自定义弹窗（可高亮「清空」「无法恢复」），确认后再走 window.confirm
+  function showClearHistoryWarningDialog(onConfirm, onCancel) {
+    const existing = document.getElementById('xdex-clear-history-warning-modal');
+    if (existing) existing.remove();
+    const $m = $(
+      '<div id="xdex-clear-history-warning-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10003;display:flex;align-items:center;justify-content:center;outline:none;">' +
+        '<div class="xdex-clear-history-warning-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>' +
+        '<div class="xdex-clear-history-warning-dialog" role="dialog" aria-modal="true" aria-labelledby="xdex-clear-history-warning-title" style="position:relative;width:min(380px,92vw);background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px 18px 14px;color:var(--foreground, #333);">' +
+          '<h3 id="xdex-clear-history-warning-title" style="margin:0 0 10px;font-size:16px;font-weight:700;color:#c62828;">操作警告</h3>' +
+          '<p style="margin:0 0 8px;font-size:14px;line-height:1.65;">请注意此按钮为' +
+            '<span style="color:#c62828;font-weight:800;font-size:16px;padding:0 2px;">「清空」</span>' +
+            '按钮而非「搜索」</p>' +
+          '<p style="margin:0 0 12px;font-size:14px;line-height:1.65;">操作后将' +
+            '<span style="color:#c62828;font-weight:800;font-size:16px;padding:0 2px;">无法恢复</span></p>' +
+          '<p style="margin:0 0 14px;font-size:13px;color:var(--muted-foreground, #666);">是否确认继续？</p>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button type="button" id="xdex-clear-history-warning-cancel" style="padding:6px 14px;">取消</button>' +
+            '<button type="button" id="xdex-clear-history-warning-ok" style="padding:6px 14px;background:#c62828;color:#fff;border:1px solid #b71c1c;border-radius:4px;font-weight:700;">确认清空</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+    function close() {
+      $m.remove();
+      $(document).off('keydown.xdex-clear-history-warning');
+    }
+    function cancel() {
+      close();
+      if (typeof onCancel === 'function') onCancel();
+    }
+    function confirm() {
+      close();
+      if (typeof onConfirm === 'function') onConfirm();
+    }
+    $m.find('.xdex-clear-history-warning-backdrop').on('click', cancel);
+    $m.find('#xdex-clear-history-warning-cancel').on('click', cancel);
+    $m.find('#xdex-clear-history-warning-ok').on('click', confirm);
+    $(document).on('keydown.xdex-clear-history-warning', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+      // 危险操作：不响应 Enter 确认，必须点红色「确认清空」
+    });
+    $('body').append($m);
+    try { $m.find('#xdex-clear-history-warning-cancel')[0].focus(); } catch (e) {}
+  }
   function bindThreadHistoryModuleEvents() {
     $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
       renderThreadHistoryModule(this.value || '');
@@ -2469,10 +2516,12 @@
     });
     $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
       e.preventDefault();
-      if (!window.confirm('确定要清空全部浏览历史吗？')) return;
-      clearThreadHistory();
-      renderThreadHistoryModule();
-      toast('已清空浏览历史');
+      showClearHistoryWarningDialog(function () {
+        if (!window.confirm('确定要清空全部浏览历史吗？')) return;
+        clearThreadHistory();
+        renderThreadHistoryModule();
+        toast('已清空浏览历史');
+      });
     });
   }
   function buildPostHistoryItemElement(result) {
@@ -3389,10 +3438,12 @@
     });
     $('#sp_posts_clear').off('click.xdex-post-history').on('click.xdex-post-history', function (e) {
       e.preventDefault();
-      if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
-      clearPostHistory();
-      renderPostHistoryModule();
-      toast('已清空我的发言');
+      showClearHistoryWarningDialog(function () {
+        if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
+        clearPostHistory();
+        renderPostHistoryModule();
+        toast('已清空我的发言');
+      });
     });
     // 手动添加发言历史
     // 禁用浏览器自动填充
@@ -7413,8 +7464,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
       // 初始折叠与按钮隐藏
-      $('.sp_fold_body').hide();
-      $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads,#btn_group_subscriptionFeeds,#btn_sp_subscriptionFeeds,#btn_sp_importExport,#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import').addClass('xdex-inv');
+      // 保存/同步时不再强制收起折叠区：模板本身已是 display:none + xdex-inv，
+      // 若这里每次 hide/加 inv，会把用户刚展开的「标记饼干/屏蔽关键词」等分组立刻折回去。
+      // $('.sp_fold_body').hide();
+      // $('#btn_group_marked,#btn_sp_marked,#btn_group_blocked,#btn_sp_blocked,#btn_group_threadCookieWhitelist,#btn_sp_threadCookieWhitelist,#btn_group_blockedKeywords,#btn_sp_blockedKeywords,#btn_group_favoriteThreads,#btn_sp_favoriteThreads,#btn_group_subscriptionFeeds,#btn_sp_subscriptionFeeds,#btn_sp_importExport,#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import').addClass('xdex-inv');
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
     }
@@ -17801,7 +17854,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)ゞ","(ᗜᴗᗜ)",
+              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
