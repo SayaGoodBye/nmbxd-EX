@@ -10594,6 +10594,155 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       console.warn('[enhanceIslandAutoTitle] refresh failed:', e);
     }
   }
+  // ========== 无缝翻页 / 发帖刷新共用的无状态工具层（Phase1：从 initSeamlessPaging 闭包抽出） ==========
+  // 不依赖 loading/loadedPages 等状态机变量；签名与选择器保持与旧内联实现一致。
+  // 调试 log 默认关闭：localStorage.xdexSeamlessDebug = '1' 或 window.__XDEX_SEAMLESS_DEBUG = true
+  function isSeamlessDebugEnabled() {
+    try {
+      if (typeof window !== 'undefined' && window.__XDEX_SEAMLESS_DEBUG) return true;
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('xdexSeamlessDebug') === '1') return true;
+    } catch (e) {}
+    return false;
+  }
+  function seamlessDebugLog() {
+    if (!isSeamlessDebugEnabled()) return;
+    try { console.log.apply(console, arguments); } catch (e) {}
+  }
+  function getRealThreadsList(root = document) {
+    const lists = Array.from((root || document).querySelectorAll('.h-threads-list'));
+    return lists.find(el => !el.closest('.h-preview-box')) || null;
+  }
+  // 获取 DOM 中最大的 data-cloned-page（已被无缝加载进来的最大页）
+  function getMaxClonedPageInDOM() {
+    let max = 0;
+    document.querySelectorAll('.h-threads-item-replies[data-cloned-page]').forEach(el => {
+      const n = parseInt(el.getAttribute('data-cloned-page'), 10);
+      if (!isNaN(n) && n > max) max = n;
+    });
+    return max;
+  }
+  function removeIdsFromNode(node) {
+    if (!node || node.querySelectorAll === undefined) return;
+    node.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    if (node.hasAttribute && node.hasAttribute('id')) node.removeAttribute('id');
+  }
+  function parseLastPageFromPagination(pagUl) {
+    if (!pagUl) return null;
+    const anchors = Array.from(pagUl.querySelectorAll('a, span')).map(a => a.href || a.getAttribute('href') || '');
+    const pageNums = anchors.map(h => {
+      if (typeof parsePaginationPageNum === 'function') return parsePaginationPageNum(h);
+      const m = (h || '').match(/[?&]page=(\d+)|\/page\/(\d+)\.html/);
+      return m ? Number(m[1] || m[2]) : null;
+    }).filter(n => !!n);
+    if (pageNums.length === 0) return null;
+    return Math.max(...pageNums);
+  }
+  function getDomLastPageNum() {
+    const allPaginations = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+    if (allPaginations.length === 0) return null;
+    const lastPagination = allPaginations[allPaginations.length - 1];
+    return parseLastPageFromPagination(lastPagination);
+  }
+  function buildThreadPageUrl(threadId, pageNum) {
+    // 如果当前是 /Forum/po/id/{threadId}/page/N.html 形式
+    if (/^\/Forum\/po\/id\/\d+/.test(location.pathname)) {
+      return `${location.origin}/Forum/po/id/${threadId}/page/${pageNum}.html`;
+    }
+    // 默认 /t/{threadId}?page=N
+    return `${location.origin}/t/${threadId}?page=${pageNum}`;
+  }
+  function extractFromHTML(htmlText) {
+    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+    const repliesAll = doc.querySelectorAll('.h-threads-item-replies');
+    const replies = repliesAll.length ? repliesAll[0] : doc.querySelector('.h-threads-item-replies');
+    let pagination = doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination') ||
+                    doc.querySelector('ul.uk-pagination.uk-pagination-left') ||
+                    doc.querySelector('ul.uk-pagination');
+    return { replies, pagination, doc };
+  }
+  // ========== Phase2：串内增量刷新共享核（无缝侧/发帖侧共用） ==========
+  // 只承载：定目标页 / 建回复容器 / 按 id 增量 append / 同步底部分页。
+  // 收尾判定（last/hasNext vs wasLastPage 涨页）仍由两边包装负责。
+  function resolveThreadRefreshTargetPage(maxPage, maxCloned, pageCursor) {
+    if ((maxPage && maxCloned === maxPage && maxCloned > 0) || (!maxPage && maxCloned > 0)) {
+      return { kind: 'cloned', targetPage: maxCloned };
+    }
+    if (maxPage && pageCursor === maxPage && maxCloned === 0) {
+      return { kind: 'main', targetPage: null };
+    }
+    return { kind: 'skip', targetPage: null };
+  }
+  function ensureThreadRepliesContainer(list, clonedPage) {
+    const pageKey = clonedPage && clonedPage > 0 ? clonedPage : 0;
+    let targetReplies = pageKey > 0
+      ? list.querySelector('.h-threads-item-replies[data-cloned-page="' + pageKey + '"]')
+      : list.querySelector('.h-threads-item-replies:not([data-cloned-page])');
+    if (targetReplies) return { targetReplies: targetReplies, created: false };
+    const threadItem = list.querySelector('.h-threads-item');
+    if (!threadItem) return { targetReplies: null, created: false };
+    targetReplies = document.createElement('div');
+    targetReplies.className = 'h-threads-item-replies';
+    if (pageKey > 0) targetReplies.setAttribute('data-cloned-page', String(pageKey));
+    threadItem.appendChild(targetReplies);
+    return { targetReplies: targetReplies, created: true };
+  }
+  function stripSystemTipReplies(root) {
+    if (!root || !root.querySelectorAll) return;
+    try {
+      root.querySelectorAll('.h-threads-item-reply[data-threads-id="9999999"]').forEach(function (n) { n.remove(); });
+    } catch (e) {}
+  }
+  // 按 data-threads-id 增量 append；返回 hasUpdate 与新节点列表
+  function appendMissingRepliesByThreadsId(targetReplies, sourceRoot, options) {
+    options = options || {};
+    const replyOnly = options.replyOnly === true;
+    const excludeSystemOnOld = options.excludeSystemOnOld === true;
+    const excludeSystemOnNew = options.excludeSystemOnNew !== false;
+    const sel = replyOnly ? '.h-threads-item-reply[data-threads-id]' : '[data-threads-id]';
+    const oldItems = Array.from(targetReplies.querySelectorAll(sel));
+    const oldIdSet = new Set();
+    oldItems.forEach(function (item) {
+      const id = item.getAttribute('data-threads-id') || (item.dataset && item.dataset.threadsId);
+      if (!id) return;
+      if (excludeSystemOnOld && id === '9999999') return;
+      oldIdSet.add(id);
+    });
+    let newItems = Array.from(sourceRoot.querySelectorAll(sel));
+    if (excludeSystemOnNew) {
+      newItems = newItems.filter(function (item) {
+        const id = item.getAttribute('data-threads-id') || (item.dataset && item.dataset.threadsId);
+        return id && id !== '9999999';
+      });
+    }
+    const appendedNodes = [];
+    let hasUpdate = false;
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      const tid = item.getAttribute('data-threads-id') || (item.dataset && item.dataset.threadsId);
+      if (!tid || oldIdSet.has(tid)) continue;
+      hasUpdate = true;
+      const node = item.cloneNode(true);
+      targetReplies.appendChild(node);
+      appendedNodes.push(node);
+      oldIdSet.add(tid);
+    }
+    return { hasUpdate: hasUpdate, appendedNodes: appendedNodes };
+  }
+  function prepareAndSyncBottomPagination(doc) {
+    const newPags = doc.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+    const newPag = newPags.length ? newPags[newPags.length - 1] : null;
+    const oldPags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+    const oldPag = oldPags.length ? oldPags[oldPags.length - 1] : null;
+    if (newPag && oldPag) {
+      const preparedPag = newPag.cloneNode(true);
+      try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(preparedPag); } catch (e) {}
+      try { if (typeof processPagination === 'function') processPagination(preparedPag); } catch (e) {}
+      try { oldPag.innerHTML = preparedPag.innerHTML; } catch (e) { oldPag.replaceWith(preparedPag); }
+    }
+    return { newPag: newPag, oldPag: oldPag };
+  }
+  // ========== /Phase2 增量刷新共享核 ==========
+  // ========== /无状态工具层 ==========
   function initSeamlessPaging() {
     let lastCheckAt = 0;
     // 所有需要被 window.SeamlessPaging 访问的变量都在此声明
@@ -10608,6 +10757,18 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     let hasUserInteracted = false;
     let lastUserScrollDir = 0;
     let lastScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+    // Phase1：发现新页后的状态回退唯一入口（刷新按钮 / 末页 hasNext / SeamlessPaging.loadNext 共用）
+    // 语义保持：delete 目标页、loading=false、可选回退 lastLoadedPage、lastCheckAt=0
+    function prepareForceLoadNext(nextPage) {
+      if (nextPage != null && nextPage !== undefined) {
+        loadedPages.delete(nextPage);
+        lastLoadedPage = nextPage - 1;
+      } else {
+        loadedPages.delete(lastLoadedPage + 1);
+      }
+      loading = false;
+      lastCheckAt = 0;
+    }
     try {
       const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
       if (!cfg.enableSeamlessPaging) return;
@@ -10641,6 +10802,39 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       // let hasUserInteracted = false;
       // let lastUserScrollDir = 0;
       // let lastScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+      // Phase3-2：串内/板块自动观察器去重（滚动意图 / 视口判定 / observer 绑定）
+      function isSeamlessNearBottom(marginPx) {
+        const margin = (marginPx == null) ? 200 : marginPx;
+        return (window.scrollY + window.innerHeight) >= (document.documentElement.scrollHeight - margin);
+      }
+      function isSeamlessElementInViewport(el) {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return (r.bottom > 0 && r.top < window.innerHeight);
+      }
+      function getSeamlessLastRepliesActiveImageBox() {
+        const container = getRootRepliesContainer();
+        return container && container.lastReplies
+          ? container.lastReplies.querySelector('.h-threads-img-box.h-active')
+          : null;
+      }
+      // 共用触发门：相交 + 非 loading + 用户向下滚动意图；extraGate===false 时额外拦截（板块 done）
+      function shouldTriggerSeamlessAutoLoad(entry, extraGate) {
+        if (!entry || !entry.isIntersecting || loading) return false;
+        if (extraGate === false) return false;
+        return !!(hasUserInteracted && lastUserScrollDir > 0);
+      }
+      function bindSeamlessIntersectionObserver(placeSentinel, onIntersect) {
+        placeSentinel();
+        if (!sentinel) return null;
+        const obs = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            onIntersect(entry);
+          });
+        }, { root: null, rootMargin: '0px', threshold: 0.05 });
+        obs.observe(sentinel);
+        return obs;
+      }
       function onUserScroll() {
         hasUserInteracted = true;
         const curTop = window.pageYOffset || document.documentElement.scrollTop || 0;
@@ -10650,14 +10844,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (observerFrozen && sentinel) {
           const maxDomLast = getDomLastPageNum();
           const atLastPage = !!(maxDomLast && lastLoadedPage >= maxDomLast);
-          const nearBottom = (window.scrollY + window.innerHeight) >= (document.documentElement.scrollHeight - 200);
+          const nearBottom = isSeamlessNearBottom();
           // 若不再有激活大图，或已接近底部（两者满足任一），恢复观察
-          let activeInView = false;
-          const activeBox = document.querySelector('.h-threads-img-box.h-active');
-          if (activeBox) {
-            const r = activeBox.getBoundingClientRect();
-            activeInView = (r.bottom > 0 && r.top < window.innerHeight);
-          }
+          // 注意：此处仍用全局 querySelector（与旧逻辑一致，不限最后 replies）
+          const activeInView = isSeamlessElementInViewport(document.querySelector('.h-threads-img-box.h-active'));
           if (!activeInView || (atLastPage && nearBottom)) {
             try { observer.observe(sentinel); } catch (e) {}
             observerFrozen = false;
@@ -10707,10 +10897,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (!replies || replies.length === 0) return null;
         return { root, lastReplies: replies[replies.length - 1] };
       }
-      function ensureSentinelPlaced() {
-        const containers = getRootRepliesContainer();
-        if (!containers) return;
-        const { lastReplies } = containers;
+      // 哨兵节点创建：串页/板块页共用，避免两处复制样式
+      function ensureSentinelNode() {
         if (!sentinel) {
           sentinel = document.createElement('div');
           sentinel.id = SENTINEL_ID;
@@ -10718,56 +10906,67 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           sentinel.style.width = '100%';
           sentinel.style.pointerEvents = 'none';
         }
-        if (lastReplies.nextSibling !== sentinel) {
-          lastReplies.parentNode.insertBefore(sentinel, lastReplies.nextSibling);
+        return sentinel;
+      }
+      function placeSentinelAfter(anchor) {
+        if (!anchor || !anchor.parentNode) return;
+        ensureSentinelNode();
+        if (anchor.nextSibling !== sentinel) {
+          anchor.parentNode.insertBefore(sentinel, anchor.nextSibling);
         }
+      }
+      function ensureSentinelPlaced() {
+        const containers = getRootRepliesContainer();
+        if (!containers) return;
+        // 旧：内联创建 sentinel 节点
+        // if (!sentinel) { ... }
+        placeSentinelAfter(containers.lastReplies);
       }
       // 板块页容器
       function ensureSentinelPlacedBoard() {
         const lists = document.querySelectorAll('.h-threads-list');
         const lastList = lists[lists.length - 1];
         if (!lastList) return;
-        if (!sentinel) {
-          sentinel = document.createElement('div');
-          sentinel.id = SENTINEL_ID;
-          sentinel.style.height = '1px';
-          sentinel.style.width = '100%';
-          sentinel.style.pointerEvents = 'none';
-        }
-        if (lastList.nextSibling !== sentinel) {
-          lastList.parentNode.insertBefore(sentinel, lastList.nextSibling);
-        }
+        // 旧：内联创建 sentinel 节点（与串页重复）
+        // if (!sentinel) { ... }
+        placeSentinelAfter(lastList);
       }
-      function removeIdsFromNode(node) {
-        if (!node || node.querySelectorAll === undefined) return;
-        node.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-        if (node.hasAttribute && node.hasAttribute('id')) node.removeAttribute('id');
+      // Phase3-4：串内/板块哨兵放置对称入口（mode 策略；不改变放置目标）
+      function ensureSeamlessSentinel(mode) {
+        if (mode === 'board') ensureSentinelPlacedBoard();
+        else ensureSentinelPlaced(); // thread（默认）
       }
-      function parseLastPageFromPagination(pagUl) {
-        if (!pagUl) return null;
-        const anchors = Array.from(pagUl.querySelectorAll('a, span')).map(a => a.href || a.getAttribute('href') || '');
-        const pageNums = anchors.map(h => {
-          if (typeof parsePaginationPageNum === 'function') return parsePaginationPageNum(h);
-          const m = (h || '').match(/[?&]page=(\d+)|\/page\/(\d+)\.html/);
-          return m ? Number(m[1] || m[2]) : null;
-        }).filter(n => !!n);
-        if (pageNums.length === 0) return null;
-        return Math.max(...pageNums);
-      }
-      function getDomLastPageNum() {
-        const allPaginations = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
-        if (allPaginations.length === 0) return null;
-        const lastPagination = allPaginations[allPaginations.length - 1];
-        return parseLastPageFromPagination(lastPagination);
-      }
-      function buildThreadPageUrl(threadId, pageNum) {
-        // 如果当前是 /Forum/po/id/{threadId}/page/N.html 形式
-        if (/^\/Forum\/po\/id\/\d+/.test(location.pathname)) {
-          return `${location.origin}/Forum/po/id/${threadId}/page/${pageNum}.html`;
-        }
-        // 默认 /t/{threadId}?page=N
-        return `${location.origin}/t/${threadId}?page=${pageNum}`;
-      }
+      // Phase1：以下无状态工具已上提到闭包外共用实现；旧内联定义保留注释，避免重复声明遮盖外层函数
+      // function removeIdsFromNode(node) {
+      //   if (!node || node.querySelectorAll === undefined) return;
+      //   node.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+      //   if (node.hasAttribute && node.hasAttribute('id')) node.removeAttribute('id');
+      // }
+      // function parseLastPageFromPagination(pagUl) {
+      //   if (!pagUl) return null;
+      //   const anchors = Array.from(pagUl.querySelectorAll('a, span')).map(a => a.href || a.getAttribute('href') || '');
+      //   const pageNums = anchors.map(h => {
+      //     if (typeof parsePaginationPageNum === 'function') return parsePaginationPageNum(h);
+      //     const m = (h || '').match(/[?&]page=(\d+)|\/page\/(\d+)\.html/);
+      //     return m ? Number(m[1] || m[2]) : null;
+      //   }).filter(n => !!n);
+      //   if (pageNums.length === 0) return null;
+      //   return Math.max(...pageNums);
+      // }
+      // function getDomLastPageNum() {
+      //   const allPaginations = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+      //   if (allPaginations.length === 0) return null;
+      //   const lastPagination = allPaginations[allPaginations.length - 1];
+      //   return parseLastPageFromPagination(lastPagination);
+      // }
+      // function buildThreadPageUrl(threadId, pageNum) {
+      //   // 如果当前是 /Forum/po/id/{threadId}/page/N.html 形式
+      //   if (/^\/Forum\/po\/id\/\d+/.test(location.pathname)) {
+      //     return `${location.origin}/Forum/po/id/${threadId}/page/${pageNum}.html`;
+      //   }
+      //   // 默认 /t/{threadId}?page=N
+      //   return `${location.origin}/t/${threadId}?page=${pageNum}`;
+      // }
       function computeNextUrl() {
         const tid = originInfo.threadId || document.querySelector('[data-threads-id]')?.getAttribute('data-threads-id');
         if (!tid) return null;
@@ -10776,341 +10975,278 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       // ========== 新增：无缝翻页内部专用的刷新 / 判定工具（放在 loadNext 之前） ==========
       // done 为当前认定的末页添加手动局部刷新按钮，以避免回复数太少，无法滚动触发局部刷新，检测到为末页时一直存在
       // 从 root 中获取第一个非预览的 .h-threads-list （避免误取预览区）
-      function getRealThreadsList(root = document) {
-        const lists = Array.from((root || document).querySelectorAll('.h-threads-list'));
-        return lists.find(el => !el.closest('.h-preview-box')) || null;
-      }
-      // 获取 DOM 中最大的 data-cloned-page（已被无缝加载进来的最大页）
-      function getMaxClonedPageInDOM() {
-        let max = 0;
-        document.querySelectorAll('.h-threads-item-replies[data-cloned-page]').forEach(el => {
-          const n = parseInt(el.getAttribute('data-cloned-page'), 10);
-          if (!isNaN(n) && n > max) max = n;
-        });
-        return max;
-      }
+      // Phase1：getRealThreadsList / getMaxClonedPageInDOM 已上提到闭包外
+      // function getRealThreadsList(root = document) {
+      //   const lists = Array.from((root || document).querySelectorAll('.h-threads-list'));
+      //   return lists.find(el => !el.closest('.h-preview-box')) || null;
+      // }
+      // // 获取 DOM 中最大的 data-cloned-page（已被无缝加载进来的最大页）
+      // function getMaxClonedPageInDOM() {
+      //   let max = 0;
+      //   document.querySelectorAll('.h-threads-item-replies[data-cloned-page]').forEach(el => {
+      //     const n = parseInt(el.getAttribute('data-cloned-page'), 10);
+      //     if (!isNaN(n) && n > max) max = n;
+      //   });
+      //   return max;
+      // }
       // 刷新目标回复区（主页面回复区 或 data-cloned-page = 最大的克隆页）并检查是否有下一页
       // done(result) 回调会收到 { status: 'last'|'hasNext'|'error', nextPage?: number }
+      // Phase2: old body replaced by shared-core thin wrapper
+      // 刷新目标回复区（主页面回复区 或 data-cloned-page = 最大的克隆页）并检查是否有下一页
+      // done(result) 回调会收到 { status: 'last'|'hasNext'|'error', nextPage?: number }
+      // Phase2：定区/增量/分页走共享核；末页判定与 toast 仍在本包装
       function refreshRepliesAndCheckNext(done, options = {}) {
         const showResultToast = options.showResultToast !== false;
         const suppressResultToastOnHasNext = options.suppressResultToastOnHasNext !== false;
         try {
           const domMaxPage = getDomLastPageNum();
           const maxCloned = getMaxClonedPageInDOM();
-          let targetPage = null;
-          if ((domMaxPage && maxCloned === domMaxPage && maxCloned > 0) || (!domMaxPage && maxCloned > 0)) {
-            targetPage = maxCloned;
-          } else if (domMaxPage && lastLoadedPage === domMaxPage && maxCloned === 0) {
-            targetPage = null;
-          }
+          // 旧：内联 targetPage 分支（已收敛到 resolveThreadRefreshTargetPage）
+          const resolved = resolveThreadRefreshTargetPage(domMaxPage, maxCloned, lastLoadedPage);
+          // seamless 旧行为：未命中 cloned/main 时 targetPage 仍为 null 并继续刷主区
+          const targetPage = resolved.kind === 'cloned' ? resolved.targetPage : null;
           const list = getRealThreadsList(document);
           if (!list) {
             console.warn('[refreshReplies] 未找到 .h-threads-list');
             toast('刷新回复失败，该串可能已被删除');
             return done && done({ status: "error" });
           }
-        let targetReplies;
-        if (maxCloned > 0) {
-          // ✅ 如果已经有克隆界面，永远刷新最大的克隆页
-          targetReplies = list.querySelector(`.h-threads-item-replies[data-cloned-page="${maxCloned}"]`);
-        } else {
-          // ✅ 否则刷新主页面的回复区
-          targetReplies = list.querySelector('.h-threads-item-replies:not([data-cloned-page])');
-        }
-        // 如果没有找到回复区，说明当前串没有回复，需要创建回复区容器
-        if (!targetReplies) {
-          const threadItem = list.querySelector('.h-threads-item');
-          if (threadItem) {
-            targetReplies = document.createElement('div');
-            targetReplies.className = 'h-threads-item-replies';
-            if (maxCloned > 0) {
-              targetReplies.setAttribute('data-cloned-page', String(maxCloned));
-            }
-            threadItem.appendChild(targetReplies);
-            console.log('[refreshReplies] 已创建空的回复区容器');
-          } else {
+          const pageAttr = maxCloned > 0 ? maxCloned : 0;
+          const ensured = ensureThreadRepliesContainer(list, pageAttr);
+          const targetReplies = ensured.targetReplies;
+          if (!targetReplies) {
             console.warn('[refreshReplies] 未找到 .h-threads-item，无法创建回复区');
             toast('刷新回复失败，未找到串容器');
             return done && done({ status: "error" });
           }
-        }
-        // 构建请求 URL：优先用 threadId + ?page=N，否则回退到 location.href
-        let fetchUrl = location.href;
-        try {
-          if (typeof originInfo !== 'undefined' && originInfo && originInfo.threadId && targetPage) {
-            fetchUrl = buildThreadPageUrl(originInfo.threadId, targetPage);
-          } else if (targetPage) {
-            const u = new URL(location.href, location.origin);
-            u.searchParams.set('page', String(targetPage));
-            fetchUrl = u.toString();
+          if (ensured.created) {
+            console.log('[refreshReplies] 已创建空的回复区容器');
           }
-        } catch (e) {
-          // ignore
-        }
-        fetch(fetchUrl, { credentials: 'same-origin' })
-          .then(res => res.text())
-          .then(html => {
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            const newList = getRealThreadsList(doc);
-            if (!newList) {
-              console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-list');
-              toast('刷新回复失败，该串可能已被删除');
-              return done && done({ status: "error" });
+          let fetchUrl = location.href;
+          try {
+            if (typeof originInfo !== 'undefined' && originInfo && originInfo.threadId && targetPage) {
+              fetchUrl = buildThreadPageUrl(originInfo.threadId, targetPage);
+            } else if (targetPage) {
+              const u = new URL(location.href, location.origin);
+              u.searchParams.set('page', String(targetPage));
+              fetchUrl = u.toString();
             }
-        // 新增：替换前记录所有激活图片所在的回复ID，刷新后在 newReplies（离线 DOM）上恢复
-        let activeReplyIds = [];
-        try {
-          targetReplies.querySelectorAll('.h-threads-item-reply .h-threads-img-box.h-active').forEach(box => {
-            const replyEl = box.closest('.h-threads-item-reply');
-            if (replyEl) {
-              const rid = replyEl.getAttribute('data-threads-id');
-              if (rid) activeReplyIds.push(rid);
-            }
-          });
-        } catch (e) {}
-        // newReplies 已从返回的页面 doc 中得到
-        const newReplies = newList.querySelector('.h-threads-item-replies');
-        if (!newReplies) {
-          console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-item-replies');
-          toast('刷新回复失败，页面无回复内容');
-          return done && done({ status: "error" });
-        }
-        // 在覆盖前，移除系统提示（避免页面跳动）
-        try {
-          newReplies.querySelectorAll('.h-threads-item-reply[data-threads-id="9999999"]').forEach(n => n.remove());
-        } catch (e) {}
-        // 在替换前，先对 detached DOM 做预处理，避免闪烁（在脱离 document 的 newReplies 上操作）
-        try {
-          if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(newReplies));
-          if (typeof applyFilters === 'function') applyFilters(cfg, newReplies); // 尝试以 root-aware 方式处理
-        } catch (e) {
-          console.warn('预处理过滤失败', e);
-        }
-        // 暂时取消局部刷新后保留图片h-active状态的设定
-        // —— 关键：在 newReplies（脱离 DOM 的节点）上恢复激活状态，避免插入后闪烁 ——
-        // if (activeReplyIds.length > 0) {
-        //   try {
-        //     activeReplyIds.forEach(rid => {
-        //       const newBox = newReplies.querySelector(`.h-threads-item-reply[data-threads-id="${rid}"] .h-threads-img-box`);
-        //       if (newBox) {
-        //         newBox.classList.add('h-active');
-        //         const tool = newBox.querySelector('.h-threads-img-tool');
-        //         if (tool) tool.style.display = '';
-        //       }
-        //     });
-        //   } catch (e) {
-        //     console.warn('restore multiple active images on newReplies failed', e);
-        //   }
-        // }
-        // done 将局部刷新修改为新增而非替换，应该可以避免已active的图片发生变化
-        // 替换目标回复区内容（保留容器，替换 innerHTML）—— 原子性替换已有，插入的是已处理好的 newReplies HTML
-        // === 改为增量新增：比较新旧回复差异，只添加缺失部分，避免覆盖 h-active ===
-        // 1. 收集原先 targetReplies 中已有的回复 ID
-        const oldItems = Array.from(targetReplies.querySelectorAll('[data-threads-id]'));
-        const oldIdSet = new Set(oldItems.map(i => i.dataset.threadsId));
-        // 2. 收集新拉取页面中的回复项
-        const newItems = Array.from(newReplies.querySelectorAll('[data-threads-id]'));
-        let hasUpdate = false;
-        // 3. 逐项比较，把 newReplies 中不存在于 oldReplies 的部分依顺序追加到正确位置
-        for (const item of newItems) {
-            const tid = item.dataset.threadsId;
-            if (!oldIdSet.has(tid)) {
-                // 新增回复项，插入到 targetReplies 最后（保持服务器顺序）
-                hasUpdate = true;
-                targetReplies.appendChild(item.cloneNode(true));
-            }
-        }
-        // 同步替换底部分页条（取返回页的最后一个分页）
-        const newPags = doc.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
-        const newPag = newPags.length ? newPags[newPags.length - 1] : null;
-        const oldPags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
-        const oldPag = oldPags.length ? oldPags[oldPags.length - 1] : null;
-        if (newPag && oldPag) {
-          // 先在 detached DOM 中扩展分页栏，再替换到页面，避免先出现原版 3 页码再二次修正造成闪烁
-          const preparedPag = newPag.cloneNode(true);
-          try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(preparedPag); } catch (e) {}
-          try { if (typeof processPagination === 'function') processPagination(preparedPag); } catch (e) {}
-          // 只替换 innerHTML（避免完全替换导致事件/引用丢失），但内容已是扩展后的 7 页码版本
-          try { oldPag.innerHTML = preparedPag.innerHTML; } catch (e) { oldPag.replaceWith(preparedPag); }
-        }
-        // 让其他模块对新内容生效（使用 initSeamlessPaging 作用域内已有的函数）
-        try { if (typeof reinitForNewContent === 'function') reinitForNewContent(targetReplies); } catch (e) {}
-        // 复用无缝翻页里常用的增强调用（与 loadNext 中添加内容后使用的一致）
-        // 替换后立即执行视觉相关过滤，避免闪烁
-        reinitForNewContent(targetReplies);
-        applyPageEnhancements(targetReplies, cfg);
-        // 统计“用户回复”数量（排除系统回复 No.9999999）
-        const allReplies = Array.from(targetReplies.querySelectorAll('.h-threads-item-reply'));
-        const userReplies = allReplies.filter(el => el.getAttribute('data-threads-id') !== '9999999');
-        const userCount = userReplies.length;
-        // 基于返回的分页判断是否出现了“更多页”
-        const parsedLastFromReturned = (function() {
-          const pag = newPag || doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination') || doc.querySelector('ul.uk-pagination');
-          return pag ? parseLastPageFromPagination(pag) : null;
-        })();
-        // 如果用户回复 < 19 => 肯定是最后一页
-        if (userCount < 19) {
-          const result = { status: 'last', hasUpdate };
-          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
-          if (typeof done === 'function') done(result);
-          addRefreshButtonIfNeeded();
-          return;
-        }
-        // 用户回复满 19 条：若解析到的最新页码 > 当前已知 lastLoadedPage，则说明出现下一页
-        if (parsedLastFromReturned && parsedLastFromReturned > lastLoadedPage) {
-          const result = { status: 'hasNext', nextPage: lastLoadedPage + 1, hasUpdate };
-          if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
-          if (typeof done === 'function') done(result);
-          return;
-        } else {
-          const result = { status: 'last', hasUpdate };
-          if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
-          if (typeof done === 'function') done(result);
-          addRefreshButtonIfNeeded();
-          return;
-        }
-      })
-      .catch(err => {
-        console.error('refreshRepliesAndCheckNext error:', err);
-        toast('刷新回复区失败');
-        if (typeof done === 'function') done({ status: 'error' });
-      });
+          } catch (e) {}
+          fetch(fetchUrl, { credentials: 'same-origin' })
+            .then(res => res.text())
+            .then(html => {
+              const doc = new DOMParser().parseFromString(html, 'text/html');
+              const newList = getRealThreadsList(doc);
+              if (!newList) {
+                console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-list');
+                toast('刷新回复失败，该串可能已被删除');
+                return done && done({ status: "error" });
+              }
+              const newReplies = newList.querySelector('.h-threads-item-replies');
+              if (!newReplies) {
+                console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-item-replies');
+                toast('刷新回复失败，页面无回复内容');
+                return done && done({ status: "error" });
+              }
+              stripSystemTipReplies(newReplies);
+              try {
+                if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(newReplies));
+                if (typeof applyFilters === 'function') applyFilters(cfg, newReplies);
+              } catch (e) {
+                console.warn('预处理过滤失败', e);
+              }
+              // Phase2：增量 append 走共享核（对齐旧：不过滤 9999999 在比较集合中的行为差异，由 strip 先清 new 侧）
+              const merge = appendMissingRepliesByThreadsId(targetReplies, newReplies, {
+                replyOnly: false,
+                excludeSystemOnOld: false,
+                excludeSystemOnNew: false
+              });
+              const hasUpdate = merge.hasUpdate;
+              const pagSync = prepareAndSyncBottomPagination(doc);
+              const newPag = pagSync.newPag;
+              try { if (typeof reinitForNewContent === 'function') reinitForNewContent(targetReplies); } catch (e) {}
+              applyPageEnhancements(targetReplies, cfg);
+              const allReplies = Array.from(targetReplies.querySelectorAll('.h-threads-item-reply'));
+              const userReplies = allReplies.filter(el => el.getAttribute('data-threads-id') !== '9999999');
+              const userCount = userReplies.length;
+              const parsedLastFromReturned = (function() {
+                const pag = newPag || doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination') || doc.querySelector('ul.uk-pagination');
+                return pag ? parseLastPageFromPagination(pag) : null;
+              })();
+              if (userCount < 19) {
+                const result = { status: 'last', hasUpdate };
+                if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (typeof done === 'function') done(result);
+                addRefreshButtonIfNeeded();
+                return;
+              }
+              if (parsedLastFromReturned && parsedLastFromReturned > lastLoadedPage) {
+                const result = { status: 'hasNext', nextPage: lastLoadedPage + 1, hasUpdate };
+                if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (typeof done === 'function') done(result);
+                return;
+              } else {
+                const result = { status: 'last', hasUpdate };
+                if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (typeof done === 'function') done(result);
+                addRefreshButtonIfNeeded();
+                return;
+              }
+            })
+            .catch(err => {
+              console.error('refreshRepliesAndCheckNext error:', err);
+              toast('刷新回复区失败');
+              if (typeof done === 'function') done({ status: 'error' });
+            });
         } catch (err) {
           console.error('refreshRepliesAndCheckNext pre error:', err);
           if (typeof done === 'function') done({ status: 'error' });
         }
       }
-      function extractFromHTML(htmlText) {
-        const doc = new DOMParser().parseFromString(htmlText, 'text/html');
-        const repliesAll = doc.querySelectorAll('.h-threads-item-replies');
-        const replies = repliesAll.length ? repliesAll[0] : doc.querySelector('.h-threads-item-replies');
-        let pagination = doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination') ||
-                        doc.querySelector('ul.uk-pagination.uk-pagination-left') ||
-                        doc.querySelector('ul.uk-pagination');
-        return { replies, pagination, doc };
-      }
-      function addRefreshButtonIfNeeded() {
-        // 若按钮已存在则不重复创建
-        let btn = document.getElementById('seamless-refresh-btn');
-        if (!btn) {
-            btn = document.createElement('div');
-            btn.id = 'seamless-refresh-btn';
-            btn.className = 'qp-reset-btn seamless-refresh-btn';
-            btn.title = '手动检查回复更新';
-            btn.textContent = '🗘';
-            // --- 固定位置样式 ---
-            btn.style.position = 'fixed';
-            btn.style.right = '12px';
-            btn.style.bottom = '60px';
-            btn.style.fontSize = '20px';
-            btn.style.lineHeight = '1';
-            btn.style.color = '#fff';
-            btn.style.background = 'rgba(0,0,0,.6)';
-            btn.style.padding = '6px 12px';
-            btn.style.borderRadius = '6px';
-            btn.style.cursor = 'pointer';
-            btn.style.zIndex = '9001';
-            btn.style.userSelect = 'none';
-            btn.style.display = 'none';   // 默认不显示
-            document.body.appendChild(btn);
-            // 点击触发“局部刷新 → 若有下一页则无缝翻页”
-            btn.addEventListener('click', () => {
-                try {
-                    toast("正在刷新……", 1500, { queue: false, key: 'refresh-status' });
-                    refreshRepliesAndCheckNext(result => {
-                        if (!result || result.status === 'error') return;
-                        if (result.status === 'hasNext' && result.nextPage) {
-                            toast(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700, { queue: false, key: 'refresh-status' });
-                            loadedPages.delete(result.nextPage);
-                            loading = false;
-                            lastLoadedPage = result.nextPage - 1;
-                            lastCheckAt = 0;
-                            setTimeout(() => loadNext(), 50);
-                        } else if (result.status === 'last') {
-                            toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' });
-                        }
-                    }, { showResultToast: false });
-                } catch (e) {
-                    console.warn('刷新按钮触发失败:', e);
-                }
-            });
+      // Phase1：extractFromHTML 已上提到闭包外共用实现
+      // function extractFromHTML(htmlText) {
+      //   const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+      //   const repliesAll = doc.querySelectorAll('.h-threads-item-replies');
+      //   const replies = repliesAll.length ? repliesAll[0] : doc.querySelector('.h-threads-item-replies');
+      //   let pagination = doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination') ||
+      //                   doc.querySelector('ul.uk-pagination.uk-pagination-left') ||
+      //                   doc.querySelector('ul.uk-pagination');
+      //   return { replies, pagination, doc };
+      // }
+      // Phase3-3：刷新检查结果共用处理（刷新按钮 click / loadNext 末页旁路）
+      // 语义：error 静默；hasNext → toast + prepareForceLoadNext + 延迟 loadNext；last → 已更新/无更新
+      function handleSeamlessRefreshCheckResult(result) {
+        if (!result || result.status === 'error') return;
+        if (result.status === 'hasNext' && result.nextPage) {
+          toast(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700, { queue: false, key: 'refresh-status' });
+          // 旧：内联状态回退（已统一到 prepareForceLoadNext）
+          // loadedPages.delete(result.nextPage);
+          // loading = false;
+          // lastLoadedPage = result.nextPage - 1;
+          // lastCheckAt = 0;
+          prepareForceLoadNext(result.nextPage);
+          setTimeout(() => loadNext(), 50);
+        } else if (result.status === 'last') {
+          toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' });
         }
-        // --- 始终监听页面最底部的分页栏 ---
-        function getBottomPagination() {
-            const allPaginations = document.querySelectorAll('ul.uk-pagination');
-            return allPaginations.length ? allPaginations[allPaginations.length - 1] : null;
-        }
-        function updateBtnDisplay(pag) {
-          if (!pag) {
-              btn.style.display = 'none';
-              return;
-          }
-          const hasNext = !!pag.querySelector('li:last-child a');
-          if (hasNext) {
-              btn.style.display = 'none';
-              return;
-          }
-          // 检查浮窗状态
-          const overlay = document.querySelector('.qp-overlay');
-          const overlayQuote = document.querySelector('.qp-overlay-quote');
-          const overlayOpen = (overlay && overlay.style.display === 'block');
-          const overlayQuoteOpen = (overlayQuote && overlayQuote.style.display === 'block');
-          if (overlayOpen || overlayQuoteOpen) {
-              btn.style.display = 'none';
-          } else {
-              btn.style.display = 'block';
-          }
       }
-        function observeOverlays() {
-          const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
-          overlays.forEach(el => {
-              if (!el) return;
-              const obs = new MutationObserver(() => {
-                  updateBtnDisplay(getBottomPagination());
-              });
-              obs.observe(el, { attributes: true, attributeFilter: ['style'] });
+      // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）
+      function getSeamlessBottomPagination() {
+        const allPaginations = document.querySelectorAll('ul.uk-pagination');
+        return allPaginations.length ? allPaginations[allPaginations.length - 1] : null;
+      }
+      function updateSeamlessRefreshBtnDisplay(btn, pag) {
+        if (!btn) return;
+        if (!pag) {
+          btn.style.display = 'none';
+          return;
+        }
+        const hasNext = !!pag.querySelector('li:last-child a');
+        if (hasNext) {
+          btn.style.display = 'none';
+          return;
+        }
+        // 检查浮窗状态
+        const overlay = document.querySelector('.qp-overlay');
+        const overlayQuote = document.querySelector('.qp-overlay-quote');
+        const overlayOpen = (overlay && overlay.style.display === 'block');
+        const overlayQuoteOpen = (overlayQuote && overlayQuote.style.display === 'block');
+        if (overlayOpen || overlayQuoteOpen) {
+          btn.style.display = 'none';
+        } else {
+          btn.style.display = 'block';
+        }
+      }
+      function observeSeamlessRefreshOverlays(btn) {
+        const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
+        overlays.forEach(el => {
+          if (!el) return;
+          const obs = new MutationObserver(() => {
+            updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
-        }
-        // 初始绑定
-        observeOverlays();
-        // 建立一个 MutationObserver，始终监听最新的分页栏
+          obs.observe(el, { attributes: true, attributeFilter: ['style'] });
+        });
+      }
+      function ensureSeamlessRefreshButtonNode() {
+        let btn = document.getElementById('seamless-refresh-btn');
+        if (btn) return btn;
+        btn = document.createElement('div');
+        btn.id = 'seamless-refresh-btn';
+        btn.className = 'qp-reset-btn seamless-refresh-btn';
+        btn.title = '手动检查回复更新';
+        btn.textContent = '🗘';
+        // --- 固定位置样式 ---
+        btn.style.position = 'fixed';
+        btn.style.right = '12px';
+        btn.style.bottom = '60px';
+        btn.style.fontSize = '20px';
+        btn.style.lineHeight = '1';
+        btn.style.color = '#fff';
+        btn.style.background = 'rgba(0,0,0,.6)';
+        btn.style.padding = '6px 12px';
+        btn.style.borderRadius = '6px';
+        btn.style.cursor = 'pointer';
+        btn.style.zIndex = '9001';
+        btn.style.userSelect = 'none';
+        btn.style.display = 'none';   // 默认不显示
+        document.body.appendChild(btn);
+        // 点击触发“局部刷新 → 若有下一页则无缝翻页”
+        btn.addEventListener('click', () => {
+          try {
+            toast("正在刷新……", 1500, { queue: false, key: 'refresh-status' });
+            // 旧：内联 hasNext/last 分支（已抽到 handleSeamlessRefreshCheckResult）
+            refreshRepliesAndCheckNext(handleSeamlessRefreshCheckResult, { showResultToast: false });
+          } catch (e) {
+            console.warn('刷新按钮触发失败:', e);
+          }
+        });
+        return btn;
+      }
+      // 兼容旧调用名；内部完成按钮创建 + overlay/分页监听
+      function addRefreshButtonIfNeeded() {
+        // 旧：整段内联在 loadNext 旁（Phase3-3 拆为显示/监听辅助 + 共用结果处理）
+        const btn = ensureSeamlessRefreshButtonNode();
+        // --- 始终监听页面最底部的分页栏 ---
         let currentObserver = null;
         function observeBottomPagination() {
-            const pag = getBottomPagination();
-            if (!pag) return;
-            // 先更新一次显示状态
-            updateBtnDisplay(pag);
-            // 如果已有旧的 observer，先断开
-            if (currentObserver) {
-                currentObserver.disconnect();
-            }
-            // 新建 observer 监听底部分页栏的变化
-            currentObserver = new MutationObserver(() => {
-                updateBtnDisplay(getBottomPagination());
-            });
-            currentObserver.observe(pag, { childList: true, subtree: true });
+          const pag = getSeamlessBottomPagination();
+          if (!pag) return;
+          // 先更新一次显示状态
+          updateSeamlessRefreshBtnDisplay(btn, pag);
+          // 如果已有旧的 observer，先断开
+          if (currentObserver) {
+            currentObserver.disconnect();
+          }
+          // 新建 observer 监听底部分页栏的变化
+          currentObserver = new MutationObserver(() => {
+            updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
+          });
+          currentObserver.observe(pag, { childList: true, subtree: true });
         }
+        // 初始绑定
+        observeSeamlessRefreshOverlays(btn);
         // 初始监听一次
         observeBottomPagination();
         // 每次 DOM 可能插入新分页栏时，重新绑定监听
+        // 注意：每次 addRefreshButtonIfNeeded 调用都会再挂一个 body observer（与旧行为一致）
         const globalObserver = new MutationObserver(() => {
-            observeBottomPagination();
+          observeBottomPagination();
         });
         globalObserver.observe(document.body, { childList: true, subtree: true });
-    }
+      }
       // 串内页加载
       async function loadNext() {
         const loadNextStarted = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
         startupPerfDebug.mark('seamless.loadNext.start', { lastLoadedPage, loading, done });
-        console.log('[loadNext] 函数被调用');
+        seamlessDebugLog('[loadNext] 函数被调用');
         const now = Date.now();
-        console.log('[loadNext] 检查防抖: now - lastCheckAt =', now - lastCheckAt);
+        seamlessDebugLog('[loadNext] 检查防抖: now - lastCheckAt =', now - lastCheckAt);
         if (now - lastCheckAt < 1000) {
-          console.log('[loadNext] 防抖拦截，返回');
+          seamlessDebugLog('[loadNext] 防抖拦截，返回');
           return;
         }
         lastCheckAt = now;
-        console.log('[loadNext] 通过防抖检查');
+        seamlessDebugLog('[loadNext] 通过防抖检查');
          const domLast = getDomLastPageNum();
       // if (domLast && lastLoadedPage >= domLast) {
       //   return;
@@ -11152,41 +11288,26 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             }
           }
           // 👉 每次末页判定时，都刷新最新回复区和分页
-          refreshRepliesAndCheckNext(result => {
-            if (!result || result.status === 'error') {
-              return;
-            }
-            if (result.status === 'hasNext' && result.nextPage) {
-              toast(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700, { queue: false, key: 'refresh-status' });
-              // ★ 关键：重置状态，避免 loadNext() 被拦截
-              loadedPages.delete(result.nextPage);   // 确保不会误判已加载
-              loading = false;                       // 确保不会被 loading 拦截
-              lastLoadedPage = result.nextPage - 1;  // 回退一页，让 loadNext() 认为下一页还没加载
-              lastCheckAt = 0;  // 重置防抖时间戳，允许立即加载
-              setTimeout(() => loadNext(), 50);
-            } else if (result.status === 'last') {
-              toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' });
-            }
-            // last 分支已通过刷新状态 toast 原位更新
-          }, { showResultToast: false });
+          // 旧：内联 hasNext/last 分支（Phase3-3 已抽到 handleSeamlessRefreshCheckResult）
+          refreshRepliesAndCheckNext(handleSeamlessRefreshCheckResult, { showResultToast: false });
           return;
         }
         // if (loading) return;
         // const nextPageNum = lastLoadedPage + 1;
         // if (loadedPages.has(nextPageNum)) return;
-        console.log('[loadNext] loading =', loading);
+        seamlessDebugLog('[loadNext] loading =', loading);
         if (loading) {
-          console.log('[loadNext] loading 为 true，返回');
+          seamlessDebugLog('[loadNext] loading 为 true，返回');
           return;
         }
         const nextPageNum = lastLoadedPage + 1;
-        console.log('[loadNext] 计算下一页页码: lastLoadedPage =', lastLoadedPage, ', nextPageNum =', nextPageNum);
-        console.log('[loadNext] loadedPages 包含的页码:', Array.from(loadedPages));
+        seamlessDebugLog('[loadNext] 计算下一页页码: lastLoadedPage =', lastLoadedPage, ', nextPageNum =', nextPageNum);
+        seamlessDebugLog('[loadNext] loadedPages 包含的页码:', Array.from(loadedPages));
         if (loadedPages.has(nextPageNum)) {
-          console.log('[loadNext] nextPageNum 已在 loadedPages 中，返回');
+          seamlessDebugLog('[loadNext] nextPageNum 已在 loadedPages 中，返回');
           return;
         }
-        console.log('[loadNext] 准备加载页码:', nextPageNum);
+        seamlessDebugLog('[loadNext] 准备加载页码:', nextPageNum);
         const nextUrl = computeNextUrl();
         if (!nextUrl) { return; }
         toast(`正在加载第 ${nextPageNum} 页……`);
@@ -11375,19 +11496,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       }
       // 新增：检查激活大图并按需冻结/解冻观察器（限定在当前串的最后一个 replies 容器）
       function checkActiveImageAndToggleObserver() {
-        const container = getRootRepliesContainer();
-        const activeBox = container && container.lastReplies
-          ? container.lastReplies.querySelector('.h-threads-img-box.h-active')
-          : null;
+        // 旧：内联 nearBottom / activeInView 计算（已抽到 Phase3-2 共用）
+        const activeBox = getSeamlessLastRepliesActiveImageBox();
         const hasActive = !!activeBox;
         const maxDomLast = getDomLastPageNum();
         const atLastPage = !!(maxDomLast && lastLoadedPage >= maxDomLast);
-        const nearBottom = (window.scrollY + window.innerHeight) >= (document.documentElement.scrollHeight - 200);
-        let activeInView = false;
-        if (activeBox) {
-          const r = activeBox.getBoundingClientRect();
-          activeInView = (r.bottom > 0 && r.top < window.innerHeight);
-        }
+        const nearBottom = isSeamlessNearBottom();
+        const activeInView = isSeamlessElementInViewport(activeBox);
         // 末页 + 激活在视口内 + 未接近底部 → 冻结（disconnect）
         if (atLastPage && activeInView && !nearBottom) {
           try { observer && observer.disconnect(); } catch (e) {}
@@ -11407,49 +11522,54 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           setTimeout(checkActiveImageAndToggleObserver, 0);
         }
       });
-      function initObserver() {
-        ensureSentinelPlaced();
-        if (!sentinel) return;
-        // 使用外层 observer 变量（替换原来的 “let observer = ...”）
-        observer = new IntersectionObserver((entries) => {
-          entries.forEach(entry => {
-            // 新增：若冻结，直接忽略（被大图激活时冻结）
-            if (observerFrozen) return;
-            // 新增：末页 + 虚拟缓冲区 + 大图激活逻辑
-            const maxDomLast = getDomLastPageNum();
-            const atLastPage = !!(maxDomLast && lastLoadedPage >= maxDomLast);
-            const nearBottom = (window.scrollY + window.innerHeight) >= (document.documentElement.scrollHeight - 200);
-            // 检测是否有激活大图且在视口中（限定在当前串的最后 replies）
-            let activeInView = false;
-            const container = getRootRepliesContainer();
-            const activeBox = container && container.lastReplies
-              ? container.lastReplies.querySelector('.h-threads-img-box.h-active')
-              : null;
-            if (activeBox) {
-              const r = activeBox.getBoundingClientRect();
-              activeInView = (r.bottom > 0 && r.top < window.innerHeight);
-            }
-            // 在末页时：如果激活大图且未接近底部 → 冻结观察器避免误触发
-            if (atLastPage && activeInView && !nearBottom) {
-              try { observer.disconnect(); } catch (e) {}
-              observerFrozen = true;
-              return;
-            }
-            // 在末页时：开启“虚拟缓冲区”，只有 nearBottom 才允许触发（解决大图未激活也提前触发的问题）
-            if (atLastPage && !nearBottom) {
-              return;
-            }
-            // 原有的触发判定保留
-            if (entry.isIntersecting && !loading) {
-              if (hasUserInteracted && lastUserScrollDir > 0) {
-                loadNext();
-              }
+      // Phase3-4：串内/板块自动观察器绑定（mode 策略表）
+      // thread：保留末页缓冲 + 大图冻结；board：仅 done 门，不加串内专属能力
+      function bindSeamlessAutoLoad(mode) {
+        const placeSentinel = (mode === 'board') ? ensureSentinelPlacedBoard : ensureSentinelPlaced;
+        if (mode === 'board') {
+          // 旧：initObserverBoard 内联（Phase3-2/3-4 收敛）
+          // let observer = new IntersectionObserver(...); observer.observe(sentinel);
+          observer = bindSeamlessIntersectionObserver(placeSentinel, (entry) => {
+            // 原：entry.isIntersecting && !loading && !done + 向下滚动意图
+            if (shouldTriggerSeamlessAutoLoad(entry, !done)) {
+              loadNextBoard();
             }
           });
-        }, { root: null, rootMargin: '0px', threshold: 0.05 });
-        observer.observe(sentinel);
+          return;
+        }
+        // thread
+        // 旧：内联 IntersectionObserver + 末页/大图冻结（已抽到 Phase3-2 共用绑定）
+        // 使用外层 observer 变量（替换原来的 “let observer = ...”）
+        observer = bindSeamlessIntersectionObserver(placeSentinel, (entry) => {
+          // 新增：若冻结，直接忽略（被大图激活时冻结）
+          if (observerFrozen) return;
+          // 新增：末页 + 虚拟缓冲区 + 大图激活逻辑
+          const maxDomLast = getDomLastPageNum();
+          const atLastPage = !!(maxDomLast && lastLoadedPage >= maxDomLast);
+          const nearBottom = isSeamlessNearBottom();
+          // 检测是否有激活大图且在视口中（限定在当前串的最后 replies）
+          const activeInView = isSeamlessElementInViewport(getSeamlessLastRepliesActiveImageBox());
+          // 在末页时：如果激活大图且未接近底部 → 冻结观察器避免误触发
+          if (atLastPage && activeInView && !nearBottom) {
+            try { observer.disconnect(); } catch (e) {}
+            observerFrozen = true;
+            return;
+          }
+          // 在末页时：开启“虚拟缓冲区”，只有 nearBottom 才允许触发（解决大图未激活也提前触发的问题）
+          if (atLastPage && !nearBottom) {
+            return;
+          }
+          // 原有的触发判定保留
+          if (shouldTriggerSeamlessAutoLoad(entry)) {
+            loadNext();
+          }
+        });
       }
-      function initManualButton() {
+      // 兼容旧调用名
+      function initObserver() { bindSeamlessAutoLoad('thread'); }
+      function initObserverBoard() { bindSeamlessAutoLoad('board'); }
+      // Phase3-1：串内/板块手动按钮样式去重
+      function createSeamlessLoadMoreButton(onClick) {
         const btn = document.createElement('div');
         btn.className = 'xdex-placeholder';
         btn.textContent = '加载下一页';
@@ -11464,107 +11584,89 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           box-sizing: border-box;
           text-align: center;
         `;
-        btn.addEventListener('click', () => {
-          // 允许点击时触发 loadNext，由 loadNext 负责末页提示（避免寂默返回）
-          loadNext();
-        });
-        ensureSentinelPlaced();
+        btn.addEventListener('click', onClick);
+        return btn;
+      }
+      function placeSeamlessLoadMoreButton(btn, placeSentinel) {
+        placeSentinel();
         if (sentinel && sentinel.parentNode) {
           sentinel.parentNode.insertBefore(btn, sentinel);
         }
       }
-      function initObserverBoard() {
-        ensureSentinelPlacedBoard();
-        if (!sentinel) return;
-        let observer = new IntersectionObserver((entries) => {
-          entries.forEach(entry => {
-            if (entry.isIntersecting && !loading && !done) {
-              if (hasUserInteracted && lastUserScrollDir > 0) {
-                loadNextBoard();
-              }
-            }
-          });
-        }, { root: null, rootMargin: '0px', threshold: 0.05 });
-        observer.observe(sentinel);
+      // Phase3-4：串内/板块手动按钮绑定对称
+      function bindSeamlessManualLoad(mode) {
+        // 旧：initManualButton / initManualButtonBoard 两套平行实现
+        const placeSentinel = (mode === 'board') ? ensureSentinelPlacedBoard : ensureSentinelPlaced;
+        const onClick = (mode === 'board')
+          ? (() => loadNextBoard())
+          : (() => { loadNext(); });
+        // 允许点击时触发 loadNext(Board)，由加载函数负责末页提示（避免寂默返回）
+        const btn = createSeamlessLoadMoreButton(onClick);
+        placeSeamlessLoadMoreButton(btn, placeSentinel);
+      }
+      // 兼容旧调用名
+      function initManualButton() {
+        // 旧：内联创建按钮样式（已抽到 createSeamlessLoadMoreButton）
+        bindSeamlessManualLoad('thread');
       }
       function initManualButtonBoard() {
-        const btn = document.createElement('div');
-        btn.className = 'xdex-placeholder';
-        btn.textContent = '加载下一页';
-        btn.style.cssText = `
-          padding: 6px 10px;
-          background: rgb(250, 250, 250);
-          color: rgb(136, 136, 136);
-          border: 1px dashed rgb(187, 187, 187);
-          margin: 10px auto;
-          cursor: pointer;
-          width: 100%;
-          box-sizing: border-box;
-          text-align: center;
-        `;
-        btn.addEventListener('click', () => loadNextBoard());
-        ensureSentinelPlacedBoard();
-        if (sentinel && sentinel.parentNode) {
-          sentinel.parentNode.insertBefore(btn, sentinel);
+        // 旧：与串内按钮同款内联样式（已抽到 createSeamlessLoadMoreButton）
+        bindSeamlessManualLoad('board');
+      }
+      // Phase3-4：启动分支按 mode 策略表，避免 thread/board 四套平行 if
+      const seamlessMode = isThreadPage ? 'thread' : (isBoardPage ? 'board' : null);
+      if (seamlessMode) {
+        if (cfg.enableAutoSeamlessPaging) {
+          ensureSeamlessSentinel(seamlessMode);
+          bindSeamlessAutoLoad(seamlessMode);
+        } else {
+          bindSeamlessManualLoad(seamlessMode);
         }
       }
-      if (isThreadPage) {
-        if (cfg.enableAutoSeamlessPaging) {
-          ensureSentinelPlaced();
-          initObserver();
-        } else {
-          initManualButton();
-        }
-      } else if (isBoardPage) {
-        if (cfg.enableAutoSeamlessPaging) {
-          ensureSentinelPlacedBoard();
-          initObserverBoard();
-        } else {
-          initManualButtonBoard();
-        }
-      }
-      // 调试：检查 loadNext 是否存在
-      console.log('=== 定义 window.SeamlessPaging 前的检查 ===');
-      console.log('loadNext 类型:', typeof loadNext);
-      console.log('loadNext 函数:', loadNext);
+      // 调试：检查 loadNext 是否存在（默认静默；开 xdexSeamlessDebug 才输出）
+      seamlessDebugLog('=== 定义 window.SeamlessPaging 前的检查 ===');
+      seamlessDebugLog('loadNext 类型:', typeof loadNext);
+      seamlessDebugLog('loadNext 函数:', loadNext);
       const loadNextFunc = loadNext;  // ← 先保存引用
-      console.log('loadNextFunc 类型:', typeof loadNextFunc);
+      seamlessDebugLog('loadNextFunc 类型:', typeof loadNextFunc);
       // 为拦截中间页发送成功分支提供无缝翻页调用
       window.SeamlessPaging = {
         loadNext: function() {
-          console.log('=== window.SeamlessPaging.loadNext 被调用 ===');
-          console.log('调用时 loadNext 类型:', typeof loadNext);
-          console.log('调用时 loadNextFunc 类型:', typeof loadNextFunc);
-          console.log('lastLoadedPage 当前值:', lastLoadedPage);
-          console.log('loading 当前值:', loading);
-          console.log('loadedPages 内容:', Array.from(loadedPages));
-          loadedPages.delete(lastLoadedPage + 1);   // 清除下一页的已加载标记
-          console.log('已删除页码:', lastLoadedPage + 1);
-          loading = false;                          // 重置加载状态
-          console.log('loading 重置为:', loading);
-          lastCheckAt = 0;                          // 重置防抖时间戳
-          console.log('lastCheckAt 重置为:', lastCheckAt);
-          console.log('准备在 50ms 后调用 loadNextFunc');
+          seamlessDebugLog('=== window.SeamlessPaging.loadNext 被调用 ===');
+          seamlessDebugLog('调用时 loadNext 类型:', typeof loadNext);
+          seamlessDebugLog('调用时 loadNextFunc 类型:', typeof loadNextFunc);
+          seamlessDebugLog('lastLoadedPage 当前值:', lastLoadedPage);
+          seamlessDebugLog('loading 当前值:', loading);
+          seamlessDebugLog('loadedPages 内容:', Array.from(loadedPages));
+          // 旧：内联状态回退（已统一到 prepareForceLoadNext；不传 nextPage 时清 lastLoadedPage+1）
+          // loadedPages.delete(lastLoadedPage + 1);   // 清除下一页的已加载标记
+          // loading = false;                          // 重置加载状态
+          // lastCheckAt = 0;                          // 重置防抖时间戳
+          const _forceNext = lastLoadedPage + 1;
+          prepareForceLoadNext(); // 与原先 delete(lastLoadedPage+1) 语义一致
+          seamlessDebugLog('已删除页码:', _forceNext);
+          seamlessDebugLog('loading 重置为:', loading);
+          seamlessDebugLog('lastCheckAt 重置为:', lastCheckAt);
+          seamlessDebugLog('准备在 50ms 后调用 loadNextFunc');
           setTimeout(() => {
-            console.log('=== setTimeout 内部执行 ===');
-            console.log('执行前 loadNextFunc 类型:', typeof loadNextFunc);
+            seamlessDebugLog('=== setTimeout 内部执行 ===');
+            seamlessDebugLog('执行前 loadNextFunc 类型:', typeof loadNextFunc);
             try {
               loadNextFunc();
-              console.log('loadNextFunc 调用成功');
+              seamlessDebugLog('loadNextFunc 调用成功');
             } catch (err) {
               console.error('loadNextFunc 调用失败:', err);
             }
           }, 50);
         }
       };
-      console.log('=== window.SeamlessPaging 定义完成 ===');
-      console.log('window.SeamlessPaging:', window.SeamlessPaging);
+      seamlessDebugLog('=== window.SeamlessPaging 定义完成 ===');
+      seamlessDebugLog('window.SeamlessPaging:', window.SeamlessPaging);
       addRefreshButtonIfNeeded();
     } catch (err) {
         console.error('initSeamlessPaging failed', err);
   }
   }
-
   /* --------------------------------------------------
    * tag 8. 移植‘X岛-揭示板的增强型体验’功能：启用高清图片链接+图片控件+布局调整/串在新标签页打开
    * -------------------------------------------------- */
@@ -16382,10 +16484,11 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       doSubmit(formData, false).finally(() => { unlockSubmit(form); });
     }, true);
     // ————— helpers —————
-    function getRealThreadsList(root = document) {
-      const lists = Array.from(root.querySelectorAll('.h-threads-list'));
-      return lists.find(el => !el.closest('.h-preview-box')) || null;
-    }
+    // Phase2 小步：以下两函数与闭包外共用工具同名同语义，注释掉以免遮盖外层实现
+    // function getRealThreadsList(root = document) {
+    //   const lists = Array.from(root.querySelectorAll('.h-threads-list'));
+    //   return lists.find(el => !el.closest('.h-preview-box')) || null;
+    // }
     function getCurrentPage() {
       const sp = new URL(location.href, location.origin).searchParams;
       return parseInt(sp.get('page') || '1', 10);
@@ -16405,15 +16508,16 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       });
       return max || null;
     }
-    function getMaxClonedPageInDOM() {
-      const nodes = document.querySelectorAll('.h-threads-item-replies[data-cloned-page]');
-      let max = 0;
-      nodes.forEach(el => {
-        const n = parseInt(el.getAttribute('data-cloned-page'), 10);
-        if (!isNaN(n)) max = Math.max(max, n);
-      });
-      return max;
-    }
+    // Phase2 小步：改用闭包外 getMaxClonedPageInDOM
+    // function getMaxClonedPageInDOM() {
+    //   const nodes = document.querySelectorAll('.h-threads-item-replies[data-cloned-page]');
+    //   let max = 0;
+    //   nodes.forEach(el => {
+    //     const n = parseInt(el.getAttribute('data-cloned-page'), 10);
+    //     if (!isNaN(n)) max = Math.max(max, n);
+    //   });
+    //   return max;
+    // }
     function minimalHideEmptyTitleAndEmail(root) {
       if (!root || !root.querySelectorAll) return;
       Array.from(root.querySelectorAll('.h-threads-info-title')).forEach(el => {
@@ -16430,44 +16534,36 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       });
     }
     // done 将拦截中间页-局部刷新修改为增量模式
+    // Phase2: old body replaced by shared-core thin wrapper
+    // done 将拦截中间页-局部刷新修改为增量模式
+    // Phase2：定区/增量/分页走共享核；wasLastPage 涨页检测仍在本包装
     function refreshRepliesWithSeamlessPaging(done) {
       const currentPage = getCurrentPage();
       const maxPage = getMaxPageFromPagination();
       const maxCloned = getMaxClonedPageInDOM();
-      let targetPage = null;
-      if ((maxPage && maxCloned === maxPage && maxCloned > 0) || (!maxPage && maxCloned > 0)) {
-        targetPage = maxCloned;
-      } else if (maxPage && currentPage === maxPage && maxCloned === 0) {
-        targetPage = null;
-      } else {
+      const resolved = resolveThreadRefreshTargetPage(maxPage, maxCloned, currentPage);
+      // 旧：非末页直接 done 返回
+      if (resolved.kind === 'skip') {
         if (typeof done === 'function') done();
         return;
       }
+      const targetPage = resolved.targetPage;
       const list = getRealThreadsList(document);
       if (!list) {
         toast('未找到真实列表，无法刷新回复区');
         if (typeof done === 'function') done();
         return;
       }
-      let targetReplies = targetPage
-        ? list.querySelector(`.h-threads-item-replies[data-cloned-page="${targetPage}"]`)
-        : list.querySelector('.h-threads-item-replies:not([data-cloned-page])');
-      // 如果没有找到回复区（无回复时只有主串），自动创建回复区容器
+      const pageAttr = (targetPage && targetPage > 0) ? targetPage : 0;
+      const ensured = ensureThreadRepliesContainer(list, pageAttr);
+      const targetReplies = ensured.targetReplies;
       if (!targetReplies) {
-        const threadItem = list.querySelector('.h-threads-item');
-        if (threadItem) {
-          targetReplies = document.createElement('div');
-          targetReplies.className = 'h-threads-item-replies';
-          if (targetPage) {
-            targetReplies.setAttribute('data-cloned-page', String(targetPage));
-          }
-          threadItem.appendChild(targetReplies);
-          console.log('[refreshRepliesWithSeamlessPaging] 已创建空的回复区容器');
-        } else {
-          toast('未找到目标回复区');
-          if (typeof done === 'function') done();
-          return;
-        }
+        toast('未找到目标回复区');
+        if (typeof done === 'function') done();
+        return;
+      }
+      if (ensured.created) {
+        console.log('[refreshRepliesWithSeamlessPaging] 已创建空的回复区容器');
       }
       let fetchUrl;
       if (targetPage) {
@@ -16493,15 +16589,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             if (typeof done === 'function') done();
             return;
           }
-          // ——— 离线处理（关键） ———
           const cfg2 = (typeof safeGetConfig === 'function') ? safeGetConfig() : null;
-          // 先准备一个离线 fragment（仅作为工作台，不再整体套用 innerHTML）
           const fragment = document.createElement('div');
           fragment.innerHTML = newReplies.innerHTML;
-          // 排除系统提示类回复（tips）
-          Array.from(fragment.querySelectorAll('.h-threads-item-reply[data-threads-id="9999999"]'))
-            .forEach(el => el.remove());
-          // 离线预处理：对 fragment 做完整的插入前公共增强，保证新增项进入页面前就是处理后的 DOM
+          stripSystemTipReplies(fragment);
           try {
             if (typeof preprocessPageEnhancementsBeforeInsert === 'function') {
               preprocessPageEnhancementsBeforeInsert(fragment, cfg2);
@@ -16512,31 +16603,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           } catch (e) {
             console.warn('预处理过滤失败', e);
           }
-          // === 改为增量新增：比较新旧回复差异，只添加缺失部分，避免覆盖 h-active ===
-          // 1) 收集当前目标区原有的回复 ID（排除系统提示）
-          const oldItems = Array.from(targetReplies.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
-          const oldIdSet = new Set(
-            oldItems
-              .map(i => i.getAttribute('data-threads-id'))
-              .filter(id => id && id !== '9999999')
-          );
-          // 2) 收集新页面的回复项（使用已离线预处理的 fragment，以维持服务器顺序并避免插入后闪烁）
-          const newItems = Array.from(fragment.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
-            .filter(i => i.getAttribute('data-threads-id') !== '9999999');
-          // 3) 逐项比较，把新页面中不存在于旧页面的项依顺序追加（保持服务器顺序）
-          const appendedNodes = [];
-          for (const item of newItems) {
-            const tid = item.getAttribute('data-threads-id');
-            if (!oldIdSet.has(tid)) {
-              // 新增回复项：克隆并追加到 targetReplies 末尾
-              const node = item.cloneNode(true);
-              targetReplies.appendChild(node);
-              appendedNodes.push(node);
-            }
-          }
-          // 4) 针对“新增的节点”做精细化处理，避免全局覆盖旧节点状态
+          const merge = appendMissingRepliesByThreadsId(targetReplies, fragment, {
+            replyOnly: true,
+            excludeSystemOnOld: true,
+            excludeSystemOnNew: true
+          });
+          const appendedNodes = merge.appendedNodes;
           try {
-            // 立即处理新增节点，降低闪烁
             if (typeof hideEmptyTitleAndEmail === 'function') {
               appendedNodes.forEach(n => { try { hideEmptyTitleAndEmail($(n)); } catch (_) {} });
             }
@@ -16546,17 +16619,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             if (typeof enablePostExpand === 'function') {
               appendedNodes.forEach(n => { try { enablePostExpand(n); } catch (_) {} });
             }
-          } catch (e) {
-            // 局部处理不影响整体流程
-          }
-          // 延迟执行其他增强
+          } catch (e) {}
           setTimeout(() => {
-            // 统一走公共增强函数，确保与无缝翻页保持一致（包括 applyImageHideMode）
             try {
               if (typeof applyPageEnhancements === 'function') {
                 applyPageEnhancements(targetReplies, cfg2 || (typeof safeGetConfig === 'function' ? safeGetConfig() : null));
               } else {
-                // 兜底（极端情况下公共函数不可用）
                 try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
                 try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
                 try { if (typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(document); } catch (e) {}
@@ -16565,57 +16633,45 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               }
             } catch (e) {}
           }, 50);
-          // 同步更新底部分页栏
-          const newPags = doc.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
-          const newPag = newPags.length ? newPags[newPags.length - 1] : null;
-          const oldPags = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
-          const oldPag = oldPags.length ? oldPags[oldPags.length - 1] : null;
-          if (newPag && oldPag) {
-            // 1. 判断发送前是否为最后一页（下一页按钮是 uk-disabled 且无链接）
-            const oldNextLi = Array.from(oldPag.querySelectorAll('li')).find(li =>
+          // wasLastPage 需在写回前读取 oldPag
+          const oldPagsBefore = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+          const oldPagBefore = oldPagsBefore.length ? oldPagsBefore[oldPagsBefore.length - 1] : null;
+          let wasLastPage = false;
+          if (oldPagBefore) {
+            const oldNextLi = Array.from(oldPagBefore.querySelectorAll('li')).find(li =>
               /下一页|下页|Next|›|»|→/i.test(li.textContent.trim())
             );
-            const wasLastPage = oldNextLi &&
+            wasLastPage = !!(oldNextLi &&
               oldNextLi.classList.contains('uk-disabled') &&
-              !oldNextLi.querySelector('a');
-            // 替换 DOM：先在 detached DOM 中扩展分页栏，再替换到页面，避免原版 3 页码闪烁
-            const preparedPag = newPag.cloneNode(true);
-            try { if (typeof rebuildPaginationPages === 'function') rebuildPaginationPages(preparedPag); } catch (e) {}
-            try { if (typeof processPagination === 'function') processPagination(preparedPag); } catch (e) {}
-            try {
-              oldPag.innerHTML = preparedPag.innerHTML;
-            } catch (e) {
-              oldPag.replaceWith(preparedPag);
-            }
-            // 2. 如果发送前是最后一页，检查刷新后是否出现了新页
-            if (wasLastPage) {
-              const newNextLi = Array.from(newPag.querySelectorAll('li')).find(li =>
-                /下一页|下页|Next|›|»|→/i.test(li.textContent.trim())
-              );
-              const hasNewPage = newNextLi &&
-                !newNextLi.classList.contains('uk-disabled') &&
-                !!newNextLi.querySelector('a');
-              if (hasNewPage) {
-                // 提取新页码
-                const nextLink = newNextLi.querySelector('a');
-                const nextPageMatch = nextLink ? nextLink.href.match(/page=(\d+)/) : null;
-                const nextPageNum = nextPageMatch ? parseInt(nextPageMatch[1], 10) : null;
-                if (nextPageNum) {
-                  toast(`发现${nextPageNum}页，正在加载……`);
-                  // 触发无缝翻页
-                  if (window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
-                    setTimeout(() => {
-                      window.SeamlessPaging.loadNext();
-                    }, 100);
-                  }
+              !oldNextLi.querySelector('a'));
+          }
+          const newPags = doc.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
+          const newPag = newPags.length ? newPags[newPags.length - 1] : null;
+          prepareAndSyncBottomPagination(doc);
+          if (wasLastPage && newPag) {
+            const newNextLi = Array.from(newPag.querySelectorAll('li')).find(li =>
+              /下一页|下页|Next|›|»|→/i.test(li.textContent.trim())
+            );
+            const hasNewPage = !!(newNextLi &&
+              !newNextLi.classList.contains('uk-disabled') &&
+              !!newNextLi.querySelector('a'));
+            if (hasNewPage) {
+              const nextLink = newNextLi.querySelector('a');
+              const nextPageMatch = nextLink ? nextLink.href.match(/page=(\d+)/) : null;
+              const nextPageNum = nextPageMatch ? parseInt(nextPageMatch[1], 10) : null;
+              if (nextPageNum) {
+                toast('发现' + nextPageNum + '页，正在加载……');
+                if (window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
+                  setTimeout(() => {
+                    window.SeamlessPaging.loadNext();
+                  }, 100);
                 }
               }
             }
           }
-          // 4) 如果某些 filter 只能作用于 document（没有 root 参数），此处再做一次全局调用（尽量放到最后）
           try {
             if (cfg2 && typeof applyFilters === 'function') {
-              try { refreshFilterDisplay(cfg2); } catch (e) { /* 忽略 */ }
+              try { refreshFilterDisplay(cfg2); } catch (e) {}
             }
           } catch (e) {}
           if (typeof done === 'function') done();
