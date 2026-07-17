@@ -259,6 +259,12 @@ function testGithubUpdateFooterHighlight() {
   assert(upstream.includes("secondary: ['github']"), 'jsDelivr fallback update source must keep GitHub as secondary');
 }
 
+function testSettingsPanelReleaseAndDevLinks() {
+  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  assert(upstream.includes('<a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener">Release</a>'), 'settings footer must link to the latest release userscript mirror in a new tab');
+  assert(upstream.includes('<a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener">Dev</a>'), 'settings footer must link to the dev branch userscript mirror in a new tab');
+}
+
 function testRunLinkBlankContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
   assert(upstream.includes('function runLinkBlank(root = document)'), 'userscript must keep runLinkBlank for board/sidebar/footer links');
@@ -1514,6 +1520,7 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   testRuntimeSpecificUpdateSources();
   testGeneratedUpdateJsonContract();
   testGithubUpdateFooterHighlight();
+  testSettingsPanelReleaseAndDevLinks();
   testRunLinkBlankContract();
   testSettingsPanelModuleShellContract();
   testSettingsPanelSaveAndReloadContract();

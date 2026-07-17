@@ -5692,6 +5692,8 @@ ${markedSwatchHtml}
                 <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
                 <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener">ScriptCat</a>
                 <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
+                <a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener">Release</a>
+                <a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener">Dev</a>
               </div>
               <div id="sp_feeds_pager" style="display:none;position:absolute;left:50%;transform:translateX(-50%);align-items:center;gap:8px;">
                 <button id="sp_feeds_prev" type="button" style="padding:4px 10px;">上一页</button>
