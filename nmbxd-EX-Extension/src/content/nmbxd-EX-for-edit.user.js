@@ -20514,6 +20514,9 @@ function 注册自动保存编辑() {
    * tag 20. 默认/模糊/无图/Tips模式
    * -------------------------------------------------- */
   function applyImageHideMode(mode = 'default', root = document) {
+    const isImageHideExcludedPage = location.hostname === 'www.nmbxd1.com'
+      && (location.pathname.startsWith('/Member/') || location.pathname.startsWith('/Forum'));
+    if (isImageHideExcludedPage) return;
     return startupPerfDebug.measure('applyImageHideMode', () => {
     const COVER_URL = 'https://moetu.org/xdchan/cover.php?from=index';
     const VALID_MODES = new Set(['default', 'blur', 'noimage', 'tips', 'none']);
