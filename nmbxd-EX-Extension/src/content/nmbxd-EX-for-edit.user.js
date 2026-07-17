@@ -20343,11 +20343,11 @@ function 注册自动保存编辑() {
     a.setAttribute('rel', Array.from(rel).join(' '));
   }
   function isNmbSearchResultLink(a) {
-    return !!(a && a.matches && a.matches('#overflow.text-result a[href]'));
+    return !!(a && a.matches && a.matches('#overflow a[href]'));
   }
   function rewriteNmbSearchMobileThreadLinks(root = document) {
     if (!isNmbSearchPage()) return;
-    const selector = '#overflow.text-result a[href]';
+    const selector = '#overflow a[href]';
     const links = [];
     if (root && root.matches && root.matches(selector)) links.push(root);
     if (root && root.querySelectorAll) {
