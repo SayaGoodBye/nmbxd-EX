@@ -460,11 +460,8 @@ function testPostHistoryStorageAndCompletionContract() {
   assert(upstream.includes("logPostHistory('confirmed'") && upstream.includes("logPostHistory('unconfirmed'"), 'post history must log final confirmed and unconfirmed outcomes');
   assert(upstream.includes("reject('type-mismatch'") && upstream.includes("reject('reply-resto-mismatch'") && upstream.includes("reject('missing-time'") && upstream.includes("reject('time-window-mismatch'"), 'post history match logs must expose rejection reason markers');
   assert(upstream.includes("window.confirm('确定要删除这条发言记录吗？')"), 'post history item deletion must ask for confirmation');
-
-  assert(upstream.includes('showClearHistoryWarningDialog') && upstream.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post history clear must use two-step confirmation');
-
+  assert(upstream.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post history clear must ask for confirmation');
   assert(!upstream.includes("'xdex_post_history',"), 'post history GM key must not be added to Extension sync key lists');
-
 }
 
 function testPostHistoryServerContentWinsContract() {
@@ -754,38 +751,15 @@ function testHistoryAndPostDeleteConfirmContract() {
   const postsClearStart = upstream.indexOf("$('#sp_posts_clear').off('click.xdex-post-history')");
   assert(historyDeleteStart !== -1 && historyClearStart !== -1 && postsDeleteStart !== -1 && postsClearStart !== -1, 'delete/clear handlers must be present for history and post history modules');
 
-  const historyDeleteHandler = upstream.slice(historyDeleteStart, historyClearStart);
-  // 二次确认后 handler 内有嵌套回调，取到外层 `});` 为止
-  const historyClearHandlerEnd = (() => {
-    const first = upstream.indexOf('});', historyClearStart);
-    const second = upstream.indexOf('});', first + 3);
-    return (second === -1 ? first : second) + 3;
-  })();
-  const historyClearHandler = upstream.slice(historyClearStart, historyClearHandlerEnd);
-  const postsDeleteHandler = upstream.slice(postsDeleteStart, postsClearStart);
-  const postsClearHandlerEnd = (() => {
-    const first = upstream.indexOf('});', postsClearStart);
-    const second = upstream.indexOf('});', first + 3);
-    return (second === -1 ? first : second) + 3;
-  })();
-  const postsClearHandler = upstream.slice(postsClearStart, postsClearHandlerEnd);
+  const historyDeleteHandler = upstream.slice(historyDeleteStart, historyClearStart);
+  const historyClearHandler = upstream.slice(historyClearStart, upstream.indexOf('});', historyClearStart) + 3);
+  const postsDeleteHandler = upstream.slice(postsDeleteStart, postsClearStart);
+  const postsClearHandler = upstream.slice(postsClearStart, upstream.indexOf('});', postsClearStart) + 3);
 
   assert(!historyDeleteHandler.includes('window.confirm('), 'single browsing-history deletion must remain direct without confirmation');
-
-  assert(historyClearHandler.includes('showClearHistoryWarningDialog'), 'browsing-history clear must show the first-step warning dialog');
-
-  assert(historyClearHandler.includes("window.confirm('确定要清空全部浏览历史吗？')"), 'browsing-history clear must still ask for the second confirmation');
-
+  assert(historyClearHandler.includes("window.confirm('确定要清空全部浏览历史吗？')"), 'browsing-history clear must ask for confirmation');
   assert(postsDeleteHandler.includes("window.confirm('确定要删除这条发言记录吗？')"), 'post-history item deletion must ask for confirmation');
-
-  assert(postsClearHandler.includes('showClearHistoryWarningDialog'), 'post-history clear must show the first-step warning dialog');
-
-  assert(postsClearHandler.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post-history clear must still ask for the second confirmation');
-
-  assert(upstream.includes('function showClearHistoryWarningDialog'), 'userscript must define the clear-history warning dialog helper');
-
-  assert(upstream.includes('「清空」') && upstream.includes('无法恢复'), 'clear-history warning dialog must highlight irreversible clear wording');
-
+  assert(postsClearHandler.includes("window.confirm('确定要清空全部我的发言记录吗？')"), 'post-history clear must ask for confirmation');
 }
 
 function testBrowsingHistoryUrlParsingContract() {
@@ -1102,6 +1076,40 @@ async function testGmCompatSameOriginFetchFallback() {
   assert(fetchedUrl.endsWith('/Member/User/Cookie/index.html'), 'stale GM_xmlhttpRequest must use page fetch for same-origin requests');
   assert(responseText.includes('<tbody>'), 'same-origin fallback must return responseText to userscript callers');
   assert(context.__xdexRuntime.extensionContextInvalidated === true, 'stale fallback must still mark invalidated runtime');
+}
+
+function testGifCompressionDiagnosticsContract() {
+  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const compressStart = upstream.indexOf('async function compressGifToSize(file, options = {})');
+  const compressEnd = upstream.indexOf('// ✅ APNG 压缩', compressStart);
+  const retryStart = upstream.indexOf('async function compressImageForRetry(file, actualFormat)');
+  const retryEnd = upstream.indexOf('async function doSubmit(fd, isRetry = false)', retryStart);
+  const compressionFlowEnd = upstream.indexOf('} catch (compressErr) {', retryEnd);
+  const compressSource = upstream.slice(compressStart, compressEnd);
+  const retrySource = upstream.slice(retryStart, retryEnd);
+  const completionSource = upstream.slice(retryEnd, compressionFlowEnd);
+
+  assert(compressStart !== -1 && compressEnd !== -1, 'GIF compression diagnostics test must locate compressGifToSize');
+  assert(compressSource.includes("typeof performance !== 'undefined' && performance && typeof performance.now === 'function'"), 'GIF compression timing must prefer performance.now() with a safe fallback');
+  assert(compressSource.includes('Date.now()'), 'GIF compression timing must safely fall back to Date.now()');
+  assert(compressSource.includes("console.log('[X岛-EX][GIF压缩][轮次]'"), 'each completed GIF compression attempt must emit a structured prefixed console record');
+  assert(compressSource.includes('inputKB:') && compressSource.includes('outputKB:'), 'per-attempt GIF diagnostics must include input and output KB');
+  assert(compressSource.includes('compressionRate:') && compressSource.includes('reductionPercent:'), 'per-attempt GIF diagnostics must include compression and reduction ratios');
+  assert(compressSource.includes('lossy:') && compressSource.includes('colors:') && compressSource.includes('scale:') && compressSource.includes('command:'), 'per-attempt GIF diagnostics must include parameters and actual command');
+  assert(compressSource.includes('elapsedMs:') && compressSource.includes('hitTargetRange:') && compressSource.includes('acceptable:') && compressSource.includes('overLimit:'), 'per-attempt GIF diagnostics must include timing and target status');
+  assert(compressSource.includes("console.log('[X岛-EX][GIF压缩][汇总]'"), 'GIF compression must emit a final structured summary');
+  assert(compressSource.includes('totalElapsedMs:') && compressSource.includes('completedAttempts:') && compressSource.includes('finalCommand:'), 'GIF summary must include total timing, attempts, and final command');
+  assert(compressSource.includes("console.error('[X岛-EX][GIF压缩][失败]'"), 'GIF compression failures must emit a structured diagnostic');
+  assert(compressSource.includes('stage:') && compressSource.includes('completedAttempts:') && compressSource.includes('error:'), 'GIF failure diagnostics must include stage, elapsed attempts, and error');
+  assert(!/\btoast\s*\(/.test(compressSource), 'compressGifToSize must not add any toast calls');
+  assert(retrySource.includes("Object.defineProperty(compressedFile, '__xdexGifCompressionDurationMs'"), 'GIF duration metadata must use a non-enumerable File property');
+  assert(completionSource.includes('耗时 ${gifCompressionSeconds.toFixed(2)} 秒'), 'the existing final compression/re-submit toast must append GIF duration');
+  assert((completionSource.match(/toast\(`/g) || []).length === 1, 'GIF duration must not add another final toast call');
+
+  assert(compressSource.includes('const GIF_MAX_ATTEMPTS = 3') || upstream.includes('const GIF_MAX_ATTEMPTS = 3'), 'GIF maximum attempt count must remain 3');
+  assert(compressSource.includes("const args = ['-O3', `--lossy=${Math.round(lossy)}`, '--colors', String(Math.round(colors))]"), 'GIF optimization command must retain -O3 and existing lossy/colors construction');
+  assert(compressSource.includes('scale = clampNumber(scale * 0.90, 0.16, 0.98)') && compressSource.includes('lossy = clampNumber(Math.round(lossy) + 18, 0, 200)') && compressSource.includes('colors = clampNumber(Math.round(colors) - 24, 48, 256)'), 'GIF oversize adjustment algorithm must remain unchanged');
+  assert(upstream.includes("toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000)"), 'existing compression failure toast text and call must remain unchanged');
 }
 
 function testUserscriptRuntimeLogHelper() {
@@ -1530,6 +1538,7 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   testBrowsingHistoryPanelBodyContract();
   testGmCompatLocalStorageSyncBridge();
   await testGmCompatSameOriginFetchFallback();
+  testGifCompressionDiagnosticsContract();
   testUserscriptRuntimeLogHelper();
   testSingletonStartupGuard();
   await testGifsiclePreload();

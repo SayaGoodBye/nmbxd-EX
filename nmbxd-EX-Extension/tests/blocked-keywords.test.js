@@ -21,6 +21,9 @@ function testGroupedKeywordWiring() {
   assertContains('btn_group_blockedKeywords', 'settings UI must expose add-group button for keywords');
   assertContains('blocked-keyword-row', 'keyword group rows must use a distinct row class');
   assertContains('blocked-keyword-input', 'keyword group rows must use one input field');
+  assertContains('blocked-keyword-regex', 'keyword group rows must expose a regex toggle switch');
+  assertContains('getBlockedKeywordPlaceholder', 'keyword group rows must switch placeholder by regex mode');
+  assertContains('change.blockedKeywordRegex', 'regex toggle must update placeholder on change');
   assert(!script.includes("$('#sp_blockedKeywords').val().trim()"), 'single blocked keyword input save path must be removed');
 }
 
@@ -29,6 +32,7 @@ function testFilterWiring() {
   assertContains('function findBlockedKeywordHit', 'script must use a central keyword hit helper');
   assertContains('function getFilterIdsForElement', 'script must collect thread/reply IDs for keyword matching');
   assert(script.includes('function isThreadIdKeyword') || script.includes('function isEightDigitKeyword'), 'script must support 7/8/9-digit keyword ID matching');
+  assertContains('function compileBlockedKeywordRegex', 'script must compile per-group regex patterns for keyword filtering');
   assertContains('findBlockedKeywordHit(txt, blkKGroups, $el)', 'filter path must use grouped keyword hit helper');
   assert(!script.includes('const blkK = Utils.strToList(cfg.blockedKeywords);'), 'filter path must not parse blockedKeywords as a single string');
 }
@@ -37,8 +41,9 @@ function testLegacyRawGroupWiring() {
   assertContains('function normalizeBlockedKeywordGroupValue', 'script must preserve each keyword group as raw input text');
   assertContains('function escapeBlockedKeywordInputToken', 'script must escape comma-containing keywords when rebuilding raw input text');
   assertContains('group.value', 'keyword groups must keep raw comma-separated input value');
-  assertContains('value: rawValue', 'panel save must store raw group input value');
+  assertContains('regex: true', 'panel save must store regex flag for regex groups');
   assertContains('Utils.strToList(group.value)', 'filtering must parse raw group text only when deriving effective keywords');
+  assertContains(".filter((group) => !group.regex)", 'flatten path must exclude regex groups from comma splitting');
 }
 
 function testExpectedKeywordBehavior() {
@@ -56,13 +61,14 @@ function testExpectedKeywordBehavior() {
     if (t) list.push(t);
     return [...new Set(list)];
   };
+  const isRegexGroup = (group) => !!(group && typeof group === 'object' && (group.regex === true || group.isRegex === true || group.useRegex === true));
   const normalize = (val) => {
     const escapeToken = (token) => String(token || '').replace(/([\\,，])/g, '\\$1').trim();
     const joinTokens = (tokens) => tokens.map(escapeToken).filter(Boolean).join(',');
     if (!val) return [];
     if (typeof val === 'string') {
       const value = val.trim();
-      return strToList(value).length ? [{ value }] : [];
+      return strToList(value).length ? [{ value, regex: false }] : [];
     }
     if (!Array.isArray(val)) return [];
     return val.map((group) => {
@@ -73,19 +79,38 @@ function testExpectedKeywordBehavior() {
       else if (group && typeof group.text === 'string') value = group.text.trim();
       else if (group && Array.isArray(group.keywords)) value = joinTokens(group.keywords);
       else if (group && typeof group.keywords === 'string') value = group.keywords.trim();
-      return { value };
-    }).filter((group) => strToList(group.value).length);
+      const regex = isRegexGroup(group);
+      return { value, regex };
+    }).filter((group) => {
+      if (!group.value) return false;
+      return group.regex ? true : strToList(group.value).length > 0;
+    });
   };
-  const flatten = (groups) => [...new Set(normalize(groups).flatMap((group) => strToList(group.value)))];
+  const flatten = (groups) => [...new Set(normalize(groups).filter((group) => !group.regex).flatMap((group) => strToList(group.value)))];
   const firstTextHit = (text, keywords) => keywords.find((k) => text.toLowerCase().includes(k.toLowerCase())) || null;
   const isThreadIdKeyword = (keyword) => /^\d{7,9}$/.test(String(keyword || '').trim());
-  const hit = (text, groups, ids) => firstTextHit(text, flatten(groups)) || flatten(groups).find((k) => isThreadIdKeyword(k) && ids.includes(String(k || '').trim())) || null;
+  const compileRegex = (pattern) => {
+    try { return new RegExp(String(pattern || '').trim(), 'is'); }
+    catch (e) {
+      try { return new RegExp(String(pattern || '').trim(), 'i'); } catch (e2) { return null; }
+    }
+  };
+  const hit = (text, groups, ids) => {
+    const normalized = normalize(groups);
+    const body = String(text || '');
+    for (const group of normalized) {
+      if (!group.regex) continue;
+      const re = compileRegex(group.value);
+      if (re && re.test(body)) return group.value;
+    }
+    return firstTextHit(body, flatten(normalized)) || flatten(normalized).find((k) => isThreadIdKeyword(k) && ids.includes(String(k || '').trim())) || null;
+  };
   const legacy = '欢迎来到X岛,一个半全新的二次元泛ACG讨论区,减肥串,https://dailyakari.com/';
   const escapedPhrase = '欢迎来到X岛\\，一个半全新的二次元泛ACG讨论区';
 
-  assert(JSON.stringify(normalize(legacy)) === JSON.stringify([{ value: legacy }]), 'legacy string must remain the first raw keyword group');
+  assert(JSON.stringify(normalize(legacy)) === JSON.stringify([{ value: legacy, regex: false }]), 'legacy string must remain the first raw keyword group');
   assert(normalize([{ value: legacy }])[0].value === legacy, 'saved raw group value must round-trip without being split');
-  assert(JSON.stringify(normalize([{ keywords: 'foo,bar' }, { keywords: ['baz'] }])) === JSON.stringify([{ value: 'foo,bar' }, { value: 'baz' }]), 'older keyword-array groups must migrate to raw group values');
+  assert(JSON.stringify(normalize([{ keywords: 'foo,bar' }, { keywords: ['baz'] }])) === JSON.stringify([{ value: 'foo,bar', regex: false }, { value: 'baz', regex: false }]), 'older keyword-array groups must migrate to raw group values');
   assert(normalize([{ keywords: ['欢迎来到X岛，一个半全新的二次元泛ACG讨论区'] }])[0].value === '欢迎来到X岛\\，一个半全新的二次元泛ACG讨论区', 'comma-containing keyword arrays must render escaped commas');
   assert(JSON.stringify(flatten([{ keywords: ['欢迎来到X岛，一个半全新的二次元泛ACG讨论区'] }])) === JSON.stringify(['欢迎来到X岛，一个半全新的二次元泛ACG讨论区']), 'escaped migrated keywords must stay one keyword after parsing');
   assert(normalize(escapedPhrase)[0].value === escapedPhrase, 'manually escaped comma must remain visible after normalization');
@@ -100,6 +125,20 @@ function testExpectedKeywordBehavior() {
   assert(hit('plain text', [{ value: '123456789' }], ['123456789']) === '123456789', '9-digit keyword must match thread/reply ID');
   assert(hit('plain text', [{ value: '123456' }], ['123456']) === null, '6-digit keyword must not use ID matching');
   assert(hit('plain text', [{ value: '1234567890' }], ['1234567890']) === null, '10-digit keyword must not use ID matching');
+
+  // regex groups: whole pattern, no comma split, no ID special-case
+  assert(normalize([{ value: 'foo|bar', regex: true }])[0].regex === true, 'regex groups must keep regex flag');
+  assert(JSON.stringify(flatten([{ value: 'foo|bar', regex: true }, { value: 'baz,qux', regex: false }])) === JSON.stringify(['baz', 'qux']), 'regex groups must be excluded from comma flatten');
+  assert(hit('hello bar world', [{ value: 'foo|bar', regex: true }], []) === 'foo|bar', 'regex group must match body by pattern');
+  assert(hit('hello world', [{ value: 'foo|bar', regex: true }], []) === null, 'regex group must not match unrelated body');
+  assert(hit('a,b keep together', [{ value: 'a,b', regex: true }], []) === 'a,b', 'regex group must treat commas as pattern text, not splitters');
+  assert(hit('plain text', [{ value: '12345678', regex: true }], ['12345678']) === null, 'regex group must not use 7/8/9-digit ID matching');
+  assert(hit('No.12345678 here', [{ value: '12345678', regex: true }], []) === '12345678', 'regex group may still match digits as normal regex against body text');
+  assert(compileRegex('(') === null, 'invalid regex pattern must fail closed');
+  // textContent 常带前导换行；dotAll 下 ^(?=.*A)(?=.*B).*$ 仍应命中
+  const bodyWithLeadingNl = '\n                        仔细想想这才一个星期，可能还是因为剧烈的情绪波动和时间睡眠问题的叠加，过去一星期像一个月一样漫长';
+  assert(hit(bodyWithLeadingNl, [{ value: '^(?=.*剧烈)(?=.*睡眠).*$', regex: true }], []) === '^(?=.*剧烈)(?=.*睡眠).*$', 'regex with .* must match across leading newlines via dotAll');
+  assert(hit(bodyWithLeadingNl, [{ value: '剧烈' }], []) === '剧烈', 'plain keyword must still match the same body');
 }
 
 testGroupedKeywordWiring();

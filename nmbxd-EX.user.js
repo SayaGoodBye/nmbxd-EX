@@ -14899,239 +14899,206 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
   /* --------------------------------------------------
    * tag 11. 拦截回复中间页
    * -------------------------------------------------- */
-  function interceptReplyForm() {
-    // —— 缓存工具（GM_* 优先；localStorage 兜底；返回对象型默认值） ——
-    function cacheGet(key, fallback = null) {
+  // 回复提交文本工具：仅统一逐字符处理路径共用的 URL 范围保护原语
+  function findUrlRanges(text) {
+    const re = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
+    const ranges = [];
+    for (const m of text.matchAll(re)) {
+      ranges.push({ start: m.index, end: m.index + m[0].length });
+    }
+    return ranges;
+  }
+  function inAnyRange(pos, ranges) {
+    for (const r of ranges) {
+      if (pos >= r.start && pos < r.end) return true;
+    }
+    return false;
+  }
+  function transformTextOutsideUrlRanges(text, transformChar) {
+    const urlRanges = findUrlRanges(text);
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      out += inAnyRange(i, urlRanges) ? ch : transformChar(ch);
+    }
+    return out;
+  }
+  function fallbackInsertZWSP(text) {
+    const hanRegex = /[\u4E00-\u9FFF]/;
+    return transformTextOutsideUrlRanges(text, (ch) => hanRegex.test(ch) ? ch + '\u200B' : ch);
+  }
+  function insertZwspAfterHanAndAsciiLettersOutsideUrls(text) {
+    const hanRegex = /[\u4E00-\u9FFF]/;
+    const engRegex = /[A-Za-z]/;
+    return transformTextOutsideUrlRanges(text, (ch) => (hanRegex.test(ch) || engRegex.test(ch)) ? ch + '\u200B' : ch);
+  }
+
+  // 回复提交图片/FormData 纯工具：不依赖表单提交状态
+  function getImageExtension(fileName) {
+    return (fileName || '').split('.').pop().toLowerCase();
+  }
+  function normalizeDetectedImageFormat(hex4, ext) {
+    if (hex4 === '47494638') return 'gif';
+    if (hex4.startsWith('ffd8ff')) return 'jpeg';
+    if (hex4 === '89504e47') return 'png-container';
+    if (hex4 === '52494646') return 'webp-container';
+    if (hex4 === '424d') return 'bmp';
+    if (ext === 'gif') return 'gif';
+    if (ext === 'apng') return 'apng';
+    if (ext === 'webp') return 'webp';
+    if (ext === 'png') return 'png';
+    if (ext === 'jpg' || ext === 'jpeg') return 'jpeg';
+    return 'unknown';
+  }
+  function getStaticImageOutputType(originalType) {
+    if (originalType === 'image/webp') return 'image/webp';
+    if (originalType === 'image/jpeg' || originalType === 'image/jpg') return 'image/jpeg';
+    return 'image/png';
+  }
+  function cloneFormData(sourceFd) {
+    const cloned = new FormData();
+    for (const [key, value] of sourceFd.entries()) {
+      cloned.append(key, value);
+    }
+    return cloned;
+  }
+  function cloneFormDataWithImage(sourceFd, image) {
+    const retryFd = cloneFormData(sourceFd);
+    retryFd.set('image', image);
+    return retryFd;
+  }
+
+  function getCurrentSubmitContent(form, fallbackFd) {
+    const textarea = form.querySelector('textarea[name="content"]');
+    return textarea ? textarea.value : (fallbackFd.get('content') || '').toString();
+  }
+
+  function createContentRetryFormData(form, content) {
+    const retryFd = new FormData(form);
+    retryFd.set('content', content);
+    return retryFd;
+  }
+
+  function restoreOriginalSubmitContent(form) {
+    const textarea = form.querySelector('textarea[name="content"]');
+    if (textarea && form.__originalContent != null) {
+      textarea.value = form.__originalContent;
+    }
+    return form.__originalContent;
+  }
+
+  function readBlobAsArrayBuffer(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('读取图片数据失败'));
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
+  // 通过文件头部魔数检测真实图片格式（静态 / 动画）
+  async function detectImageFormat(file) {
+    const ext = getImageExtension(file.name);
+    let headerBuffer;
+    try {
+      headerBuffer = await readBlobAsArrayBuffer(file.slice(0, 8));
+    } catch (_) {
+      return normalizeDetectedImageFormat('', ext);
+    }
+    const arr = new Uint8Array(headerBuffer);
+    const hex4 = Array.from(arr.subarray(0, 4), b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
+    const detectedFormat = normalizeDetectedImageFormat(hex4, ext);
+    // PNG / APNG: 89 50 4e 47
+    if (detectedFormat === 'png-container') {
       try {
-        if (typeof GM_getValue === 'function') {
-          const v = GM_getValue(key);
-          return v != null ? v : fallback;
+        const fullBuffer = await readBlobAsArrayBuffer(file.slice(0, Math.min(file.size, 256 * 1024)));
+        const fullArr = new Uint8Array(fullBuffer);
+        let foundAcTl = false;
+        for (let i = 8; i + 12 <= fullArr.length; ) {
+          const len = (fullArr[i] << 24) | (fullArr[i + 1] << 16) | (fullArr[i + 2] << 8) | fullArr[i + 3];
+          const type = String.fromCharCode(fullArr[i + 4], fullArr[i + 5], fullArr[i + 6], fullArr[i + 7]);
+          if (type === 'acTL') { foundAcTl = true; break; }
+          if (type === 'IDAT') break;
+          i += 12 + len;
         }
-        const s = localStorage.getItem(key);
-        return s != null ? JSON.parse(s) : fallback;
+        return foundAcTl ? 'apng' : 'png';
       } catch (_) {
-        return fallback;
+        return 'png';
       }
     }
-    function cacheSet(key, val) {
+    // WebP: 52 49 46 46
+    if (detectedFormat === 'webp-container') {
       try {
-        if (typeof GM_setValue === 'function') {
-          GM_setValue(key, val);
-          return;
-        }
-        localStorage.setItem(key, JSON.stringify(val));
-      } catch (_) {}
-    }
-    // —— NFKC 候选池 ——
-    function getNkfcBase() {
-      const CACHE_KEY_NKFC = 'nkfcBase.v2';
-      let base = cacheGet(CACHE_KEY_NKFC, {});
-      if (Object.keys(base).length > 0) return base;
-      base = {};
-      for (let i = 0; i <= 0xFFFF; i++) {
-        const ch = String.fromCharCode(i);
-        const norm = ch.normalize('NFKC');
-        if (ch !== norm) (base[norm] ||= []).push(ch);
+        const fullBuffer = await readBlobAsArrayBuffer(file.slice(0, Math.min(file.size, 4096)));
+        const fullArr = new Uint8Array(fullBuffer);
+        const str = String.fromCharCode.apply(null, Array.from(fullArr.subarray(0, Math.min(4096, fullArr.length))));
+        return str.indexOf('ANIM') !== -1 ? 'animated-webp' : 'webp';
+      } catch (_) {
+        return 'webp';
       }
-      cacheSet(CACHE_KEY_NKFC, base);
-      return base;
     }
-    // —— 单字符替换 ——
-    // —— 颜文字中常见的汉字与英文，替换时排除（可保留或按需维护） ——
-    const KAOMOJI_EXCLUDE_CHARS = new Set([
-      '旦','开','摆','摔','低','好','钩','我','咬','接','龙','大','成','功',
-      '举','高','糕','咩','吁','肥','喵','酱','狗','比','汪','哈','電','柱',
-      'N','o','O','o'
-    ]);
-    // —— 单字符替换（回归稳定候选：优先第一个），但保留缓存为数组以便未来扩展 ——
-    function maskChar(ch, skipAscii = true) {
-      const CACHE_KEY_CHARMAP = 'unvcodeCharMap.v3';
-      const charMap = cacheGet(CACHE_KEY_CHARMAP, {});
-      if (charMap.hasOwnProperty(ch)) {
-        const cached = charMap[ch];
-        if (Array.isArray(cached) && cached.length > 0) {
-          return cached[0]; // 稳定使用首选候选，旧版风格
-        } else if (typeof cached === 'string') {
-          return cached;
-        }
+    return detectedFormat;
+  }
+
+  function clearSuccessfulSubmitPreview() {
+    const previewBox = document.querySelector('.h-preview-box');
+    if (previewBox) {
+      const cur = getCurrentCookie();
+      const cookieText = cur ? cur.name : '--';
+      // 先放一个占位 ID，等刷新完成后再更新
+      previewBox.innerHTML = `
+        <div class="h-preview-box">
+          <div class="h-threads-item">
+            <div class="h-threads-item-replies">
+              <div class="h-threads-item-reply">
+                <div class="h-threads-item-reply-main">
+                  <div class="h-threads-img-box">
+                    <div class="h-threads-img-tool uk-animation-slide-top">
+                      <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
+                      <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
+                      <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
+                      <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
+                    </div>
+                    <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
+                  </div>
+                  <div class="h-threads-info">
+                    <span class="h-threads-info-title"></span>
+                    <span class="h-threads-info-email"></span>
+                    <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
+                    <span class="h-threads-info-uid">ID:${cookieText}</span>
+                    <span class="h-threads-info-report-btn">
+                      [<a href="/f/值班室" target="_blank">举报</a>]
+                    </span>
+                    <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                  </div>
+                  <div class="h-threads-content"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>`;
+      if (typeof enableHDImage === 'function') {
+        enableHDImage(previewBox);
       }
-      if (skipAscii && ch.charCodeAt(0) < 128) {
-        charMap[ch] = [ch];
-        cacheSet(CACHE_KEY_CHARMAP, charMap);
-        return ch;
-      }
-      const base = getNkfcBase();
-      const norm = ch.normalize('NFKC');
-      const candidates = base[norm] || [];
-      const mapped = candidates.length > 0 ? candidates[0] : ch;
-      charMap[ch] = [mapped];
-      cacheSet(CACHE_KEY_CHARMAP, charMap);
-      return mapped;
     }
-    // —— 逐字替换（委托 maskChar） ——
-    function unvcode(text, skipAscii = true) {
-      let out = '';
-      for (const ch of text) out += maskChar(ch, skipAscii);
-      return out;
-    }
-    // —— 保留你之前的选择性规则：URL 整段跳过；非 URL 部分中文 → unvcode；英文 → 原样 + U+200B；其他原样 ——
-    function unvcodeSelective(text) {
-      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
-      const hanRegex = /[\u4E00-\u9FFF]/;
-      const engRegex = /[A-Za-z]/;
-      return text
-        .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
-        .map(part => {
-          if (!part) return '';
-          // URL 整段跳过
-          if (urlRegex.test(part)) {
-            urlRegex.lastIndex = 0;
-            return part;
-          }
-          // 非 URL：按规则处理
-          let out = '';
-          for (const ch of part) {
-            if (hanRegex.test(ch) && !KAOMOJI_EXCLUDE_CHARS.has(ch)) {
-              out += unvcode(ch, false); // 中文 → unvcode
-            } else if (engRegex.test(ch) && !KAOMOJI_EXCLUDE_CHARS.has(ch)) {
-              out += ch + '\u200B';     // 英文 → 原样 + U+200B
-            } else {
-              out += ch;                // 其他 → 原样
+    if (typeof refreshCookies === 'function') {
+      try {
+        refreshCookies(() => {
+          try {
+            if (typeof updatePreviewCookieId === 'function') {
+              updatePreviewCookieId();
             }
+          } catch (err) {
+            console.warn('[interceptReplyForm] updatePreviewCookieId after success failed', err);
           }
-          return out;
-        })
-        .join('');
-    }
-    // —— 根据当前失败文本，精准刷新需处理字符的缓存 ——
-    // 仅刷新：非 URL 段中的中文与英文，且不在排除集合中的字符
-    function resetCacheForFailedContent(text) {
-      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
-      const hanRegex = /[\u4E00-\u9FFF]/;
-      const engRegex = /[A-Za-z]/;
-      const CACHE_KEY_CHARMAP = 'unvcodeCharMap.v3';
-      const charMap = cacheGet(CACHE_KEY_CHARMAP, {});
-      const parts = text.split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi);
-      let changed = false;
-      for (const part of parts) {
-        if (!part) continue;
-        // 跳过 URL 段
-        if (urlRegex.test(part)) {
-          urlRegex.lastIndex = 0;
-          continue;
-        }
-        // 非 URL 段：逐字检查
-        for (const ch of part) {
-          const isHan = /[\u4E00-\u9FFF]/.test(ch);
-          const isEng = /[A-Za-z]/.test(ch);
-          if (!isHan && !isEng) continue;
-          if (KAOMOJI_EXCLUDE_CHARS.has(ch)) continue;
-          // 清空该字符的缓存（使下次重新生成替换）
-          if (charMap[ch]) {
-            delete charMap[ch];
-            changed = true;
-          }
-        }
+        }, false);
+      } catch (err) {
+        console.warn('[interceptReplyForm] refreshCookies after success failed', err);
+        toast('回复已发送，但饼干刷新失败，请刷新页面');
       }
-      if (changed) cacheSet(CACHE_KEY_CHARMAP, charMap);
     }
-    // —— 备用方案：仅在中文后插入零宽空格 ——
-    function fallbackInsertZWSP(text) {
-      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
-      const hanRegex = /[\u4E00-\u9FFF]/;
-      return text
-        .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
-        .map(part => {
-          if (!part) return '';
-          if (urlRegex.test(part)) {
-            urlRegex.lastIndex = 0;
-            return part; // URL 段跳过
-          }
-          let out = '';
-          for (const ch of part) {
-            if (hanRegex.test(ch) && !KAOMOJI_EXCLUDE_CHARS.has(ch)) {
-              out += ch + '\u200B'; // 汉字后插入零宽空格
-            } else {
-              out += ch;
-            }
-          }
-          return out;
-        })
-        .join('');
-    }
-    // 提取所有 URL 范围
-    function findUrlRanges(text) {
-      const re = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
-      const ranges = [];
-      for (const m of text.matchAll(re)) {
-        ranges.push({ start: m.index, end: m.index + m[0].length });
-      }
-      return ranges;
-    }
-    // 判断位置是否在任何 URL 范围内
-    function inAnyRange(pos, ranges) {
-      for (const r of ranges) {
-        if (pos >= r.start && pos < r.end) return true;
-      }
-      return false;
-    }
-    // done 可选unvcode模式或者零宽空格模式，目前来看unvcode模式下长文本中被替换的文字较多，观感受影响，只要没有复制需求，零宽空格更实用
-    // done BUG 其他报错似乎不toast提示-大概是好了吧，新增了500报错的toast，但目前图床有问题没法确定图片安全性审核不通过是不是也会toast
-    // 第三次保底：对所有非 URL 段内的汉字插入 U+200B（不使用排除集合）
-    function fallbackInsertZWSP(text) {
-      const hanRegex = /[\u4E00-\u9FFF]/;
-      const urlRanges = findUrlRanges(text);
-      let out = '';
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (inAnyRange(i, urlRanges)) {
-          out += ch; // URL 段内不处理
-        } else {
-          if (hanRegex.test(ch)) {
-            out += ch + '\u200B'; // 非 URL 段内所有汉字后插入零宽空格
-          } else {
-            out += ch;
-          }
-        }
-      }
-      return out;
-    }
-    // —— 表单提交拦截 ——
-    document.addEventListener('submit', function (e) {
-      const form = e.target;
-      const isReply = form.matches('form[action="/Home/Forum/doReplyThread.html"]');
-      const isPost = form.matches('form[action="/Home/Forum/doPostThread.html"]');
-      if (!isReply && !isPost) return;
-      e.preventDefault();
-      const formData = new FormData(form);
-      // 文字内容
-      let content = (formData.get('content') || '').toString().trim();
-      // 新增：如果内容只有 "0"，就在后面加一个零宽空格
-      if (content === '0') {
-        content = '0\u200B'; // 在 0 后追加零宽空格
-        formData.set('content', content);
-        const textarea = form.querySelector('textarea[name="content"]');
-        if (textarea) textarea.value = content;
-      }
-      if (!content) {
-        // 检查是否选择了图片（支持 name="image"）
-        const fileInput = form.querySelector('input[type="file"][name="image"]');
-        const hasImage = !!(fileInput && fileInput.files && fileInput.files.length > 0);
-        if (hasImage || content === '0') {
-          //无文字但有图片，或者内容只有 "0" → 自动补零宽空格，并同步到 FormData 与 DOM
-          //修改以自定义。
-          //content = '分享图片';//默认占位文字
-          //content = '‎';//空格占位符 U+200E
-          //content = '　';//全角空格占位符 U+3000
-          content = '​'; // 零宽空格占位符 U+200B
-          formData.set('content', content);
-          const textarea = form.querySelector('textarea[name="content"]');
-          if (textarea) textarea.value = content;
-        } else {
-          toast(isReply ? '回复内容不能为空' : '发串内容不能为空');
-          return;
-        }
-      }
+  }
+
       const STATIC_MAX_SIZE_KB = 2048;
       const STATIC_TARGET_LOWER_KB = 1900;
       const STATIC_ACCEPTABLE_LOWER_KB = 1850;
@@ -15151,9 +15118,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           img.onload = async () => {
             URL.revokeObjectURL(url);
             const originalType = file.type || 'image/jpeg';
-            const isJPEG = originalType === 'image/jpeg' || originalType === 'image/jpg';
-            const isWEBP = originalType === 'image/webp';
-            const outputType = isWEBP ? 'image/webp' : (isJPEG ? 'image/jpeg' : 'image/png');
+            const outputType = getStaticImageOutputType(originalType);
             const drawToCanvas = (scale) => {
               const canvas = document.createElement('canvas');
               const ctx = canvas.getContext('2d');
@@ -15456,6 +15421,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         return new File([blob], file.name.replace(/\.gif$/i, '.gif'), { type: 'image/gif', lastModified: Date.now() });
       }
       async function compressGifToSize(file, options = {}) {
+        const now = () => (typeof performance !== 'undefined' && performance && typeof performance.now === 'function')
+          ? performance.now()
+          : Date.now();
+        const finiteNumber = (value, digits = 2) => Number.isFinite(value) ? Number(value.toFixed(digits)) : 0;
+        const totalStartTime = now();
+        let stage = '初始化';
+        let completedAttempts = 0;
+        try {
         const maxSizeKB = options.maxSizeKB || GIF_MAX_SIZE_KB;
         const targetLowerKB = options.targetLowerKB || GIF_TARGET_LOWER_KB;
         const acceptableLowerKB = options.acceptableLowerKB || GIF_ACCEPTABLE_LOWER_KB;
@@ -15465,26 +15438,47 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const acceptableLowerBytes = acceptableLowerKB * 1024;
         const originalKB = file.size / 1024;
         if (file.size <= maxBytes) {
+          const totalElapsedMs = finiteNumber(now() - totalStartTime);
+          console.log('[X岛-EX][GIF压缩][汇总]', {
+            totalElapsedMs,
+            completedAttempts: 0,
+            originalKB: finiteNumber(originalKB, 1),
+            finalKB: finiteNumber(originalKB, 1),
+            compressionRate: 1,
+            reductionPercent: 0,
+            finalLossy: null,
+            finalColors: null,
+            finalScale: null,
+            finalCommand: '无需压缩'
+          });
           return {
             file,
             summary: '原始 GIF 已在目标大小内，无需压缩',
-            attempts: []
+            attempts: [],
+            durationMs: totalElapsedMs
           };
         }
         if (originalKB > GIF_MAX_ORIGINAL_KB) {
           throw new Error(`GIF 原始体积过大（${formatKB(file.size)}），限制为 <= ${GIF_MAX_ORIGINAL_KB}KB`);
         }
+        stage = '读取GIF尺寸';
+        const dimensionsStartTime = now();
         const { width, height } = await getGifDimensions(file);
+        const dimensionsElapsedMs = finiteNumber(now() - dimensionsStartTime);
         if (width > 0 && height > 0) {
           const longEdge = Math.max(width, height);
           if (longEdge > GIF_MAX_LONG_EDGE) {
             throw new Error(`GIF 尺寸过大（${width}x${height}），限制长边 <= ${GIF_MAX_LONG_EDGE}`);
           }
         }
+        stage = '加载gifsicle模块';
+        const moduleLoadStartTime = now();
         const api = await ensureGifsicleLoaded();
+        const moduleLoadElapsedMs = finiteNumber(now() - moduleLoadStartTime);
         const attempts = [];
         let bestBlob = null;
         let bestArgs = null;
+        let bestAttemptLog = null;
         const oversizeRatio = file.size / maxBytes;
         let scale = clampNumber(Math.sqrt(maxBytes / file.size) * (oversizeRatio > 2.5 ? 1.32 : (oversizeRatio > 1.6 ? 1.18 : 1.06)), 0.22, 0.98);
         let lossy = oversizeRatio > 2.5 ? 40 : (oversizeRatio > 1.6 ? 30 : 20);
@@ -15504,11 +15498,16 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             continue;
           }
           seenConfigs.add(configKey);
+          const attemptStartTime = now();
+          stage = `gifsicle压缩第${i + 1}轮`;
           try {
             const blob = await runGifsicleAttempt(api, file, args);
+            completedAttempts++;
             const sizeKB = blob.size / 1024;
             const hitTarget = blob.size <= maxBytes;
             const inRange = blob.size >= lowerBytes && blob.size <= maxBytes;
+            const acceptable = hitTarget && blob.size >= acceptableLowerBytes;
+            const command = [...args, '/tem/input.gif', '-o', '/out/out.gif'].join(' ');
             const attemptLog = {
               index: i + 1,
               args: args.join(' '),
@@ -15517,7 +15516,21 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               inRange
             };
             attempts.push(attemptLog);
-            console.log(`[compressGif] 尝试#${attemptLog.index}: ${attemptLog.args} -> ${attemptLog.sizeKB}KB${inRange ? '（命中目标区间）' : (hitTarget ? '（低于上限）' : '')}`);
+            console.log('[X岛-EX][GIF压缩][轮次]', {
+              attempt: `${attemptLog.index}/${GIF_MAX_ATTEMPTS}`,
+              inputKB: finiteNumber(originalKB, 1),
+              outputKB: finiteNumber(sizeKB, 1),
+              compressionRate: finiteNumber(blob.size / file.size, 4),
+              reductionPercent: finiteNumber((1 - blob.size / file.size) * 100, 2),
+              lossy: Math.round(lossy),
+              colors: Math.round(colors),
+              scale: scale < 0.995 ? finiteNumber(scale, 3) : 1,
+              command,
+              elapsedMs: finiteNumber(now() - attemptStartTime),
+              hitTargetRange: inRange,
+              acceptable: acceptable,
+              overLimit: !hitTarget
+            });
             if (onProgress) {
               onProgress({
                 index: attemptLog.index,
@@ -15533,6 +15546,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               if (!bestBlob || blob.size > bestBlob.size) {
                 bestBlob = blob;
                 bestArgs = args;
+                bestAttemptLog = {
+                  lossy: Math.round(lossy),
+                  colors: Math.round(colors),
+                  scale: scale < 0.995 ? finiteNumber(scale, 3) : 1,
+                  command
+                };
               }
               if (inRange || blob.size >= acceptableLowerBytes) {
                 break;
@@ -15546,9 +15565,17 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               colors = clampNumber(Math.round(colors) - 24, 48, 256);
             }
           } catch (error) {
+            completedAttempts++;
             const message = error && error.message ? error.message : String(error);
             attempts.push({ index: i + 1, args: args.join(' '), error: message });
-            console.error(`[compressGif] 尝试#${i + 1} 失败: ${args.join(' ')} -> ${message}`);
+            console.error('[X岛-EX][GIF压缩][失败]', {
+              stage: stage,
+              elapsedMs: finiteNumber(now() - totalStartTime),
+              completedAttempts: completedAttempts,
+              attempt: `${i + 1}/${GIF_MAX_ATTEMPTS}`,
+              command: [...args, '/tem/input.gif', '-o', '/out/out.gif'].join(' '),
+              error: message
+            });
             if (onProgress) {
               onProgress({
                 index: i + 1,
@@ -15574,7 +15601,32 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           lastModified: Date.now()
         });
         const summary = `最佳命令: ${bestArgs.join(' ')}；原始 ${formatKB(file.size)} -> 压缩后 ${formatKB(compressedFile.size)}`;
-        return { file: compressedFile, summary, attempts };
+        const durationMs = finiteNumber(now() - totalStartTime);
+        console.log('[X岛-EX][GIF压缩][汇总]', {
+          totalElapsedMs: durationMs,
+          dimensionsElapsedMs,
+          moduleLoadElapsedMs,
+          completedAttempts,
+          originalKB: finiteNumber(originalKB, 1),
+          finalKB: finiteNumber(compressedFile.size / 1024, 1),
+          compressionRate: finiteNumber(compressedFile.size / file.size, 4),
+          reductionPercent: finiteNumber((1 - compressedFile.size / file.size) * 100, 2),
+          finalLossy: bestAttemptLog.lossy,
+          finalColors: bestAttemptLog.colors,
+          finalScale: bestAttemptLog.scale,
+          finalCommand: bestAttemptLog.command
+        });
+        return { file: compressedFile, summary, attempts, durationMs };
+        } catch (error) {
+          const message = error && error.message ? error.message : String(error);
+          console.error('[X岛-EX][GIF压缩][失败]', {
+            stage: stage,
+            elapsedMs: finiteNumber(now() - totalStartTime),
+            completedAttempts: completedAttempts,
+            error: message
+          });
+          throw error;
+        }
       }
       // ✅ APNG 压缩（apng-js Player 合成 + UPNG 重编码）
       // 支持增量帧（blend/dispose），不再降级为静态压缩
@@ -15879,6 +15931,180 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         throw new Error('APNG 压缩失败：所有缩放比例均无法降到限制以内，请手动处理');
       }
+  function interceptReplyForm() {
+    // —— 缓存工具（GM_* 优先；localStorage 兜底；返回对象型默认值） ——
+    function cacheGet(key, fallback = null) {
+      try {
+        if (typeof GM_getValue === 'function') {
+          const v = GM_getValue(key);
+          return v != null ? v : fallback;
+        }
+        const s = localStorage.getItem(key);
+        return s != null ? JSON.parse(s) : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+    function cacheSet(key, val) {
+      try {
+        if (typeof GM_setValue === 'function') {
+          GM_setValue(key, val);
+          return;
+        }
+        localStorage.setItem(key, JSON.stringify(val));
+      } catch (_) {}
+    }
+    // —— NFKC 候选池 ——
+    function getNkfcBase() {
+      const CACHE_KEY_NKFC = 'nkfcBase.v2';
+      let base = cacheGet(CACHE_KEY_NKFC, {});
+      if (Object.keys(base).length > 0) return base;
+      base = {};
+      for (let i = 0; i <= 0xFFFF; i++) {
+        const ch = String.fromCharCode(i);
+        const norm = ch.normalize('NFKC');
+        if (ch !== norm) (base[norm] ||= []).push(ch);
+      }
+      cacheSet(CACHE_KEY_NKFC, base);
+      return base;
+    }
+    // —— 单字符替换 ——
+    // —— 颜文字中常见的汉字与英文，替换时排除（可保留或按需维护） ——
+    const KAOMOJI_EXCLUDE_CHARS = new Set([
+      '旦','开','摆','摔','低','好','钩','我','咬','接','龙','大','成','功',
+      '举','高','糕','咩','吁','肥','喵','酱','狗','比','汪','哈','電','柱',
+      'N','o','O','o'
+    ]);
+    // —— 单字符替换（回归稳定候选：优先第一个），但保留缓存为数组以便未来扩展 ——
+    function maskChar(ch, skipAscii = true) {
+      const CACHE_KEY_CHARMAP = 'unvcodeCharMap.v3';
+      const charMap = cacheGet(CACHE_KEY_CHARMAP, {});
+      if (charMap.hasOwnProperty(ch)) {
+        const cached = charMap[ch];
+        if (Array.isArray(cached) && cached.length > 0) {
+          return cached[0]; // 稳定使用首选候选，旧版风格
+        } else if (typeof cached === 'string') {
+          return cached;
+        }
+      }
+      if (skipAscii && ch.charCodeAt(0) < 128) {
+        charMap[ch] = [ch];
+        cacheSet(CACHE_KEY_CHARMAP, charMap);
+        return ch;
+      }
+      const base = getNkfcBase();
+      const norm = ch.normalize('NFKC');
+      const candidates = base[norm] || [];
+      const mapped = candidates.length > 0 ? candidates[0] : ch;
+      charMap[ch] = [mapped];
+      cacheSet(CACHE_KEY_CHARMAP, charMap);
+      return mapped;
+    }
+    // —— 逐字替换（委托 maskChar） ——
+    function unvcode(text, skipAscii = true) {
+      let out = '';
+      for (const ch of text) out += maskChar(ch, skipAscii);
+      return out;
+    }
+    // —— 保留你之前的选择性规则：URL 整段跳过；非 URL 部分中文 → unvcode；英文 → 原样 + U+200B；其他原样 ——
+    function unvcodeSelective(text) {
+      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
+      const hanRegex = /[\u4E00-\u9FFF]/;
+      const engRegex = /[A-Za-z]/;
+      return text
+        .split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
+        .map(part => {
+          if (!part) return '';
+          // URL 整段跳过
+          if (urlRegex.test(part)) {
+            urlRegex.lastIndex = 0;
+            return part;
+          }
+          // 非 URL：按规则处理
+          let out = '';
+          for (const ch of part) {
+            if (hanRegex.test(ch) && !KAOMOJI_EXCLUDE_CHARS.has(ch)) {
+              out += unvcode(ch, false); // 中文 → unvcode
+            } else if (engRegex.test(ch) && !KAOMOJI_EXCLUDE_CHARS.has(ch)) {
+              out += ch + '\u200B';     // 英文 → 原样 + U+200B
+            } else {
+              out += ch;                // 其他 → 原样
+            }
+          }
+          return out;
+        })
+        .join('');
+    }
+    // —— 根据当前失败文本，精准刷新需处理字符的缓存 ——
+    // 仅刷新：非 URL 段中的中文与英文，且不在排除集合中的字符
+    function resetCacheForFailedContent(text) {
+      const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
+      const hanRegex = /[\u4E00-\u9FFF]/;
+      const engRegex = /[A-Za-z]/;
+      const CACHE_KEY_CHARMAP = 'unvcodeCharMap.v3';
+      const charMap = cacheGet(CACHE_KEY_CHARMAP, {});
+      const parts = text.split(/(\b(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi);
+      let changed = false;
+      for (const part of parts) {
+        if (!part) continue;
+        // 跳过 URL 段
+        if (urlRegex.test(part)) {
+          urlRegex.lastIndex = 0;
+          continue;
+        }
+        // 非 URL 段：逐字检查
+        for (const ch of part) {
+          const isHan = /[\u4E00-\u9FFF]/.test(ch);
+          const isEng = /[A-Za-z]/.test(ch);
+          if (!isHan && !isEng) continue;
+          if (KAOMOJI_EXCLUDE_CHARS.has(ch)) continue;
+          // 清空该字符的缓存（使下次重新生成替换）
+          if (charMap[ch]) {
+            delete charMap[ch];
+            changed = true;
+          }
+        }
+      }
+      if (changed) cacheSet(CACHE_KEY_CHARMAP, charMap);
+    }
+    // done 可选unvcode模式或者零宽空格模式，目前来看unvcode模式下长文本中被替换的文字较多，观感受影响，只要没有复制需求，零宽空格更实用
+    // done BUG 其他报错似乎不toast提示-大概是好了吧，新增了500报错的toast，但目前图床有问题没法确定图片安全性审核不通过是不是也会toast
+    // —— 表单提交拦截 ——
+    document.addEventListener('submit', function (e) {
+      const form = e.target;
+      const isReply = form.matches('form[action="/Home/Forum/doReplyThread.html"]');
+      const isPost = form.matches('form[action="/Home/Forum/doPostThread.html"]');
+      if (!isReply && !isPost) return;
+      e.preventDefault();
+      const formData = new FormData(form);
+      // 文字内容
+      let content = (formData.get('content') || '').toString().trim();
+      // 新增：如果内容只有 "0"，就在后面加一个零宽空格
+      if (content === '0') {
+        content = '0\u200B'; // 在 0 后追加零宽空格
+        formData.set('content', content);
+        const textarea = form.querySelector('textarea[name="content"]');
+        if (textarea) textarea.value = content;
+      }
+      if (!content) {
+        // 检查是否选择了图片（支持 name="image"）
+        const fileInput = form.querySelector('input[type="file"][name="image"]');
+        const hasImage = !!(fileInput && fileInput.files && fileInput.files.length > 0);
+        if (hasImage || content === '0') {
+          //无文字但有图片，或者内容只有 "0" → 自动补零宽空格，并同步到 FormData 与 DOM
+          //修改以自定义。
+          //content = '分享图片';//默认占位文字
+          //content = '‎';//空格占位符 U+200E
+          //content = '　';//全角空格占位符 U+3000
+          content = '​'; // 零宽空格占位符 U+200B
+          formData.set('content', content);
+          const textarea = form.querySelector('textarea[name="content"]');
+          if (textarea) textarea.value = content;
+        } else {
+          toast(isReply ? '回复内容不能为空' : '发串内容不能为空');
+          return;
+        }
+      }
       // 检查错误信息是否与图片大小有关
       function isImageSizeError(msg) {
         if (!msg) return false;
@@ -15894,13 +16120,6 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         ];
         return patterns.some(p => p.test(msg));
       }
-      function cloneFormData(sourceFd) {
-        const cloned = new FormData();
-        for (const [key, value] of sourceFd.entries()) {
-          cloned.append(key, value);
-        }
-        return cloned;
-      }
       function resetIllegalRetryState(options = {}) {
         const { clearOriginalContent = false } = options;
         form.__illegalRetryCount = 0;
@@ -15909,69 +16128,6 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           form.__originalContent = null;
         }
       }
-      // 通过文件头部魔数检测真实图片格式（静态 / 动画）
-      function detectImageFormat(file) {
-        const ext = (file.name || '').split('.').pop().toLowerCase();
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const arr = new Uint8Array(reader.result);
-            const hex4 = Array.from(arr.subarray(0, 4), b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
-            // GIF: 47 49 46 38
-            if (hex4 === '47494638') return resolve('gif');
-            // JPEG: ff d8 ff
-            if (hex4.startsWith('ffd8ff')) return resolve('jpeg');
-            // PNG / APNG: 89 50 4e 47
-            if (hex4 === '89504e47') {
-              const fullReader = new FileReader();
-              fullReader.onload = () => {
-                const fullArr = new Uint8Array(fullReader.result);
-                let foundAcTl = false;
-                for (let i = 8; i + 12 <= fullArr.length; ) {
-                  const len = (fullArr[i] << 24) | (fullArr[i+1] << 16) | (fullArr[i+2] << 8) | fullArr[i+3];
-                  const type = String.fromCharCode(fullArr[i+4], fullArr[i+5], fullArr[i+6], fullArr[i+7]);
-                  if (type === 'acTL') { foundAcTl = true; break; }
-                  if (type === 'IDAT') break;
-                  i += 12 + len;
-                }
-                resolve(foundAcTl ? 'apng' : 'png');
-              };
-              fullReader.onerror = () => resolve('png');
-              fullReader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 256 * 1024)));
-              return;
-            }
-            // WebP: 52 49 46 46
-            if (hex4 === '52494646') {
-              const fullReader = new FileReader();
-              fullReader.onload = () => {
-                const fullArr = new Uint8Array(fullReader.result);
-                const str = String.fromCharCode.apply(null, Array.from(fullArr.subarray(0, Math.min(4096, fullArr.length))));
-                resolve(str.indexOf('ANIM') !== -1 ? 'animated-webp' : 'webp');
-              };
-              fullReader.onerror = () => resolve('webp');
-              fullReader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 4096)));
-              return;
-            }
-            // BMP: 42 4d
-            if (hex4 === '424d') return resolve('bmp');
-            if (ext === 'gif') return resolve('gif');
-            if (ext === 'apng') return resolve('apng');
-            if (ext === 'webp') return resolve('webp');
-            if (ext === 'png') return resolve('png');
-            if (ext === 'jpg' || ext === 'jpeg') return resolve('jpeg');
-            return resolve('unknown');
-          };
-          reader.onerror = () => {
-            if (ext === 'gif') return resolve('gif');
-            if (ext === 'apng') return resolve('apng');
-            if (ext === 'webp') return resolve('webp');
-            if (ext === 'png') return resolve('png');
-            if (ext === 'jpg' || ext === 'jpeg') return resolve('jpeg');
-            return resolve('unknown');
-          };
-          reader.readAsArrayBuffer(file.slice(0, 8));
-        });
-      }
       function processTextPreservingHiddenTags(input, processor) {
         if (!input || typeof processor !== 'function') return input || '';
         return input
@@ -15979,7 +16135,174 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           .map(part => (/^\[h\]$|^\[\/h\]$/i.test(part) ? part : processor(part)))
           .join('');
       }
+      function classifySubmitResponse(doc, html) {
+        const successMsg = doc.querySelector('p.success');
+        const errorMsg = doc.querySelector('p.error');
+        if (successMsg) return { kind: 'success', node: successMsg };
+        if (errorMsg) return { kind: 'error', node: errorMsg };
+        try {
+          if (/500\s+Internal\s+Server\s+Error/i.test(html) || html.indexOf('<title>500 Internal Server Error</title>') !== -1) {
+            return { kind: 'fallback-error', message: '500 Internal Server Error,可能是图床故障' };
+          }
+          const errorDiv = doc.querySelector('div.error');
+          const h1 = errorDiv && errorDiv.querySelector('h1');
+          if (h1 && h1.textContent.trim()) {
+            return { kind: 'fallback-error', message: h1.textContent.trim() };
+          }
+          const titleEl = doc.querySelector('title');
+          if (titleEl && /系统发生错误|系统错误/i.test(titleEl.textContent)) {
+            return { kind: 'fallback-error', message: '系统发生错误' };
+          }
+        } catch (e) {
+          console.warn('[interceptReplyForm] error while checking fallback formats:', e);
+        }
+        return { kind: 'unknown' };
+      }
+      function classifySubmitError(msg) {
+        if (isImageSizeError(msg)) return 'image-size';
+        if (/非法图像/.test(msg)) return 'illegal-image';
+        if (/含有非法词语/.test(msg)) return 'illegal-word';
+        return 'other';
+      }
+      function formatSubmitNetworkError(err) {
+        if (err && err.name === 'TypeError' && /fetch|network/i.test(err.message || '')) {
+          return '发送超时，请检查网络后重试';
+        }
+        return '发送失败：' + ((err && err.message) || '未知错误');
+      }
+      function clearSuccessfulSubmitForm() {
+        const textarea = form.querySelector('textarea[name="content"]');
+        if (textarea) { textarea.value = ''; textarea.dispatchEvent(new Event('input', { bubbles: true })); }
+        const fileInput = form.querySelector('input[type="file"][name="image"]');
+        if (fileInput) fileInput.value = '';
+        deleteDraftSafe(getDraftKey());
+        const titleInput = form.querySelector('input[name="title"]');
+        if (titleInput) { titleInput.value = ''; titleInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        const nameInput = form.querySelector('input[name="name"]');
+        if (nameInput) { nameInput.value = ''; nameInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        const emailInput = form.querySelector('input[name="email"]');
+        if (emailInput) { emailInput.value = ''; emailInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        document.dispatchEvent(new CustomEvent('replySuccess', {
+          detail: { key: getDraftKey(), tid: form.querySelector('input[name="resto"]')?.value || '' }
+        }));
+      }
+      function runSuccessfulSubmitNavigation(confirmPromise) {
+        if (isReply) {
+          // 板块页/时间线页：跳过全量刷新，由 handleBoardQuickReplyRefresh 做增量更新
+          // 串内页：正常全量刷新
+          const _isBoardOrTimeline = /^\/f\//.test(location.pathname) || /\/Forum\/timeline\/id\/\d+/i.test(location.pathname);
+          if (!_isBoardOrTimeline) {
+            try {
+              refreshRepliesWithSeamlessPaging(() => {
+                // 刷新完成（翻页逻辑已在内部处理）
+                recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
+                console.log('回复区刷新完成');
+              }, { getConfig: safeGetConfig });
+            } catch (err) {
+              console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
+            }
+          }
+          return;
+        }
+        // 发串：根据设置决定行为
+        const cfg = (typeof SettingPanel !== 'undefined' && SettingPanel.state) ? SettingPanel.state : {};
+        const postAction = cfg.postAfterAction === 'refresh' ? 'refresh' : 'jump';
+        if (postAction === 'jump' && confirmPromise) {
+          toast('新串发送成功，正在确认地址……');
+          Promise.race([
+            confirmPromise,
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
+          ]).then(confirmed => {
+            if (confirmed && confirmed.url) {
+              window.open(confirmed.url, '_blank');
+              toast('已在新标签页打开新串');
+            } else {
+              toast('新串已发送，但未能确认地址');
+            }
+          }).catch(() => {
+            toast('新串已发送，确认地址超时');
+          });
+        } else if (postAction === 'refresh' && confirmPromise) {
+          // refresh 模式：等待发言历史确认后，跳转板块第一页顶部
+          toast('新串发布成功，正在确认地址……');
+          Promise.race([
+            confirmPromise,
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
+          ]).then(() => {
+            const boardPage1 = location.origin + location.pathname + '?page=1';
+            toast('正在转版块第一页……');
+            window.location.href = boardPage1;
+          }).catch(() => {
+            const boardPage1 = location.origin + location.pathname + '?page=1';
+            toast('确认地址超时，正在转版块第一页……');
+            window.location.href = boardPage1;
+          });
+        } else {
+          // jump 模式但无 confirmPromise：直接刷新页面
+          location.reload();
+        }
+      }
+      async function compressImageForRetry(file, actualFormat) {
+        if (actualFormat === 'gif') {
+          let gifFile = file;
+          if (!/\.gif$/i.test(file.name)) {
+            const fixedName = file.name.replace(/\.\w+$/i, '.gif');
+            gifFile = new File([file], fixedName, { type: 'image/gif', lastModified: file.lastModified });
+            console.log(`[interceptReplyForm] 后缀已修正: ${file.name} → ${fixedName}`);
+          }
+          const gifResult = await compressGifToSize(gifFile, {
+            maxSizeKB: 2048,
+            targetLowerKB: 1850,
+            acceptableLowerKB: 1780,
+            onProgress: (progress) => {
+              if (progress.error) {
+                toast(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试……`, 1800);
+                return;
+              }
+              toast(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
+            }
+          });
+          console.log(`[interceptReplyForm] GIF压缩完成: ${gifResult.summary}`);
+          const compressedFile = gifResult.file;
+          try {
+            Object.defineProperty(compressedFile, '__xdexGifCompressionDurationMs', {
+              value: gifResult.durationMs,
+              enumerable: false,
+              configurable: true
+            });
+          } catch (metadataError) {
+            console.warn('[X岛-EX][GIF压缩] 无法附加耗时 metadata:', metadataError);
+          }
+          return compressedFile;
+        }
+        if (actualFormat === 'apng') {
+          const compressedFile = await compressApngToSize(file, 2048, {
+            onProgress: (progress) => {
+              if (progress.error) {
+                toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
+                return;
+              }
+              toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
+            }
+          });
+          console.log(`[interceptReplyForm] APNG压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+          return compressedFile;
+        }
+        if (actualFormat === 'animated-webp') {
+          toast('检测到动画 WebP，将按静态图片压缩，动图可能丢失', 2000);
+          const compressedFile = await compressImageToSize(file, 2048);
+          console.log(`[interceptReplyForm] 动画WebP压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+          return compressedFile;
+        }
+        const compressedFile = await compressImageToSize(file, 2048);
+        console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+        console.log(`[interceptReplyForm] 静态图片压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+        return compressedFile;
+      }
       async function doSubmit(fd, isRetry = false) {
+        // 图片处理完成后递归提交时，在保持原提交锁的同时重新开始网络超时保护。
+        finishSubmitImageProcessing(form);
+        refreshSubmitLockTimer(form);
         return fetch(form.action, {
           method: form.method,
           body: fd,
@@ -15990,118 +16313,23 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           // 增加调试输出：打印响应 HTML 的前 2000 字符，避免控制台被大量内容淹没
           try { console.log('[interceptReplyForm] response html (truncated):', html.slice(0, 2000)); } catch (e) { console.log('[interceptReplyForm] response html (full):', html); }
           const doc = new DOMParser().parseFromString(html, 'text/html');
-          const successMsg = doc.querySelector('p.success');
-          const errorMsg   = doc.querySelector('p.error');
+          const response = classifySubmitResponse(doc, html);
+          const successMsg = response.kind === 'success' ? response.node : null;
+          const errorMsg = response.kind === 'error' ? response.node : null;
           // 打印解析到的 success / error 节点，便于调试未触发 toast 的情况
           console.log('[interceptReplyForm] parsed successMsg:', successMsg, 'errorMsg:', errorMsg);
-          // 如果既没有 successMsg 也没有 errorMsg，检查其他错误格式
-          if (!successMsg && !errorMsg) {
-            try {
-              // 格式1：500 Internal Server Error
-              if (/500\s+Internal\s+Server\s+Error/i.test(html) || html.indexOf('<title>500 Internal Server Error</title>') !== -1) {
-                toast('500 Internal Server Error,可能是图床故障');
-                return;
-              }
-              // 格式2：系统错误页面（错误信息在 <div class="error"> 的 <h1> 中）
-              const errorDiv = doc.querySelector('div.error');
-              if (errorDiv) {
-                const h1 = errorDiv.querySelector('h1');
-                if (h1 && h1.textContent.trim()) {
-                  toast(h1.textContent.trim());
-                  return;
-                }
-              }
-              // 格式3：title 含"系统发生错误"
-              const titleEl = doc.querySelector('title');
-              if (titleEl && /系统发生错误|系统错误/i.test(titleEl.textContent)) {
-                toast('系统发生错误');
-                return;
-              }
-            } catch (e) {
-              console.warn('[interceptReplyForm] error while checking fallback formats:', e);
-            }
+          if (response.kind === 'fallback-error') {
+            toast(response.message);
+            return;
           }
           if (successMsg) {
             // 与触底/手动局部刷新一致：快速即时 toast，不走默认队列
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'), 900, { queue: false, key: 'send-status' });
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
-            // 清空输入框
-            const textarea = form.querySelector('textarea[name="content"]');
-            if (textarea) { textarea.value = ''; textarea.dispatchEvent(new Event('input', { bubbles: true })); }
-            // 清空图片选择
-            const fileInput = form.querySelector('input[type="file"][name="image"]');
-            if (fileInput) fileInput.value = '';
-            // ★ 清空编辑
-            // 先立即删除（兜底清理，避免监听未注册导致残留）
-            deleteDraftSafe(getDraftKey());
-            // **清空标题、名称、Email**
-            const titleInput = form.querySelector('input[name="title"]');
-            if (titleInput) { titleInput.value = ''; titleInput.dispatchEvent(new Event('input', { bubbles: true })); }
-            const nameInput = form.querySelector('input[name="name"]');
-            if (nameInput) { nameInput.value = ''; nameInput.dispatchEvent(new Event('input', { bubbles: true })); }
-            const emailInput = form.querySelector('input[name="email"]');
-            if (emailInput) { emailInput.value = ''; emailInput.dispatchEvent(new Event('input', { bubbles: true })); }
-            // 再广播事件给增强模块/其他联动
-            document.dispatchEvent(new CustomEvent('replySuccess', {
-              detail: { key: getDraftKey(), tid: form.querySelector('input[name="resto"]')?.value || '' }
-            }));
-            // 重置预览框
-            const previewBox = document.querySelector('.h-preview-box');
-            if (previewBox) {
-              const cur = getCurrentCookie();
-              const cookieText = cur ? cur.name : '--';
-              // 先放一个占位 ID，等刷新完成后再更新
-              previewBox.innerHTML = `
-                <div class="h-preview-box">
-                  <div class="h-threads-item">
-                    <div class="h-threads-item-replies">
-                      <div class="h-threads-item-reply">
-                        <div class="h-threads-item-reply-main">
-                          <div class="h-threads-img-box">
-                            <div class="h-threads-img-tool uk-animation-slide-top">
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                              <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
-                            </div>
-                            <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
-                          </div>
-                          <div class="h-threads-info">
-                            <span class="h-threads-info-title"></span>
-                            <span class="h-threads-info-email"></span>
-                            <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
-                            <span class="h-threads-info-uid">ID:${cookieText}</span>
-                            <span class="h-threads-info-report-btn">
-                              [<a href="/f/值班室" target="_blank">举报</a>]
-                            </span>
-                            <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
-                          </div>
-                          <div class="h-threads-content"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  </div>`;
-              if (typeof enableHDImage === 'function') {
-                enableHDImage(previewBox);
-              }
-            }
-            if (typeof refreshCookies === 'function') {
-              try {
-                refreshCookies(() => {
-                  try {
-                    if (typeof updatePreviewCookieId === 'function') {
-                      updatePreviewCookieId();
-                    }
-                  } catch (err) {
-                    console.warn('[interceptReplyForm] updatePreviewCookieId after success failed', err);
-                  }
-                }, false);
-              } catch (err) {
-                console.warn('[interceptReplyForm] refreshCookies after success failed', err);
-                toast('回复已发送，但饼干刷新失败，请刷新页面');
-              }
-            }
+            // 清空输入框、图片、草稿及身份字段，并广播成功事件
+            clearSuccessfulSubmitForm();
+            // 重置预览框并刷新预览饼干 ID
+            clearSuccessfulSubmitPreview();
             // if (isReply) {
             //   try {
             //     refreshRepliesWithSeamlessPaging(() => {
@@ -16129,65 +16357,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             // } else {
             //   location.reload();
             // }
-            if (isReply) {
-              // 板块页/时间线页：跳过全量刷新，由 handleBoardQuickReplyRefresh 做增量更新
-              // 串内页：正常全量刷新
-              const _isBoardOrTimeline = /^\/f\//.test(location.pathname) || /\/Forum\/timeline\/id\/\d+/i.test(location.pathname);
-              if (!_isBoardOrTimeline) {
-                try {
-                  refreshRepliesWithSeamlessPaging(() => {
-                    // 刷新完成（翻页逻辑已在内部处理）
-                    recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
-                    console.log('回复区刷新完成');
-                  });
-                } catch (err) {
-                  console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
-                }
-              }
-            } else {
-              // 发串：根据设置决定行为
-              const cfg = (typeof SettingPanel !== 'undefined' && SettingPanel.state) ? SettingPanel.state : {};
-              const postAction = cfg.postAfterAction === 'refresh' ? 'refresh' : 'jump';
-              if (postAction === 'jump' && confirmPromise) {
-                toast('新串发送成功，正在确认地址……');
-                Promise.race([
-                  confirmPromise,
-                  new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
-                ]).then(confirmed => {
-                  if (confirmed && confirmed.url) {
-                    window.open(confirmed.url, '_blank');
-                    toast('已在新标签页打开新串');
-                  } else {
-                    toast('新串已发送，但未能确认地址');
-                  }
-                }).catch(() => {
-                  toast('新串已发送，确认地址超时');
-                });
-              } else if (postAction === 'refresh' && confirmPromise) {
-                // refresh 模式：等待发言历史确认后，跳转板块第一页顶部
-                toast('新串发布成功，正在确认地址……');
-                Promise.race([
-                  confirmPromise,
-                  new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), POST_HISTORY_CONFIRM_TIMEOUT_MS))
-                ]).then(() => {
-                  const boardPage1 = location.origin + location.pathname + '?page=1';
-                  toast('正在转版块第一页……');
-                  window.location.href = boardPage1;
-                }).catch(() => {
-                  const boardPage1 = location.origin + location.pathname + '?page=1';
-                  toast('确认地址超时，正在转版块第一页……');
-                  window.location.href = boardPage1;
-                });
-              } else {
-                // jump 模式但无 confirmPromise：直接刷新页面
-                location.reload();
-              }
-            }
+            runSuccessfulSubmitNavigation(confirmPromise);
           } else if (errorMsg) {
             const msg = errorMsg.textContent.trim() || '提交失败';
+            const errorKind = classifySubmitError(msg);
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
             // 检查是否是图片大小错误
-            if (isImageSizeError(msg)) {
+            if (errorKind === 'image-size') {
               if (!cfg.interceptReplyFormAutoCompress) {
                 try {
                   toast(msg);
@@ -16199,63 +16375,28 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               const fileInput = form.querySelector('input[type="file"][name="image"]');
               const file = fileInput && fileInput.files && fileInput.files[0];
               if (file && !isRetry) {
-                const actualFormat = await detectImageFormat(file);
-                console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
-                toast('图片大小>2048KB，正在尝试自动压缩', 3000);
-                console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩……`);
+                beginSubmitImageProcessing(form);
                 try {
-                  let compressedFile;
-                  if (actualFormat === 'gif') {
-                    let gifFile = file;
-                    if (!/\.gif$/i.test(file.name)) {
-                      const fixedName = file.name.replace(/\.\w+$/i, '.gif');
-                      gifFile = new File([file], fixedName, { type: 'image/gif', lastModified: file.lastModified });
-                      console.log(`[interceptReplyForm] 后缀已修正: ${file.name} → ${fixedName}`);
-                    }
-                    const gifResult = await compressGifToSize(gifFile, {
-                      maxSizeKB: 2048,
-                      targetLowerKB: 1850,
-                      acceptableLowerKB: 1780,
-                      onProgress: (progress) => {
-                        if (progress.error) {
-                          toast(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试……`, 1800);
-                          return;
-                        }
-                        toast(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
-                      }
-                    });
-                    compressedFile = gifResult.file;
-                    console.log(`[interceptReplyForm] GIF压缩完成: ${gifResult.summary}`);
-                  } else if (actualFormat === 'apng') {
-                    compressedFile = await compressApngToSize(file, 2048, {
-                      onProgress: (progress) => {
-                        if (progress.error) {
-                          toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
-                          return;
-                        }
-                        toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
-                      }
-                    });
-                    console.log(`[interceptReplyForm] APNG压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
-                  } else if (actualFormat === 'animated-webp') {
-                    toast('检测到动画 WebP，将按静态图片压缩，动图可能丢失', 2000);
-                    compressedFile = await compressImageToSize(file, 2048);
-                    console.log(`[interceptReplyForm] 动画WebP压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
-                  } else {
-                    compressedFile = await compressImageToSize(file, 2048);
-                    console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
-                    console.log(`[interceptReplyForm] 静态图片压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
-                  }
+                  const actualFormat = await detectImageFormat(file);
+                  console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
+                  toast('图片大小>2048KB，正在尝试自动压缩', 3000);
+                  console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩……`);
+                  const compressedFile = await compressImageForRetry(file, actualFormat);
                   resetIllegalRetryState({ clearOriginalContent: false });
-                  const newFD = cloneFormData(fd);
-                  newFD.set('image', compressedFile);
-                  toast(`图片已压缩至 ${(compressedFile.size / 1024).toFixed(1)}KB，正在重新提交……`, 2000);
+                  const newFD = cloneFormDataWithImage(fd, compressedFile);
+                  const gifCompressionDurationMs = Number(compressedFile && compressedFile.__xdexGifCompressionDurationMs);
+                  const gifCompressionSeconds = Number.isFinite(gifCompressionDurationMs) && gifCompressionDurationMs >= 0
+                    ? gifCompressionDurationMs / 1000
+                    : null;
+                  toast(`图片已压缩至 ${(compressedFile.size / 1024).toFixed(1)}KB${gifCompressionSeconds == null ? '' : `，耗时 ${gifCompressionSeconds.toFixed(2)} 秒`}，正在重新提交……`, 2000);
                   await doSubmit(newFD, true);
                   return;
                 } catch (compressErr) {
                   console.error('[interceptReplyForm] 图片压缩失败:', compressErr);
                   toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000);
                   return;
+                } finally {
+                  finishSubmitImageProcessing(form);
                 }
               } else if (isRetry) {
                 toast('压缩后图片仍然超过限制，请手动压缩后再试', 3000);
@@ -16263,15 +16404,15 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               }
             }
             // 非法图像文件 + GIF：可能是无 GCT 等结构问题，尝试用 gifsicle 重新编码后重试
-            if (/非法图像/.test(msg) && !isRetry) {
+            if (errorKind === 'illegal-image' && !isRetry) {
               const fileInput = form.querySelector('input[type="file"][name="image"]');
               const file = fileInput && fileInput.files && fileInput.files[0];
               if (file && /\.gif$/i.test(file.name)) {
-                console.log('[interceptReplyForm] 检测到非法GIF，尝试用gifsicle重新编码……');
+                beginSubmitImageProcessing(form);
                 try {
+                  console.log('[interceptReplyForm] 检测到非法GIF，尝试用gifsicle重新编码……');
                   const reencodedFile = await reencodeGifWithGifsicle(file);
-                  const newFD = cloneFormData(fd);
-                  newFD.set('image', reencodedFile);
+                  const newFD = cloneFormDataWithImage(fd, reencodedFile);
                   toast('GIF结构已修复，正在重新提交……', 2000);
                   await doSubmit(newFD, true);
                   return;
@@ -16279,11 +16420,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                   console.error('[interceptReplyForm] GIF重编码失败:', reencodeErr);
                   toast('GIF重编码失败，请手动处理');
                   return;
+                } finally {
+                  finishSubmitImageProcessing(form);
                 }
               }
             }
             // 如果不是"含有非法词语"的特殊情况，直接提示并返回，避免被后续分支忽略
-            if (!/含有非法词语/.test(msg)) {
+            if (errorKind !== 'illegal-word') {
               try {
                 toast(msg);
               } catch (e) {
@@ -16291,7 +16434,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               }
               return;
             }
-            if (/含有非法词语/.test(msg)) {
+            if (errorKind === 'illegal-word') {
               if (cfg.interceptReplyFormUnvcode) {
                 // 新增：优先判断 interceptReplyFormU200B
                 if (cfg.interceptReplyFormU200B) {
@@ -16300,43 +16443,15 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                   // 新增：检查是否已经重试过
                   if (form.__illegalRetryCountU200B >= 1) {
                     toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 3000);
-                    const textarea = form.querySelector('textarea[name="content"]');
-                    if (textarea && form.__originalContent != null) {
-                      textarea.value = form.__originalContent;
-                    }
+                    restoreOriginalSubmitContent(form);
                     form.__originalContent = null;
                     form.__illegalRetryCountU200B = 0;
                     return;
                   }
-                  const textarea = form.querySelector('textarea[name="content"]');
-                  const currentInput = textarea
-                    ? textarea.value
-                    : (formData.get('content') || '').toString();
+                  const currentInput = getCurrentSubmitContent(form, formData);
                   // 构造安全文本：对所有非 URL 段的中文与英文字符插入 U+200B
-                  const urlRegex = /(?:(?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi;
-                  const hanRegex = /[\u4E00-\u9FFF]/;
-                  const engRegex = /[A-Za-z]/;
-                  const safeText = processTextPreservingHiddenTags(currentInput, (segment) => segment
-                    .split(/((?:https?|ftp):\/\/[^\s]+|www\.[^\s]+|[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?|>>(?:No\.)?\d+)/gi)
-                    .map(part => {
-                      if (!part) return '';
-                      if (urlRegex.test(part)) {
-                        urlRegex.lastIndex = 0;
-                        return part; // URL 段跳过
-                      }
-                      let out = '';
-                      for (const ch of part) {
-                        if (hanRegex.test(ch) || engRegex.test(ch)) {
-                          out += ch + '\u200B'; // 中文或英文 → 插入零宽空格
-                        } else {
-                          out += ch;
-                        }
-                      }
-                      return out;
-                    })
-                    .join(''));
-                  const newFD = new FormData(form);
-                  newFD.set('content', safeText);
+                  const safeText = processTextPreservingHiddenTags(currentInput, (segment) => insertZwspAfterHanAndAsciiLettersOutsideUrls(segment));
+                  const newFD = createContentRetryFormData(form, safeText);
                   // 新增：递增计数
                   form.__illegalRetryCountU200B++;
                   toast('已尝试插入零宽空格模式并重试提交', 2000);
@@ -16348,18 +16463,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                   const fallbackRetryIndex = 2;  // 第三次（索引为2）执行保底
                   const maxRetriesAll = 3;       // 共尝试三次：0、1（正常），2（保底）
                   form.__illegalRetryCount = (form.__illegalRetryCount || 0);
-                  const textarea = form.querySelector('textarea[name="content"]');
-                  const currentInput = textarea
-                    ? textarea.value
-                    : (formData.get('content') || '').toString();
+                  const currentInput = getCurrentSubmitContent(form, formData);
                   if (form.__illegalRetryCount === 0) {
                     form.__originalContent = currentInput;
                   }
                   if (form.__illegalRetryCount >= maxRetriesAll) {
                     toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 3000);
-                    if (textarea && form.__originalContent != null) {
-                      textarea.value = form.__originalContent;
-                    }
+                    restoreOriginalSubmitContent(form);
                     resetCacheForFailedContent(form.__originalContent);
                     form.__originalContent = null;
                     form.__illegalRetryCount = 0;
@@ -16376,8 +16486,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                     || (form.__illegalRetryCount === fallbackRetryIndex);
                   if (shouldRetry) {
                     toast('已尝试unvcode替换模式并重试提交', 2000);
-                    const newFD = new FormData(form);
-                    newFD.set('content', safeText);
+                    const newFD = createContentRetryFormData(form, safeText);
                     form.__illegalRetryCount++;
                     doSubmit(newFD, false);
                     return;
@@ -16392,11 +16501,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         })
         .catch((err) => {
           console.error('[interceptReplyForm] fetch error:', err);
-          if (err.name === 'TypeError' && /fetch|network/i.test(err.message)) {
-            toast('发送超时，请检查网络后重试');
-          } else {
-            toast('发送失败：' + (err.message || '未知错误'));
-          }
+          toast(formatSubmitNetworkError(err));
         });
       }
       // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
@@ -16409,19 +16514,37 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       };
       const unlockSubmit = (f) => {
         clearSubmitLockTimer(f);
-        if (f) f.__submitting = false;
+        if (f) {
+          f.__submitImageProcessing = false;
+          f.__submitting = false;
+        }
       };
-      const lockSubmit = (f) => {
-        if (!f) return;
-        f.__submitting = true;
+      function refreshSubmitLockTimer(f) {
+        if (!f || !f.__submitting || f.__submitImageProcessing) return;
         clearSubmitLockTimer(f);
         // 点击发送后 15s 仍无 doSubmit 成功/失败结果 → 主动解除，避免永久卡死
         f.__submitLockTimer = setTimeout(() => {
           f.__submitLockTimer = 0;
           if (!f.__submitting) return;
+          if (f.__submitImageProcessing) return;
           f.__submitting = false;
           toast('提交可能失败，请检查网络，或者刷新后重试');
         }, SUBMIT_LOCK_TIMEOUT_MS);
+      }
+      function beginSubmitImageProcessing(f) {
+        if (!f) return;
+        f.__submitting = true;
+        f.__submitImageProcessing = true;
+        clearSubmitLockTimer(f);
+      }
+      function finishSubmitImageProcessing(f) {
+        if (f) f.__submitImageProcessing = false;
+      }
+      const lockSubmit = (f) => {
+        if (!f) return;
+        f.__submitting = true;
+        f.__submitImageProcessing = false;
+        refreshSubmitLockTimer(f);
       };
       if (form.__submitting) {
         toast('发送中，请勿重复提交……');
@@ -16483,17 +16606,29 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       toast('正在发送……', 1500, { queue: false, key: 'send-status' });
       doSubmit(formData, false).finally(() => { unlockSubmit(form); });
     }, true);
-    // ————— helpers —————
+    function safeGetConfig() {
+      try {
+        if (typeof SettingPanel !== 'undefined' && typeof GM_getValue === 'function') {
+          const defaults = SettingPanel.defaults || {};
+          const saved = GM_getValue(SettingPanel.key, {}) || {};
+          return Object.assign({}, defaults, saved);
+          }
+       } catch (e) {}
+       return null;
+    }
+  }
+
+  // ————— reply refresh helpers —————
     // Phase2 小步：以下两函数与闭包外共用工具同名同语义，注释掉以免遮盖外层实现
     // function getRealThreadsList(root = document) {
     //   const lists = Array.from(root.querySelectorAll('.h-threads-list'));
     //   return lists.find(el => !el.closest('.h-preview-box')) || null;
     // }
-    function getCurrentPage() {
+  function getCurrentPage() {
       const sp = new URL(location.href, location.origin).searchParams;
       return parseInt(sp.get('page') || '1', 10);
     }
-    function getMaxPageFromPagination() {
+  function getMaxPageFromPagination() {
       const paginations = Array.from(document.querySelectorAll('.uk-pagination.uk-pagination-left.h-pagination'));
       if (!paginations.length) return null;
       const last = paginations[paginations.length - 1];
@@ -16508,17 +16643,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       });
       return max || null;
     }
-    // Phase2 小步：改用闭包外 getMaxClonedPageInDOM
-    // function getMaxClonedPageInDOM() {
-    //   const nodes = document.querySelectorAll('.h-threads-item-replies[data-cloned-page]');
-    //   let max = 0;
-    //   nodes.forEach(el => {
-    //     const n = parseInt(el.getAttribute('data-cloned-page'), 10);
-    //     if (!isNaN(n)) max = Math.max(max, n);
-    //   });
-    //   return max;
-    // }
-    function minimalHideEmptyTitleAndEmail(root) {
+  function minimalHideEmptyTitleAndEmail(root) {
       if (!root || !root.querySelectorAll) return;
       Array.from(root.querySelectorAll('.h-threads-info-title')).forEach(el => {
         const txt = (el.textContent || '').trim();
@@ -16533,11 +16658,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
       });
     }
-    // done 将拦截中间页-局部刷新修改为增量模式
-    // Phase2: old body replaced by shared-core thin wrapper
-    // done 将拦截中间页-局部刷新修改为增量模式
-    // Phase2：定区/增量/分页走共享核；wasLastPage 涨页检测仍在本包装
-    function refreshRepliesWithSeamlessPaging(done) {
+  // 将拦截中间页的局部刷新保持为增量模式；wasLastPage 涨页检测仍在本包装
+  function refreshRepliesWithSeamlessPaging(done, dependencies) {
+      const getConfig = dependencies && dependencies.getConfig;
       const currentPage = getCurrentPage();
       const maxPage = getMaxPageFromPagination();
       const maxCloned = getMaxClonedPageInDOM();
@@ -16589,7 +16712,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             if (typeof done === 'function') done();
             return;
           }
-          const cfg2 = (typeof safeGetConfig === 'function') ? safeGetConfig() : null;
+          const cfg2 = (typeof getConfig === 'function') ? getConfig() : null;
           const fragment = document.createElement('div');
           fragment.innerHTML = newReplies.innerHTML;
           stripSystemTipReplies(fragment);
@@ -16623,7 +16746,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           setTimeout(() => {
             try {
               if (typeof applyPageEnhancements === 'function') {
-                applyPageEnhancements(targetReplies, cfg2 || (typeof safeGetConfig === 'function' ? safeGetConfig() : null));
+                applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === 'function' ? getConfig() : null));
               } else {
                 try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
                 try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
@@ -16681,17 +16804,6 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           if (typeof done === 'function') done();
         });
     }
-    function safeGetConfig() {
-      try {
-        if (typeof SettingPanel !== 'undefined' && typeof GM_getValue === 'function') {
-          const defaults = SettingPanel.defaults || {};
-          const saved = GM_getValue(SettingPanel.key, {}) || {};
-          return Object.assign({}, defaults, saved);
-          }
-       } catch (e) {}
-       return null;
-    }
-  }
   function isCookieDropdownShortcut(e) {
     return !!(e && e.ctrlKey && (e.code === 'Backslash' || e.code === 'IntlBackslash' || e.key === '\\'));
   }
