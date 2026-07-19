@@ -476,6 +476,7 @@
       try {
         GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
           scheduleThreadHistoryLiveRender('gm-value-change', remote);
+          syncFavoriteThreadsLinks();
         });
       } catch (e) {
         logThreadHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
@@ -5687,7 +5688,7 @@ ${markedSwatchHtml}
             </div>
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;position:relative;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
-                <a data-update-channel="thread" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
+                <a data-update-channel="thread" data-thread-id="67024789" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
                 <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">GreasyFork</a>
                 <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
                 <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener">ScriptCat</a>
@@ -5709,6 +5710,7 @@ ${markedSwatchHtml}
         </div>`;
       $('#sp_cover').remove();
       $('body').append(html);
+      syncFavoriteThreadsLinks();
       installSettingPanelEasterEgg(document);
       function setSettingsPanelModule(moduleName) {
         const $nextView = $(`#sp_panel_views [data-sp-module-view="${moduleName}"]`);
@@ -21996,14 +21998,14 @@ function 注册自动保存编辑() {
     menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
     menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
   }
-  // 同步常用串菜单中各链接的 href（浏览历史更新后调用，保持链接指向最新访问页）
+  // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，保持链接指向最远访问页）
   function syncFavoriteThreadsLinks() {
-    const menu = document.getElementById('xdex-favorite-threads-menu');
-    if (!menu) return;
-    menu.querySelectorAll('a[data-thread-id]').forEach(link => {
+    const links = document.querySelectorAll('#xdex-favorite-threads-menu a[data-thread-id], #sp_panel_footer a[data-thread-id]');
+    if (!links.length) return;
+    const store = getThreadHistoryStore();
+    links.forEach(link => {
       const tid = link.dataset.threadId;
       if (tid) {
-        const store = getThreadHistoryStore();
         // 优先普通模式，没有再回退只看 PO；都没有则指向普通第 1 页
         const normal = store.items[getThreadHistoryKey('normal', tid)];
         const item = normal || store.items[getThreadHistoryKey('po', tid)];
