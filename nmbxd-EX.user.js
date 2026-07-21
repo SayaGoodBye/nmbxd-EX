@@ -5688,13 +5688,13 @@ ${markedSwatchHtml}
             </div>
             <div id="sp_panel_footer" style="padding:10px 18px;display:flex;align-items:center;justify-content:space-between;position:relative;border-top:1px solid #eee;background:#FFFFEE;">
               <div class="sp_panel_links" style="display:flex;align-items:center;gap:8px;">
-                <a data-update-channel="thread" data-thread-id="67024789" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener">串内</a>
-                <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener">GreasyFork</a>
-                <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener">Github</a>
-                <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener">ScriptCat</a>
-                <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener">百度网盘</a>
-                <a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener">Release</a>
-                <a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener">Dev</a>
+                <a data-update-channel="thread" data-thread-id="67024789" href="https://www.nmbxd1.com/t/67024789" target="_blank" rel="noopener" title="更新串内">串内</a>
+                <a data-update-channel="greasyfork" href="https://greasyfork.org/zh-CN/scripts/531005-x%E5%B2%9B-ex" target="_blank" rel="noopener" title="GreasyFork渠道，需代理">GreasyFork</a>
+                <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener" title="Github">Github</a>
+                <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener" title="脚本猫渠道，可直连">ScriptCat</a>
+                <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener" title="百度网盘备份">百度网盘</a>
+                <a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新发布版镜像">Release</a>
+                <a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新开发版镜像">Dev</a>
               </div>
               <div id="sp_feeds_pager" style="display:none;position:absolute;left:50%;transform:translateX(-50%);align-items:center;gap:8px;">
                 <button id="sp_feeds_prev" type="button" style="padding:4px 10px;">上一页</button>
@@ -13369,6 +13369,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     if (document.getElementById('h-ref-view-layout-style')) return;
     const style = document.createElement('style');
     style.id = 'h-ref-view-layout-style';
+    // 有图加宽改走 class 开关，避免 :has(img) 在隐藏图/残留图时误伤无图引用
     style.textContent = `
       #h-ref-view {
         box-sizing: border-box !important;
@@ -13377,34 +13378,34 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         overflow-wrap: break-word !important;
         word-break: break-word !important;
       }
-      #h-ref-view:has(img) {
+      #h-ref-view.xdex-ref-view-has-image {
         min-width: min(52rem, calc(100vw - 2rem)) !important;
       }
-      #h-ref-view:has(img) .h-threads-item-reply-main,
-      #h-ref-view:has(img) .h-threads-content {
+      #h-ref-view.xdex-ref-view-has-image .h-threads-item-reply-main,
+      #h-ref-view.xdex-ref-view-has-image .h-threads-content {
         min-width: 22rem !important;
       }
-      #h-ref-view.xdex-ref-view-stack-image:has(img) {
+      #h-ref-view.xdex-ref-view-stack-image.xdex-ref-view-has-image {
         min-width: 0 !important;
         overflow-x: hidden !important;
         overflow-y: auto !important;
       }
-      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-img-box {
+      #h-ref-view.xdex-ref-view-stack-image.xdex-ref-view-has-image .h-threads-img-box {
         float: none !important;
         display: block !important;
         max-width: 100% !important;
       }
-      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-img-a,
-      #h-ref-view.xdex-ref-view-stack-image:has(img) img {
+      #h-ref-view.xdex-ref-view-stack-image.xdex-ref-view-has-image .h-threads-img-a,
+      #h-ref-view.xdex-ref-view-stack-image.xdex-ref-view-has-image img {
         max-width: 100% !important;
       }
-      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-img {
+      #h-ref-view.xdex-ref-view-stack-image.xdex-ref-view-has-image .h-threads-img {
         float: none !important;
         display: block !important;
         margin: 0 0 12px 0 !important;
       }
-      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-item-reply-main,
-      #h-ref-view.xdex-ref-view-stack-image:has(img) .h-threads-content {
+      #h-ref-view.xdex-ref-view-stack-image.xdex-ref-view-has-image .h-threads-item-reply-main,
+      #h-ref-view.xdex-ref-view-stack-image.xdex-ref-view-has-image .h-threads-content {
         clear: both !important;
         display: block !important;
         min-width: 0 !important;
@@ -13420,17 +13421,26 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     `;
     document.head.appendChild(style);
   }
+  // 单例 #h-ref-view 会残留上一次有图布局的 width/class，换引用时必须先复位
+  function resetRefViewLayoutState(refView) {
+    if (!refView) return;
+    refView.classList.remove('xdex-ref-view-stack-image', 'xdex-ref-view-has-image');
+    refView.style.width = '';
+    refView.style.minWidth = '';
+    refView.style.maxWidth = '';
+  }
   function updateRefViewImageLayout(refView, anchorEl) {
     if (!refView || !anchorEl) return;
-    refView.classList.remove('xdex-ref-view-stack-image');
-    refView.style.width = '';
+    resetRefViewLayoutState(refView);
     const layoutImages = Array.from(refView.querySelectorAll('img')).filter(img => {
       if (img.closest('.xdex-hide-noimage')) return false;
       const box = img.closest('.h-threads-img-box');
       if (box && getComputedStyle(box).display === 'none') return false;
       return getComputedStyle(img).display !== 'none';
     });
+    // 无可见图：保持复位后的自然宽度，避免沿用上一条有图引用的加宽
     if (!layoutImages.length) return;
+    refView.classList.add('xdex-ref-view-has-image');
     const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
     const imageWidth = 30 * rootFontSize;
     const readableTextWidth = 22 * rootFontSize;
@@ -13623,6 +13633,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const seq = (window.__xdexRefViewRequestSeq || 0) + 1;
           window.__xdexRefViewRequestSeq = seq;
           const $rv = $("#h-ref-view").off().stop(true, true).hide().css('visibility', 'hidden');
+          // 换引用前先清掉上一次有图布局残留的 width/class，避免空/无图内容继承超长宽度
+          if (typeof resetRefViewLayoutState === 'function') resetRefViewLayoutState($rv[0]);
           // console.log('[xv-ref] handler fired, tid=' + tid + ', quoteText=' + $(quoteEl).text());
           // console.log('[xv-ref] #h-ref-view exists:', $('#h-ref-view').length, 'display:', $('#h-ref-view').css('display'));
           $.get('/Home/Forum/ref?id=' + tid)
@@ -13633,6 +13645,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                 top: $(quoteEl).offset().top,
                 left: $(quoteEl).offset().left
               });
+              // html 替换后再次复位，防止 jQuery/原站样式把旧 inline width 带回来
+              if (typeof resetRefViewLayoutState === 'function') resetRefViewLayoutState($rv[0]);
               try {
                 const refEl = $rv[0];
                 hideEmptyTitleAndEmail(refEl);
@@ -15237,7 +15251,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             const searchBestPngScale = async () => {
               const relaxedLowerBytes = Math.max(Math.floor(maxSizeBytes * 0.84), Math.floor(targetLowerBytes * 0.88));
               const baseScale = Math.sqrt(targetUpperBytes / file.size);
-              const minScale = clampScale(baseScale * 0.7, 0.12, 0.55);
+              // 硬下限：只防过小。不要用 baseScale*0.7 当下限——canvas 重编码后体积常比原文件更差，
+              // 否则会像 21MB PNG 那样把预估 scale(≈0.17) 卡在 0.215 动不了。
+              const HARD_MIN_SCALE = 0.05;
+              let minScale = HARD_MIN_SCALE;
               let scale = clampScale(baseScale * 1.08, minScale, 0.92);
               let lastUnderLimitBlob = null;
               const seenScales = new Set();
@@ -15249,9 +15266,29 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                 if (!result.exceeded) lastUnderLimitBlob = result.blob;
                 if (result.hitRange) return result;
                 if (result.exceeded) {
-                  const shrinkRatio = Math.sqrt(targetUpperBytes / result.blob.size);
-                  const nextScale = clampScale(scale * shrinkRatio * 0.97, minScale, scale * 0.98);
-                  if (Math.abs(nextScale - scale) < 0.005) break;
+                  const remain = 6 - phase - 1;
+                  const ratio = result.blob.size / targetUpperBytes;
+                  let safety = 0.95;
+                  if (ratio > 2.0 || remain <= 0) safety = 0.85;
+                  else if (ratio > 1.4 || remain <= 1) safety = 0.90;
+                  const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;
+                  // 预估低于当前下限时下调下限，避免 clamp 把步进掐死
+                  if (predicted < minScale) {
+                    minScale = clampScale(predicted * 0.95, HARD_MIN_SCALE, minScale);
+                  }
+                  let nextScale = clampScale(predicted, minScale, scale * 0.98);
+                  // 仍几乎不动但还超限：强制再砍一刀
+                  if (Math.abs(nextScale - scale) < 0.005) {
+                    const forced = clampScale(predicted * 0.9, HARD_MIN_SCALE, scale * 0.9);
+                    if (forced < scale - 0.005) {
+                      nextScale = forced;
+                      minScale = Math.min(minScale, forced);
+                    } else {
+                      console.log(`[compressImage] PNG超限但无法继续缩小: ratio=${ratio.toFixed(2)}, scale=${scale.toFixed(3)}, predicted=${predicted.toFixed(3)}`);
+                      break;
+                    }
+                  }
+                  console.log(`[compressImage] PNG超限 ratio=${ratio.toFixed(2)}, remain=${remain}, scale ${scale.toFixed(3)} -> ${nextScale.toFixed(3)} (safety=${safety}, min=${minScale.toFixed(3)})`);
                   scale = nextScale;
                   continue;
                 }
@@ -15308,14 +15345,28 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                 return;
               }
               if (result.exceeded) {
-                let scale = clampScale(Math.sqrt(targetUpperBytes / result.blob.size) * 0.98, 0.5, 0.98);
-                for (let phase = 0; phase < 4; phase++) {
+                // 实测体积反推 scale（∝√面积）；下限放宽到 0.2，避免卡在 0.5 仍超限
+                const STATIC_MIN_SCALE = 0.2;
+                const maxPhases = 4;
+                let scale = clampScale(Math.sqrt(targetUpperBytes / result.blob.size) * 0.95, STATIC_MIN_SCALE, 0.98);
+                console.log(`[compressImage] 原尺寸超限，预估缩放=${scale.toFixed(3)}`);
+                for (let phase = 0; phase < maxPhases; phase++) {
                   result = await searchBestQualityAtScale(scale);
                   if (result.hitRange) break;
                   if (result.exceeded) {
-                    scale = clampScale(scale * 0.92, 0.5, 0.98);
+                    const remain = maxPhases - phase - 1;
+                    const ratio = result.blob.size / targetUpperBytes;
+                    // 安全系数：剩余次数少 / 超限倍率大时更狠，避免次数耗尽仍超
+                    let safety = 0.95;
+                    if (ratio > 2.0 || remain <= 0) safety = 0.85;
+                    else if (ratio > 1.35 || remain <= 1) safety = 0.90;
+                    const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;
+                    const nextScale = clampScale(predicted, STATIC_MIN_SCALE, scale * 0.98);
+                    console.log(`[compressImage] 超限 ratio=${ratio.toFixed(2)}, remain=${remain}, scale ${scale.toFixed(3)} -> ${nextScale.toFixed(3)} (safety=${safety})`);
+                    if (Math.abs(nextScale - scale) < 0.004) break;
+                    scale = nextScale;
                   } else if (bestBlob && bestBlob.size < targetLowerBytes) {
-                    scale = clampScale(scale * 1.03, 0.5, 1);
+                    scale = clampScale(scale * 1.03, STATIC_MIN_SCALE, 1);
                     if (scale >= 0.999) break;
                   } else {
                     break;
@@ -15564,9 +15615,23 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               lossy = clampNumber(Math.round(lossy) - 12, 0, 200);
               colors = clampNumber(Math.round(colors) + 32, 48, 256);
             } else {
-              scale = clampNumber(scale * 0.90, 0.16, 0.98);
-              lossy = clampNumber(Math.round(lossy) + 18, 0, 200);
-              colors = clampNumber(Math.round(colors) - 24, 48, 256);
+              // 默认温和步进；剩余次数不足或超限倍率大时，按实测体积做 scale² 激进跳变
+              const remain = GIF_MAX_ATTEMPTS - (i + 1);
+              const ratio = blob.size / maxBytes;
+              let nextScale = scale * 0.90;
+              let nextLossy = Math.round(lossy) + 18;
+              let nextColors = Math.round(colors) - 24;
+              if (ratio > 1.45 || (remain <= 1 && ratio > 1.15) || (remain <= 0 && ratio > 1.05)) {
+                const safety = remain <= 1 ? 0.88 : 0.92;
+                const predictedScale = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * safety;
+                nextScale = Math.min(nextScale, predictedScale);
+                nextLossy = Math.max(nextLossy, Math.round(lossy) + (remain <= 1 ? 40 : 28));
+                nextColors = Math.min(nextColors, Math.round(colors) - (remain <= 1 ? 48 : 32));
+                console.log(`[compressGif] 激进跳变: ratio=${ratio.toFixed(2)}, remain=${remain}, scale->${nextScale.toFixed(3)}, lossy->${nextLossy}, colors->${nextColors}`);
+              }
+              scale = clampNumber(nextScale, 0.16, 0.98);
+              lossy = clampNumber(nextLossy, 0, 200);
+              colors = clampNumber(nextColors, 48, 256);
             }
           } catch (error) {
             completedAttempts++;
@@ -15592,9 +15657,11 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                 inRange: false
               });
             }
-            scale = clampNumber(scale * 0.90, 0.16, 0.98);
-            lossy = clampNumber(Math.round(lossy) + 18, 0, 200);
-            colors = clampNumber(Math.round(colors) - 24, 48, 256);
+            // 失败轮次也按剩余次数适度加压，避免空耗预算
+            const remain = GIF_MAX_ATTEMPTS - (i + 1);
+            scale = clampNumber(scale * (remain <= 1 ? 0.82 : 0.90), 0.16, 0.98);
+            lossy = clampNumber(Math.round(lossy) + (remain <= 1 ? 28 : 18), 0, 200);
+            colors = clampNumber(Math.round(colors) - (remain <= 1 ? 32 : 24), 48, 256);
           }
         }
         if (!bestBlob) {
@@ -15885,9 +15952,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         };
         const targetLowerBytes = Math.floor((maxSizeKB - 68) * 1024);
         const startTime = performance.now();
-        // 缩放梯度：从大到小（直接枚举，避免浮点死循环）
+        // 缩放梯度：从大到小（直接枚举，避免浮点死循环）；超限时按实测体积跳档
         const scaleSteps = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15];
-        for (const scale of scaleSteps) {
+        for (let stepIndex = 0; stepIndex < scaleSteps.length; stepIndex++) {
+          const scale = scaleSteps[stepIndex];
           const newW = Math.max(1, Math.floor(width * scale));
           const newH = Math.max(1, Math.floor(height * scale));
           console.log(`[compressApngToSize] 尝试 scale=${scale.toFixed(2)}: ${newW}x${newH}, ${workFrames.length}帧`);
@@ -15925,6 +15993,19 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
               console.log(`[compressApngToSize] ✓ 完成: ${(file.size/1024).toFixed(1)}KB → ${sizeKB.toFixed(1)}KB, ${elapsed}秒`);
               return new File([blob], file.name.replace(/\.\w+$/i, '') + '-compressed.png', { type: 'image/png' });
+            }
+            // 仍超限：按 scale² 预估下一档，跳过中间无效梯度
+            if (stepIndex < scaleSteps.length - 1) {
+              const predicted = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * 0.92;
+              let jumpTo = stepIndex + 1;
+              for (let j = stepIndex + 1; j < scaleSteps.length; j++) {
+                jumpTo = j;
+                if (scaleSteps[j] <= predicted + 1e-6) break;
+              }
+              if (jumpTo > stepIndex + 1) {
+                console.log(`[compressApngToSize] 跳档: ${scale.toFixed(2)} (${sizeKB.toFixed(1)}KB) 预估=${predicted.toFixed(3)} → ${scaleSteps[jumpTo].toFixed(2)}`);
+                stepIndex = jumpTo - 1;
+              }
             }
           } catch (e) {
             console.error(`[compressApngToSize] scale=${scale.toFixed(2)} 失败:`, e.message);
