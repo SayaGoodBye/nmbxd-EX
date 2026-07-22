@@ -9490,7 +9490,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     const value = String(href);
     let m = value.match(/[?&]page=(\d+)/);
     if (m) return parseInt(m[1], 10);
-    m = value.match(/\/page\/(\d+)\.html/);
+    // 支持 /page/N.html 与裸 /page/N（如 /t/{id}/page/3）
+    m = value.match(/\/page\/(\d+)(?:\.html)?(?:[?#]|$)/);
+    if (m) return parseInt(m[1], 10);
+    m = value.match(/\/page\/(\d+)(?:\.html)?$/);
     if (m) return parseInt(m[1], 10);
     return null;
   }
@@ -16710,17 +16713,23 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     //   return lists.find(el => !el.closest('.h-preview-box')) || null;
     // }
   function getCurrentPage() {
+      // 对齐 originInfo / getImageViewerStartPage：?page= 优先，再 fallback path /page/N
       const sp = new URL(location.href, location.origin).searchParams;
-      return parseInt(sp.get('page') || '1', 10);
+      const q = parseInt(sp.get('page') || '', 10);
+      if (q > 0) return q;
+      const m = location.pathname.match(/\/page\/(\d+)(?:\.html)?$/);
+      if (m) return Math.max(1, parseInt(m[1], 10));
+      return 1;
     }
   function getMaxPageFromPagination() {
       const paginations = Array.from(document.querySelectorAll('.uk-pagination.uk-pagination-left.h-pagination'));
       if (!paginations.length) return null;
       const last = paginations[paginations.length - 1];
       let max = 1;
-      last.querySelectorAll('a[href*="page="]').forEach(a => {
-        const m = a.href.match(/[?&]page=(\d+)/);
-        if (m) max = Math.max(max, parseInt(m[1], 10));
+      // query + path 分页链接都走 parsePaginationPageNum
+      last.querySelectorAll('a[href], span[href]').forEach(a => {
+        const n = parsePaginationPageNum(a.getAttribute('href') || a.href || '');
+        if (n) max = Math.max(max, n);
       });
       last.querySelectorAll('li, span').forEach(el => {
         const nums = (el.textContent || '').match(/\d+/g);
@@ -16750,8 +16759,23 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       const maxPage = getMaxPageFromPagination();
       const maxCloned = getMaxClonedPageInDOM();
       const resolved = resolveThreadRefreshTargetPage(maxPage, maxCloned, currentPage);
+      try {
+        console.log('[refreshRepliesWithSeamlessPaging] resolve', {
+          href: location.href,
+          currentPage,
+          maxPage,
+          maxCloned,
+          kind: resolved && resolved.kind,
+          targetPage: resolved && resolved.targetPage
+        });
+      } catch (e) {}
       // 旧：非末页直接 done 返回
       if (resolved.kind === 'skip') {
+        try {
+          console.log('[refreshRepliesWithSeamlessPaging] skip 空跑：非末页且无 cloned 目标', {
+            currentPage, maxPage, maxCloned
+          });
+        } catch (e) {}
         if (typeof done === 'function') done();
         return;
       }
@@ -16775,12 +16799,25 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       }
       let fetchUrl;
       if (targetPage) {
-        const url = new URL(location.href, location.origin);
-        url.searchParams.set('page', String(targetPage));
-        fetchUrl = url.toString();
+        // cloned 目标页用 buildThreadPageUrl，避免 /t/.../page/N?page=M 混拼
+        const tidMatch =
+          location.pathname.match(/\/t\/(\d{4,})/) ||
+          location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
+        const tidEl = document.querySelector('[data-threads-id]');
+        const tid = (tidEl && tidEl.getAttribute('data-threads-id'))
+          || (tidMatch && tidMatch[1])
+          || null;
+        if (tid && typeof buildThreadPageUrl === 'function') {
+          fetchUrl = buildThreadPageUrl(tid, targetPage);
+        } else {
+          const url = new URL(location.href, location.origin);
+          url.searchParams.set('page', String(targetPage));
+          fetchUrl = url.toString();
+        }
       } else {
         fetchUrl = location.href;
       }
+      try { console.log('[refreshRepliesWithSeamlessPaging] fetchUrl', fetchUrl); } catch (e) {}
       fetch(fetchUrl, { credentials: 'include' })
         .then(res => res.text())
         .then(html => {
@@ -16865,8 +16902,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               !!newNextLi.querySelector('a'));
             if (hasNewPage) {
               const nextLink = newNextLi.querySelector('a');
-              const nextPageMatch = nextLink ? nextLink.href.match(/page=(\d+)/) : null;
-              const nextPageNum = nextPageMatch ? parseInt(nextPageMatch[1], 10) : null;
+              const nextPageNum = nextLink
+                ? parsePaginationPageNum(nextLink.getAttribute('href') || nextLink.href || '')
+                : null;
               if (nextPageNum) {
                 toast('发现' + nextPageNum + '页，正在加载……');
                 if (window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
