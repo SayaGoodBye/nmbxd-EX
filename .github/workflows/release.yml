@@ -76,8 +76,10 @@ jobs:
 
           cp nmbxd-EX.user.js dist/nmbxd-EX.user.js
           cp nmbxd-EX.user.js "dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js"
-          cp -R nmbxd-EX-Extension dist/nmbxd-EX-Extension
-          cp nmbxd-EX.user.js dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
+          cp -R nmbxd-EX-Extension dist/nmbxd-EX-Extension
+
+          cp nmbxd-EX.user.js dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
+
           cp forum-fid-map.json dist/forum-fid-map.json
 
       - name: Sync extension metadata
@@ -142,14 +144,17 @@ jobs:
         shell: bash
         run: |
           cd dist/nmbxd-EX-Extension
-          zip -r "../nmbxd-EX-Extension-v${{ steps.version.outputs.version }}.zip" . \
-            -x "*.git*" \
-            -x "tests/*" \
-            -x "*.pem" \
-            -x "*.key" \
-            -x "*key*.txt" \
+          ZIP_EXCLUDES=(
+            -x "*.git*"
+            -x "tests/*"
+            -x "*.pem"
+            -x "*.key"
+            -x "*key*.txt"
             -x "*.md"
-
+          )
+          # 带版本号（历史/归档用）+ 固定名（方便固定下载链接）
+          zip -r "../nmbxd-EX-Extension-v${{ steps.version.outputs.version }}.zip" . "${ZIP_EXCLUDES[@]}"
+          zip -r "../nmbxd-EX-Extension.zip" . "${ZIP_EXCLUDES[@]}"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -160,3 +165,4 @@ jobs:
             dist/nmbxd-EX.user.js
             dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js
             dist/nmbxd-EX-Extension-v${{ steps.version.outputs.version }}.zip
+            dist/nmbxd-EX-Extension.zip

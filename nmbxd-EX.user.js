@@ -17126,10 +17126,21 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
   }
   // 初次执行
   highlightPO();
-
+  // 正文服务端等效字数：首尾 U+0020/换行不计；内部换行按 8；其余字符按 1
+  const POST_FORM_CONTENT_SERVER_MAX_LENGTH = 5000;
+  function countPostContentServerChars(raw) {
+    let s = String(raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    s = s.replace(/^[ \n]+/, '').replace(/[ \n]+$/, '');
+    if (!s) return 0;
+    let n = 0;
+    for (let i = 0; i < s.length; i++) {
+      n += s.charCodeAt(i) === 10 ? 8 : 1;
+    }
+    return n;
+  }
   //回复表单UI调整
   function enhancePostFormLayout(formOpt) {
-     // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点
+     // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点 
      const form = formOpt
       || document.querySelector('.qp-body form[action*="doReplyThread"], .qp-body form[action*="doPostThread"]')
       || document.querySelector('form[action*="doReplyThread"], form[action*="doPostThread"]');
@@ -17176,7 +17187,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               btnWrapper.appendChild(contentCounter);
             }
             const updateContentCounter = () => {
-              contentCounter.textContent = '字数:' + String(contentTextarea.value || '').length;
+              const len = countPostContentServerChars(contentTextarea.value);
+              contentCounter.textContent = '字数:' + len;
+              contentCounter.style.color = len > POST_FORM_CONTENT_SERVER_MAX_LENGTH ? '#e53935' : '#888';
             };
             if (contentTextarea.__xdexPostContentCharCounter) {
               contentTextarea.removeEventListener('input', contentTextarea.__xdexPostContentCharCounter);
