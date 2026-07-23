@@ -5693,8 +5693,10 @@ ${markedSwatchHtml}
                 <a data-update-channel="github" href="https://github.com/SayaGoodBye/nmbxd-EX" target="_blank" rel="noopener" title="Github">Github</a>
                 <a data-update-channel="scriptcat" href="https://scriptcat.org/zh-CN/script-show-page/6289" target="_blank" rel="noopener" title="脚本猫渠道，可直连">ScriptCat</a>
                 <a data-update-channel="baidupan" href="https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf" target="_blank" rel="noopener" title="百度网盘备份">百度网盘</a>
-                <a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新发布版镜像">Release</a>
-                <a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新开发版镜像">Dev</a>
+                <a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新发布版用户脚本镜像">Release</a>
+                <a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新开发版用户脚本镜像">Dev</a>
+                <!-- 镜像服务：https://docs.suanlix.cn/github.html -->
+                <a data-update-channel="extension" href="https://github.ikgy.top/https://github.com/SayaGoodBye/nmbxd-EX/releases/latest/download/nmbxd-EX-Extension.zip" target="_blank" rel="noopener" title="最新发布版Chromium内核浏览器拓展">拓展</a>
               </div>
               <div id="sp_feeds_pager" style="display:none;position:absolute;left:50%;transform:translateX(-50%);align-items:center;gap:8px;">
                 <button id="sp_feeds_prev" type="button" style="padding:4px 10px;">上一页</button>
@@ -17140,7 +17142,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
   }
   //回复表单UI调整
   function enhancePostFormLayout(formOpt) {
-     // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点 
+     // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点
      const form = formOpt
       || document.querySelector('.qp-body form[action*="doReplyThread"], .qp-body form[action*="doPostThread"]')
       || document.querySelector('form[action*="doReplyThread"], form[action*="doPostThread"]');
