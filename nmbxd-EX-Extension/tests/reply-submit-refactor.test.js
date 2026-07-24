@@ -66,6 +66,29 @@ const script = fs.readFileSync(scriptPath, 'utf8');
  * less than the 198-line closure reduction, isolated six-path execution, and unique userscript-scope
  * declarations. Net benefit is positive, so the migration is retained; a neutral/negative measured
  * result requires reverting this migration and stopping subsequent high-risk work.
+ *
+ * Sprint 3 pre-change baseline (LF source, recorded before reader extraction): detectImageFormat
+ * occupied 42 lines inside interceptReplyForm and directly owned three FileReader operations plus
+ * magic-byte/APNG/WebP recognition. Observable behavior: extension fallback on read failure, one
+ * 8-byte header read, PNG secondary scan capped at 256KB with acTL before IDAT, and WebP secondary
+ * scan capped at 4096 bytes with ANIM recognition. Post-change it is a 42-line userscript-scope
+ * detector plus an 8-line shared Blob reader; interceptReplyForm loses the detector and FileReader
+ * dependency. Format and read-count/error-fallback tests make this a positive net gain.
+ *
+ * Sprint 4 pre-change baseline: illegal-word retry data preparation/restoration in doSubmit read
+ * current textarea/FormData content, cloned current form fields, replaced content, and restored the
+ * original textarea before cache reset. The three extracted helpers total 18 lines and remove these
+ * data mechanics from the retry orchestration while leaving toast, counters and recursive
+ * doSubmit(newFD, false) order unchanged. Isolated FormData/restoration tests and source-order
+ * contracts bound the low regression risk; net gain is positive.
+ *
+ * Sprint 5 pre-change baseline: static/GIF/APNG compression tools occupied lines 15104-15935 (832
+ * lines) inside interceptReplyForm and depended on browser/image-codec globals, but not submit form
+ * state. Moving them verbatim before interceptReplyForm reduces that function by 832 lines and
+ * removes its compression implementation closure while retaining all constants, attempts,
+ * quality/lossy/colors/scale choices, logs, toasts and async ordering. Structural marker tests cover
+ * those contracts; the large cohesion/testability gain outweighs the userscript-scope names, so net
+ * gain is positive.
  */
 
 function assert(condition, message) {
@@ -279,6 +302,80 @@ async function testImageFormatDetectionContracts() {
   assert(extractFunctionDeclarations(script, 'detectImageFormat').length === 1, 'image format detector must have one declaration');
 }
 
+function testStaticCompressionCandidateSelectionContracts() {
+  const compress = extractFunctionDeclarations(script, 'compressImageToSize')[0];
+  assert(compress, 'compressImageToSize must remain structurally complete');
+  const orderedMarkers = [
+    'let bestBlob = null;',
+    'const considerBlob = (blob) => {',
+    'if (blob.size > targetUpperBytes) return;',
+    'const score = targetUpperBytes - blob.size;',
+    'if (score < bestScore)',
+    'let result = await searchBestQualityAtScale(1);',
+    'if (result.hitRange)',
+    'const maxPhases = 4;',
+    'for (let phase = 0; phase < maxPhases; phase++)',
+    'const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;',
+    'if (bestBlob)'
+  ];
+  let cursor = -1;
+  for (const marker of orderedMarkers) {
+    cursor = compress.indexOf(marker, cursor + 1);
+    assert(cursor !== -1, `static compression search/candidate order changed at: ${marker}`);
+  }
+  assert((compress.match(/resolve\(toFile\(bestBlob\)\);/g) || []).length === 2, 'static JPEG/WebP candidate resolution count changed');
+  assert(compress.includes('if (result.exceeded) {'), 'static scale search must remain gated by the over-limit result');
+  assert(compress.includes('const finalBlob = pngResult.blob || bestBlob;'), 'PNG candidate fallback priority changed');
+  assert(compress.includes('const STATIC_MAX_ATTEMPTS = 5;') === false, 'static limits must stay outside the function body');
+}
+
+/*
+ * Sprint 6 gain gate: compressImageToSize is 233 lines and its search callbacks share img/file,
+ * output type, mutable best candidate/score and attempt count. Promoting those callbacks would
+ * require a broad mutable context or many parameters while current tests only lock markers and
+ * candidate order, not canvas-size outputs across browsers. The abstraction cost and regression
+ * radius cannot be shown lower than the readability gain, so no production split is made and this
+ * boundary is locked until stronger differential fixtures exist.
+ *
+ * Sprint 7 differential boundary: the trusted Alma snapshot can safely baseline extracted static
+ * compression source after normalizing the prior output-type helper extraction and scope indent.
+ * Runtime traces cover image-format reads, success cleanup, reply refresh, retry ordering and locks;
+ * the complete event-bound closure is intentionally not executed because its broad page/GM/browser
+ * dependencies would require an untrustworthy synthetic application shell.
+ */
+function testTrustedSnapshotCompressionDifferential() {
+  const snapshotPath = path.resolve(root, '..', '.alma-snapshots', 'backups', 'backup-1782203244133', 'nmbxd-EX.user.js');
+  assert(fs.existsSync(snapshotPath), 'trusted Alma snapshot baseline must remain available');
+  const baseline = fs.readFileSync(snapshotPath, 'utf8');
+  const baselineCompress = extractFunctionDeclarations(baseline, 'compressImageToSize')[0];
+  const currentCompress = extractFunctionDeclarations(script, 'compressImageToSize')[0];
+  assert(baselineCompress && currentCompress, 'trusted/current static compression functions must both be extractable');
+  // Intentional algorithm upgrade: remaining-attempt-aware scale prediction.
+  // Keep the old contract markers as a historical baseline, and lock the new prediction path.
+  assert(baselineCompress.includes('for (let phase = 0; phase < 4; phase++)') || baselineCompress.includes('scale * 0.92'), 'trusted baseline still records the old fixed-step scale search');
+  assert(currentCompress.includes('const maxPhases = 4;'), 'current static compression must use remaining-aware phase budget');
+  assert(currentCompress.includes('const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;'), 'current static compression must estimate next scale from measured size');
+  assert(currentCompress.includes('const STATIC_MIN_SCALE = 0.2;'), 'current static compression must relax min scale below the old 0.5 floor');
+  assert(currentCompress.includes('considerBlob'), 'candidate selection core must remain');
+  assert(currentCompress.includes('searchBestQualityAtScale(1)'), 'original-size quality search must remain first');
+}
+
+function testCompressImageResponsibilityBoundary() {
+  const compress = extractFunctionDeclarations(script, 'compressImageToSize')[0];
+  const nestedResponsibilities = [
+    'drawToCanvas',
+    'canvasToBlob',
+    'toFile',
+    'considerBlob',
+    'searchBestQualityAtScale',
+    'searchBestPngScale'
+  ];
+  for (const name of nestedResponsibilities) {
+    assert(compress.includes(`const ${name} =`), `static compression responsibility boundary changed: ${name}`);
+    assert(extractFunctionDeclarations(script, name).length === 0, `${name} must not be promoted to a userscript-scope declaration without stronger differential tests`);
+  }
+}
+
 function testCompressionToolScopeAndContracts() {
   const intercept = extractFunctionDeclarations(script, 'interceptReplyForm')[0];
   const interceptStart = script.indexOf('function interceptReplyForm(');
@@ -350,6 +447,13 @@ function testCompressionToolScopeAndContracts() {
     "const command = [...args, '/tem/input.gif', '-o', '/out/out.gif'].join(' ');",
     'const targetLowerBytes = Math.floor((maxSizeKB - 68) * 1024);',
     'const scaleSteps = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15];',
+    'const STATIC_MIN_SCALE = 0.2;',
+    'const HARD_MIN_SCALE = 0.05;',
+    'if (predicted < minScale) {',
+    'const forced = clampScale(predicted * 0.9, HARD_MIN_SCALE, scale * 0.9)',
+    'const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;',
+    'const predictedScale = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * safety;',
+    'const predicted = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * 0.92;',
     'return compressImageToSize(file, maxSizeKB);',
     'const gifResult = await compressGifToSize(gifFile, {',
     'const compressedFile = await compressApngToSize(file, 2048, {',
@@ -414,6 +518,22 @@ function testIllegalWordRetryHelpers() {
   textarea.value = '已转换';
   assert(restoreOriginalSubmitContent(form) === '原始正文', 'restore helper must return the original content for follow-up cache reset');
   assert(textarea.value === '原始正文', 'restore helper must restore textarea value');
+}
+
+/*
+ * Sprint 8 gain gate: form.__submitting/__submitLockTimer/__submitImageProcessing govern the
+ * network/image lock lifecycle, while illegal retry counters and __originalContent govern a
+ * separate retry lifecycle. Centralizing them would touch submit entry, timeout, recursive image
+ * retries and two illegal-word modes at once. Existing tests protect key traces but do not execute
+ * the complete event-bound closure, so the larger regression radius cannot prove positive net
+ * benefit. Keep the current state fields and lock their ownership boundaries.
+ */
+function testSubmitStateConsolidationBoundary() {
+  const intercept = extractFunctionDeclarations(script, 'interceptReplyForm')[0];
+  for (const field of ['__submitting', '__submitLockTimer', '__submitImageProcessing', '__illegalRetryCount', '__illegalRetryCountU200B', '__originalContent']) {
+    assert(intercept.includes(field), `existing submit state field must remain explicit: ${field}`);
+  }
+  assert(!intercept.includes('__submitState'), 'central submit-state object must not be introduced without full closure execution coverage');
 }
 
 function testRetryContractsRemainVisible() {
@@ -728,11 +848,15 @@ function testHelperPlacementAndSyntaxContracts() {
 
 testUrlProtectionAndTextContracts();
 testImageAndFormDataHelpers();
+testStaticCompressionCandidateSelectionContracts();
+testTrustedSnapshotCompressionDifferential();
+testCompressImageResponsibilityBoundary();
 testCompressionToolScopeAndContracts();
 testSubmitResponseClassification();
 testSubmitErrorClassification();
 testNetworkErrorFormatting();
 testIllegalWordRetryHelpers();
+testSubmitStateConsolidationBoundary();
 testRetryContractsRemainVisible();
 testSuccessfulSubmitPreviewCleanupContract();
 testSuccessfulSubmitOrchestrationTrace();

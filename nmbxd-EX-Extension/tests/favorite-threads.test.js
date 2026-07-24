@@ -80,6 +80,11 @@ function testFavoriteThreadsHistoryLinkage() {
   assert(syncBody.includes("getThreadHistoryKey('normal', tid)"), 'syncing favorite links must prefer normal-mode history');
   assert(syncBody.includes("getThreadHistoryKey('po', tid)"), 'syncing favorite links may fall back to PO history');
   assert(syncBody.includes("buildThreadHistoryPageUrl('normal', tid, 1)"), 'syncing favorite links must fall back to normal page 1 when no history exists');
+  assert(script.includes('data-update-channel="thread" data-thread-id="67024789" href="https://www.nmbxd1.com/t/67024789"'), 'settings footer thread link must expose its thread id and keep page 1 as fallback');
+  assert(syncBody.includes("#xdex-favorite-threads-menu a[data-thread-id], #sp_panel_footer a[data-thread-id]"), 'history linkage must synchronize both favorite-thread and settings-footer links');
+  assert(script.includes("$('body').append(html);\n      syncFavoriteThreadsLinks();"), 'settings footer thread link must synchronize immediately after panel render');
+  const liveSyncBody = extractFunctionBody(script, 'bindThreadHistoryLiveSync');
+  assert(liveSyncBody.includes("scheduleThreadHistoryLiveRender('gm-value-change', remote);\n          syncFavoriteThreadsLinks();"), 'remote browsing-history changes must refresh linked thread URLs');
 }
 
 function testThreadHistoryMenuEntry() {

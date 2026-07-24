@@ -39,8 +39,8 @@ function testScriptWiring() {
   assertContains('function makeNmbSearchLinkOpenInNewTab', 'script must set nmb-search links to open in a new tab');
   assertContains('function isNmbSearchResultLink', 'script must detect nmb-search result links separately from page chrome links');
   assertContains('function handleNmbSearchLinkClick', 'script must intercept nmb-search link clicks');
-  assertContains("const selector = '#overflow.text-result a[href]'", 'rewrite flow must scan only links inside #overflow.text-result');
-  assertContains("a.matches('#overflow.text-result a[href]')", 'click handler must limit forced new-tab behavior to search result links');
+  assertContains("const selector = '#overflow a[href]'", 'rewrite flow must scan all links inside #overflow');
+  assertContains("a.matches('#overflow a[href]')", 'click handler must limit forced new-tab behavior to links inside #overflow');
   assertContains('if (!isNmbSearchResultLink(a)) return;', 'non-result nmb-search links must keep default click behavior');
   assertContains('makeNmbSearchLinkOpenInNewTab(a);', 'rewrite flow must apply new-tab behavior to matched nmb-search links');
   assertContains("document.addEventListener('click', handleNmbSearchLinkClick, true);", 'nmb-search click handler must run in capture phase');
@@ -120,13 +120,13 @@ function testNewTabBehavior() {
 
   const pageChromeLink = { href: 'https://example.test/help', target: '', rel: '', insideResult: false };
   rewriteSearchAnchor(pageChromeLink);
-  assert(pageChromeLink.target === '', 'nmb-search links outside #overflow.text-result must keep default target behavior');
-  assert(pageChromeLink.rel === '', 'nmb-search links outside #overflow.text-result must not receive rel tokens');
+  assert(pageChromeLink.target === '', 'nmb-search links outside #overflow must keep default target behavior');
+  assert(pageChromeLink.rel === '', 'nmb-search links outside #overflow must not receive rel tokens');
 }
 
 function testClickInterceptBehavior() {
   assert(shouldInterceptClick({ defaultPrevented: false, button: 0, anchor: { insideResult: true } }), 'plain left-click on result links must be intercepted for forced new-tab navigation');
-  assert(!shouldInterceptClick({ defaultPrevented: false, button: 0, anchor: { insideResult: false } }), 'plain left-click outside #overflow.text-result must keep browser default behavior');
+  assert(!shouldInterceptClick({ defaultPrevented: false, button: 0, anchor: { insideResult: false } }), 'plain left-click outside #overflow must keep browser default behavior');
   assert(!shouldInterceptClick({ defaultPrevented: true, button: 0, anchor: { insideResult: true } }), 'already prevented clicks must not be intercepted');
   assert(!shouldInterceptClick({ defaultPrevented: false, button: 1, anchor: { insideResult: true } }), 'middle clicks must keep browser default behavior');
   assert(!shouldInterceptClick({ defaultPrevented: false, button: 0, ctrlKey: true, anchor: { insideResult: true } }), 'modified clicks must keep browser default behavior');

@@ -261,8 +261,8 @@ function testGithubUpdateFooterHighlight() {
 
 function testSettingsPanelReleaseAndDevLinks() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
-  assert(upstream.includes('<a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener">Release</a>'), 'settings footer must link to the latest release userscript mirror in a new tab');
-  assert(upstream.includes('<a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener">Dev</a>'), 'settings footer must link to the dev branch userscript mirror in a new tab');
+  assert(upstream.includes('<a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新发布版镜像">Release</a>'), 'settings footer Release link must provide the latest release mirror title tooltip');
+  assert(upstream.includes('<a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新开发版镜像">Dev</a>'), 'settings footer Dev link must provide the latest development mirror title tooltip');
 }
 
 function testRunLinkBlankContract() {
@@ -696,6 +696,22 @@ function testPostHistoryRefImageContract() {
   assert(postItemBody.includes("image.className = 'h-threads-img'") && postItemBody.includes('image.src = buildThreadHistoryImageUrl(item.imageFile, false)'), 'post history thumbnail must reuse browsing-history gif/original and non-gif/thumb URL logic');
 }
 
+
+function testSeamlessAppendedHDImageContract() {
+  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const preprocessStart = upstream.indexOf('function preprocessPageEnhancementsBeforeInsert(root, cfg)');
+  const preprocessBody = upstream.slice(preprocessStart, upstream.indexOf('function applyPageEnhancements', preprocessStart));
+  assert(preprocessBody.includes("liveCfg.enableHDImageAndLayoutFix") && preprocessBody.includes('enableHDImageAndLayoutFix(root)'), 'seamless content must synchronously prepare HD image URLs and bindings before DOM insertion');
+
+  const clickStart = upstream.indexOf('bindImageClickLogic(container)');
+  const clickBody = upstream.slice(clickStart, upstream.indexOf('bindImageControls(container)', clickStart));
+  assert(clickBody.includes("img.dataset.xdexHdSrc || anchor.href"), 'image expansion must prefer the prepared HD image URL instead of a stale thumbnail anchor');
+
+  const noPaginationStart = upstream.indexOf("startupPerfDebug.measure('seamless.loadNextBoard.insertDom', () => lastList.insertAdjacentElement('afterend', listClone)");
+  const noPaginationBody = upstream.slice(noPaginationStart, upstream.indexOf('// ============================================', noPaginationStart));
+  assert(noPaginationBody.includes("startupPerfDebug.measure('seamless.loadNextBoard.applyPageEnhancements'") && noPaginationBody.includes('applyPageEnhancements(listClone, cfg)'), 'board seamless paging without pagination must run the same page enhancement pipeline');
+}
+
 function testHistoryAndPostImageQuotePreviewContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
   assert(upstream.includes('function isSettingsPanelImageEnhancementRoot(root)'), 'HD image enhancement must centralize settings-panel exclusion');
@@ -1114,7 +1130,7 @@ function testGifCompressionDiagnosticsContract() {
 
   assert(compressSource.includes('const GIF_MAX_ATTEMPTS = 3') || upstream.includes('const GIF_MAX_ATTEMPTS = 3'), 'GIF maximum attempt count must remain 3');
   assert(compressSource.includes("const args = ['-O3', `--lossy=${Math.round(lossy)}`, '--colors', String(Math.round(colors))]"), 'GIF optimization command must retain -O3 and existing lossy/colors construction');
-  assert(compressSource.includes('scale = clampNumber(scale * 0.90, 0.16, 0.98)') && compressSource.includes('lossy = clampNumber(Math.round(lossy) + 18, 0, 200)') && compressSource.includes('colors = clampNumber(Math.round(colors) - 24, 48, 256)'), 'GIF oversize adjustment algorithm must remain unchanged');
+  assert(compressSource.includes('const remain = GIF_MAX_ATTEMPTS - (i + 1);') && compressSource.includes('const predictedScale = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * safety;') && compressSource.includes('scale = clampNumber(nextScale, 0.16, 0.98)'), 'GIF oversize adjustment must use remaining-attempt-aware scale prediction');
   assert(upstream.includes("toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000)"), 'existing compression failure toast text and call must remain unchanged');
 }
 
@@ -1534,6 +1550,7 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   testHistoryAndPostCanonicalReplyLinksContract();
   testPostHistoryLiveSyncContract();
   testPostHistoryRefImageContract();
+  testSeamlessAppendedHDImageContract();
   testHistoryAndPostImageQuotePreviewContract();
   testHistoryAndPostContentEnhancementContract();
   testHistoryAndPostDeleteConfirmContract();
