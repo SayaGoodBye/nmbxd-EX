@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..', '..');
-const script = fs.readFileSync(path.join(root, 'nmbxd-EX-for-edit.user.js'), 'utf8');
+const script = fs.readFileSync(path.join(root, 'nmbxd-EX-for-edit.user.js'), 'utf8').replace(/\r\n/g, '\n');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

@@ -4,7 +4,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..', '..');
 const scriptPath = path.join(root, 'nmbxd-EX-for-edit.user.js');
-const script = fs.readFileSync(scriptPath, 'utf8');
+const script = fs.readFileSync(scriptPath, 'utf8').replace(/\r\n/g, '\n');
 
 /*
  * Sprint 1 pre-change baseline (LF source, recorded before extraction):
@@ -665,7 +665,7 @@ function createReplyRefreshHarness(options = {}) {
     classList: { contains(name) { return name === 'uk-disabled'; } },
     querySelector() { return null; }
   } : null;
-  const newNextLink = { href: 'https://example.test/t/1?page=3' };
+  const newNextLink = { href: 'https://example.test/t/1?page=3', getAttribute(attr) { return attr === 'href' ? this.href : null; } };
   const newNext = options.newPage ? {
     textContent: '下一页',
     classList: { contains() { return false; } },
@@ -685,8 +685,9 @@ function createReplyRefreshHarness(options = {}) {
     trace,
     console: { log(message) { trace.push(`log:${message}`); }, warn(message) { trace.push(`warn:${message}`); } },
     URL,
-    location: { href: 'https://example.test/t/1?page=2', origin: 'https://example.test' },
+    location: { href: 'https://example.test/t/1?page=2', origin: 'https://example.test', pathname: '/t/1' },
     document: {
+      querySelector() { return null; },
       querySelectorAll(selector) {
         if (selector === '.uk-pagination.uk-pagination-left.h-pagination') return [];
         if (selector === 'ul.uk-pagination.uk-pagination-left.h-pagination') return options.newPage ? [pagination(oldNext)] : [];
@@ -734,7 +735,7 @@ function createReplyRefreshHarness(options = {}) {
     prepareAndSyncBottomPagination(doc) { trace.push(`syncPagination:${doc === parsedDocument}`); },
     refreshFilterDisplay(cfg) { trace.push(`refreshFilters:${cfg.name}`); }
   };
-  const declarations = ['getCurrentPage', 'getMaxPageFromPagination', 'minimalHideEmptyTitleAndEmail', 'refreshRepliesWithSeamlessPaging']
+  const declarations = ['getCurrentPage', 'getMaxPageFromPagination', 'parsePaginationPageNum', 'minimalHideEmptyTitleAndEmail', 'refreshRepliesWithSeamlessPaging']
     .map((name) => extractFunctionDeclarations(script, name)[0]).join('\n');
   vm.runInNewContext(`${declarations}\nthis.refresh = refreshRepliesWithSeamlessPaging;`, context);
   return { context, trace, timers };

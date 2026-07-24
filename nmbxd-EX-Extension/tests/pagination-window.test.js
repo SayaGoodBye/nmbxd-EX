@@ -4,7 +4,8 @@ const assert = require('assert');
 const vm = require('vm');
 
 const root = path.resolve(__dirname, '..', '..');
-const script = fs.readFileSync(path.join(root, 'nmbxd-EX.user.js'), 'utf8');
+const scriptPath = [path.join(root, 'nmbxd-EX-for-edit.user.js'), path.join(root, 'nmbxd-EX.user.js')].find(p => { try { fs.accessSync(p); return true; } catch (_) { return false; } });
+const script = fs.readFileSync(scriptPath, 'utf8');
 
 function extractFunctionSource(name) {
   const match = new RegExp(`^\\s*function ${name}\\s*\\(`, 'm').exec(script);

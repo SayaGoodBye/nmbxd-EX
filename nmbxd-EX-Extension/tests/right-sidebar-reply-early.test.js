@@ -3,7 +3,8 @@ const path = require('path');
 const assert = require('assert');
 
 const root = path.resolve(__dirname, '..', '..');
-const script = fs.readFileSync(path.join(root, 'nmbxd-EX.user.js'), 'utf8');
+const scriptPath = [path.join(root, 'nmbxd-EX-for-edit.user.js'), path.join(root, 'nmbxd-EX.user.js')].find(p => { try { fs.accessSync(p); return true; } catch (_) { return false; } });
+const script = fs.readFileSync(scriptPath, 'utf8');
 
 function sliceBetween(startNeedle, endNeedle) {
   const start = script.indexOf(startNeedle);
