@@ -15245,7 +15245,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       const STATIC_TARGET_LOWER_KB = 1900;
       const STATIC_ACCEPTABLE_LOWER_KB = 1850;
       const STATIC_MAX_ATTEMPTS = 5;
-      async function compressImageToSize(file, maxSizeKB = STATIC_MAX_SIZE_KB, minQuality = 0.6) {
+      async function compressImageToSize(file, maxSizeKB = STATIC_MAX_SIZE_KB, minQuality = 0.6, detectedFormat) {
         const maxSizeBytes = STATIC_MAX_SIZE_KB * 1024;
         const targetUpperBytes = maxSizeBytes;
         const targetLowerBytes = STATIC_TARGET_LOWER_KB * 1024;
@@ -15259,7 +15259,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const url = URL.createObjectURL(file);
           img.onload = async () => {
             URL.revokeObjectURL(url);
-            const originalType = file.type || 'image/jpeg';
+            // 优先使用外部传入的真实格式（magic bytes 检测），避免 file.type 被后缀名误导
+            const originalType = detectedFormat
+              ? (detectedFormat === 'png' ? 'image/png' : detectedFormat === 'jpeg' ? 'image/jpeg' : detectedFormat === 'webp' ? 'image/webp' : file.type || 'image/jpeg')
+              : (file.type || 'image/jpeg');
             const outputType = getStaticImageOutputType(originalType);
             const drawToCanvas = (scale) => {
               const canvas = document.createElement('canvas');
@@ -16500,11 +16503,11 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         if (actualFormat === 'animated-webp') {
           toast('检测到动画 WebP，将按静态图片压缩，动图可能丢失', 2000);
-          const compressedFile = await compressImageToSize(file, 2048);
+          const compressedFile = await compressImageToSize(file, 2048, 0.6, actualFormat);
           console.log(`[interceptReplyForm] 动画WebP压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
           return compressedFile;
         }
-        const compressedFile = await compressImageToSize(file, 2048);
+        const compressedFile = await compressImageToSize(file, 2048, 0.6, actualFormat);
         console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
         console.log(`[interceptReplyForm] 静态图片压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
         return compressedFile;
