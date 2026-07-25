@@ -22481,13 +22481,17 @@ function 注册自动保存编辑() {
     }
     let pinnedHash = null;
     const $m = $(
-      '<div id="cookie-confirm-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">' +
+        '<div id="cookie-confirm-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">' +
         '<div class="cookie-confirm-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.4);"></div>' +
-        '<div class="cookie-confirm-dialog" style="position:relative;width:360px;max-height:80vh;background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow-y:auto;">' +
-          '<h3 style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);">' + (mode === 'setDefault' ? '设置默认饼干' : '确认饼干') + '</h3>' +
-          '<p style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;color:var(--muted-foreground, #666);font-size:13px;"><span>当前串 <font color="#789922">No.' + threadId + '</font></span>' + (pref ? '<span style="color:#ffb300;font-size:11px;">默认: ' + (abbreviateName((findCookieByHash(cookieList, pref.hash) || {}).name || pref.hash || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim()) + '</span>' : '') + '</p>' +
-          '<div id="cookie-confirm-list"></div>' +
-          '<div style="display:flex;align-items:center;gap:4px;margin-top:12px;">' +
+        '<div class="cookie-confirm-dialog" style="position:relative;display:flex;flex-direction:column;width:360px;max-width:calc(100vw - 32px);max-height:min(80vh, calc(100vh - 32px));background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow:hidden;">' +
+          '<h3 style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);flex:0 0 auto;">' + (mode === 'setDefault' ? '设置默认饼干' : '确认饼干') + '</h3>' +
+          '<p style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;color:var(--muted-foreground, #666);font-size:13px;flex:0 0 auto;"><span>当前串 <font color="#789922">No.' + threadId + '</font></span>' + (pref ? '<span style="color:#ffb300;font-size:11px;">默认: ' + (abbreviateName((findCookieByHash(cookieList, pref.hash) || {}).name || pref.hash || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim()) + '</span>' : '') + '</p>' +
+          '<div id="cookie-confirm-scroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:2px;">' +
+            '<div id="cookie-confirm-list"></div>' +
+          '</div>' +
+          '<div id="cookie-confirm-tail-spacer" style="flex:0 0 auto;height:48px;flex-shrink:0;"></div>' +
+          '<div id="cookie-confirm-await-marker" aria-hidden="true" style="flex:0 0 0;border-top:1px solid var(--xdex-sp-border, #ddd);margin:0;flex-shrink:0;"></div>' +
+          '<div id="cookie-confirm-actions" style="display:flex;align-items:center;gap:4px;flex:0 0 auto;flex-shrink:0;">' +
             '<button id="cookie-confirm-ok" style="flex:1;padding:6px 10px;">使用当前饼干发送</button>' +
             '<button id="cookie-confirm-cancel" style="padding:6px 16px;flex-shrink:0;">取消</button>' +
           '</div>' +
@@ -22646,6 +22650,29 @@ function 注册自动保存编辑() {
       }
     }
     updateFocus(focusedIndex);
+    // 列表本身可滚动：把聚焦项滚到视区里，避免键盘首次可见性糟糕
+    requestAnimationFrame(() => {
+      const $all = $items();
+      const $focus = $all.eq(focusedIndex);
+      if ($focus.length) $focus[0].scrollIntoView({ block: 'center' });
+    });
+    // ── 测量最后一项真实高度，同步给底部 spacer ──
+    const syncTailSpacer = () => {
+      const $last = $list.children().last();
+      if ($last.length) {
+        $m.find('#cookie-confirm-tail-spacer').height($last[0].getBoundingClientRect().height);
+      }
+    };
+    // ── 视口变化 / 旋转时重新约束弹窗高度，让聚焦项可见 ──
+    const recomputeViewport = () => {
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      const target = Math.max(180, Math.min(vh - 32, Math.floor(vh * 0.8)));
+      $m.find('.cookie-confirm-dialog').css('max-height', target + 'px');
+      syncTailSpacer();
+    };
+    requestAnimationFrame(() => { recomputeViewport(); syncTailSpacer(); });
+    $(window).on('resize.xdexCookieConfirm orientationchange.xdexCookieConfirm', recomputeViewport);
+    $m.on('remove', () => $(window).off('.xdexCookieConfirm'));
     $m.on('keydown', (e) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
