@@ -15331,7 +15331,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                 // ✨ 精细搜索：从 high(≈0.95) 逐步提升到 1.0，寻找最接近限制的质量
                 if (localBest && localBest.size < targetLowerBytes) {
                   console.log(`[compressImage] 精细搜索：当前最佳 ${(localBest.size / 1024).toFixed(1)}KB < ${(STATIC_TARGET_LOWER_KB)}KB，尝试提高质量……`);
-                  for (let q = 0.96; q <= 0.998; q = Math.min(0.998, q + 0.005)) {
+                  const fineQualities = [0.96, 0.965, 0.97, 0.975, 0.98, 0.985, 0.99, 0.995, 0.998];
+                  for (const q of fineQualities) {
                   totalAttempts++;
                   const blob = await canvasToBlob(canvas, q);
                   const sizeKB = blob.size / 1024;
