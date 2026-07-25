@@ -151,6 +151,8 @@
     '98': 'DANGER/U/',
     '20': '欢乐恶搞',
     '121': '速报2',
+    // 测试版不在公开 getForumList，但 showf?id=122 可用；主串仅红名可见，发言历史需靠 showf 回查
+    '122': '测试',
     '17': '绘画(二创)',
     '110': '社畜(校园)',
     '19': '故事(小说)',
@@ -210,7 +212,8 @@
     '60': '三百人委员会'
   });
   const POST_HISTORY_FORUM_GROUP_MAP = Object.freeze({
-    '-1': '综合', '4': '综合', '98': '综合', '20': '综合', '121': '综合', '17': '综合', '110': '综合', '19': '综合', '81': '综合', '37': '综合', '30': '综合', '75': '综合', '118': '综合', '97': '综合', '106': '综合',
+
+    '-1': '综合', '4': '综合', '98': '综合', '20': '综合', '121': '综合', '122': '综合', '17': '综合', '110': '综合', '19': '综合', '81': '综合', '37': '综合', '30': '综合', '75': '综合', '118': '综合', '97': '综合', '106': '综合',
     '14': '亚文化', '12': '亚文化', '53': '亚文化', '31': '亚文化', '116': '亚文化', '45': '亚文化', '9': '亚文化', '102': '亚文化', '39': '亚文化', '94': '亚文化', '6': '亚文化', '90': '亚文化', '5': '亚文化', '93': '亚文化',
     '111': '创作', '57': '创作', '91': '创作', '11': '创作', '15': '创作', '103': '创作', '35': '创作', '27': '创作', '115': '创作', '112': '创作',
     '2': '游戏', '3': '游戏', '25': '游戏', '22': '游戏', '23': '游戏', '124': '游戏', '70': '游戏', '28': '游戏', '68': '游戏', '47': '游戏', '34': '游戏', '10': '游戏',
@@ -219,6 +222,7 @@
   });
   const POST_HISTORY_FORUM_SEARCH_META = Object.freeze({
     '98': { rawName: 'DANGER_U', showName: 'DANGER/U/', groupName: '综合' },
+    '122': { rawName: '测试', showName: '测试', groupName: '综合' },
     '17': { rawName: '绘画', showName: '绘画(二创)', groupName: '综合' },
     '110': { rawName: '社畜', showName: '社畜(校园)', groupName: '综合' },
     '19': { rawName: '故事', showName: '故事(小说)', groupName: '综合' },
@@ -1243,6 +1247,109 @@
       return false;
     }
   }
+  // showf 版面主串回退：新开串在 getLastPost 失败、且 thread fallback 不适用时，按 fid 扫 /showf
+  // 典型场景：/f/测试（fid=122）主串不进时间线、对普通浏览半隐身，但 showf?id=122 可回查刚发主串
+  const POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
+  function parsePostHistoryShowfResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      if (json && json.success === false) throw new Error(json.error || 'showf api error');
+      const posts = Array.isArray(json) ? json : (Array.isArray(json && json.data) ? json.data : []);
+      logPostHistory('showf fallback parse', Object.assign({}, context || {}, { posts: posts.length }));
+      return { posts, page: Math.max(1, Number(context && context.page) || 1) };
+    } catch (e) {
+      logPostHistory('showf fallback parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      throw e;
+    }
+  }
+  function fetchPostHistoryShowfPage(fid, page, context) {
+    const detail = Object.assign({}, context || {}, { fid, page });
+    return fetchPostHistoryShowfApiPage(fid, page, detail)
+      .catch(() => fetchPostHistorySameOriginShowfPage(fid, page, detail));
+  }
+  function fetchPostHistoryShowfApiPage(fid, page, context) {
+    const url = `${POST_HISTORY_SHOWF_API_BASE}/showf?id=${encodeURIComponent(fid)}&page=${encodeURIComponent(page)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { fid, page, api: true, authenticated: !!headers });
+    logPostHistory('showf api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('showf api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      return parsePostHistoryShowfResponse(resp, detail);
+    }).catch(e => {
+      logPostHistory('showf api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+  function fetchPostHistorySameOriginShowfPage(fid, page, context) {
+    const url = `${POST_HISTORY_API_BASE}/showf?id=${encodeURIComponent(fid)}&page=${encodeURIComponent(page)}`;
+    const detail = Object.assign({}, context || {}, { fid, page });
+    return fetchPostHistorySameOriginText(url, detail, 'showf same-origin fallback').then(resp => parsePostHistoryShowfResponse(resp, detail));
+  }
+  function buildPostHistoryShowfCandidate(post, page, snapshotFid) {
+    const fid = getPostHistoryPostFid(post) || normalizePostHistoryFid(snapshotFid);
+    // showf 列表项是主串；resto 缺省时按 0 处理，便于 postHistoryMatchesSnapshot 归类为 thread
+    return Object.assign({}, post || {}, {
+      fid,
+      resto: String(post && post.resto != null ? post.resto : '0'),
+      page: Math.max(1, Number(page) || 1)
+    });
+  }
+  function findPostHistoryShowfFallbackMatch(pageData, snapshot, usedIds) {
+    const posts = Array.isArray(pageData && pageData.posts) ? pageData.posts : [];
+    // 版面列表通常新串在前；从前往后扫即可，匹配逻辑仍靠内容/时间窗
+    for (let i = 0; i < posts.length; i++) {
+      const candidate = buildPostHistoryShowfCandidate(posts[i], pageData && pageData.page, snapshot && snapshot.fid);
+      if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
+    }
+    return null;
+  }
+  async function completePostHistoryFromShowfFallback(localId, snapshot, retryAttempt) {
+    if (!snapshot || snapshot.type !== 'thread') {
+      logPostHistory('showf fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    }
+    const fid = normalizePostHistoryFid(snapshot.fid) || getCurrentPostHistoryFid();
+    if (!fid) {
+      logPostHistory('showf fallback exhausted', { localId, reason: 'missing-fid', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    }
+    try {
+      // 只扫前两页：新开串通常在 page=1；page=2 覆盖并发/排序抖动
+      const pages = [1, 2];
+      const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
+      for (const page of pages) {
+        const pageData = await fetchPostHistoryShowfPage(fid, page, { localId, phase: 'scan', retryAttempt: retryAttempt || 0 });
+        const post = findPostHistoryShowfFallbackMatch(pageData, Object.assign({}, snapshot, { fid }), usedIds);
+        if (post) {
+          logPostHistory('showf fallback confirmed', { localId, fid, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
+          confirmPostHistorySnapshot(localId, post);
+          return true;
+        }
+      }
+      logPostHistory('showf fallback exhausted', { localId, fid, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    } catch (e) {
+      const attempt = retryAttempt || 0;
+      if (attempt < POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS.length) {
+        const delay = POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS[attempt];
+        logPostHistory('showf page verify retry scheduled', { localId, fid, attempt, nextAttempt: attempt + 1, delay, error: e && e.message ? e.message : String(e) });
+        setTimeout(() => {
+          completePostHistoryFromShowfFallback(localId, snapshot, attempt + 1);
+        }, delay);
+        return false;
+      }
+      logPostHistory('showf page verify error', { localId, fid, attempts: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
+      return false;
+    }
+  }
   function postHistoryMatchesSnapshot(post, snapshot, usedIds) {
     const reject = (reason, extra) => {
       logPostHistory('match rejected', Object.assign({
@@ -1352,14 +1459,26 @@
         resolver(null);
         postHistoryConfirmationMap.delete(localId);
       }
+      // reply → thread 尾页回退；thread（含测试版主串）→ showf 版面回退
       completePostHistoryFromThreadFallback(localId, snapshot).then(confirmed => {
+        if (confirmed) return true;
+        return completePostHistoryFromShowfFallback(localId, snapshot);
+      }).then(confirmed => {
         if (confirmed) return;
         logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
         updatePostHistoryRecord(localId, { status: 'unconfirmed' });
       }).catch(e => {
         logPostHistory('thread fallback error', { localId, error: e && e.message ? e.message : String(e) }, 'warn');
-        logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-        updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+        // thread 路径异常时仍尝试 showf（新开串场景）
+        completePostHistoryFromShowfFallback(localId, snapshot).then(confirmed => {
+          if (confirmed) return;
+          logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+          updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+        }).catch(showfErr => {
+          logPostHistory('showf fallback error', { localId, error: showfErr && showfErr.message ? showfErr.message : String(showfErr) }, 'warn');
+          logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+          updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+        });
       });
       return;
     }
@@ -19733,19 +19852,20 @@ function 注册自动保存编辑() {
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').text('连续');
       }
-    } else if (/^\/f\/值班室(?:\/|$)/.test(decodeURIComponent(location.pathname))) {
-      // 值班室版块强制发串模式，方便快速举报（不修改设置项，用户仍可手动切换回复模式）
+    } else if (/^\/f\/(?:值班室|测试)(?:\/|$)/.test(decodeURIComponent(location.pathname))) {
+      // 值班室/测试版块强制发串模式，方便快速举报/测试（不修改设置项，用户仍可手动切换回复模式)
+      const _boardName = (/^\/f\/(值班室|测试)(?:\/|$)/.exec(decodeURIComponent(location.pathname)) || [])[1] || '特殊';
       setMode('发串', {silent: true});
       try {
         const today = new Date().toLocaleDateString('sv-SE');
-        const toastKey = 'xdex_duty_room_post_mode_toast_date';
+        const toastKey = 'xdex_' + _boardName + '_post_mode_toast_date';
         const lastShown = typeof GM_getValue === 'function' ? GM_getValue(toastKey, '') : '';
         if (lastShown !== today) {
-          toast('值班室版块默认为“发串”模式，请注意');
+          toast(_boardName + '版块默认为"发串"模式，请注意');
           if (typeof GM_setValue === 'function') GM_setValue(toastKey, today);
         }
       } catch (e) {
-        toast('值班室版块默认为“发串”模式，请注意');
+        toast(_boardName + '版块默认为"发串"模式，请注意');
       }
       if (SettingPanel.state.replyExtraDefault === '连续') {
         window.replyModeState.extra = '连续';

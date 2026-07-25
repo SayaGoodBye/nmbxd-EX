@@ -501,9 +501,12 @@ function testPostHistoryForumNameContract() {
   assert(mapping.timelines && mapping.timelines['7'] && mapping.timelines['7'].displayName === '生活线', 'timeline mapping file must include live timeline ids');
 
   assert(upstream.includes('const POST_HISTORY_FORUM_FID_MAP = Object.freeze({'), 'userscript must embed a fid-to-forum-name mapping for post history');
-  assert(upstream.includes("'98': 'DANGER/U/'") && upstream.includes("'25': '任天堂NS'") && upstream.includes("'60': '三百人委员会'"), 'userscript fid mapping must include known board display names');
-  assert(upstream.includes('const POST_HISTORY_TIMELINE_ID_MAP = Object.freeze({') && upstream.includes("'7': '生活线'"), 'userscript must embed timeline names for future post-history use');
-  assert(upstream.includes('function normalizePostHistoryFid(fid)') && upstream.includes('function getPostHistoryForumNameByFid(fid)'), 'userscript must centralize post-history fid normalization and display lookup');
+  assert(upstream.includes("'98': 'DANGER/U/'") && upstream.includes("'25': '任天堂NS'") && upstream.includes("'60': '三百人委员会'"), 'userscript fid mapping must include known board display names');
+  // TDD: hidden test board /f/测试 is not in public getForumList, but showf?id=122 is the official board API
+  assert(upstream.includes("'122': '测试'"), 'userscript fid mapping must include hidden test board 122/测试 for post-history showf fallback');
+  assert(upstream.includes("'122': '综合'") || upstream.includes("'122': { rawName: '测试'"), 'userscript must keep a searchable group/meta entry for hidden test board 122');
+  assert(upstream.includes('const POST_HISTORY_TIMELINE_ID_MAP = Object.freeze({') && upstream.includes("'7': '生活线'"), 'userscript must embed timeline names for future post-history use');
+  assert(upstream.includes('function normalizePostHistoryFid(fid)') && upstream.includes('function getPostHistoryForumNameByFid(fid)'), 'userscript must centralize post-history fid normalization and display lookup');
   assert(upstream.includes('function getCurrentPostHistoryFid()'), 'userscript may derive a weak fid fallback from the current page when no API fid is available');
 
   const snapshotStart = upstream.indexOf('function snapshotSubmittedPostHistory(fd, options)');
