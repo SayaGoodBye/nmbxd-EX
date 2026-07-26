@@ -15241,6 +15241,25 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     }
   }
 
+      // ---- WebP 格式转换：静态 WebP → PNG，动态 WebP → APNG ----
+      async function convertWebpToAcceptedFormat(file, isAnimated) {
+        if (!isAnimated) {
+          // 静态 WebP → PNG：直接用 canvas 重绘
+          const bitmap = await createImageBitmap(file);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const pngBlob = await new Promise((resolve, reject) => {
+            canvas.toBlob((b) => b ? resolve(b) : reject(new Error('WebP→PNG toBlob 失败')), 'image/png');
+          });
+          return new File([pngBlob], file.name.replace(/\.webp$/i, '.png'), { type: 'image/png', lastModified: Date.now() });
+        }
+        // 动态 WebP → APNG：用 ImageDecoder API 逐帧解码，保留动画
+        return convertAnimatedWebpToApng(file);
+      }
       const STATIC_MAX_SIZE_KB = 2048;
       const STATIC_TARGET_LOWER_KB = 1900;
       const STATIC_ACCEPTABLE_LOWER_KB = 1850;
@@ -15260,8 +15279,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           img.onload = async () => {
             URL.revokeObjectURL(url);
             // 优先使用外部传入的真实格式（magic bytes 检测），避免 file.type 被后缀名误导
+            // WebP 和 animated-webp 统一输出为 PNG（服务器不接受 WebP）
             const originalType = detectedFormat
-              ? (detectedFormat === 'png' ? 'image/png' : detectedFormat === 'jpeg' ? 'image/jpeg' : detectedFormat === 'webp' ? 'image/webp' : file.type || 'image/jpeg')
+              ? (detectedFormat === 'png' ? 'image/png' : detectedFormat === 'jpeg' ? 'image/jpeg' : (detectedFormat === 'webp' || detectedFormat === 'animated-webp') ? 'image/png' : file.type || 'image/jpeg')
               : (file.type || 'image/jpeg');
             const outputType = getStaticImageOutputType(originalType);
             const drawToCanvas = (scale) => {
@@ -15827,6 +15847,306 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           throw error;
         }
       }
+      // ---- APNG 组装工具（供 compressApngToSize 和 convertAnimatedWebpToApng 共用）----
+      const _apngCrcTable = (() => {
+        const table = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) {
+            c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          }
+          table[n] = c;
+        }
+        return table;
+      })();
+      const _apngCrc32 = (data) => {
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < data.length; i++) {
+          crc = _apngCrcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+        }
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+      };
+      const _apngReadPngChunks = (u8) => {
+        const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+        let pos = 8; // 跳过 PNG signature
+        const chunks = [];
+        while (pos + 8 <= u8.length) {
+          const len = dv.getUint32(pos); pos += 4;
+          const type = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2], u8[pos+3]); pos += 4;
+          if (pos + len + 4 > u8.length) break;
+          chunks.push({ type, data: u8.slice(pos, pos + len) });
+          pos += len + 4; // data + crc
+        }
+        return chunks;
+      };
+      const _apngBuild = (ihdrData, frameChunks, delays, numPlays) => {
+        let totalSize = 8 + (12 + 13) + (12 + 8); // sig + IHDR + acTL
+        for (let i = 0; i < frameChunks.length; i++) {
+          totalSize += 12 + 26; // fcTL
+          for (const idat of frameChunks[i]) {
+            totalSize += (i === 0 ? 12 : 12 + 4) + idat.length; // IDAT vs fdAT
+          }
+        }
+        totalSize += 12; // IEND
+        const buf = new ArrayBuffer(totalSize);
+        const u8 = new Uint8Array(buf);
+        const dv = new DataView(buf);
+        let o = 0;
+        // PNG signature
+        u8.set([137, 80, 78, 71, 13, 10, 26, 10], 0); o = 8;
+        // IHDR
+        dv.setUint32(o, 13); o += 4;
+        u8.set([73, 72, 68, 82], o); o += 4;
+        u8.set(ihdrData, o); o += 13;
+        dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 13, o))); o += 4;
+        // acTL
+        dv.setUint32(o, 8); o += 4;
+        u8.set([97, 99, 84, 76], o); o += 4;
+        dv.setUint32(o, frameChunks.length); o += 4;
+        dv.setUint32(o, numPlays); o += 4;
+        dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 8, o))); o += 4;
+        // Frames
+        let seqNum = 0;
+        for (let i = 0; i < frameChunks.length; i++) {
+          const w = dv.getUint32(16);
+          const h = dv.getUint32(20);
+          const delay = delays[i] || 100;
+          dv.setUint32(o, 26); o += 4;
+          u8.set([102, 99, 84, 76], o); o += 4;
+          dv.setUint32(o, seqNum++); o += 4;
+          dv.setUint32(o, w); o += 4;
+          dv.setUint32(o, h); o += 4;
+          dv.setUint32(o, 0); o += 4;
+          dv.setUint32(o, 0); o += 4;
+          dv.setUint16(o, delay); o += 2;
+          dv.setUint16(o, 1000); o += 2;
+          // 全画布预合成帧：每帧都是完整 RGBA，必须 SOURCE 替换，不能 OVER 叠透明
+          u8[o++] = 0; // dispose_op: NONE
+          u8[o++] = 0; // blend_op: SOURCE（0=替换，保留本帧透明区）
+          dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 26, o))); o += 4;
+          if (i === 0) {
+            for (const idatData of frameChunks[i]) {
+              dv.setUint32(o, idatData.length); o += 4;
+              u8.set([73, 68, 65, 84], o); o += 4;
+              u8.set(idatData, o); o += idatData.length;
+              dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - idatData.length, o))); o += 4;
+            }
+          } else {
+            for (const idatData of frameChunks[i]) {
+              const fdatPayloadLen = 4 + idatData.length;
+              dv.setUint32(o, fdatPayloadLen); o += 4;
+              u8.set([102, 100, 65, 84], o); o += 4;
+              dv.setUint32(o, seqNum++); o += 4;
+              u8.set(idatData, o); o += idatData.length;
+              dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - idatData.length - 4, o))); o += 4;
+            }
+          }
+        }
+        // IEND
+        dv.setUint32(o, 0); o += 4;
+        u8.set([73, 69, 78, 68], o); o += 4;
+        dv.setUint32(o, _apngCrc32(u8.slice(o - 4, o))); o += 4;
+        return buf;
+      };
+      // ---- WebP ANMF bitstream → 单帧 WebP 容器包装 ----
+      // ANMF 子 bitstream 已包含完整 chunk headers（ALPH+VP8 / VP8L / VP8），
+      // 只需外包 RIFF/WEBP/VP8X。frameW/frameH 必须是真实像素尺寸（不是 Minus One）。
+      //
+      // 关键：RIFF size 字段 = 文件总长 - 8。之前写成 new Uint8Array(12 + size)
+      // 会多出 4 字节尾零，Blob 长度 > RIFF 声明长度，浏览器解码器直接拒文件。
+      function _wrapBitstreamAsWebp(bitstream, frameW, frameH) {
+        const hasAlpha = (String.fromCharCode(bitstream[0], bitstream[1], bitstream[2], bitstream[3]) === 'ALPH')
+                      || (bitstream[0] === 0x2F); // VP8L 自带 alpha
+        const vp8x = new Uint8Array(10);
+        if (hasAlpha) vp8x[0] = 0x10; // bit4 = has_alpha
+        const w1 = Math.max(0, frameW - 1);
+        const h1 = Math.max(0, frameH - 1);
+        vp8x[4] = w1 & 0xFF; vp8x[5] = (w1 >> 8) & 0xFF; vp8x[6] = (w1 >> 16) & 0xFF;
+        vp8x[7] = h1 & 0xFF; vp8x[8] = (h1 >> 8) & 0xFF; vp8x[9] = (h1 >> 16) & 0xFF;
+        // layout: RIFF(4) + size(4) + WEBP(4) + VP8X_chunk(8+10=18) + bitstream(+pad)
+        const pad = bitstream.length & 1; // RIFF 偶数对齐
+        const payloadAfterRiffHeader = 4 + 18 + bitstream.length + pad; // = size 字段值
+        const fileSize = 8 + payloadAfterRiffHeader; // 真实文件长度，必须精确
+        const result = new Uint8Array(fileSize);
+        const dv = new DataView(result.buffer, result.byteOffset, result.byteLength);
+        result.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+        dv.setUint32(4, payloadAfterRiffHeader, true);
+        result.set([0x57, 0x45, 0x42, 0x50], 8); // WEBP
+        result.set([0x56, 0x50, 0x38, 0x58], 12); // VP8X
+        dv.setUint32(16, 10, true);
+        result.set(vp8x, 20);
+        result.set(bitstream, 30);
+        // pad 字节已由 new Uint8Array 填 0，无需再写
+        return result;
+      }
+      // 解码单帧 WebP：createImageBitmap 优先，Image 兜底（比 ImageDecoder 对单帧更稳）
+      async function _decodeSingleFrameWebp(frameBytes) {
+        const blob = new Blob([frameBytes], { type: 'image/webp' });
+        if (typeof createImageBitmap === 'function') {
+          try {
+            return await createImageBitmap(blob);
+          } catch (e) {
+            console.warn('[convertAnimatedWebpToApng] createImageBitmap 失败，尝试 Image:', e && e.message);
+          }
+        }
+        return await new Promise((resolve, reject) => {
+          const img = new Image();
+          const url = URL.createObjectURL(blob);
+          img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(img);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Image 加载单帧 WebP 失败'));
+          };
+          img.src = url;
+        });
+      }
+      // ---- 动态 WebP → APNG（保留动画：手动解析 ANMF + 逐帧解码合成）----
+      async function convertAnimatedWebpToApng(file) {
+        const buffer = await file.arrayBuffer();
+        const src = new Uint8Array(buffer);
+        const dv = new DataView(buffer);
+        // 验证 RIFF/WEBP
+        if (String.fromCharCode(src[0], src[1], src[2], src[3]) !== 'RIFF' ||
+            String.fromCharCode(src[8], src[9], src[10], src[11]) !== 'WEBP') {
+          throw new Error('不是有效的 WebP 文件');
+        }
+        // 解析 RIFF chunks：VP8X(画布尺寸)、ANIM(背景色/循环)、ANMF(帧数据)
+        // WebP 规范：
+        //   - VP8X / ANMF 的 width/height 存的是 Minus One（实际 = 值 + 1）
+        //   - ANMF 的 x/y 存的是像素偏移 / 2（实际 = 值 * 2）
+        let pos = 12;
+        let canvasW = 0, canvasH = 0;
+        let animBgColor = 0xFFFFFFFF; // WebP 默认白色不透明
+        const anmfFrames = [];
+        while (pos + 8 <= src.length) {
+          const chunkId = String.fromCharCode(src[pos], src[pos+1], src[pos+2], src[pos+3]);
+          const chunkLen = dv.getUint32(pos + 4, true); // little-endian
+          const dataStart = pos + 8;
+          if (chunkId === 'VP8X') {
+            canvasW = (src[dataStart+4] | (src[dataStart+5] << 8) | (src[dataStart+6] << 16)) + 1;
+            canvasH = (src[dataStart+7] | (src[dataStart+8] << 8) | (src[dataStart+9] << 16)) + 1;
+          } else if (chunkId === 'ANIM') {
+            // BGRA little-endian
+            animBgColor = dv.getUint32(dataStart, true);
+          } else if (chunkId === 'ANMF') {
+            const xRaw = (src[dataStart]   | (src[dataStart+1] << 8) | (src[dataStart+2] << 16));
+            const yRaw = (src[dataStart+3] | (src[dataStart+4] << 8) | (src[dataStart+5] << 16));
+            const wRaw = (src[dataStart+6] | (src[dataStart+7] << 8) | (src[dataStart+8] << 16));
+            const hRaw = (src[dataStart+9] | (src[dataStart+10] << 8) | (src[dataStart+11] << 16));
+            const duration = (src[dataStart+12] | (src[dataStart+13] << 8) | (src[dataStart+14] << 16));
+            const flags = src[dataStart+15];
+            const disposal = (flags >> 1) & 1; // bit1: 0=none, 1=restore to bg
+            const blending = flags & 1;        // bit0: 0=alpha blend, 1=no blend
+            const bitstream = src.slice(dataStart + 16, dataStart + chunkLen);
+            anmfFrames.push({
+              x: xRaw * 2,
+              y: yRaw * 2,
+              w: wRaw + 1,
+              h: hRaw + 1,
+              duration: Math.max(duration || 100, 20),
+              disposal,
+              blending,
+              bitstream
+            });
+          }
+          pos = dataStart + chunkLen + (chunkLen & 1); // RIFF 2-byte aligned
+        }
+        if (anmfFrames.length === 0) {
+          throw new Error('WebP 中未找到动画帧（ANMF）');
+        }
+        if (canvasW === 0 || canvasH === 0) {
+          canvasW = anmfFrames[0].w;
+          canvasH = anmfFrames[0].h;
+        }
+        console.log(`[convertAnimatedWebpToApng] 画布: ${canvasW}x${canvasH}, ${anmfFrames.length}帧, 首帧 ${anmfFrames[0].w}x${anmfFrames[0].h}`);
+        // 逐帧解码 + 合成
+        // 透明底处理：很多动画 WebP（尤其贴纸）ANIM 背景色写成不透明白 0xFFFFFFFF，
+        // 但实际展示依赖帧 alpha。若按规范 dispose 到该背景色，透明底会被整块铺白。
+        // 这里统一以透明画布合成，保留帧 alpha。
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: true });
+        const bgB = animBgColor & 0xFF;
+        const bgG = (animBgColor >> 8) & 0xFF;
+        const bgR = (animBgColor >> 16) & 0xFF;
+        const bgA = (animBgColor >> 24) & 0xFF;
+        // 仅当背景色本身带透明（A < 255）时才铺底；不透明白/黑一律当透明画布
+        const useOpaqueBg = bgA > 0 && bgA < 255;
+        if (bgA === 255) {
+          console.log(`[convertAnimatedWebpToApng] ANIM 背景色 rgba(${bgR},${bgG},${bgB},${bgA}) 为不透明，改用透明画布以保留透明底`);
+        }
+        ctx.clearRect(0, 0, canvasW, canvasH);
+        if (useOpaqueBg) {
+          ctx.fillStyle = `rgba(${bgR},${bgG},${bgB},${bgA / 255})`;
+          ctx.fillRect(0, 0, canvasW, canvasH);
+        }
+        const frames = [];
+        let firstError = null;
+        for (let fi = 0; fi < anmfFrames.length; fi++) {
+          const frame = anmfFrames[fi];
+          const frameWebpBytes = _wrapBitstreamAsWebp(frame.bitstream, frame.w, frame.h);
+          let bitmap;
+          try {
+            bitmap = await _decodeSingleFrameWebp(frameWebpBytes);
+          } catch (e) {
+            if (!firstError) firstError = e;
+            console.warn(`[convertAnimatedWebpToApng] 帧${fi}解码失败: ${frame.w}x${frame.h} @(${frame.x},${frame.y})`, e && e.message);
+            continue;
+          }
+          // blending: 0 = alpha blend (OVER), 1 = no blend (SOURCE/replace)
+          if (frame.blending === 1) {
+            ctx.clearRect(frame.x, frame.y, frame.w, frame.h);
+          }
+          ctx.drawImage(bitmap, frame.x, frame.y);
+          if (typeof bitmap.close === 'function') bitmap.close();
+          // 捕获全画布 RGBA（含 alpha）
+          const imgData = ctx.getImageData(0, 0, canvasW, canvasH);
+          frames.push({ rgba: new Uint8Array(imgData.data), delay: frame.duration });
+          // disposal: 1 = restore to background → 透明画布场景下恢复为透明
+          if (frame.disposal === 1) {
+            ctx.clearRect(frame.x, frame.y, frame.w, frame.h);
+            if (useOpaqueBg) {
+              ctx.fillStyle = `rgba(${bgR},${bgG},${bgB},${bgA / 255})`;
+              ctx.fillRect(frame.x, frame.y, frame.w, frame.h);
+            }
+          }
+        }
+        if (frames.length === 0) {
+          throw new Error('所有动画帧解码失败' + (firstError && firstError.message ? `（${firstError.message}）` : ''));
+        }
+        console.log(`[convertAnimatedWebpToApng] 解码完成: ${frames.length}/${anmfFrames.length}帧`);
+        // 逐帧渲染为 PNG 字节
+        const framePngs = [];
+        for (const f of frames) {
+          const tmpCanvas = document.createElement('canvas');
+          tmpCanvas.width = canvasW;
+          tmpCanvas.height = canvasH;
+          const tmpCtx = tmpCanvas.getContext('2d');
+          tmpCtx.putImageData(new ImageData(new Uint8ClampedArray(f.rgba), canvasW, canvasH), 0, 0);
+          tmpCtx.fillStyle = 'rgba(0,0,0,0.004)';
+          tmpCtx.fillRect(canvasW - 1, canvasH - 1, 1, 1);
+          const pngBlob = await new Promise((resolve, reject) => {
+            tmpCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('帧 PNG 编码失败')), 'image/png');
+          });
+          framePngs.push(new Uint8Array(await pngBlob.arrayBuffer()));
+        }
+        // 提取 IHDR 和 IDAT，组装 APNG
+        const firstChunks = _apngReadPngChunks(framePngs[0]);
+        const ihdrChunk = firstChunks.find(c => c.type === 'IHDR');
+        if (!ihdrChunk) throw new Error('第一帧 PNG 缺少 IHDR');
+        const allFrameIdats = framePngs.map(png => {
+          const chunks = _apngReadPngChunks(png);
+          return chunks.filter(c => c.type === 'IDAT').map(c => c.data);
+        });
+        const delays = frames.map(f => f.delay);
+        const apngBuf = _apngBuild(ihdrChunk.data, allFrameIdats, delays, 0);
+        console.log(`[convertAnimatedWebpToApng] APNG 组装完成: ${(apngBuf.byteLength / 1024).toFixed(1)}KB, ${frames.length}帧`);
+        return new File([apngBuf], file.name.replace(/\.webp$/i, '.apng.png'), { type: 'image/png', lastModified: Date.now() });
+      }
       // ✅ APNG 压缩（apng-js Player 合成 + UPNG 重编码）
       // 支持增量帧（blend/dispose），不再降级为静态压缩
       async function compressApngToSize(file, maxSizeKB = 2048, options = {}) {
@@ -15975,8 +16295,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             dv.setUint32(o, 0); o += 4; // y_offset
             dv.setUint16(o, delay); o += 2; // delay_num
             dv.setUint16(o, 1000); o += 2; // delay_den (毫秒)
+            // 全画布预合成帧：每帧都是完整 RGBA，必须 SOURCE 替换，不能 OVER 叠透明
             u8[o++] = 0; // dispose_op: NONE
-            u8[o++] = i === 0 ? 0 : 1; // blend_op: SOURCE for first, OVER for rest
+            u8[o++] = 0; // blend_op: SOURCE（0=替换，保留本帧透明区）
             dv.setUint32(o, crc32(u8.slice(o - 4 - 26, o))); o += 4;
             if (i === 0) {
               // 第 1 帧：IDAT（标准 PNG 图像数据块，无额外 seqNum）
@@ -16373,6 +16694,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       }
       function classifySubmitError(msg) {
         if (isImageSizeError(msg)) return 'image-size';
+        if (/格式不正确/.test(msg)) return 'image-format';
         if (/非法图像/.test(msg)) return 'illegal-image';
         if (/含有非法词语/.test(msg)) return 'illegal-word';
         return 'other';
@@ -16502,10 +16824,26 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           return compressedFile;
         }
         if (actualFormat === 'animated-webp') {
-          toast('检测到动画 WebP，将按静态图片压缩，动图可能丢失', 2000);
-          const compressedFile = await compressImageToSize(file, 2048, 0.6, actualFormat);
-          console.log(`[interceptReplyForm] 动画WebP压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
-          return compressedFile;
+          toast('检测到动画 WebP，正在转换为 APNG 保留动画……', 2000);
+          // 先转 APNG（保留动画），再按需压缩
+          let convertedFile = await convertWebpToAcceptedFormat(file, true);
+          console.log(`[interceptReplyForm] 动画WebP→APNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
+          if (convertedFile.size > 2048 * 1024) {
+            console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，用 APNG 压缩`);
+            toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 3000);
+            const compressResult = await compressApngToSize(convertedFile, 2048, {
+              onProgress: (progress) => {
+                if (progress.error) {
+                  toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
+                  return;
+                }
+                toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
+              }
+            });
+            convertedFile = compressResult.file || compressResult;
+            console.log(`[interceptReplyForm] APNG压缩完成: ${(convertedFile.size / 1024).toFixed(1)}KB`);
+          }
+          return convertedFile;
         }
         const compressedFile = await compressImageToSize(file, 2048, 0.6, actualFormat);
         console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
@@ -16575,6 +16913,45 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             const msg = errorMsg.textContent.trim() || '提交失败';
             const errorKind = classifySubmitError(msg);
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+            // 图片格式不被服务器接受（如 WebP）：转换为 PNG 后重新提交
+            if (errorKind === 'image-format' && !isRetry) {
+              const fileInput = form.querySelector('input[type="file"][name="image"]');
+              const file = fileInput && fileInput.files && fileInput.files[0];
+              if (file) {
+                const actualFormat = await detectImageFormat(file);
+                console.log(`[interceptReplyForm] 格式不正确，检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
+                if (actualFormat === 'webp' || actualFormat === 'animated-webp') {
+                  beginSubmitImageProcessing(form);
+                  try {
+                    toast('服务器不接受 WebP，正在将Webp转换为PNG格式……', 3000);
+                    let convertedFile = await convertWebpToAcceptedFormat(file, actualFormat === 'animated-webp');
+                    console.log(`[interceptReplyForm] WebP→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
+                    // 转换后如果大小超限，接入压缩流程
+                    if (convertedFile.size > 2048 * 1024) {
+                      console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，接入压缩流程`);
+                      toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩……`, 3000);
+                      convertedFile = await compressImageForRetry(convertedFile, 'png');
+                      console.log(`[interceptReplyForm] 压缩完成: ${(convertedFile.size / 1024).toFixed(1)}KB`);
+                    }
+                    resetIllegalRetryState({ clearOriginalContent: false });
+                    const newFD = cloneFormDataWithImage(fd, convertedFile);
+                    toast(`格式已转换为 PNG，大小 ${(convertedFile.size / 1024).toFixed(1)}KB，正在重新提交……`, 2000);
+                    await doSubmit(newFD, true);
+                    return;
+                  } catch (convertErr) {
+                    console.error('[interceptReplyForm] WebP 格式转换失败:', convertErr);
+                    toast(convertErr && convertErr.message ? convertErr.message : 'WebP 格式转换失败，请手动转换后再试', 3000);
+                    return;
+                  } finally {
+                    finishSubmitImageProcessing(form);
+                  }
+                } else {
+                  // 非 WebP 格式被服务器拒绝，无法自动转换
+                  toast('服务器拒绝此图片格式，请手动转换为 JPG/PNG 后重试', 4000);
+                  return;
+                }
+              }
+            }
             // 检查是否是图片大小错误
             if (errorKind === 'image-size') {
               if (!cfg.interceptReplyFormAutoCompress) {
