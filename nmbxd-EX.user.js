@@ -22935,7 +22935,13 @@ function 注册自动保存编辑() {
 
         $item.find('[data-cookie-id]').css({ background: 'rgba(0,184,148,.12)', borderColor: '#00b894' });
         selectedId = id;
-        focusedIndex = $list.find('[data-cookie-id]').toArray().findIndex(el => el === $item[0]);
+        // 双重校验：DOM 引用 + data-cookie-id 属性，任一命中即可（防 eq(-1) 选到最后一个）
+        const $allClick = $list.find('[data-cookie-id]');
+        const innerEl = $item.find('[data-cookie-id]')[0];
+        focusedIndex = $allClick.toArray().findIndex(el => el === innerEl);
+        if (focusedIndex < 0) {
+          focusedIndex = $allClick.toArray().findIndex(el => $(el).attr('data-cookie-id') === String(id));
+        }
         updateOkButton();
       });
       // switch 点击设为默认饼干（不发送、不关闭弹窗）
