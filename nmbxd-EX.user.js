@@ -15090,7 +15090,22 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     if (ext === 'webp') return 'webp';
     if (ext === 'png') return 'png';
     if (ext === 'jpg' || ext === 'jpeg') return 'jpeg';
+    if (ext === 'heic' || ext === 'heif' || ext === 'hif') return 'heic';
     return 'unknown';
+  }
+  function isHeifBrand(brand) {
+    return /^(heic|heix|hevc|hevx|heim|heis|hevm|hevs|mif1|msf1|miaf)$/i.test(brand || '');
+  }
+  function detectHeifFromHeader(bytes) {
+    if (!bytes || bytes.length < 12) return null;
+    const type = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]);
+    if (type !== 'ftyp') return null;
+    const brands = [];
+    brands.push(String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]));
+    for (let i = 16; i + 4 <= Math.min(bytes.length, 64); i += 4) {
+      brands.push(String.fromCharCode(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]));
+    }
+    return brands.some(isHeifBrand) ? 'heic' : null;
   }
   function getStaticImageOutputType(originalType) {
     if (originalType === 'image/webp') return 'image/webp';
@@ -15143,11 +15158,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     const ext = getImageExtension(file.name);
     let headerBuffer;
     try {
-      headerBuffer = await readBlobAsArrayBuffer(file.slice(0, 8));
+      // HEIF/ISOBMFF 需要读到 ftyp 兼容品牌区（至少 32~64 字节）
+      headerBuffer = await readBlobAsArrayBuffer(file.slice(0, 64));
     } catch (_) {
       return normalizeDetectedImageFormat('', ext);
     }
     const arr = new Uint8Array(headerBuffer);
+    const heifFormat = detectHeifFromHeader(arr);
+    if (heifFormat) return heifFormat;
     const hex4 = Array.from(arr.subarray(0, 4), b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
     const detectedFormat = normalizeDetectedImageFormat(hex4, ext);
     // PNG / APNG: 89 50 4e 47
@@ -15241,1230 +15259,1399 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     }
   }
 
-      // ---- WebP 格式转换：静态 WebP → PNG，动态 WebP → APNG ----
-      async function convertWebpToAcceptedFormat(file, isAnimated) {
-        if (!isAnimated) {
-          // 静态 WebP → PNG：直接用 canvas 重绘
-          const bitmap = await createImageBitmap(file);
-          const canvas = document.createElement('canvas');
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(bitmap, 0, 0);
-          bitmap.close();
-          const pngBlob = await new Promise((resolve, reject) => {
-            canvas.toBlob((b) => b ? resolve(b) : reject(new Error('WebP→PNG toBlob 失败')), 'image/png');
-          });
-          return new File([pngBlob], file.name.replace(/\.webp$/i, '.png'), { type: 'image/png', lastModified: Date.now() });
-        }
-        // 动态 WebP → APNG：用 ImageDecoder API 逐帧解码，保留动画
-        return convertAnimatedWebpToApng(file);
+  // ---- HEIC/HEIF → PNG（浏览器原生通常不支持，走 heic2any）----
+  // 加载策略：
+  //   1. Extension 环境：从 chrome-extension vendor 本地 <script> 注入（CSP 允许）
+  //      脚本在 MAIN world 执行，heic2any 挂在 MAIN world 的 window 上，
+  //      内容脚本（ISOLATED world）通过 unsafeWindow 访问。
+  //   2. Userscript 环境：GM_xmlhttpRequest 拉脚本文本，Blob URL 注入 <script>
+  //      （CSP 可能拦截 blob:，此时不可用）
+  let heic2anyApiPromise = null;
+  function _getHeic2Any() {
+    // <script> 注入后 heic2any 挂在 MAIN world 的 window 上
+    // 内容脚本在 ISOLATED world，需要跨 world 访问
+    // 优先级：document.defaultView（标准 MAIN world window）> unsafeWindow > window
+    const mainWin = typeof document !== 'undefined' && document.defaultView;
+    if (mainWin && typeof mainWin.heic2any === 'function') return mainWin.heic2any;
+    if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.heic2any === 'function') return unsafeWindow.heic2any;
+    if (typeof window.heic2any === 'function') return window.heic2any;
+    // 调试：看看 heic2any 到底挂在哪
+    if (mainWin) console.log('[heic2any] mainWin.heic2any:', typeof mainWin.heic2any, 'keys:', mainWin.heic2any ? Object.keys(mainWin.heic2any).slice(0,5) : 'N/A');
+    console.log('[heic2any] unsafeWindow.heic2any:', typeof unsafeWindow !== 'undefined' ? typeof unsafeWindow.heic2any : 'N/A', 'window.heic2any:', typeof window.heic2any);
+    return null;
+  }
+  async function ensureHeic2AnyLoaded() {
+    const existing = _getHeic2Any();
+    if (existing) return existing;
+    if (heic2anyApiPromise) return heic2anyApiPromise;
+    const runtime = getXDexRuntimeInfo();
+    const isExtension = runtime && runtime.kind === 'extension';
+    heic2anyApiPromise = (async () => {
+      // Extension：通过 loader 桥接加载（解决 MAIN world ↔ ISOLATED world 隔离问题）
+      // heic2any-loader.js 在 MAIN world 加载 heic2any 并通过 postMessage 提供转换服务
+      if (isExtension) {
+        const loaderUrl = chrome.runtime.getURL('vendor/heic2any/heic2any-loader.js');
+        await new Promise((resolve, reject) => {
+          const existing = document.querySelector(`script[data-xdex-heic2any-loader="1"]`);
+          if (existing) {
+            // 已注入，检查是否就绪
+            const ready = document.documentElement.getAttribute('data-xdex-heic2any-ready');
+            if (ready === 'ready') { resolve(); return; }
+            if (ready === 'error') { reject(new Error('heic2any 桥接加载失败')); return; }
+          }
+          const s = document.createElement('script');
+          s.src = loaderUrl;
+          s.dataset.xdexHeic2anyLoader = '1';
+          s.onload = () => {
+            // loader 异步加载 heic2any.min.js，通过 DOM 属性信号就绪
+            let waited = 0;
+            const poll = () => {
+              const attr = document.documentElement.getAttribute('data-xdex-heic2any-ready');
+              if (attr === 'ready') { resolve(); return; }
+              if (attr === 'error') { reject(new Error('heic2any 桥接加载失败')); return; }
+              if (++waited > 50) { reject(new Error('heic2any 桥接加载超时（5s）')); return; }
+              setTimeout(poll, 100);
+            };
+            poll();
+          };
+          s.onerror = () => reject(new Error('heic2any-loader.js 加载失败'));
+          document.documentElement.appendChild(s);
+        });
+        // Extension 走 postMessage 桥接，不直接返回函数
+        return '__xdex_bridge__';
       }
-      const STATIC_MAX_SIZE_KB = 2048;
-      const STATIC_TARGET_LOWER_KB = 1900;
-      const STATIC_ACCEPTABLE_LOWER_KB = 1850;
-      const STATIC_MAX_ATTEMPTS = 5;
-      async function compressImageToSize(file, maxSizeKB = STATIC_MAX_SIZE_KB, minQuality = 0.6, detectedFormat) {
-        const maxSizeBytes = STATIC_MAX_SIZE_KB * 1024;
-        const targetUpperBytes = maxSizeBytes;
-        const targetLowerBytes = STATIC_TARGET_LOWER_KB * 1024;
-        if (file.size <= maxSizeBytes) {
-          return file;
+      // Userscript：用 GM_xmlhttpRequest 拉脚本文本，Blob URL 注入
+      if (typeof GM_xmlhttpRequest === 'function') {
+        const scriptUrl = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+        const scriptText = await new Promise((resolve, reject) => {
+          GM_xmlhttpRequest({
+            method: 'GET',
+            url: scriptUrl,
+            onload: (resp) => {
+              if (resp.status >= 200 && resp.status < 300 && resp.responseText) resolve(resp.responseText);
+              else reject(new Error(`heic2any 下载失败: HTTP ${resp.status}`));
+            },
+            onerror: () => reject(new Error('heic2any 下载失败，请检查网络'))
+          });
+        });
+        // 临时屏蔽 define，强制 heic2any UMD 走 self.heic2any 路径（同 Extension 逻辑）
+        const wrappedText = 'var __xdexSavedDefine=window.define;if(typeof __xdexSavedDefine!=="undefined")window.define=void 0;\n'
+          + scriptText
+          + '\nif(typeof __xdexSavedDefine!=="undefined")window.define=__xdexSavedDefine;';
+        const blob = new Blob([wrappedText], { type: 'application/javascript' });
+        const blobUrl = URL.createObjectURL(blob);
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = blobUrl;
+          s.dataset.xdexHeic2any = '1';
+          s.onload = () => { URL.revokeObjectURL(blobUrl); resolve(); };
+          s.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('heic2any Blob 加载失败')); };
+          document.documentElement.appendChild(s);
+        });
+        const fn = _getHeic2Any();
+        if (fn) return fn;
+        throw new Error('heic2any 已加载但未导出可用函数');
+      }
+      throw new Error('无法加载 heic2any：无可用加载方式');
+    })().catch((err) => {
+      heic2anyApiPromise = null;
+      throw err;
+    });
+    return heic2anyApiPromise;
+  }
+  async function convertHeicToPng(file) {
+    // 优先尝试原生解码（少数浏览器/系统可能支持）
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const bitmap = await createImageBitmap(file);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0);
+        if (typeof bitmap.close === 'function') bitmap.close();
+        const pngBlob = await new Promise((resolve, reject) => {
+          canvas.toBlob((b) => b ? resolve(b) : reject(new Error('HEIC→PNG toBlob 失败')), 'image/png');
+        });
+        return new File([pngBlob], file.name.replace(/\.(heic|heif|hif)$/i, '.png'), {
+          type: 'image/png',
+          lastModified: Date.now()
+        });
+      }
+    } catch (nativeErr) {
+      console.warn('[convertHeicToPng] 原生解码失败，改用 heic2any:', nativeErr && nativeErr.message);
+    }
+    const heic2any = await ensureHeic2AnyLoaded();
+    let pngBlob;
+    if (heic2any === '__xdex_bridge__') {
+      // Extension：通过 postMessage 桥接调用 MAIN world 的 heic2any
+      const arrayBuffer = await file.arrayBuffer();
+      const requestId = 'heic2any_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      pngBlob = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          window.removeEventListener('message', onResult);
+          reject(new Error('heic2any 桥接转换超时（30s）'));
+        }, 30000);
+        function onResult(e) {
+          if (!e.data || e.data.type !== 'xdex-heic2any-result' || e.data.requestId !== requestId) return;
+          clearTimeout(timeout);
+          window.removeEventListener('message', onResult);
+          if (e.data.success) {
+            resolve(new Blob([e.data.arrayBuffer], { type: 'image/png' }));
+          } else {
+            reject(new Error('heic2any 转换失败: ' + (e.data.error || '未知')));
+          }
         }
-        console.log(`[compressImage] 开始压缩: ${(file.size / 1024).toFixed(1)}KB -> 目标区间 ${(targetLowerBytes / 1024).toFixed(0)}-${maxSizeKB}KB`);
-        const startTime = performance.now();
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          const url = URL.createObjectURL(file);
-          img.onload = async () => {
-            URL.revokeObjectURL(url);
-            // 优先使用外部传入的真实格式（magic bytes 检测），避免 file.type 被后缀名误导
-            // WebP 和 animated-webp 统一输出为 PNG（服务器不接受 WebP）
-            const originalType = detectedFormat
-              ? (detectedFormat === 'png' ? 'image/png' : detectedFormat === 'jpeg' ? 'image/jpeg' : (detectedFormat === 'webp' || detectedFormat === 'animated-webp') ? 'image/png' : file.type || 'image/jpeg')
-              : (file.type || 'image/jpeg');
-            const outputType = getStaticImageOutputType(originalType);
-            const drawToCanvas = (scale) => {
-              const canvas = document.createElement('canvas');
-              const ctx = canvas.getContext('2d');
-              canvas.width = Math.max(1, Math.floor(img.width * scale));
-              canvas.height = Math.max(1, Math.floor(img.height * scale));
-              ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = 'high';
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              return canvas;
-            };
-            const canvasToBlob = (canvas, quality) => new Promise((resolveBlob, rejectBlob) => {
-              canvas.toBlob((blob) => {
-                if (!blob) {
-                  rejectBlob(new Error('图片压缩失败'));
-                  return;
-                }
-                resolveBlob(blob);
-              }, outputType, quality);
-            });
-            const toFile = (blob) => new File([blob], file.name, {
-              type: outputType,
-              lastModified: Date.now()
-            });
-            const formatSupportsQuality = outputType !== 'image/png';
-            const clampScale = (scale, minScale = 0.12, maxScale = 1) => Math.min(maxScale, Math.max(minScale, scale));
-            let bestBlob = null;
-            let bestScore = Infinity;
-            let totalAttempts = 0;
-            const considerBlob = (blob) => {
-              if (blob.size > targetUpperBytes) return;
+        window.addEventListener('message', onResult);
+        // transfer ArrayBuffer 零拷贝发给 MAIN world
+        window.postMessage({
+          type: 'xdex-heic2any-convert',
+          requestId: requestId,
+          arrayBuffer: arrayBuffer
+        }, '*', [arrayBuffer]);
+      });
+    } else {
+      // Userscript：直接调用 heic2any 函数
+      const result = await heic2any({
+        blob: file,
+        toType: 'image/png',
+        quality: 1,
+        multiple: false
+      });
+      pngBlob = Array.isArray(result) ? result[0] : result;
+    }
+    if (!(pngBlob instanceof Blob)) {
+      throw new Error('HEIC 转换未返回有效 PNG');
+    }
+    return new File([pngBlob], file.name.replace(/\.(heic|heif|hif)$/i, '.png'), {
+      type: 'image/png',
+      lastModified: Date.now()
+    });
+  }
+  // ---- WebP 格式转换：静态 WebP → PNG，动态 WebP → APNG ----
+  async function convertWebpToAcceptedFormat(file, isAnimated) {
+    if (!isAnimated) {
+      // 静态 WebP → PNG：直接用 canvas 重绘
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const pngBlob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => b ? resolve(b) : reject(new Error('WebP→PNG toBlob 失败')), 'image/png');
+      });
+      return new File([pngBlob], file.name.replace(/\.webp$/i, '.png'), { type: 'image/png', lastModified: Date.now() });
+    }
+    // 动态 WebP → APNG：用 ImageDecoder API 逐帧解码，保留动画
+    return convertAnimatedWebpToApng(file);
+  }
+  const STATIC_MAX_SIZE_KB = 2048;
+  const STATIC_TARGET_LOWER_KB = 1900;
+  const STATIC_ACCEPTABLE_LOWER_KB = 1850;
+  const STATIC_MAX_ATTEMPTS = 5;
+  async function compressImageToSize(file, maxSizeKB = STATIC_MAX_SIZE_KB, minQuality = 0.6, detectedFormat) {
+    const maxSizeBytes = STATIC_MAX_SIZE_KB * 1024;
+    const targetUpperBytes = maxSizeBytes;
+    const targetLowerBytes = STATIC_TARGET_LOWER_KB * 1024;
+    if (file.size <= maxSizeBytes) {
+      return file;
+    }
+    console.log(`[compressImage] 开始压缩: ${(file.size / 1024).toFixed(1)}KB -> 目标区间 ${(targetLowerBytes / 1024).toFixed(0)}-${maxSizeKB}KB`);
+    const startTime = performance.now();
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = async () => {
+        URL.revokeObjectURL(url);
+        // 优先使用外部传入的真实格式（magic bytes 检测），避免 file.type 被后缀名误导
+        // WebP 和 animated-webp 统一输出为 PNG（服务器不接受 WebP）
+        const originalType = detectedFormat
+          ? (detectedFormat === 'png' ? 'image/png' : detectedFormat === 'jpeg' ? 'image/jpeg' : (detectedFormat === 'webp' || detectedFormat === 'animated-webp') ? 'image/png' : file.type || 'image/jpeg')
+          : (file.type || 'image/jpeg');
+        const outputType = getStaticImageOutputType(originalType);
+        const drawToCanvas = (scale) => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = Math.max(1, Math.floor(img.width * scale));
+          canvas.height = Math.max(1, Math.floor(img.height * scale));
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          return canvas;
+        };
+        const canvasToBlob = (canvas, quality) => new Promise((resolveBlob, rejectBlob) => {
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              rejectBlob(new Error('图片压缩失败'));
+              return;
+            }
+            resolveBlob(blob);
+          }, outputType, quality);
+        });
+        const toFile = (blob) => new File([blob], file.name, {
+          type: outputType,
+          lastModified: Date.now()
+        });
+        const formatSupportsQuality = outputType !== 'image/png';
+        const clampScale = (scale, minScale = 0.12, maxScale = 1) => Math.min(maxScale, Math.max(minScale, scale));
+        let bestBlob = null;
+        let bestScore = Infinity;
+        let totalAttempts = 0;
+        const considerBlob = (blob) => {
+          if (blob.size > targetUpperBytes) return;
+          const score = targetUpperBytes - blob.size;
+          if (score < bestScore) {
+            bestScore = score;
+            bestBlob = blob;
+          }
+        };
+        const searchBestQualityAtScale = async (scale) => {
+          const canvas = drawToCanvas(scale);
+          if (!formatSupportsQuality) {
+            totalAttempts++;
+            const blob = await canvasToBlob(canvas, 0.92);
+            console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=png-default -> ${(blob.size / 1024).toFixed(1)}KB`);
+            considerBlob(blob);
+            return { blob, exceeded: blob.size > targetUpperBytes, hitRange: blob.size >= targetLowerBytes && blob.size <= targetUpperBytes };
+          }
+          let low = minQuality;
+          let high = 0.95;
+          let localBest = null;
+          let localBestScore = Infinity;
+          for (let i = 0; i < STATIC_MAX_ATTEMPTS; i++) {
+            const quality = (low + high) / 2;
+            totalAttempts++;
+            const blob = await canvasToBlob(canvas, quality);
+            const sizeKB = blob.size / 1024;
+            console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${quality.toFixed(4)} -> ${sizeKB.toFixed(1)}KB`);
+            if (blob.size <= targetUpperBytes) {
               const score = targetUpperBytes - blob.size;
-              if (score < bestScore) {
-                bestScore = score;
-                bestBlob = blob;
+              if (score < localBestScore) {
+                localBestScore = score;
+                localBest = blob;
               }
-            };
-            const searchBestQualityAtScale = async (scale) => {
-              const canvas = drawToCanvas(scale);
-              if (!formatSupportsQuality) {
-                totalAttempts++;
-                const blob = await canvasToBlob(canvas, 0.92);
-                console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=png-default -> ${(blob.size / 1024).toFixed(1)}KB`);
-                considerBlob(blob);
-                return { blob, exceeded: blob.size > targetUpperBytes, hitRange: blob.size >= targetLowerBytes && blob.size <= targetUpperBytes };
-              }
-              let low = minQuality;
-              let high = 0.95;
-              let localBest = null;
-              let localBestScore = Infinity;
-              for (let i = 0; i < STATIC_MAX_ATTEMPTS; i++) {
-                const quality = (low + high) / 2;
-                totalAttempts++;
-                const blob = await canvasToBlob(canvas, quality);
-                const sizeKB = blob.size / 1024;
-                console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${quality.toFixed(4)} -> ${sizeKB.toFixed(1)}KB`);
-                if (blob.size <= targetUpperBytes) {
-                  const score = targetUpperBytes - blob.size;
-                  if (score < localBestScore) {
-                    localBestScore = score;
-                    localBest = blob;
-                  }
-                  considerBlob(blob);
-                  low = quality;
-                } else {
-                  high = quality;
-                }
-              }
-                // ✨ 精细搜索：从 high(≈0.95) 逐步提升到 1.0，寻找最接近限制的质量
-                if (localBest && localBest.size < targetLowerBytes) {
-                  console.log(`[compressImage] 精细搜索：当前最佳 ${(localBest.size / 1024).toFixed(1)}KB < ${(STATIC_TARGET_LOWER_KB)}KB，尝试提高质量……`);
-                  const fineQualities = [0.96, 0.965, 0.97, 0.975, 0.98, 0.985, 0.99, 0.995, 0.998];
-                  for (const q of fineQualities) {
-                  totalAttempts++;
-                  const blob = await canvasToBlob(canvas, q);
-                  const sizeKB = blob.size / 1024;
-                  console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${q.toFixed(4)}(精细) -> ${sizeKB.toFixed(1)}KB`);
-                  considerBlob(blob);
-                  if (blob.size <= targetUpperBytes) {
-                    const score = targetUpperBytes - blob.size;
-                    if (score < localBestScore) {
-                      localBestScore = score;
-                      localBest = blob;
-                    }
-                    if (blob.size >= targetLowerBytes) {
-                      return {
-                        blob: localBest,
-                        exceeded: false,
-                        hitRange: true
-                      };
-                    }
-                  } else {
-                    break;
-                  }
-                }
-              }
-              if (localBest) {
-                return {
-                  blob: localBest,
-                  exceeded: false,
-                  hitRange: localBest.size >= targetLowerBytes && localBest.size <= targetUpperBytes
-                };
-              }
-              const fallbackBlob = await canvasToBlob(canvas, minQuality);
+              considerBlob(blob);
+              low = quality;
+            } else {
+              high = quality;
+            }
+          }
+            // ✨ 精细搜索：从 high(≈0.95) 逐步提升到 1.0，寻找最接近限制的质量
+            if (localBest && localBest.size < targetLowerBytes) {
+              console.log(`[compressImage] 精细搜索：当前最佳 ${(localBest.size / 1024).toFixed(1)}KB < ${(STATIC_TARGET_LOWER_KB)}KB，尝试提高质量……`);
+              const fineQualities = [0.96, 0.965, 0.97, 0.975, 0.98, 0.985, 0.99, 0.995, 0.998];
+              for (const q of fineQualities) {
               totalAttempts++;
-              console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${minQuality.toFixed(4)}(fallback) -> ${(fallbackBlob.size / 1024).toFixed(1)}KB`);
-              considerBlob(fallbackBlob);
-              return {
-                blob: fallbackBlob,
-                exceeded: fallbackBlob.size > targetUpperBytes,
-                hitRange: fallbackBlob.size >= targetLowerBytes && fallbackBlob.size <= targetUpperBytes
-              };
-            };
-            const searchBestPngScale = async () => {
-              const relaxedLowerBytes = Math.max(Math.floor(maxSizeBytes * 0.84), Math.floor(targetLowerBytes * 0.88));
-              const baseScale = Math.sqrt(targetUpperBytes / file.size);
-              // 硬下限：只防过小。不要用 baseScale*0.7 当下限——canvas 重编码后体积常比原文件更差，
-              // 否则会像 21MB PNG 那样把预估 scale(≈0.17) 卡在 0.215 动不了。
-              const HARD_MIN_SCALE = 0.05;
-              let minScale = HARD_MIN_SCALE;
-              let scale = clampScale(baseScale * 1.08, minScale, 0.92);
-              let lastUnderLimitBlob = null;
-              const seenScales = new Set();
-              for (let phase = 0; phase < 6; phase++) {
-                const scaleKey = scale.toFixed(4);
-                if (seenScales.has(scaleKey)) break;
-                seenScales.add(scaleKey);
-                const result = await searchBestQualityAtScale(scale);
-                if (!result.exceeded) lastUnderLimitBlob = result.blob;
-                if (result.hitRange) return result;
-                if (result.exceeded) {
-                  const remain = 6 - phase - 1;
-                  const ratio = result.blob.size / targetUpperBytes;
-                  let safety = 0.95;
-                  if (ratio > 2.0 || remain <= 0) safety = 0.85;
-                  else if (ratio > 1.4 || remain <= 1) safety = 0.90;
-                  const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;
-                  // 预估低于当前下限时下调下限，避免 clamp 把步进掐死
-                  if (predicted < minScale) {
-                    minScale = clampScale(predicted * 0.95, HARD_MIN_SCALE, minScale);
-                  }
-                  let nextScale = clampScale(predicted, minScale, scale * 0.98);
-                  // 仍几乎不动但还超限：强制再砍一刀
-                  if (Math.abs(nextScale - scale) < 0.005) {
-                    const forced = clampScale(predicted * 0.9, HARD_MIN_SCALE, scale * 0.9);
-                    if (forced < scale - 0.005) {
-                      nextScale = forced;
-                      minScale = Math.min(minScale, forced);
-                    } else {
-                      console.log(`[compressImage] PNG超限但无法继续缩小: ratio=${ratio.toFixed(2)}, scale=${scale.toFixed(3)}, predicted=${predicted.toFixed(3)}`);
-                      break;
-                    }
-                  }
-                  console.log(`[compressImage] PNG超限 ratio=${ratio.toFixed(2)}, remain=${remain}, scale ${scale.toFixed(3)} -> ${nextScale.toFixed(3)} (safety=${safety}, min=${minScale.toFixed(3)})`);
-                  scale = nextScale;
-                  continue;
+              const blob = await canvasToBlob(canvas, q);
+              const sizeKB = blob.size / 1024;
+              console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${q.toFixed(4)}(精细) -> ${sizeKB.toFixed(1)}KB`);
+              considerBlob(blob);
+              if (blob.size <= targetUpperBytes) {
+                const score = targetUpperBytes - blob.size;
+                if (score < localBestScore) {
+                  localBestScore = score;
+                  localBest = blob;
                 }
-                if (result.blob.size >= relaxedLowerBytes) {
+                if (blob.size >= targetLowerBytes) {
                   return {
-                    blob: result.blob,
+                    blob: localBest,
                     exceeded: false,
-                    hitRange: false
+                    hitRange: true
                   };
                 }
-                const growRatio = Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1));
-                const nextScale = clampScale(scale * Math.min(growRatio * 0.985, 1.12), minScale, 0.98);
-                if (nextScale <= scale + 0.004 || nextScale >= 0.995) break;
-                scale = nextScale;
+              } else {
+                break;
               }
-              if (bestBlob) {
-                return {
-                  blob: bestBlob,
-                  exceeded: false,
-                  hitRange: bestBlob.size >= targetLowerBytes && bestBlob.size <= targetUpperBytes
-                };
+            }
+          }
+          if (localBest) {
+            return {
+              blob: localBest,
+              exceeded: false,
+              hitRange: localBest.size >= targetLowerBytes && localBest.size <= targetUpperBytes
+            };
+          }
+          const fallbackBlob = await canvasToBlob(canvas, minQuality);
+          totalAttempts++;
+          console.log(`[compressImage] 尝试#${totalAttempts}: 缩放=${scale.toFixed(3)}, 质量=${minQuality.toFixed(4)}(fallback) -> ${(fallbackBlob.size / 1024).toFixed(1)}KB`);
+          considerBlob(fallbackBlob);
+          return {
+            blob: fallbackBlob,
+            exceeded: fallbackBlob.size > targetUpperBytes,
+            hitRange: fallbackBlob.size >= targetLowerBytes && fallbackBlob.size <= targetUpperBytes
+          };
+        };
+        const searchBestPngScale = async () => {
+          const relaxedLowerBytes = Math.max(Math.floor(maxSizeBytes * 0.84), Math.floor(targetLowerBytes * 0.88));
+          const baseScale = Math.sqrt(targetUpperBytes / file.size);
+          // 硬下限：只防过小。不要用 baseScale*0.7 当下限——canvas 重编码后体积常比原文件更差，
+          // 否则会像 21MB PNG 那样把预估 scale(≈0.17) 卡在 0.215 动不了。
+          const HARD_MIN_SCALE = 0.05;
+          let minScale = HARD_MIN_SCALE;
+          let scale = clampScale(baseScale * 1.08, minScale, 0.92);
+          let lastUnderLimitBlob = null;
+          const seenScales = new Set();
+          for (let phase = 0; phase < 6; phase++) {
+            const scaleKey = scale.toFixed(4);
+            if (seenScales.has(scaleKey)) break;
+            seenScales.add(scaleKey);
+            const result = await searchBestQualityAtScale(scale);
+            if (!result.exceeded) lastUnderLimitBlob = result.blob;
+            if (result.hitRange) return result;
+            if (result.exceeded) {
+              const remain = 6 - phase - 1;
+              const ratio = result.blob.size / targetUpperBytes;
+              let safety = 0.95;
+              if (ratio > 2.0 || remain <= 0) safety = 0.85;
+              else if (ratio > 1.4 || remain <= 1) safety = 0.90;
+              const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;
+              // 预估低于当前下限时下调下限，避免 clamp 把步进掐死
+              if (predicted < minScale) {
+                minScale = clampScale(predicted * 0.95, HARD_MIN_SCALE, minScale);
               }
-              if (lastUnderLimitBlob) {
-                return {
-                  blob: lastUnderLimitBlob,
-                  exceeded: false,
-                  hitRange: lastUnderLimitBlob.size >= targetLowerBytes && lastUnderLimitBlob.size <= targetUpperBytes
-                };
+              let nextScale = clampScale(predicted, minScale, scale * 0.98);
+              // 仍几乎不动但还超限：强制再砍一刀
+              if (Math.abs(nextScale - scale) < 0.005) {
+                const forced = clampScale(predicted * 0.9, HARD_MIN_SCALE, scale * 0.9);
+                if (forced < scale - 0.005) {
+                  nextScale = forced;
+                  minScale = Math.min(minScale, forced);
+                } else {
+                  console.log(`[compressImage] PNG超限但无法继续缩小: ratio=${ratio.toFixed(2)}, scale=${scale.toFixed(3)}, predicted=${predicted.toFixed(3)}`);
+                  break;
+                }
               }
+              console.log(`[compressImage] PNG超限 ratio=${ratio.toFixed(2)}, remain=${remain}, scale ${scale.toFixed(3)} -> ${nextScale.toFixed(3)} (safety=${safety}, min=${minScale.toFixed(3)})`);
+              scale = nextScale;
+              continue;
+            }
+            if (result.blob.size >= relaxedLowerBytes) {
               return {
-                blob: null,
-                exceeded: true,
+                blob: result.blob,
+                exceeded: false,
                 hitRange: false
               };
-            };
-            try {
-              if (!formatSupportsQuality) {
-                const pngResult = await searchBestPngScale();
-                const finalBlob = pngResult.blob || bestBlob;
-                if (finalBlob) {
-                  const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-                  console.log(`[compressImage] ✓ PNG完成: ${(file.size / 1024).toFixed(1)}KB -> ${(finalBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
-                  resolve(toFile(finalBlob));
-                  return;
-                }
-                reject(new Error('无法将PNG压缩到限制以内'));
-                return;
-              }
-              let result = await searchBestQualityAtScale(1);
-              if (result.hitRange) {
-                const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-                console.log(`[compressImage] ✓ 原尺寸命中目标: ${(bestBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
-                resolve(toFile(bestBlob));
-                return;
-              }
-              if (result.exceeded) {
-                // 实测体积反推 scale（∝√面积）；下限放宽到 0.2，避免卡在 0.5 仍超限
-                const STATIC_MIN_SCALE = 0.2;
-                const maxPhases = 4;
-                let scale = clampScale(Math.sqrt(targetUpperBytes / result.blob.size) * 0.95, STATIC_MIN_SCALE, 0.98);
-                console.log(`[compressImage] 原尺寸超限，预估缩放=${scale.toFixed(3)}`);
-                for (let phase = 0; phase < maxPhases; phase++) {
-                  result = await searchBestQualityAtScale(scale);
-                  if (result.hitRange) break;
-                  if (result.exceeded) {
-                    const remain = maxPhases - phase - 1;
-                    const ratio = result.blob.size / targetUpperBytes;
-                    // 安全系数：剩余次数少 / 超限倍率大时更狠，避免次数耗尽仍超
-                    let safety = 0.95;
-                    if (ratio > 2.0 || remain <= 0) safety = 0.85;
-                    else if (ratio > 1.35 || remain <= 1) safety = 0.90;
-                    const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;
-                    const nextScale = clampScale(predicted, STATIC_MIN_SCALE, scale * 0.98);
-                    console.log(`[compressImage] 超限 ratio=${ratio.toFixed(2)}, remain=${remain}, scale ${scale.toFixed(3)} -> ${nextScale.toFixed(3)} (safety=${safety})`);
-                    if (Math.abs(nextScale - scale) < 0.004) break;
-                    scale = nextScale;
-                  } else if (bestBlob && bestBlob.size < targetLowerBytes) {
-                    scale = clampScale(scale * 1.03, STATIC_MIN_SCALE, 1);
-                    if (scale >= 0.999) break;
-                  } else {
-                    break;
-                  }
-                }
-              }
-              if (bestBlob) {
-                const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-                console.log(`[compressImage] ✓ 完成: ${(file.size / 1024).toFixed(1)}KB -> ${(bestBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
-                resolve(toFile(bestBlob));
-                return;
-              }
-              reject(new Error('无法将图片压缩到目标大小'));
-            } catch (err) {
-              reject(err);
             }
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error('图片加载失败'));
-          };
-          img.src = url;
-        });
-      }
-      const GIF_MAX_SIZE_KB = 2048;
-      const GIF_TARGET_LOWER_KB = 1900;
-      const GIF_ACCEPTABLE_LOWER_KB = 1850;
-      const GIF_MAX_ORIGINAL_KB = 30 * 1024;//目前限制30MB以内
-      const GIF_MAX_LONG_EDGE = 1600;
-      const GIF_MAX_ATTEMPTS = 3;//目前最多重试3次
-      let gifsicleApiPromise = null;
-      function clampNumber(value, min, max) {
-        return Math.min(max, Math.max(min, value));
-      }
-      function formatKB(sizeBytes) {
-        return `${(sizeBytes / 1024).toFixed(1)}KB`;
-      }
-      function getGifDimensions(file) {
-        return new Promise((resolve) => {
-          const url = URL.createObjectURL(file);
-          const img = new Image();
-          img.onload = () => {
-            const result = {
-              width: img.naturalWidth || img.width || 0,
-              height: img.naturalHeight || img.height || 0
+            const growRatio = Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1));
+            const nextScale = clampScale(scale * Math.min(growRatio * 0.985, 1.12), minScale, 0.98);
+            if (nextScale <= scale + 0.004 || nextScale >= 0.995) break;
+            scale = nextScale;
+          }
+          if (bestBlob) {
+            return {
+              blob: bestBlob,
+              exceeded: false,
+              hitRange: bestBlob.size >= targetLowerBytes && bestBlob.size <= targetUpperBytes
             };
-            URL.revokeObjectURL(url);
-            resolve(result);
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(url);
-            resolve({ width: 0, height: 0 });
-          };
-          img.src = url;
-        });
-      }
-      async function ensureGifsicleLoaded() {
-        if (window.__xdexGifsicleModule) {
-          return window.__xdexGifsicleModule;
-        }
-        if (!gifsicleApiPromise) {
-          gifsicleApiPromise = import('https://cdn.jsdelivr.net/npm/gifsicle-wasm-browser/dist/gifsicle.min.js')
-            .then((mod) => {
-              const api = (mod && (mod.default || mod.gifsicle || mod)) || null;
-              if (!api) {
-                throw new Error('GIF压缩库未返回可用模块');
-              }
-              window.__xdexGifsicleModule = api;
-              return api;
-            })
-            .catch((err) => {
-              gifsicleApiPromise = null;
-              throw err;
-            });
-        }
-        return gifsicleApiPromise;
-      }
-      async function runGifsicleAttempt(api, inputFile, args) {
-        const fileName = '/tem/input.gif';
-        const outName = '/out/out.gif';
-        const commandText = [...args, fileName, '-o', outName].join(' ');
-        if (typeof api.run === 'function') {
-          const result = await api.run({
-            input: [{ file: inputFile, name: fileName }],
-            command: [commandText]
-          });
-          const output = (result && (result.output || result.files || result)) || [];
-          const outFile = Array.isArray(output)
-            ? output.find((item) => item && (((item.name || '') === outName) || /out\.gif$/i.test(item.name || '')))
-            : null;
-          const data = outFile && (outFile.data || outFile.buffer || outFile.content || outFile.file || outFile.blob);
-          if (data instanceof Blob) return data;
-          if (data instanceof Uint8Array) return new Blob([data], { type: 'image/gif' });
-          if (data instanceof ArrayBuffer) return new Blob([new Uint8Array(data)], { type: 'image/gif' });
-          if (outFile instanceof Blob) return outFile;
-          throw new Error('gifsicle.run 未返回可用输出');
-        }
-        if (api.default && typeof api.default.run === 'function') {
-          return runGifsicleAttempt(api.default, inputFile, args);
-        }
-        throw new Error('未识别的 gifsicle-wasm-browser API 形态');
-      }
-      // GIF 结构修复：用 gifsicle 重新编码（不压缩，只修复 GCT 等结构问题）
-      async function reencodeGifWithGifsicle(file) {
-        const api = await ensureGifsicleLoaded();
-        const blob = await runGifsicleAttempt(api, file, ['--no-warnings']);
-        return new File([blob], file.name.replace(/\.gif$/i, '.gif'), { type: 'image/gif', lastModified: Date.now() });
-      }
-      async function compressGifToSize(file, options = {}) {
-        const now = () => (typeof performance !== 'undefined' && performance && typeof performance.now === 'function')
-          ? performance.now()
-          : Date.now();
-        const finiteNumber = (value, digits = 2) => Number.isFinite(value) ? Number(value.toFixed(digits)) : 0;
-        const totalStartTime = now();
-        let stage = '初始化';
-        let completedAttempts = 0;
-        try {
-        const maxSizeKB = options.maxSizeKB || GIF_MAX_SIZE_KB;
-        const targetLowerKB = options.targetLowerKB || GIF_TARGET_LOWER_KB;
-        const acceptableLowerKB = options.acceptableLowerKB || GIF_ACCEPTABLE_LOWER_KB;
-        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
-        const maxBytes = maxSizeKB * 1024;
-        const lowerBytes = targetLowerKB * 1024;
-        const acceptableLowerBytes = acceptableLowerKB * 1024;
-        const originalKB = file.size / 1024;
-        if (file.size <= maxBytes) {
-          const totalElapsedMs = finiteNumber(now() - totalStartTime);
-          console.log('[X岛-EX][GIF压缩][汇总]', {
-            totalElapsedMs,
-            completedAttempts: 0,
-            originalKB: finiteNumber(originalKB, 1),
-            finalKB: finiteNumber(originalKB, 1),
-            compressionRate: 1,
-            reductionPercent: 0,
-            finalLossy: null,
-            finalColors: null,
-            finalScale: null,
-            finalCommand: '无需压缩'
-          });
+          }
+          if (lastUnderLimitBlob) {
+            return {
+              blob: lastUnderLimitBlob,
+              exceeded: false,
+              hitRange: lastUnderLimitBlob.size >= targetLowerBytes && lastUnderLimitBlob.size <= targetUpperBytes
+            };
+          }
           return {
-            file,
-            summary: '原始 GIF 已在目标大小内，无需压缩',
-            attempts: [],
-            durationMs: totalElapsedMs
+            blob: null,
+            exceeded: true,
+            hitRange: false
           };
-        }
-        if (originalKB > GIF_MAX_ORIGINAL_KB) {
-          throw new Error(`GIF 原始体积过大（${formatKB(file.size)}），限制为 <= ${GIF_MAX_ORIGINAL_KB}KB`);
-        }
-        stage = '读取GIF尺寸';
-        const dimensionsStartTime = now();
-        const { width, height } = await getGifDimensions(file);
-        const dimensionsElapsedMs = finiteNumber(now() - dimensionsStartTime);
-        if (width > 0 && height > 0) {
-          const longEdge = Math.max(width, height);
-          if (longEdge > GIF_MAX_LONG_EDGE) {
-            throw new Error(`GIF 尺寸过大（${width}x${height}），限制长边 <= ${GIF_MAX_LONG_EDGE}`);
+        };
+        try {
+          if (!formatSupportsQuality) {
+            const pngResult = await searchBestPngScale();
+            const finalBlob = pngResult.blob || bestBlob;
+            if (finalBlob) {
+              const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+              console.log(`[compressImage] ✓ PNG完成: ${(file.size / 1024).toFixed(1)}KB -> ${(finalBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
+              resolve(toFile(finalBlob));
+              return;
+            }
+            reject(new Error('无法将PNG压缩到限制以内'));
+            return;
           }
+          let result = await searchBestQualityAtScale(1);
+          if (result.hitRange) {
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+            console.log(`[compressImage] ✓ 原尺寸命中目标: ${(bestBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
+            resolve(toFile(bestBlob));
+            return;
+          }
+          if (result.exceeded) {
+            // 实测体积反推 scale（∝√面积）；下限放宽到 0.2，避免卡在 0.5 仍超限
+            const STATIC_MIN_SCALE = 0.2;
+            const maxPhases = 4;
+            let scale = clampScale(Math.sqrt(targetUpperBytes / result.blob.size) * 0.95, STATIC_MIN_SCALE, 0.98);
+            console.log(`[compressImage] 原尺寸超限，预估缩放=${scale.toFixed(3)}`);
+            for (let phase = 0; phase < maxPhases; phase++) {
+              result = await searchBestQualityAtScale(scale);
+              if (result.hitRange) break;
+              if (result.exceeded) {
+                const remain = maxPhases - phase - 1;
+                const ratio = result.blob.size / targetUpperBytes;
+                // 安全系数：剩余次数少 / 超限倍率大时更狠，避免次数耗尽仍超
+                let safety = 0.95;
+                if (ratio > 2.0 || remain <= 0) safety = 0.85;
+                else if (ratio > 1.35 || remain <= 1) safety = 0.90;
+                const predicted = scale * Math.sqrt(targetUpperBytes / Math.max(result.blob.size, 1)) * safety;
+                const nextScale = clampScale(predicted, STATIC_MIN_SCALE, scale * 0.98);
+                console.log(`[compressImage] 超限 ratio=${ratio.toFixed(2)}, remain=${remain}, scale ${scale.toFixed(3)} -> ${nextScale.toFixed(3)} (safety=${safety})`);
+                if (Math.abs(nextScale - scale) < 0.004) break;
+                scale = nextScale;
+              } else if (bestBlob && bestBlob.size < targetLowerBytes) {
+                scale = clampScale(scale * 1.03, STATIC_MIN_SCALE, 1);
+                if (scale >= 0.999) break;
+              } else {
+                break;
+              }
+            }
+          }
+          if (bestBlob) {
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+            console.log(`[compressImage] ✓ 完成: ${(file.size / 1024).toFixed(1)}KB -> ${(bestBlob.size / 1024).toFixed(1)}KB, ${totalAttempts}次尝试, ${elapsed}秒`);
+            resolve(toFile(bestBlob));
+            return;
+          }
+          reject(new Error('无法将图片压缩到目标大小'));
+        } catch (err) {
+          reject(err);
         }
-        stage = '加载gifsicle模块';
-        const moduleLoadStartTime = now();
-        const api = await ensureGifsicleLoaded();
-        const moduleLoadElapsedMs = finiteNumber(now() - moduleLoadStartTime);
-        const attempts = [];
-        let bestBlob = null;
-        let bestArgs = null;
-        let bestAttemptLog = null;
-        const oversizeRatio = file.size / maxBytes;
-        let scale = clampNumber(Math.sqrt(maxBytes / file.size) * (oversizeRatio > 2.5 ? 1.32 : (oversizeRatio > 1.6 ? 1.18 : 1.06)), 0.22, 0.98);
-        let lossy = oversizeRatio > 2.5 ? 40 : (oversizeRatio > 1.6 ? 30 : 20);
-        let colors = oversizeRatio > 2.5 ? 128 : 160;
-        const seenConfigs = new Set();
-        console.log(`[compressGif] 开始压缩: ${formatKB(file.size)} -> 目标区间 ${targetLowerKB}-${maxSizeKB}KB, 倍率=${oversizeRatio.toFixed(2)}`);
-        for (let i = 0; i < GIF_MAX_ATTEMPTS; i++) {
-          const args = ['-O3', `--lossy=${Math.round(lossy)}`, '--colors', String(Math.round(colors))];
-          if (scale < 0.995) {
-            args.push('--scale', scale.toFixed(3));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('图片加载失败'));
+      };
+      img.src = url;
+    });
+  }
+  const GIF_MAX_SIZE_KB = 2048;
+  const GIF_TARGET_LOWER_KB = 1900;
+  const GIF_ACCEPTABLE_LOWER_KB = 1850;
+  const GIF_MAX_ORIGINAL_KB = 30 * 1024;//目前限制30MB以内
+  const GIF_MAX_LONG_EDGE = 1600;
+  const GIF_MAX_ATTEMPTS = 3;//目前最多重试3次
+  let gifsicleApiPromise = null;
+  function clampNumber(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+  function formatKB(sizeBytes) {
+    return `${(sizeBytes / 1024).toFixed(1)}KB`;
+  }
+  function getGifDimensions(file) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const result = {
+          width: img.naturalWidth || img.width || 0,
+          height: img.naturalHeight || img.height || 0
+        };
+        URL.revokeObjectURL(url);
+        resolve(result);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: 0, height: 0 });
+      };
+      img.src = url;
+    });
+  }
+  async function ensureGifsicleLoaded() {
+    if (window.__xdexGifsicleModule) {
+      return window.__xdexGifsicleModule;
+    }
+    if (!gifsicleApiPromise) {
+      gifsicleApiPromise = import('https://cdn.jsdelivr.net/npm/gifsicle-wasm-browser/dist/gifsicle.min.js')
+        .then((mod) => {
+          const api = (mod && (mod.default || mod.gifsicle || mod)) || null;
+          if (!api) {
+            throw new Error('GIF压缩库未返回可用模块');
           }
-          const configKey = `${Math.round(lossy)}|${Math.round(colors)}|${scale < 0.995 ? scale.toFixed(3) : '1.000'}`;
-          if (seenConfigs.has(configKey)) {
-            scale = clampNumber(scale * 0.97, 0.16, 0.98);
-            lossy = clampNumber(Math.round(lossy) + 8, 0, 200);
-            colors = clampNumber(Math.round(colors) - 16, 48, 256);
-            continue;
-          }
-          seenConfigs.add(configKey);
-          const attemptStartTime = now();
-          stage = `gifsicle压缩第${i + 1}轮`;
-          try {
-            const blob = await runGifsicleAttempt(api, file, args);
-            completedAttempts++;
-            const sizeKB = blob.size / 1024;
-            const hitTarget = blob.size <= maxBytes;
-            const inRange = blob.size >= lowerBytes && blob.size <= maxBytes;
-            const acceptable = hitTarget && blob.size >= acceptableLowerBytes;
-            const command = [...args, '/tem/input.gif', '-o', '/out/out.gif'].join(' ');
-            const attemptLog = {
-              index: i + 1,
-              args: args.join(' '),
-              sizeKB: Number(sizeKB.toFixed(1)),
-              hitTarget,
-              inRange
-            };
-            attempts.push(attemptLog);
-            console.log('[X岛-EX][GIF压缩][轮次]', {
-              attempt: `${attemptLog.index}/${GIF_MAX_ATTEMPTS}`,
-              inputKB: finiteNumber(originalKB, 1),
-              outputKB: finiteNumber(sizeKB, 1),
-              compressionRate: finiteNumber(blob.size / file.size, 4),
-              reductionPercent: finiteNumber((1 - blob.size / file.size) * 100, 2),
+          window.__xdexGifsicleModule = api;
+          return api;
+        })
+        .catch((err) => {
+          gifsicleApiPromise = null;
+          throw err;
+        });
+    }
+    return gifsicleApiPromise;
+  }
+  async function runGifsicleAttempt(api, inputFile, args) {
+    const fileName = '/tem/input.gif';
+    const outName = '/out/out.gif';
+    const commandText = [...args, fileName, '-o', outName].join(' ');
+    if (typeof api.run === 'function') {
+      const result = await api.run({
+        input: [{ file: inputFile, name: fileName }],
+        command: [commandText]
+      });
+      const output = (result && (result.output || result.files || result)) || [];
+      const outFile = Array.isArray(output)
+        ? output.find((item) => item && (((item.name || '') === outName) || /out\.gif$/i.test(item.name || '')))
+        : null;
+      const data = outFile && (outFile.data || outFile.buffer || outFile.content || outFile.file || outFile.blob);
+      if (data instanceof Blob) return data;
+      if (data instanceof Uint8Array) return new Blob([data], { type: 'image/gif' });
+      if (data instanceof ArrayBuffer) return new Blob([new Uint8Array(data)], { type: 'image/gif' });
+      if (outFile instanceof Blob) return outFile;
+      throw new Error('gifsicle.run 未返回可用输出');
+    }
+    if (api.default && typeof api.default.run === 'function') {
+      return runGifsicleAttempt(api.default, inputFile, args);
+    }
+    throw new Error('未识别的 gifsicle-wasm-browser API 形态');
+  }
+  // GIF 结构修复：用 gifsicle 重新编码（不压缩，只修复 GCT 等结构问题）
+  async function reencodeGifWithGifsicle(file) {
+    const api = await ensureGifsicleLoaded();
+    const blob = await runGifsicleAttempt(api, file, ['--no-warnings']);
+    return new File([blob], file.name.replace(/\.gif$/i, '.gif'), { type: 'image/gif', lastModified: Date.now() });
+  }
+  async function compressGifToSize(file, options = {}) {
+    const now = () => (typeof performance !== 'undefined' && performance && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const finiteNumber = (value, digits = 2) => Number.isFinite(value) ? Number(value.toFixed(digits)) : 0;
+    const totalStartTime = now();
+    let stage = '初始化';
+    let completedAttempts = 0;
+    try {
+    const maxSizeKB = options.maxSizeKB || GIF_MAX_SIZE_KB;
+    const targetLowerKB = options.targetLowerKB || GIF_TARGET_LOWER_KB;
+    const acceptableLowerKB = options.acceptableLowerKB || GIF_ACCEPTABLE_LOWER_KB;
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const maxBytes = maxSizeKB * 1024;
+    const lowerBytes = targetLowerKB * 1024;
+    const acceptableLowerBytes = acceptableLowerKB * 1024;
+    const originalKB = file.size / 1024;
+    if (file.size <= maxBytes) {
+      const totalElapsedMs = finiteNumber(now() - totalStartTime);
+      console.log('[X岛-EX][GIF压缩][汇总]', {
+        totalElapsedMs,
+        completedAttempts: 0,
+        originalKB: finiteNumber(originalKB, 1),
+        finalKB: finiteNumber(originalKB, 1),
+        compressionRate: 1,
+        reductionPercent: 0,
+        finalLossy: null,
+        finalColors: null,
+        finalScale: null,
+        finalCommand: '无需压缩'
+      });
+      return {
+        file,
+        summary: '原始 GIF 已在目标大小内，无需压缩',
+        attempts: [],
+        durationMs: totalElapsedMs
+      };
+    }
+    if (originalKB > GIF_MAX_ORIGINAL_KB) {
+      throw new Error(`GIF 原始体积过大（${formatKB(file.size)}），限制为 <= ${GIF_MAX_ORIGINAL_KB}KB`);
+    }
+    stage = '读取GIF尺寸';
+    const dimensionsStartTime = now();
+    const { width, height } = await getGifDimensions(file);
+    const dimensionsElapsedMs = finiteNumber(now() - dimensionsStartTime);
+    if (width > 0 && height > 0) {
+      const longEdge = Math.max(width, height);
+      if (longEdge > GIF_MAX_LONG_EDGE) {
+        throw new Error(`GIF 尺寸过大（${width}x${height}），限制长边 <= ${GIF_MAX_LONG_EDGE}`);
+      }
+    }
+    stage = '加载gifsicle模块';
+    const moduleLoadStartTime = now();
+    const api = await ensureGifsicleLoaded();
+    const moduleLoadElapsedMs = finiteNumber(now() - moduleLoadStartTime);
+    const attempts = [];
+    let bestBlob = null;
+    let bestArgs = null;
+    let bestAttemptLog = null;
+    const oversizeRatio = file.size / maxBytes;
+    let scale = clampNumber(Math.sqrt(maxBytes / file.size) * (oversizeRatio > 2.5 ? 1.32 : (oversizeRatio > 1.6 ? 1.18 : 1.06)), 0.22, 0.98);
+    let lossy = oversizeRatio > 2.5 ? 40 : (oversizeRatio > 1.6 ? 30 : 20);
+    let colors = oversizeRatio > 2.5 ? 128 : 160;
+    const seenConfigs = new Set();
+    console.log(`[compressGif] 开始压缩: ${formatKB(file.size)} -> 目标区间 ${targetLowerKB}-${maxSizeKB}KB, 倍率=${oversizeRatio.toFixed(2)}`);
+    for (let i = 0; i < GIF_MAX_ATTEMPTS; i++) {
+      const args = ['-O3', `--lossy=${Math.round(lossy)}`, '--colors', String(Math.round(colors))];
+      if (scale < 0.995) {
+        args.push('--scale', scale.toFixed(3));
+      }
+      const configKey = `${Math.round(lossy)}|${Math.round(colors)}|${scale < 0.995 ? scale.toFixed(3) : '1.000'}`;
+      if (seenConfigs.has(configKey)) {
+        scale = clampNumber(scale * 0.97, 0.16, 0.98);
+        lossy = clampNumber(Math.round(lossy) + 8, 0, 200);
+        colors = clampNumber(Math.round(colors) - 16, 48, 256);
+        continue;
+      }
+      seenConfigs.add(configKey);
+      const attemptStartTime = now();
+      stage = `gifsicle压缩第${i + 1}轮`;
+      try {
+        const blob = await runGifsicleAttempt(api, file, args);
+        completedAttempts++;
+        const sizeKB = blob.size / 1024;
+        const hitTarget = blob.size <= maxBytes;
+        const inRange = blob.size >= lowerBytes && blob.size <= maxBytes;
+        const acceptable = hitTarget && blob.size >= acceptableLowerBytes;
+        const command = [...args, '/tem/input.gif', '-o', '/out/out.gif'].join(' ');
+        const attemptLog = {
+          index: i + 1,
+          args: args.join(' '),
+          sizeKB: Number(sizeKB.toFixed(1)),
+          hitTarget,
+          inRange
+        };
+        attempts.push(attemptLog);
+        console.log('[X岛-EX][GIF压缩][轮次]', {
+          attempt: `${attemptLog.index}/${GIF_MAX_ATTEMPTS}`,
+          inputKB: finiteNumber(originalKB, 1),
+          outputKB: finiteNumber(sizeKB, 1),
+          compressionRate: finiteNumber(blob.size / file.size, 4),
+          reductionPercent: finiteNumber((1 - blob.size / file.size) * 100, 2),
+          lossy: Math.round(lossy),
+          colors: Math.round(colors),
+          scale: scale < 0.995 ? finiteNumber(scale, 3) : 1,
+          command,
+          elapsedMs: finiteNumber(now() - attemptStartTime),
+          hitTargetRange: inRange,
+          acceptable: acceptable,
+          overLimit: !hitTarget
+        });
+        if (onProgress) {
+          onProgress({
+            index: attemptLog.index,
+            total: GIF_MAX_ATTEMPTS,
+            originalKB: Number(originalKB.toFixed(1)),
+            currentKB: attemptLog.sizeKB,
+            args: attemptLog.args,
+            hitTarget,
+            inRange
+          });
+        }
+        if (hitTarget) {
+          if (!bestBlob || blob.size > bestBlob.size) {
+            bestBlob = blob;
+            bestArgs = args;
+            bestAttemptLog = {
               lossy: Math.round(lossy),
               colors: Math.round(colors),
               scale: scale < 0.995 ? finiteNumber(scale, 3) : 1,
-              command,
-              elapsedMs: finiteNumber(now() - attemptStartTime),
-              hitTargetRange: inRange,
-              acceptable: acceptable,
-              overLimit: !hitTarget
-            });
-            if (onProgress) {
-              onProgress({
-                index: attemptLog.index,
-                total: GIF_MAX_ATTEMPTS,
-                originalKB: Number(originalKB.toFixed(1)),
-                currentKB: attemptLog.sizeKB,
-                args: attemptLog.args,
-                hitTarget,
-                inRange
-              });
-            }
-            if (hitTarget) {
-              if (!bestBlob || blob.size > bestBlob.size) {
-                bestBlob = blob;
-                bestArgs = args;
-                bestAttemptLog = {
-                  lossy: Math.round(lossy),
-                  colors: Math.round(colors),
-                  scale: scale < 0.995 ? finiteNumber(scale, 3) : 1,
-                  command
-                };
-              }
-              if (inRange || blob.size >= acceptableLowerBytes) {
-                break;
-              }
-              scale = clampNumber(scale * 1.08, 0.16, 0.98);
-              lossy = clampNumber(Math.round(lossy) - 12, 0, 200);
-              colors = clampNumber(Math.round(colors) + 32, 48, 256);
-            } else {
-              // 默认温和步进；剩余次数不足或超限倍率大时，按实测体积做 scale² 激进跳变
-              const remain = GIF_MAX_ATTEMPTS - (i + 1);
-              const ratio = blob.size / maxBytes;
-              let nextScale = scale * 0.90;
-              let nextLossy = Math.round(lossy) + 18;
-              let nextColors = Math.round(colors) - 24;
-              if (ratio > 1.45 || (remain <= 1 && ratio > 1.15) || (remain <= 0 && ratio > 1.05)) {
-                const safety = remain <= 1 ? 0.88 : 0.92;
-                const predictedScale = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * safety;
-                nextScale = Math.min(nextScale, predictedScale);
-                nextLossy = Math.max(nextLossy, Math.round(lossy) + (remain <= 1 ? 40 : 28));
-                nextColors = Math.min(nextColors, Math.round(colors) - (remain <= 1 ? 48 : 32));
-                console.log(`[compressGif] 激进跳变: ratio=${ratio.toFixed(2)}, remain=${remain}, scale->${nextScale.toFixed(3)}, lossy->${nextLossy}, colors->${nextColors}`);
-              }
-              scale = clampNumber(nextScale, 0.16, 0.98);
-              lossy = clampNumber(nextLossy, 0, 200);
-              colors = clampNumber(nextColors, 48, 256);
-            }
-          } catch (error) {
-            completedAttempts++;
-            const message = error && error.message ? error.message : String(error);
-            attempts.push({ index: i + 1, args: args.join(' '), error: message });
-            console.error('[X岛-EX][GIF压缩][失败]', {
-              stage: stage,
-              elapsedMs: finiteNumber(now() - totalStartTime),
-              completedAttempts: completedAttempts,
-              attempt: `${i + 1}/${GIF_MAX_ATTEMPTS}`,
-              command: [...args, '/tem/input.gif', '-o', '/out/out.gif'].join(' '),
-              error: message
-            });
-            if (onProgress) {
-              onProgress({
-                index: i + 1,
-                total: GIF_MAX_ATTEMPTS,
-                originalKB: Number(originalKB.toFixed(1)),
-                currentKB: null,
-                args: args.join(' '),
-                error: message,
-                hitTarget: false,
-                inRange: false
-              });
-            }
-            // 失败轮次也按剩余次数适度加压，避免空耗预算
-            const remain = GIF_MAX_ATTEMPTS - (i + 1);
-            scale = clampNumber(scale * (remain <= 1 ? 0.82 : 0.90), 0.16, 0.98);
-            lossy = clampNumber(Math.round(lossy) + (remain <= 1 ? 28 : 18), 0, 200);
-            colors = clampNumber(Math.round(colors) - (remain <= 1 ? 32 : 24), 48, 256);
+              command
+            };
           }
+          if (inRange || blob.size >= acceptableLowerBytes) {
+            break;
+          }
+          scale = clampNumber(scale * 1.08, 0.16, 0.98);
+          lossy = clampNumber(Math.round(lossy) - 12, 0, 200);
+          colors = clampNumber(Math.round(colors) + 32, 48, 256);
+        } else {
+          // 默认温和步进；剩余次数不足或超限倍率大时，按实测体积做 scale² 激进跳变
+          const remain = GIF_MAX_ATTEMPTS - (i + 1);
+          const ratio = blob.size / maxBytes;
+          let nextScale = scale * 0.90;
+          let nextLossy = Math.round(lossy) + 18;
+          let nextColors = Math.round(colors) - 24;
+          if (ratio > 1.45 || (remain <= 1 && ratio > 1.15) || (remain <= 0 && ratio > 1.05)) {
+            const safety = remain <= 1 ? 0.88 : 0.92;
+            const predictedScale = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * safety;
+            nextScale = Math.min(nextScale, predictedScale);
+            nextLossy = Math.max(nextLossy, Math.round(lossy) + (remain <= 1 ? 40 : 28));
+            nextColors = Math.min(nextColors, Math.round(colors) - (remain <= 1 ? 48 : 32));
+            console.log(`[compressGif] 激进跳变: ratio=${ratio.toFixed(2)}, remain=${remain}, scale->${nextScale.toFixed(3)}, lossy->${nextLossy}, colors->${nextColors}`);
+          }
+          scale = clampNumber(nextScale, 0.16, 0.98);
+          lossy = clampNumber(nextLossy, 0, 200);
+          colors = clampNumber(nextColors, 48, 256);
         }
-        if (!bestBlob) {
-          throw new Error('GIF 压缩后仍无法降到 2048KB 以下');
-        }
-        const compressedFile = new File([bestBlob], file.name.replace(/\.gif$/i, '') + '-compressed.gif', {
-          type: 'image/gif',
-          lastModified: Date.now()
+      } catch (error) {
+        completedAttempts++;
+        const message = error && error.message ? error.message : String(error);
+        attempts.push({ index: i + 1, args: args.join(' '), error: message });
+        console.error('[X岛-EX][GIF压缩][失败]', {
+          stage: stage,
+          elapsedMs: finiteNumber(now() - totalStartTime),
+          completedAttempts: completedAttempts,
+          attempt: `${i + 1}/${GIF_MAX_ATTEMPTS}`,
+          command: [...args, '/tem/input.gif', '-o', '/out/out.gif'].join(' '),
+          error: message
         });
-        const summary = `最佳命令: ${bestArgs.join(' ')}；原始 ${formatKB(file.size)} -> 压缩后 ${formatKB(compressedFile.size)}`;
-        const durationMs = finiteNumber(now() - totalStartTime);
-        console.log('[X岛-EX][GIF压缩][汇总]', {
-          totalElapsedMs: durationMs,
-          dimensionsElapsedMs,
-          moduleLoadElapsedMs,
-          completedAttempts,
-          originalKB: finiteNumber(originalKB, 1),
-          finalKB: finiteNumber(compressedFile.size / 1024, 1),
-          compressionRate: finiteNumber(compressedFile.size / file.size, 4),
-          reductionPercent: finiteNumber((1 - compressedFile.size / file.size) * 100, 2),
-          finalLossy: bestAttemptLog.lossy,
-          finalColors: bestAttemptLog.colors,
-          finalScale: bestAttemptLog.scale,
-          finalCommand: bestAttemptLog.command
-        });
-        return { file: compressedFile, summary, attempts, durationMs };
-        } catch (error) {
-          const message = error && error.message ? error.message : String(error);
-          console.error('[X岛-EX][GIF压缩][失败]', {
-            stage: stage,
-            elapsedMs: finiteNumber(now() - totalStartTime),
-            completedAttempts: completedAttempts,
-            error: message
+        if (onProgress) {
+          onProgress({
+            index: i + 1,
+            total: GIF_MAX_ATTEMPTS,
+            originalKB: Number(originalKB.toFixed(1)),
+            currentKB: null,
+            args: args.join(' '),
+            error: message,
+            hitTarget: false,
+            inRange: false
           });
-          throw error;
         }
+        // 失败轮次也按剩余次数适度加压，避免空耗预算
+        const remain = GIF_MAX_ATTEMPTS - (i + 1);
+        scale = clampNumber(scale * (remain <= 1 ? 0.82 : 0.90), 0.16, 0.98);
+        lossy = clampNumber(Math.round(lossy) + (remain <= 1 ? 28 : 18), 0, 200);
+        colors = clampNumber(Math.round(colors) - (remain <= 1 ? 32 : 24), 48, 256);
       }
-      // ---- APNG 组装工具（供 compressApngToSize 和 convertAnimatedWebpToApng 共用）----
-      const _apngCrcTable = (() => {
-        const table = new Uint32Array(256);
-        for (let n = 0; n < 256; n++) {
-          let c = n;
-          for (let k = 0; k < 8; k++) {
-            c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-          }
-          table[n] = c;
+    }
+    if (!bestBlob) {
+      throw new Error('GIF 压缩后仍无法降到 2048KB 以下');
+    }
+    const compressedFile = new File([bestBlob], file.name.replace(/\.gif$/i, '') + '-compressed.gif', {
+      type: 'image/gif',
+      lastModified: Date.now()
+    });
+    const summary = `最佳命令: ${bestArgs.join(' ')}；原始 ${formatKB(file.size)} -> 压缩后 ${formatKB(compressedFile.size)}`;
+    const durationMs = finiteNumber(now() - totalStartTime);
+    console.log('[X岛-EX][GIF压缩][汇总]', {
+      totalElapsedMs: durationMs,
+      dimensionsElapsedMs,
+      moduleLoadElapsedMs,
+      completedAttempts,
+      originalKB: finiteNumber(originalKB, 1),
+      finalKB: finiteNumber(compressedFile.size / 1024, 1),
+      compressionRate: finiteNumber(compressedFile.size / file.size, 4),
+      reductionPercent: finiteNumber((1 - compressedFile.size / file.size) * 100, 2),
+      finalLossy: bestAttemptLog.lossy,
+      finalColors: bestAttemptLog.colors,
+      finalScale: bestAttemptLog.scale,
+      finalCommand: bestAttemptLog.command
+    });
+    return { file: compressedFile, summary, attempts, durationMs };
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      console.error('[X岛-EX][GIF压缩][失败]', {
+        stage: stage,
+        elapsedMs: finiteNumber(now() - totalStartTime),
+        completedAttempts: completedAttempts,
+        error: message
+      });
+      throw error;
+    }
+  }
+  // ---- APNG 组装工具（供 compressApngToSize 和 convertAnimatedWebpToApng 共用）----
+  const _apngCrcTable = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) {
+        c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      table[n] = c;
+    }
+    return table;
+  })();
+  const _apngCrc32 = (data) => {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < data.length; i++) {
+      crc = _apngCrcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  };
+  const _apngReadPngChunks = (u8) => {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let pos = 8; // 跳过 PNG signature
+    const chunks = [];
+    while (pos + 8 <= u8.length) {
+      const len = dv.getUint32(pos); pos += 4;
+      const type = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2], u8[pos+3]); pos += 4;
+      if (pos + len + 4 > u8.length) break;
+      chunks.push({ type, data: u8.slice(pos, pos + len) });
+      pos += len + 4; // data + crc
+    }
+    return chunks;
+  };
+  const _apngBuild = (ihdrData, frameChunks, delays, numPlays) => {
+    let totalSize = 8 + (12 + 13) + (12 + 8); // sig + IHDR + acTL
+    for (let i = 0; i < frameChunks.length; i++) {
+      totalSize += 12 + 26; // fcTL
+      for (const idat of frameChunks[i]) {
+        totalSize += (i === 0 ? 12 : 12 + 4) + idat.length; // IDAT vs fdAT
+      }
+    }
+    totalSize += 12; // IEND
+    const buf = new ArrayBuffer(totalSize);
+    const u8 = new Uint8Array(buf);
+    const dv = new DataView(buf);
+    let o = 0;
+    // PNG signature
+    u8.set([137, 80, 78, 71, 13, 10, 26, 10], 0); o = 8;
+    // IHDR
+    dv.setUint32(o, 13); o += 4;
+    u8.set([73, 72, 68, 82], o); o += 4;
+    u8.set(ihdrData, o); o += 13;
+    dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 13, o))); o += 4;
+    // acTL
+    dv.setUint32(o, 8); o += 4;
+    u8.set([97, 99, 84, 76], o); o += 4;
+    dv.setUint32(o, frameChunks.length); o += 4;
+    dv.setUint32(o, numPlays); o += 4;
+    dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 8, o))); o += 4;
+    // Frames
+    let seqNum = 0;
+    for (let i = 0; i < frameChunks.length; i++) {
+      const w = dv.getUint32(16);
+      const h = dv.getUint32(20);
+      const delay = delays[i] || 100;
+      dv.setUint32(o, 26); o += 4;
+      u8.set([102, 99, 84, 76], o); o += 4;
+      dv.setUint32(o, seqNum++); o += 4;
+      dv.setUint32(o, w); o += 4;
+      dv.setUint32(o, h); o += 4;
+      dv.setUint32(o, 0); o += 4;
+      dv.setUint32(o, 0); o += 4;
+      dv.setUint16(o, delay); o += 2;
+      dv.setUint16(o, 1000); o += 2;
+      // 全画布预合成帧：每帧都是完整 RGBA，必须 SOURCE 替换，不能 OVER 叠透明
+      u8[o++] = 0; // dispose_op: NONE
+      u8[o++] = 0; // blend_op: SOURCE（0=替换，保留本帧透明区）
+      dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 26, o))); o += 4;
+      if (i === 0) {
+        for (const idatData of frameChunks[i]) {
+          dv.setUint32(o, idatData.length); o += 4;
+          u8.set([73, 68, 65, 84], o); o += 4;
+          u8.set(idatData, o); o += idatData.length;
+          dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - idatData.length, o))); o += 4;
         }
-        return table;
-      })();
-      const _apngCrc32 = (data) => {
-        let crc = 0xFFFFFFFF;
-        for (let i = 0; i < data.length; i++) {
-          crc = _apngCrcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
-        }
-        return (crc ^ 0xFFFFFFFF) >>> 0;
-      };
-      const _apngReadPngChunks = (u8) => {
-        const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-        let pos = 8; // 跳过 PNG signature
-        const chunks = [];
-        while (pos + 8 <= u8.length) {
-          const len = dv.getUint32(pos); pos += 4;
-          const type = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2], u8[pos+3]); pos += 4;
-          if (pos + len + 4 > u8.length) break;
-          chunks.push({ type, data: u8.slice(pos, pos + len) });
-          pos += len + 4; // data + crc
-        }
-        return chunks;
-      };
-      const _apngBuild = (ihdrData, frameChunks, delays, numPlays) => {
-        let totalSize = 8 + (12 + 13) + (12 + 8); // sig + IHDR + acTL
-        for (let i = 0; i < frameChunks.length; i++) {
-          totalSize += 12 + 26; // fcTL
-          for (const idat of frameChunks[i]) {
-            totalSize += (i === 0 ? 12 : 12 + 4) + idat.length; // IDAT vs fdAT
-          }
-        }
-        totalSize += 12; // IEND
-        const buf = new ArrayBuffer(totalSize);
-        const u8 = new Uint8Array(buf);
-        const dv = new DataView(buf);
-        let o = 0;
-        // PNG signature
-        u8.set([137, 80, 78, 71, 13, 10, 26, 10], 0); o = 8;
-        // IHDR
-        dv.setUint32(o, 13); o += 4;
-        u8.set([73, 72, 68, 82], o); o += 4;
-        u8.set(ihdrData, o); o += 13;
-        dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 13, o))); o += 4;
-        // acTL
-        dv.setUint32(o, 8); o += 4;
-        u8.set([97, 99, 84, 76], o); o += 4;
-        dv.setUint32(o, frameChunks.length); o += 4;
-        dv.setUint32(o, numPlays); o += 4;
-        dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 8, o))); o += 4;
-        // Frames
-        let seqNum = 0;
-        for (let i = 0; i < frameChunks.length; i++) {
-          const w = dv.getUint32(16);
-          const h = dv.getUint32(20);
-          const delay = delays[i] || 100;
-          dv.setUint32(o, 26); o += 4;
-          u8.set([102, 99, 84, 76], o); o += 4;
+      } else {
+        for (const idatData of frameChunks[i]) {
+          const fdatPayloadLen = 4 + idatData.length;
+          dv.setUint32(o, fdatPayloadLen); o += 4;
+          u8.set([102, 100, 65, 84], o); o += 4;
           dv.setUint32(o, seqNum++); o += 4;
-          dv.setUint32(o, w); o += 4;
-          dv.setUint32(o, h); o += 4;
-          dv.setUint32(o, 0); o += 4;
-          dv.setUint32(o, 0); o += 4;
-          dv.setUint16(o, delay); o += 2;
-          dv.setUint16(o, 1000); o += 2;
-          // 全画布预合成帧：每帧都是完整 RGBA，必须 SOURCE 替换，不能 OVER 叠透明
-          u8[o++] = 0; // dispose_op: NONE
-          u8[o++] = 0; // blend_op: SOURCE（0=替换，保留本帧透明区）
-          dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - 26, o))); o += 4;
-          if (i === 0) {
-            for (const idatData of frameChunks[i]) {
-              dv.setUint32(o, idatData.length); o += 4;
-              u8.set([73, 68, 65, 84], o); o += 4;
-              u8.set(idatData, o); o += idatData.length;
-              dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - idatData.length, o))); o += 4;
-            }
-          } else {
-            for (const idatData of frameChunks[i]) {
-              const fdatPayloadLen = 4 + idatData.length;
-              dv.setUint32(o, fdatPayloadLen); o += 4;
-              u8.set([102, 100, 65, 84], o); o += 4;
-              dv.setUint32(o, seqNum++); o += 4;
-              u8.set(idatData, o); o += idatData.length;
-              dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - idatData.length - 4, o))); o += 4;
-            }
-          }
+          u8.set(idatData, o); o += idatData.length;
+          dv.setUint32(o, _apngCrc32(u8.slice(o - 4 - idatData.length - 4, o))); o += 4;
         }
-        // IEND
-        dv.setUint32(o, 0); o += 4;
-        u8.set([73, 69, 78, 68], o); o += 4;
-        dv.setUint32(o, _apngCrc32(u8.slice(o - 4, o))); o += 4;
-        return buf;
-      };
-      // ---- WebP ANMF bitstream → 单帧 WebP 容器包装 ----
-      // ANMF 子 bitstream 已包含完整 chunk headers（ALPH+VP8 / VP8L / VP8），
-      // 只需外包 RIFF/WEBP/VP8X。frameW/frameH 必须是真实像素尺寸（不是 Minus One）。
-      //
-      // 关键：RIFF size 字段 = 文件总长 - 8。之前写成 new Uint8Array(12 + size)
-      // 会多出 4 字节尾零，Blob 长度 > RIFF 声明长度，浏览器解码器直接拒文件。
-      function _wrapBitstreamAsWebp(bitstream, frameW, frameH) {
-        const hasAlpha = (String.fromCharCode(bitstream[0], bitstream[1], bitstream[2], bitstream[3]) === 'ALPH')
-                      || (bitstream[0] === 0x2F); // VP8L 自带 alpha
-        const vp8x = new Uint8Array(10);
-        if (hasAlpha) vp8x[0] = 0x10; // bit4 = has_alpha
-        const w1 = Math.max(0, frameW - 1);
-        const h1 = Math.max(0, frameH - 1);
-        vp8x[4] = w1 & 0xFF; vp8x[5] = (w1 >> 8) & 0xFF; vp8x[6] = (w1 >> 16) & 0xFF;
-        vp8x[7] = h1 & 0xFF; vp8x[8] = (h1 >> 8) & 0xFF; vp8x[9] = (h1 >> 16) & 0xFF;
-        // layout: RIFF(4) + size(4) + WEBP(4) + VP8X_chunk(8+10=18) + bitstream(+pad)
-        const pad = bitstream.length & 1; // RIFF 偶数对齐
-        const payloadAfterRiffHeader = 4 + 18 + bitstream.length + pad; // = size 字段值
-        const fileSize = 8 + payloadAfterRiffHeader; // 真实文件长度，必须精确
-        const result = new Uint8Array(fileSize);
-        const dv = new DataView(result.buffer, result.byteOffset, result.byteLength);
-        result.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
-        dv.setUint32(4, payloadAfterRiffHeader, true);
-        result.set([0x57, 0x45, 0x42, 0x50], 8); // WEBP
-        result.set([0x56, 0x50, 0x38, 0x58], 12); // VP8X
-        dv.setUint32(16, 10, true);
-        result.set(vp8x, 20);
-        result.set(bitstream, 30);
-        // pad 字节已由 new Uint8Array 填 0，无需再写
-        return result;
       }
-      // 解码单帧 WebP：createImageBitmap 优先，Image 兜底（比 ImageDecoder 对单帧更稳）
-      async function _decodeSingleFrameWebp(frameBytes) {
-        const blob = new Blob([frameBytes], { type: 'image/webp' });
-        if (typeof createImageBitmap === 'function') {
-          try {
-            return await createImageBitmap(blob);
-          } catch (e) {
-            console.warn('[convertAnimatedWebpToApng] createImageBitmap 失败，尝试 Image:', e && e.message);
-          }
-        }
-        return await new Promise((resolve, reject) => {
-          const img = new Image();
-          const url = URL.createObjectURL(blob);
-          img.onload = () => {
-            URL.revokeObjectURL(url);
-            resolve(img);
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error('Image 加载单帧 WebP 失败'));
-          };
-          img.src = url;
+    }
+    // IEND
+    dv.setUint32(o, 0); o += 4;
+    u8.set([73, 69, 78, 68], o); o += 4;
+    dv.setUint32(o, _apngCrc32(u8.slice(o - 4, o))); o += 4;
+    return buf;
+  };
+  // ---- WebP ANMF bitstream → 单帧 WebP 容器包装 ----
+  // ANMF 子 bitstream 已包含完整 chunk headers（ALPH+VP8 / VP8L / VP8），
+  // 只需外包 RIFF/WEBP/VP8X。frameW/frameH 必须是真实像素尺寸（不是 Minus One）。
+  //
+  // 关键：RIFF size 字段 = 文件总长 - 8。之前写成 new Uint8Array(12 + size)
+  // 会多出 4 字节尾零，Blob 长度 > RIFF 声明长度，浏览器解码器直接拒文件。
+  function _wrapBitstreamAsWebp(bitstream, frameW, frameH) {
+    const hasAlpha = (String.fromCharCode(bitstream[0], bitstream[1], bitstream[2], bitstream[3]) === 'ALPH')
+                  || (bitstream[0] === 0x2F); // VP8L 自带 alpha
+    const vp8x = new Uint8Array(10);
+    if (hasAlpha) vp8x[0] = 0x10; // bit4 = has_alpha
+    const w1 = Math.max(0, frameW - 1);
+    const h1 = Math.max(0, frameH - 1);
+    vp8x[4] = w1 & 0xFF; vp8x[5] = (w1 >> 8) & 0xFF; vp8x[6] = (w1 >> 16) & 0xFF;
+    vp8x[7] = h1 & 0xFF; vp8x[8] = (h1 >> 8) & 0xFF; vp8x[9] = (h1 >> 16) & 0xFF;
+    // layout: RIFF(4) + size(4) + WEBP(4) + VP8X_chunk(8+10=18) + bitstream(+pad)
+    const pad = bitstream.length & 1; // RIFF 偶数对齐
+    const payloadAfterRiffHeader = 4 + 18 + bitstream.length + pad; // = size 字段值
+    const fileSize = 8 + payloadAfterRiffHeader; // 真实文件长度，必须精确
+    const result = new Uint8Array(fileSize);
+    const dv = new DataView(result.buffer, result.byteOffset, result.byteLength);
+    result.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+    dv.setUint32(4, payloadAfterRiffHeader, true);
+    result.set([0x57, 0x45, 0x42, 0x50], 8); // WEBP
+    result.set([0x56, 0x50, 0x38, 0x58], 12); // VP8X
+    dv.setUint32(16, 10, true);
+    result.set(vp8x, 20);
+    result.set(bitstream, 30);
+    // pad 字节已由 new Uint8Array 填 0，无需再写
+    return result;
+  }
+  // 解码单帧 WebP：createImageBitmap 优先，Image 兜底（比 ImageDecoder 对单帧更稳）
+  async function _decodeSingleFrameWebp(frameBytes) {
+    const blob = new Blob([frameBytes], { type: 'image/webp' });
+    if (typeof createImageBitmap === 'function') {
+      try {
+        return await createImageBitmap(blob);
+      } catch (e) {
+        console.warn('[convertAnimatedWebpToApng] createImageBitmap 失败，尝试 Image:', e && e.message);
+      }
+    }
+    return await new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Image 加载单帧 WebP 失败'));
+      };
+      img.src = url;
+    });
+  }
+  // ---- 动态 WebP → APNG（保留动画：手动解析 ANMF + 逐帧解码合成）----
+  async function convertAnimatedWebpToApng(file) {
+    const buffer = await file.arrayBuffer();
+    const src = new Uint8Array(buffer);
+    const dv = new DataView(buffer);
+    // 验证 RIFF/WEBP
+    if (String.fromCharCode(src[0], src[1], src[2], src[3]) !== 'RIFF' ||
+        String.fromCharCode(src[8], src[9], src[10], src[11]) !== 'WEBP') {
+      throw new Error('不是有效的 WebP 文件');
+    }
+    // 解析 RIFF chunks：VP8X(画布尺寸)、ANIM(背景色/循环)、ANMF(帧数据)
+    // WebP 规范：
+    //   - VP8X / ANMF 的 width/height 存的是 Minus One（实际 = 值 + 1）
+    //   - ANMF 的 x/y 存的是像素偏移 / 2（实际 = 值 * 2）
+    let pos = 12;
+    let canvasW = 0, canvasH = 0;
+    let animBgColor = 0xFFFFFFFF; // WebP 默认白色不透明
+    const anmfFrames = [];
+    while (pos + 8 <= src.length) {
+      const chunkId = String.fromCharCode(src[pos], src[pos+1], src[pos+2], src[pos+3]);
+      const chunkLen = dv.getUint32(pos + 4, true); // little-endian
+      const dataStart = pos + 8;
+      if (chunkId === 'VP8X') {
+        canvasW = (src[dataStart+4] | (src[dataStart+5] << 8) | (src[dataStart+6] << 16)) + 1;
+        canvasH = (src[dataStart+7] | (src[dataStart+8] << 8) | (src[dataStart+9] << 16)) + 1;
+      } else if (chunkId === 'ANIM') {
+        // BGRA little-endian
+        animBgColor = dv.getUint32(dataStart, true);
+      } else if (chunkId === 'ANMF') {
+        const xRaw = (src[dataStart]   | (src[dataStart+1] << 8) | (src[dataStart+2] << 16));
+        const yRaw = (src[dataStart+3] | (src[dataStart+4] << 8) | (src[dataStart+5] << 16));
+        const wRaw = (src[dataStart+6] | (src[dataStart+7] << 8) | (src[dataStart+8] << 16));
+        const hRaw = (src[dataStart+9] | (src[dataStart+10] << 8) | (src[dataStart+11] << 16));
+        const duration = (src[dataStart+12] | (src[dataStart+13] << 8) | (src[dataStart+14] << 16));
+        const flags = src[dataStart+15];
+        const disposal = (flags >> 1) & 1; // bit1: 0=none, 1=restore to bg
+        const blending = flags & 1;        // bit0: 0=alpha blend, 1=no blend
+        const bitstream = src.slice(dataStart + 16, dataStart + chunkLen);
+        anmfFrames.push({
+          x: xRaw * 2,
+          y: yRaw * 2,
+          w: wRaw + 1,
+          h: hRaw + 1,
+          duration: Math.max(duration || 100, 20),
+          disposal,
+          blending,
+          bitstream
         });
       }
-      // ---- 动态 WebP → APNG（保留动画：手动解析 ANMF + 逐帧解码合成）----
-      async function convertAnimatedWebpToApng(file) {
-        const buffer = await file.arrayBuffer();
-        const src = new Uint8Array(buffer);
-        const dv = new DataView(buffer);
-        // 验证 RIFF/WEBP
-        if (String.fromCharCode(src[0], src[1], src[2], src[3]) !== 'RIFF' ||
-            String.fromCharCode(src[8], src[9], src[10], src[11]) !== 'WEBP') {
-          throw new Error('不是有效的 WebP 文件');
-        }
-        // 解析 RIFF chunks：VP8X(画布尺寸)、ANIM(背景色/循环)、ANMF(帧数据)
-        // WebP 规范：
-        //   - VP8X / ANMF 的 width/height 存的是 Minus One（实际 = 值 + 1）
-        //   - ANMF 的 x/y 存的是像素偏移 / 2（实际 = 值 * 2）
-        let pos = 12;
-        let canvasW = 0, canvasH = 0;
-        let animBgColor = 0xFFFFFFFF; // WebP 默认白色不透明
-        const anmfFrames = [];
-        while (pos + 8 <= src.length) {
-          const chunkId = String.fromCharCode(src[pos], src[pos+1], src[pos+2], src[pos+3]);
-          const chunkLen = dv.getUint32(pos + 4, true); // little-endian
-          const dataStart = pos + 8;
-          if (chunkId === 'VP8X') {
-            canvasW = (src[dataStart+4] | (src[dataStart+5] << 8) | (src[dataStart+6] << 16)) + 1;
-            canvasH = (src[dataStart+7] | (src[dataStart+8] << 8) | (src[dataStart+9] << 16)) + 1;
-          } else if (chunkId === 'ANIM') {
-            // BGRA little-endian
-            animBgColor = dv.getUint32(dataStart, true);
-          } else if (chunkId === 'ANMF') {
-            const xRaw = (src[dataStart]   | (src[dataStart+1] << 8) | (src[dataStart+2] << 16));
-            const yRaw = (src[dataStart+3] | (src[dataStart+4] << 8) | (src[dataStart+5] << 16));
-            const wRaw = (src[dataStart+6] | (src[dataStart+7] << 8) | (src[dataStart+8] << 16));
-            const hRaw = (src[dataStart+9] | (src[dataStart+10] << 8) | (src[dataStart+11] << 16));
-            const duration = (src[dataStart+12] | (src[dataStart+13] << 8) | (src[dataStart+14] << 16));
-            const flags = src[dataStart+15];
-            const disposal = (flags >> 1) & 1; // bit1: 0=none, 1=restore to bg
-            const blending = flags & 1;        // bit0: 0=alpha blend, 1=no blend
-            const bitstream = src.slice(dataStart + 16, dataStart + chunkLen);
-            anmfFrames.push({
-              x: xRaw * 2,
-              y: yRaw * 2,
-              w: wRaw + 1,
-              h: hRaw + 1,
-              duration: Math.max(duration || 100, 20),
-              disposal,
-              blending,
-              bitstream
-            });
-          }
-          pos = dataStart + chunkLen + (chunkLen & 1); // RIFF 2-byte aligned
-        }
-        if (anmfFrames.length === 0) {
-          throw new Error('WebP 中未找到动画帧（ANMF）');
-        }
-        if (canvasW === 0 || canvasH === 0) {
-          canvasW = anmfFrames[0].w;
-          canvasH = anmfFrames[0].h;
-        }
-        console.log(`[convertAnimatedWebpToApng] 画布: ${canvasW}x${canvasH}, ${anmfFrames.length}帧, 首帧 ${anmfFrames[0].w}x${anmfFrames[0].h}`);
-        // 逐帧解码 + 合成
-        // 透明底处理：很多动画 WebP（尤其贴纸）ANIM 背景色写成不透明白 0xFFFFFFFF，
-        // 但实际展示依赖帧 alpha。若按规范 dispose 到该背景色，透明底会被整块铺白。
-        // 这里统一以透明画布合成，保留帧 alpha。
-        const canvas = document.createElement('canvas');
-        canvas.width = canvasW;
-        canvas.height = canvasH;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: true });
-        const bgB = animBgColor & 0xFF;
-        const bgG = (animBgColor >> 8) & 0xFF;
-        const bgR = (animBgColor >> 16) & 0xFF;
-        const bgA = (animBgColor >> 24) & 0xFF;
-        // 仅当背景色本身带透明（A < 255）时才铺底；不透明白/黑一律当透明画布
-        const useOpaqueBg = bgA > 0 && bgA < 255;
-        if (bgA === 255) {
-          console.log(`[convertAnimatedWebpToApng] ANIM 背景色 rgba(${bgR},${bgG},${bgB},${bgA}) 为不透明，改用透明画布以保留透明底`);
-        }
-        ctx.clearRect(0, 0, canvasW, canvasH);
+      pos = dataStart + chunkLen + (chunkLen & 1); // RIFF 2-byte aligned
+    }
+    if (anmfFrames.length === 0) {
+      throw new Error('WebP 中未找到动画帧（ANMF）');
+    }
+    if (canvasW === 0 || canvasH === 0) {
+      canvasW = anmfFrames[0].w;
+      canvasH = anmfFrames[0].h;
+    }
+    console.log(`[convertAnimatedWebpToApng] 画布: ${canvasW}x${canvasH}, ${anmfFrames.length}帧, 首帧 ${anmfFrames[0].w}x${anmfFrames[0].h}`);
+    // 逐帧解码 + 合成
+    // 透明底处理：很多动画 WebP（尤其贴纸）ANIM 背景色写成不透明白 0xFFFFFFFF，
+    // 但实际展示依赖帧 alpha。若按规范 dispose 到该背景色，透明底会被整块铺白。
+    // 这里统一以透明画布合成，保留帧 alpha。
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: true });
+    const bgB = animBgColor & 0xFF;
+    const bgG = (animBgColor >> 8) & 0xFF;
+    const bgR = (animBgColor >> 16) & 0xFF;
+    const bgA = (animBgColor >> 24) & 0xFF;
+    // 仅当背景色本身带透明（A < 255）时才铺底；不透明白/黑一律当透明画布
+    const useOpaqueBg = bgA > 0 && bgA < 255;
+    if (bgA === 255) {
+      console.log(`[convertAnimatedWebpToApng] ANIM 背景色 rgba(${bgR},${bgG},${bgB},${bgA}) 为不透明，改用透明画布以保留透明底`);
+    }
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    if (useOpaqueBg) {
+      ctx.fillStyle = `rgba(${bgR},${bgG},${bgB},${bgA / 255})`;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+    const frames = [];
+    let firstError = null;
+    for (let fi = 0; fi < anmfFrames.length; fi++) {
+      const frame = anmfFrames[fi];
+      const frameWebpBytes = _wrapBitstreamAsWebp(frame.bitstream, frame.w, frame.h);
+      let bitmap;
+      try {
+        bitmap = await _decodeSingleFrameWebp(frameWebpBytes);
+      } catch (e) {
+        if (!firstError) firstError = e;
+        console.warn(`[convertAnimatedWebpToApng] 帧${fi}解码失败: ${frame.w}x${frame.h} @(${frame.x},${frame.y})`, e && e.message);
+        continue;
+      }
+      // blending: 0 = alpha blend (OVER), 1 = no blend (SOURCE/replace)
+      if (frame.blending === 1) {
+        ctx.clearRect(frame.x, frame.y, frame.w, frame.h);
+      }
+      ctx.drawImage(bitmap, frame.x, frame.y);
+      if (typeof bitmap.close === 'function') bitmap.close();
+      // 捕获全画布 RGBA（含 alpha）
+      const imgData = ctx.getImageData(0, 0, canvasW, canvasH);
+      frames.push({ rgba: new Uint8Array(imgData.data), delay: frame.duration });
+      // disposal: 1 = restore to background → 透明画布场景下恢复为透明
+      if (frame.disposal === 1) {
+        ctx.clearRect(frame.x, frame.y, frame.w, frame.h);
         if (useOpaqueBg) {
           ctx.fillStyle = `rgba(${bgR},${bgG},${bgB},${bgA / 255})`;
-          ctx.fillRect(0, 0, canvasW, canvasH);
+          ctx.fillRect(frame.x, frame.y, frame.w, frame.h);
         }
-        const frames = [];
-        let firstError = null;
-        for (let fi = 0; fi < anmfFrames.length; fi++) {
-          const frame = anmfFrames[fi];
-          const frameWebpBytes = _wrapBitstreamAsWebp(frame.bitstream, frame.w, frame.h);
-          let bitmap;
-          try {
-            bitmap = await _decodeSingleFrameWebp(frameWebpBytes);
-          } catch (e) {
-            if (!firstError) firstError = e;
-            console.warn(`[convertAnimatedWebpToApng] 帧${fi}解码失败: ${frame.w}x${frame.h} @(${frame.x},${frame.y})`, e && e.message);
-            continue;
+      }
+    }
+    if (frames.length === 0) {
+      throw new Error('所有动画帧解码失败' + (firstError && firstError.message ? `（${firstError.message}）` : ''));
+    }
+    console.log(`[convertAnimatedWebpToApng] 解码完成: ${frames.length}/${anmfFrames.length}帧`);
+    // 逐帧渲染为 PNG 字节
+    const framePngs = [];
+    for (const f of frames) {
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = canvasW;
+      tmpCanvas.height = canvasH;
+      const tmpCtx = tmpCanvas.getContext('2d');
+      tmpCtx.putImageData(new ImageData(new Uint8ClampedArray(f.rgba), canvasW, canvasH), 0, 0);
+      tmpCtx.fillStyle = 'rgba(0,0,0,0.004)';
+      tmpCtx.fillRect(canvasW - 1, canvasH - 1, 1, 1);
+      const pngBlob = await new Promise((resolve, reject) => {
+        tmpCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('帧 PNG 编码失败')), 'image/png');
+      });
+      framePngs.push(new Uint8Array(await pngBlob.arrayBuffer()));
+    }
+    // 提取 IHDR 和 IDAT，组装 APNG
+    const firstChunks = _apngReadPngChunks(framePngs[0]);
+    const ihdrChunk = firstChunks.find(c => c.type === 'IHDR');
+    if (!ihdrChunk) throw new Error('第一帧 PNG 缺少 IHDR');
+    const allFrameIdats = framePngs.map(png => {
+      const chunks = _apngReadPngChunks(png);
+      return chunks.filter(c => c.type === 'IDAT').map(c => c.data);
+    });
+    const delays = frames.map(f => f.delay);
+    const apngBuf = _apngBuild(ihdrChunk.data, allFrameIdats, delays, 0);
+    console.log(`[convertAnimatedWebpToApng] APNG 组装完成: ${(apngBuf.byteLength / 1024).toFixed(1)}KB, ${frames.length}帧`);
+    return new File([apngBuf], file.name.replace(/\.webp$/i, '.apng.png'), { type: 'image/png', lastModified: Date.now() });
+  }
+  // ✅ APNG 压缩（apng-js Player 合成 + UPNG 重编码）
+  // 支持增量帧（blend/dispose），不再降级为静态压缩
+  async function compressApngToSize(file, maxSizeKB = 2048, options = {}) {
+    const maxBytes = maxSizeKB * 1024;
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    if (file.size <= maxBytes) return file;
+    const arrayBuffer = await file.arrayBuffer();
+    // 用 apng-js 解析（它能正确处理所有 APNG 结构）
+    // apng-js UMD 导出名为 "apng-js"，需要从全局获取
+    const _apngRaw = window['apng-js'] || window['apngJs'];
+    const apngJsLib = typeof _apngRaw === 'function' ? _apngRaw
+                    : (_apngRaw && typeof _apngRaw.default === 'function') ? _apngRaw.default
+                    : null;
+    if (!apngJsLib) {
+      console.warn('[compressApngToSize] apng-js 库未加载 (window["apng-js"]=' + typeof _apngRaw + ')，降级到静态压缩');
+      toast('APNG 解析库未加载，将转为静态图片压缩（动画会丢失）', 3000);
+      return compressImageToSize(file, maxSizeKB);
+    }
+    let apng;
+    try {
+      apng = apngJsLib(arrayBuffer);
+    } catch (e) {
+      console.warn('[compressApngToSize] parseAPNG 失败，降级到静态压缩:', e.message);
+      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+      return compressImageToSize(file, maxSizeKB);
+    }
+    if (apng instanceof Error) {
+      console.warn('[compressApngToSize] parseAPNG 返回错误:', apng.message);
+      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+      return compressImageToSize(file, maxSizeKB);
+    }
+    const { width, height } = apng;
+    if (!apng.frames || apng.frames.length <= 1) {
+      return compressImageToSize(file, maxSizeKB);
+    }
+    console.log(`[compressApngToSize] APNG: ${width}x${height}, ${apng.frames.length}帧, 总时长=${apng.playTime}ms`);
+    // ---- 第一步：用 apng-js Player 逐帧合成，拿到每帧的完整 RGBA 像素 ----
+    await apng.createImages();
+    const renderCanvas = document.createElement('canvas');
+    renderCanvas.width = width;
+    renderCanvas.height = height;
+    const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
+    const player = await apng.getPlayer(renderCtx, false);
+    const compositedFrames = [];  // { data: Uint8ClampedArray, delay: number }
+    for (let i = 0; i < apng.frames.length; i++) {
+      await player.renderNextFrame();
+      const imgData = renderCtx.getImageData(0, 0, width, height);
+      compositedFrames.push({
+        data: new Uint8Array(imgData.data),
+        delay: apng.frames[i].delay || 100
+      });
+    }
+    console.log(`[compressApngToSize] 合成完成: ${compositedFrames.length}帧`);
+    // 验证合成帧数据完整性
+    const expectedFrameBytes = width * height * 4;
+    for (let i = 0; i < compositedFrames.length; i++) {
+      if (compositedFrames[i].data.length !== expectedFrameBytes) {
+        throw new Error(`合成帧${i}数据异常: 期望${expectedFrameBytes}字节, 实际${compositedFrames[i].data.length}字节`);
+      }
+    }
+    console.log(`[compressApngToSize] 帧数据验证通过: ${compositedFrames.length}帧 × ${(expectedFrameBytes/1024).toFixed(0)}KB/帧`);
+    // ---- 第二步：可选抽帧（帧数 > 15 且压缩压力大时启用）----
+    let workFrames = compositedFrames;
+    let workDelays = compositedFrames.map(f => f.delay);
+    const originalFrameCount = compositedFrames.length;
+    const oversizeRatio = file.size / maxBytes;
+    if (oversizeRatio > 1.8 && compositedFrames.length > 15) {
+      const step = oversizeRatio > 3 ? 3 : 2;
+      const decimated = [];
+      const decimatedDelays = [];
+      for (let i = 0; i < compositedFrames.length; i += step) {
+        decimated.push(compositedFrames[i]);
+        let accumulatedDelay = 0;
+        for (let j = i; j < Math.min(i + step, compositedFrames.length); j++) {
+          accumulatedDelay += compositedFrames[j].delay;
+        }
+        decimatedDelays.push(accumulatedDelay);
+      }
+      workFrames = decimated;
+      workDelays = decimatedDelays;
+      console.log(`[compressApngToSize] 抽帧: ${originalFrameCount} → ${workFrames.length}帧 (step=${step})`);
+    }
+    // ---- 第三步：逐帧 canvas.toBlob + 手动组装 APNG ----
+    // 完全绕过 UPNG.encode 的多帧模式，避免大数据量内存爆炸
+    // PNG chunk 读取辅助
+    const readPngChunks = (u8) => {
+      const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+      let pos = 8; // 跳过 PNG signature
+      const chunks = [];
+      while (pos + 8 <= u8.length) {
+        const len = dv.getUint32(pos); pos += 4;
+        const type = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2], u8[pos+3]); pos += 4;
+        if (pos + len + 4 > u8.length) break;
+        chunks.push({ type, data: u8.slice(pos, pos + len) });
+        pos += len + 4; // data + crc
+      }
+      return chunks;
+    };
+    // 手动组装 APNG
+    const buildApng = (ihdrData, frameChunks, delays, numPlays) => {
+      // 计算总大小
+      // 第 1 帧: fcTL(38) + IDAT(12+len)*
+      // 后续帧: fcTL(38) + fdAT(12+4+len)* （fdAT 多 4 字节 seqNum）
+      let totalSize = 8 + (12 + 13) + (12 + 8); // sig + IHDR + acTL
+      for (let i = 0; i < frameChunks.length; i++) {
+        totalSize += 12 + 26; // fcTL
+        for (const idat of frameChunks[i]) {
+          totalSize += (i === 0 ? 12 : 12 + 4) + idat.length; // IDAT vs fdAT
+        }
+      }
+      totalSize += 12; // IEND
+      const buf = new ArrayBuffer(totalSize);
+      const u8 = new Uint8Array(buf);
+      const dv = new DataView(buf);
+      let o = 0;
+      // PNG signature
+      u8.set([137, 80, 78, 71, 13, 10, 26, 10], 0); o = 8;
+      // IHDR
+      const ihdrLen = 13;
+      dv.setUint32(o, ihdrLen); o += 4;
+      u8.set([73, 72, 68, 82], o); o += 4; // "IHDR"
+      u8.set(ihdrData, o); o += ihdrLen;
+      // CRC32 of type+data
+      const ihdrCrc = crc32(u8.slice(o - 4 - ihdrLen, o));
+      dv.setUint32(o, ihdrCrc); o += 4;
+      // acTL (animation control)
+      dv.setUint32(o, 8); o += 4; // length
+      u8.set([97, 99, 84, 76], o); o += 4; // "acTL"
+      dv.setUint32(o, frameChunks.length); o += 4; // num_frames
+      dv.setUint32(o, numPlays); o += 4; // num_plays (0 = infinite)
+      const acTlCrc = crc32(u8.slice(o - 4 - 8, o));
+      dv.setUint32(o, acTlCrc); o += 4;
+      // Frames — APNG 规范：第 1 帧用 IDAT，后续帧用 fdAT
+      let seqNum = 0;
+      for (let i = 0; i < frameChunks.length; i++) {
+        const w = dv.getUint32(16); // from IHDR
+        const h = dv.getUint32(20);
+        const delay = delays[i] || 100;
+        // fcTL (frame control) — 26 bytes data
+        dv.setUint32(o, 26); o += 4;
+        u8.set([102, 99, 84, 76], o); o += 4; // "fcTL"
+        dv.setUint32(o, seqNum++); o += 4; // sequence_number
+        dv.setUint32(o, w); o += 4;
+        dv.setUint32(o, h); o += 4;
+        dv.setUint32(o, 0); o += 4; // x_offset
+        dv.setUint32(o, 0); o += 4; // y_offset
+        dv.setUint16(o, delay); o += 2; // delay_num
+        dv.setUint16(o, 1000); o += 2; // delay_den (毫秒)
+        // 全画布预合成帧：每帧都是完整 RGBA，必须 SOURCE 替换，不能 OVER 叠透明
+        u8[o++] = 0; // dispose_op: NONE
+        u8[o++] = 0; // blend_op: SOURCE（0=替换，保留本帧透明区）
+        dv.setUint32(o, crc32(u8.slice(o - 4 - 26, o))); o += 4;
+        if (i === 0) {
+          // 第 1 帧：IDAT（标准 PNG 图像数据块，无额外 seqNum）
+          for (const idatData of frameChunks[i]) {
+            dv.setUint32(o, idatData.length); o += 4;
+            u8.set([73, 68, 65, 84], o); o += 4; // "IDAT"
+            u8.set(idatData, o); o += idatData.length;
+            dv.setUint32(o, crc32(u8.slice(o - 4 - idatData.length, o))); o += 4;
           }
-          // blending: 0 = alpha blend (OVER), 1 = no blend (SOURCE/replace)
-          if (frame.blending === 1) {
-            ctx.clearRect(frame.x, frame.y, frame.w, frame.h);
-          }
-          ctx.drawImage(bitmap, frame.x, frame.y);
-          if (typeof bitmap.close === 'function') bitmap.close();
-          // 捕获全画布 RGBA（含 alpha）
-          const imgData = ctx.getImageData(0, 0, canvasW, canvasH);
-          frames.push({ rgba: new Uint8Array(imgData.data), delay: frame.duration });
-          // disposal: 1 = restore to background → 透明画布场景下恢复为透明
-          if (frame.disposal === 1) {
-            ctx.clearRect(frame.x, frame.y, frame.w, frame.h);
-            if (useOpaqueBg) {
-              ctx.fillStyle = `rgba(${bgR},${bgG},${bgB},${bgA / 255})`;
-              ctx.fillRect(frame.x, frame.y, frame.w, frame.h);
-            }
+        } else {
+          // 后续帧：fdAT（frame data，比 IDAT 多 4 字节 seqNum）
+          for (const idatData of frameChunks[i]) {
+            const fdatPayloadLen = 4 + idatData.length; // seqNum + 压缩数据
+            dv.setUint32(o, fdatPayloadLen); o += 4;
+            u8.set([102, 100, 65, 84], o); o += 4; // "fdAT"
+            dv.setUint32(o, seqNum++); o += 4; // sequence_number
+            u8.set(idatData, o); o += idatData.length;
+            // CRC 覆盖 type("fdAT") + payload(seqNum + data)
+            dv.setUint32(o, crc32(u8.slice(o - 4 - idatData.length - 4, o))); o += 4;
           }
         }
-        if (frames.length === 0) {
-          throw new Error('所有动画帧解码失败' + (firstError && firstError.message ? `（${firstError.message}）` : ''));
+      }
+      // IEND
+      dv.setUint32(o, 0); o += 4;
+      u8.set([73, 69, 78, 68], o); o += 4;
+      dv.setUint32(o, crc32(u8.slice(o - 4, o))); o += 4;
+      return buf;
+    };
+    // CRC32 查找表
+    const crcTable = (() => {
+      const table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+          c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
         }
-        console.log(`[convertAnimatedWebpToApng] 解码完成: ${frames.length}/${anmfFrames.length}帧`);
-        // 逐帧渲染为 PNG 字节
+        table[n] = c;
+      }
+      return table;
+    })();
+    const crc32 = (data) => {
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < data.length; i++) {
+        crc = crcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    };
+    // 逐帧渲染到 canvas + toBlob
+    const renderFrameToBlob = (srcData, srcW, srcH, scale) => {
+      return new Promise((resolve, reject) => {
+        const newW = Math.max(1, Math.floor(srcW * scale));
+        const newH = Math.max(1, Math.floor(srcH * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = newW;
+        canvas.height = newH;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        // 通过 Image → canvas 方式绘制（避免 OffscreenCanvas + putImageData 的内存问题）
+        const img = new Image();
+        const blob = new Blob([srcData], { type: 'image/bmp' });
+        const url = URL.createObjectURL(blob);
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, newW, newH);
+          URL.revokeObjectURL(url);
+          canvas.toBlob((pngBlob) => {
+            if (!pngBlob) { reject(new Error('toBlob 返回 null')); return; }
+            pngBlob.arrayBuffer().then(ab => resolve(new Uint8Array(ab))).catch(reject);
+          }, 'image/png');
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image 加载失败')); };
+        img.src = url;
+      });
+    };
+    // 单帧编码：canvas 缩放 → toBlob('image/png')
+    // 在右下角放一个几乎透明的像素，强制浏览器输出 RGBA（type=6），避免偷换成 RGB
+    const renderFrameToPng = (rgbaData, srcW, srcH, scale) => {
+      return new Promise((resolve, reject) => {
+        const newW = Math.max(1, Math.floor(srcW * scale));
+        const newH = Math.max(1, Math.floor(srcH * scale));
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = srcW;
+        srcCanvas.height = srcH;
+        const srcCtx = srcCanvas.getContext('2d');
+        srcCtx.putImageData(new ImageData(new Uint8ClampedArray(rgbaData), srcW, srcH), 0, 0);
+        const dstCanvas = document.createElement('canvas');
+        dstCanvas.width = newW;
+        dstCanvas.height = newH;
+        const dstCtx = dstCanvas.getContext('2d');
+        dstCtx.imageSmoothingEnabled = true;
+        dstCtx.imageSmoothingQuality = 'high';
+        dstCtx.drawImage(srcCanvas, 0, 0, newW, newH);
+        // 强制 RGBA：在不可见角落放一个几乎全透明的像素
+        dstCtx.fillStyle = 'rgba(0,0,0,0.004)';
+        dstCtx.fillRect(newW - 1, newH - 1, 1, 1);
+        dstCanvas.toBlob((pngBlob) => {
+          if (!pngBlob) { reject(new Error('toBlob 返回 null')); return; }
+          pngBlob.arrayBuffer().then(ab => resolve(new Uint8Array(ab))).catch(reject);
+        }, 'image/png');
+      });
+    };
+    const targetLowerBytes = Math.floor((maxSizeKB - 68) * 1024);
+    const startTime = performance.now();
+    // 缩放梯度：从大到小（直接枚举，避免浮点死循环）；超限时按实测体积跳档
+    const scaleSteps = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15];
+    for (let stepIndex = 0; stepIndex < scaleSteps.length; stepIndex++) {
+      const scale = scaleSteps[stepIndex];
+      const newW = Math.max(1, Math.floor(width * scale));
+      const newH = Math.max(1, Math.floor(height * scale));
+      console.log(`[compressApngToSize] 尝试 scale=${scale.toFixed(2)}: ${newW}x${newH}, ${workFrames.length}帧`);
+      try {
+        // 逐帧渲染为 PNG
         const framePngs = [];
-        for (const f of frames) {
-          const tmpCanvas = document.createElement('canvas');
-          tmpCanvas.width = canvasW;
-          tmpCanvas.height = canvasH;
-          const tmpCtx = tmpCanvas.getContext('2d');
-          tmpCtx.putImageData(new ImageData(new Uint8ClampedArray(f.rgba), canvasW, canvasH), 0, 0);
-          tmpCtx.fillStyle = 'rgba(0,0,0,0.004)';
-          tmpCtx.fillRect(canvasW - 1, canvasH - 1, 1, 1);
-          const pngBlob = await new Promise((resolve, reject) => {
-            tmpCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('帧 PNG 编码失败')), 'image/png');
-          });
-          framePngs.push(new Uint8Array(await pngBlob.arrayBuffer()));
+        for (let i = 0; i < workFrames.length; i++) {
+          const pngU8 = await renderFrameToPng(workFrames[i].data, width, height, scale);
+          framePngs.push(pngU8);
         }
-        // 提取 IHDR 和 IDAT，组装 APNG
-        const firstChunks = _apngReadPngChunks(framePngs[0]);
+        // 解析第一帧的 IHDR
+        const firstChunks = readPngChunks(framePngs[0]);
         const ihdrChunk = firstChunks.find(c => c.type === 'IHDR');
         if (!ihdrChunk) throw new Error('第一帧 PNG 缺少 IHDR');
+        // 提取每帧的 IDAT 数据
         const allFrameIdats = framePngs.map(png => {
-          const chunks = _apngReadPngChunks(png);
+          const chunks = readPngChunks(png);
           return chunks.filter(c => c.type === 'IDAT').map(c => c.data);
         });
-        const delays = frames.map(f => f.delay);
-        const apngBuf = _apngBuild(ihdrChunk.data, allFrameIdats, delays, 0);
-        console.log(`[convertAnimatedWebpToApng] APNG 组装完成: ${(apngBuf.byteLength / 1024).toFixed(1)}KB, ${frames.length}帧`);
-        return new File([apngBuf], file.name.replace(/\.webp$/i, '.apng.png'), { type: 'image/png', lastModified: Date.now() });
+        // 组装 APNG
+        const apngBuf = buildApng(ihdrChunk.data, allFrameIdats, workDelays, 0);
+        const blob = new Blob([apngBuf], { type: 'image/apng' });
+        const sizeKB = blob.size / 1024;
+        console.log(`[compressApngToSize] scale=${scale.toFixed(2)} → ${sizeKB.toFixed(1)}KB`);
+        if (onProgress) {
+          onProgress({ scale, sizeKB, originalKB: file.size / 1024, frameCount: workFrames.length, newW: Math.floor(width * scale), newH: Math.floor(height * scale) });
+        }
+        if (blob.size >= targetLowerBytes && blob.size <= maxBytes) {
+          const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+          console.log(`[compressApngToSize] ✓ 命中目标: ${sizeKB.toFixed(1)}KB, ${elapsed}秒`);
+          return new File([blob], file.name.replace(/\.\w+$/i, '') + '-compressed.png', { type: 'image/png' });
+        }
+        if (blob.size <= maxBytes) {
+          // 低于上限但未命中下限——也接受
+          const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+          console.log(`[compressApngToSize] ✓ 完成: ${(file.size/1024).toFixed(1)}KB → ${sizeKB.toFixed(1)}KB, ${elapsed}秒`);
+          return new File([blob], file.name.replace(/\.\w+$/i, '') + '-compressed.png', { type: 'image/png' });
+        }
+        // 仍超限：按 scale² 预估下一档，跳过中间无效梯度
+        if (stepIndex < scaleSteps.length - 1) {
+          const predicted = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * 0.92;
+          let jumpTo = stepIndex + 1;
+          for (let j = stepIndex + 1; j < scaleSteps.length; j++) {
+            jumpTo = j;
+            if (scaleSteps[j] <= predicted + 1e-6) break;
+          }
+          if (jumpTo > stepIndex + 1) {
+            console.log(`[compressApngToSize] 跳档: ${scale.toFixed(2)} (${sizeKB.toFixed(1)}KB) 预估=${predicted.toFixed(3)} → ${scaleSteps[jumpTo].toFixed(2)}`);
+            stepIndex = jumpTo - 1;
+          }
+        }
+      } catch (e) {
+        console.error(`[compressApngToSize] scale=${scale.toFixed(2)} 失败:`, e.message);
+        if (onProgress) {
+          onProgress({ scale, error: e.message, originalKB: file.size / 1024 });
+        }
       }
-      // ✅ APNG 压缩（apng-js Player 合成 + UPNG 重编码）
-      // 支持增量帧（blend/dispose），不再降级为静态压缩
-      async function compressApngToSize(file, maxSizeKB = 2048, options = {}) {
-        const maxBytes = maxSizeKB * 1024;
-        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
-        if (file.size <= maxBytes) return file;
-        const arrayBuffer = await file.arrayBuffer();
-        // 用 apng-js 解析（它能正确处理所有 APNG 结构）
-        // apng-js UMD 导出名为 "apng-js"，需要从全局获取
-        const _apngRaw = window['apng-js'] || window['apngJs'];
-        const apngJsLib = typeof _apngRaw === 'function' ? _apngRaw
-                        : (_apngRaw && typeof _apngRaw.default === 'function') ? _apngRaw.default
-                        : null;
-        if (!apngJsLib) {
-          console.warn('[compressApngToSize] apng-js 库未加载 (window["apng-js"]=' + typeof _apngRaw + ')，降级到静态压缩');
-          toast('APNG 解析库未加载，将转为静态图片压缩（动画会丢失）', 3000);
-          return compressImageToSize(file, maxSizeKB);
-        }
-        let apng;
-        try {
-          apng = apngJsLib(arrayBuffer);
-        } catch (e) {
-          console.warn('[compressApngToSize] parseAPNG 失败，降级到静态压缩:', e.message);
-          toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
-          return compressImageToSize(file, maxSizeKB);
-        }
-        if (apng instanceof Error) {
-          console.warn('[compressApngToSize] parseAPNG 返回错误:', apng.message);
-          toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
-          return compressImageToSize(file, maxSizeKB);
-        }
-        const { width, height } = apng;
-        if (!apng.frames || apng.frames.length <= 1) {
-          return compressImageToSize(file, maxSizeKB);
-        }
-        console.log(`[compressApngToSize] APNG: ${width}x${height}, ${apng.frames.length}帧, 总时长=${apng.playTime}ms`);
-        // ---- 第一步：用 apng-js Player 逐帧合成，拿到每帧的完整 RGBA 像素 ----
-        await apng.createImages();
-        const renderCanvas = document.createElement('canvas');
-        renderCanvas.width = width;
-        renderCanvas.height = height;
-        const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
-        const player = await apng.getPlayer(renderCtx, false);
-        const compositedFrames = [];  // { data: Uint8ClampedArray, delay: number }
-        for (let i = 0; i < apng.frames.length; i++) {
-          await player.renderNextFrame();
-          const imgData = renderCtx.getImageData(0, 0, width, height);
-          compositedFrames.push({
-            data: new Uint8Array(imgData.data),
-            delay: apng.frames[i].delay || 100
-          });
-        }
-        console.log(`[compressApngToSize] 合成完成: ${compositedFrames.length}帧`);
-        // 验证合成帧数据完整性
-        const expectedFrameBytes = width * height * 4;
-        for (let i = 0; i < compositedFrames.length; i++) {
-          if (compositedFrames[i].data.length !== expectedFrameBytes) {
-            throw new Error(`合成帧${i}数据异常: 期望${expectedFrameBytes}字节, 实际${compositedFrames[i].data.length}字节`);
-          }
-        }
-        console.log(`[compressApngToSize] 帧数据验证通过: ${compositedFrames.length}帧 × ${(expectedFrameBytes/1024).toFixed(0)}KB/帧`);
-        // ---- 第二步：可选抽帧（帧数 > 15 且压缩压力大时启用）----
-        let workFrames = compositedFrames;
-        let workDelays = compositedFrames.map(f => f.delay);
-        const originalFrameCount = compositedFrames.length;
-        const oversizeRatio = file.size / maxBytes;
-        if (oversizeRatio > 1.8 && compositedFrames.length > 15) {
-          const step = oversizeRatio > 3 ? 3 : 2;
-          const decimated = [];
-          const decimatedDelays = [];
-          for (let i = 0; i < compositedFrames.length; i += step) {
-            decimated.push(compositedFrames[i]);
-            let accumulatedDelay = 0;
-            for (let j = i; j < Math.min(i + step, compositedFrames.length); j++) {
-              accumulatedDelay += compositedFrames[j].delay;
-            }
-            decimatedDelays.push(accumulatedDelay);
-          }
-          workFrames = decimated;
-          workDelays = decimatedDelays;
-          console.log(`[compressApngToSize] 抽帧: ${originalFrameCount} → ${workFrames.length}帧 (step=${step})`);
-        }
-        // ---- 第三步：逐帧 canvas.toBlob + 手动组装 APNG ----
-        // 完全绕过 UPNG.encode 的多帧模式，避免大数据量内存爆炸
-        // PNG chunk 读取辅助
-        const readPngChunks = (u8) => {
-          const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-          let pos = 8; // 跳过 PNG signature
-          const chunks = [];
-          while (pos + 8 <= u8.length) {
-            const len = dv.getUint32(pos); pos += 4;
-            const type = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2], u8[pos+3]); pos += 4;
-            if (pos + len + 4 > u8.length) break;
-            chunks.push({ type, data: u8.slice(pos, pos + len) });
-            pos += len + 4; // data + crc
-          }
-          return chunks;
-        };
-        // 手动组装 APNG
-        const buildApng = (ihdrData, frameChunks, delays, numPlays) => {
-          // 计算总大小
-          // 第 1 帧: fcTL(38) + IDAT(12+len)*
-          // 后续帧: fcTL(38) + fdAT(12+4+len)* （fdAT 多 4 字节 seqNum）
-          let totalSize = 8 + (12 + 13) + (12 + 8); // sig + IHDR + acTL
-          for (let i = 0; i < frameChunks.length; i++) {
-            totalSize += 12 + 26; // fcTL
-            for (const idat of frameChunks[i]) {
-              totalSize += (i === 0 ? 12 : 12 + 4) + idat.length; // IDAT vs fdAT
-            }
-          }
-          totalSize += 12; // IEND
-          const buf = new ArrayBuffer(totalSize);
-          const u8 = new Uint8Array(buf);
-          const dv = new DataView(buf);
-          let o = 0;
-          // PNG signature
-          u8.set([137, 80, 78, 71, 13, 10, 26, 10], 0); o = 8;
-          // IHDR
-          const ihdrLen = 13;
-          dv.setUint32(o, ihdrLen); o += 4;
-          u8.set([73, 72, 68, 82], o); o += 4; // "IHDR"
-          u8.set(ihdrData, o); o += ihdrLen;
-          // CRC32 of type+data
-          const ihdrCrc = crc32(u8.slice(o - 4 - ihdrLen, o));
-          dv.setUint32(o, ihdrCrc); o += 4;
-          // acTL (animation control)
-          dv.setUint32(o, 8); o += 4; // length
-          u8.set([97, 99, 84, 76], o); o += 4; // "acTL"
-          dv.setUint32(o, frameChunks.length); o += 4; // num_frames
-          dv.setUint32(o, numPlays); o += 4; // num_plays (0 = infinite)
-          const acTlCrc = crc32(u8.slice(o - 4 - 8, o));
-          dv.setUint32(o, acTlCrc); o += 4;
-          // Frames — APNG 规范：第 1 帧用 IDAT，后续帧用 fdAT
-          let seqNum = 0;
-          for (let i = 0; i < frameChunks.length; i++) {
-            const w = dv.getUint32(16); // from IHDR
-            const h = dv.getUint32(20);
-            const delay = delays[i] || 100;
-            // fcTL (frame control) — 26 bytes data
-            dv.setUint32(o, 26); o += 4;
-            u8.set([102, 99, 84, 76], o); o += 4; // "fcTL"
-            dv.setUint32(o, seqNum++); o += 4; // sequence_number
-            dv.setUint32(o, w); o += 4;
-            dv.setUint32(o, h); o += 4;
-            dv.setUint32(o, 0); o += 4; // x_offset
-            dv.setUint32(o, 0); o += 4; // y_offset
-            dv.setUint16(o, delay); o += 2; // delay_num
-            dv.setUint16(o, 1000); o += 2; // delay_den (毫秒)
-            // 全画布预合成帧：每帧都是完整 RGBA，必须 SOURCE 替换，不能 OVER 叠透明
-            u8[o++] = 0; // dispose_op: NONE
-            u8[o++] = 0; // blend_op: SOURCE（0=替换，保留本帧透明区）
-            dv.setUint32(o, crc32(u8.slice(o - 4 - 26, o))); o += 4;
-            if (i === 0) {
-              // 第 1 帧：IDAT（标准 PNG 图像数据块，无额外 seqNum）
-              for (const idatData of frameChunks[i]) {
-                dv.setUint32(o, idatData.length); o += 4;
-                u8.set([73, 68, 65, 84], o); o += 4; // "IDAT"
-                u8.set(idatData, o); o += idatData.length;
-                dv.setUint32(o, crc32(u8.slice(o - 4 - idatData.length, o))); o += 4;
-              }
-            } else {
-              // 后续帧：fdAT（frame data，比 IDAT 多 4 字节 seqNum）
-              for (const idatData of frameChunks[i]) {
-                const fdatPayloadLen = 4 + idatData.length; // seqNum + 压缩数据
-                dv.setUint32(o, fdatPayloadLen); o += 4;
-                u8.set([102, 100, 65, 84], o); o += 4; // "fdAT"
-                dv.setUint32(o, seqNum++); o += 4; // sequence_number
-                u8.set(idatData, o); o += idatData.length;
-                // CRC 覆盖 type("fdAT") + payload(seqNum + data)
-                dv.setUint32(o, crc32(u8.slice(o - 4 - idatData.length - 4, o))); o += 4;
-              }
-            }
-          }
-          // IEND
-          dv.setUint32(o, 0); o += 4;
-          u8.set([73, 69, 78, 68], o); o += 4;
-          dv.setUint32(o, crc32(u8.slice(o - 4, o))); o += 4;
-          return buf;
-        };
-        // CRC32 查找表
-        const crcTable = (() => {
-          const table = new Uint32Array(256);
-          for (let n = 0; n < 256; n++) {
-            let c = n;
-            for (let k = 0; k < 8; k++) {
-              c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-            }
-            table[n] = c;
-          }
-          return table;
-        })();
-        const crc32 = (data) => {
-          let crc = 0xFFFFFFFF;
-          for (let i = 0; i < data.length; i++) {
-            crc = crcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
-          }
-          return (crc ^ 0xFFFFFFFF) >>> 0;
-        };
-        // 逐帧渲染到 canvas + toBlob
-        const renderFrameToBlob = (srcData, srcW, srcH, scale) => {
-          return new Promise((resolve, reject) => {
-            const newW = Math.max(1, Math.floor(srcW * scale));
-            const newH = Math.max(1, Math.floor(srcH * scale));
-            const canvas = document.createElement('canvas');
-            canvas.width = newW;
-            canvas.height = newH;
-            const ctx = canvas.getContext('2d');
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            // 通过 Image → canvas 方式绘制（避免 OffscreenCanvas + putImageData 的内存问题）
-            const img = new Image();
-            const blob = new Blob([srcData], { type: 'image/bmp' });
-            const url = URL.createObjectURL(blob);
-            img.onload = () => {
-              ctx.drawImage(img, 0, 0, newW, newH);
-              URL.revokeObjectURL(url);
-              canvas.toBlob((pngBlob) => {
-                if (!pngBlob) { reject(new Error('toBlob 返回 null')); return; }
-                pngBlob.arrayBuffer().then(ab => resolve(new Uint8Array(ab))).catch(reject);
-              }, 'image/png');
-            };
-            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image 加载失败')); };
-            img.src = url;
-          });
-        };
-        // 单帧编码：canvas 缩放 → toBlob('image/png')
-        // 在右下角放一个几乎透明的像素，强制浏览器输出 RGBA（type=6），避免偷换成 RGB
-        const renderFrameToPng = (rgbaData, srcW, srcH, scale) => {
-          return new Promise((resolve, reject) => {
-            const newW = Math.max(1, Math.floor(srcW * scale));
-            const newH = Math.max(1, Math.floor(srcH * scale));
-            const srcCanvas = document.createElement('canvas');
-            srcCanvas.width = srcW;
-            srcCanvas.height = srcH;
-            const srcCtx = srcCanvas.getContext('2d');
-            srcCtx.putImageData(new ImageData(new Uint8ClampedArray(rgbaData), srcW, srcH), 0, 0);
-            const dstCanvas = document.createElement('canvas');
-            dstCanvas.width = newW;
-            dstCanvas.height = newH;
-            const dstCtx = dstCanvas.getContext('2d');
-            dstCtx.imageSmoothingEnabled = true;
-            dstCtx.imageSmoothingQuality = 'high';
-            dstCtx.drawImage(srcCanvas, 0, 0, newW, newH);
-            // 强制 RGBA：在不可见角落放一个几乎全透明的像素
-            dstCtx.fillStyle = 'rgba(0,0,0,0.004)';
-            dstCtx.fillRect(newW - 1, newH - 1, 1, 1);
-            dstCanvas.toBlob((pngBlob) => {
-              if (!pngBlob) { reject(new Error('toBlob 返回 null')); return; }
-              pngBlob.arrayBuffer().then(ab => resolve(new Uint8Array(ab))).catch(reject);
-            }, 'image/png');
-          });
-        };
-        const targetLowerBytes = Math.floor((maxSizeKB - 68) * 1024);
-        const startTime = performance.now();
-        // 缩放梯度：从大到小（直接枚举，避免浮点死循环）；超限时按实测体积跳档
-        const scaleSteps = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15];
-        for (let stepIndex = 0; stepIndex < scaleSteps.length; stepIndex++) {
-          const scale = scaleSteps[stepIndex];
-          const newW = Math.max(1, Math.floor(width * scale));
-          const newH = Math.max(1, Math.floor(height * scale));
-          console.log(`[compressApngToSize] 尝试 scale=${scale.toFixed(2)}: ${newW}x${newH}, ${workFrames.length}帧`);
-          try {
-            // 逐帧渲染为 PNG
-            const framePngs = [];
-            for (let i = 0; i < workFrames.length; i++) {
-              const pngU8 = await renderFrameToPng(workFrames[i].data, width, height, scale);
-              framePngs.push(pngU8);
-            }
-            // 解析第一帧的 IHDR
-            const firstChunks = readPngChunks(framePngs[0]);
-            const ihdrChunk = firstChunks.find(c => c.type === 'IHDR');
-            if (!ihdrChunk) throw new Error('第一帧 PNG 缺少 IHDR');
-            // 提取每帧的 IDAT 数据
-            const allFrameIdats = framePngs.map(png => {
-              const chunks = readPngChunks(png);
-              return chunks.filter(c => c.type === 'IDAT').map(c => c.data);
-            });
-            // 组装 APNG
-            const apngBuf = buildApng(ihdrChunk.data, allFrameIdats, workDelays, 0);
-            const blob = new Blob([apngBuf], { type: 'image/apng' });
-            const sizeKB = blob.size / 1024;
-            console.log(`[compressApngToSize] scale=${scale.toFixed(2)} → ${sizeKB.toFixed(1)}KB`);
-            if (onProgress) {
-              onProgress({ scale, sizeKB, originalKB: file.size / 1024, frameCount: workFrames.length, newW: Math.floor(width * scale), newH: Math.floor(height * scale) });
-            }
-            if (blob.size >= targetLowerBytes && blob.size <= maxBytes) {
-              const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-              console.log(`[compressApngToSize] ✓ 命中目标: ${sizeKB.toFixed(1)}KB, ${elapsed}秒`);
-              return new File([blob], file.name.replace(/\.\w+$/i, '') + '-compressed.png', { type: 'image/png' });
-            }
-            if (blob.size <= maxBytes) {
-              // 低于上限但未命中下限——也接受
-              const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-              console.log(`[compressApngToSize] ✓ 完成: ${(file.size/1024).toFixed(1)}KB → ${sizeKB.toFixed(1)}KB, ${elapsed}秒`);
-              return new File([blob], file.name.replace(/\.\w+$/i, '') + '-compressed.png', { type: 'image/png' });
-            }
-            // 仍超限：按 scale² 预估下一档，跳过中间无效梯度
-            if (stepIndex < scaleSteps.length - 1) {
-              const predicted = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * 0.92;
-              let jumpTo = stepIndex + 1;
-              for (let j = stepIndex + 1; j < scaleSteps.length; j++) {
-                jumpTo = j;
-                if (scaleSteps[j] <= predicted + 1e-6) break;
-              }
-              if (jumpTo > stepIndex + 1) {
-                console.log(`[compressApngToSize] 跳档: ${scale.toFixed(2)} (${sizeKB.toFixed(1)}KB) 预估=${predicted.toFixed(3)} → ${scaleSteps[jumpTo].toFixed(2)}`);
-                stepIndex = jumpTo - 1;
-              }
-            }
-          } catch (e) {
-            console.error(`[compressApngToSize] scale=${scale.toFixed(2)} 失败:`, e.message);
-            if (onProgress) {
-              onProgress({ scale, error: e.message, originalKB: file.size / 1024 });
-            }
-          }
-        }
-        throw new Error('APNG 压缩失败：所有缩放比例均无法降到限制以内，请手动处理');
-      }
+    }
+    throw new Error('APNG 压缩失败：所有缩放比例均无法降到限制以内，请手动处理');
+  }
   function interceptReplyForm() {
     // —— 缓存工具（GM_* 优先；localStorage 兜底；返回对象型默认值） ——
     function cacheGet(key, fallback = null) {
@@ -16845,6 +17032,17 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           }
           return convertedFile;
         }
+        if (actualFormat === 'heic') {
+          toast('检测到 HEIC，正在转换为 PNG……', 2000);
+          let convertedFile = await convertHeicToPng(file);
+          console.log(`[interceptReplyForm] HEIC→PNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
+          if (convertedFile.size > 2048 * 1024) {
+            console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，继续压缩`);
+            convertedFile = await compressImageToSize(convertedFile, 2048, 0.6, 'png');
+            console.log(`[interceptReplyForm] 压缩完成: ${(convertedFile.size / 1024).toFixed(1)}KB`);
+          }
+          return convertedFile;
+        }
         const compressedFile = await compressImageToSize(file, 2048, 0.6, actualFormat);
         console.log(`[interceptReplyForm] 压缩后大小: ${(compressedFile.size / 1024).toFixed(1)}KB`);
         console.log(`[interceptReplyForm] 静态图片压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
@@ -16920,12 +17118,19 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               if (file) {
                 const actualFormat = await detectImageFormat(file);
                 console.log(`[interceptReplyForm] 格式不正确，检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
-                if (actualFormat === 'webp' || actualFormat === 'animated-webp') {
+                if (actualFormat === 'webp' || actualFormat === 'animated-webp' || actualFormat === 'heic') {
                   beginSubmitImageProcessing(form);
                   try {
-                    toast('服务器不接受 WebP，正在将Webp转换为PNG格式……', 3000);
-                    let convertedFile = await convertWebpToAcceptedFormat(file, actualFormat === 'animated-webp');
-                    console.log(`[interceptReplyForm] WebP→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
+                    let convertedFile;
+                    if (actualFormat === 'heic') {
+                      toast('服务器不接受 HEIC，正在转换为 PNG……', 3000);
+                      convertedFile = await convertHeicToPng(file);
+                      console.log(`[interceptReplyForm] HEIC→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
+                    } else {
+                      toast('服务器不接受 WebP，正在将Webp转换为PNG格式……', 3000);
+                      convertedFile = await convertWebpToAcceptedFormat(file, actualFormat === 'animated-webp');
+                      console.log(`[interceptReplyForm] WebP→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
+                    }
                     // 转换后如果大小超限，接入压缩流程
                     if (convertedFile.size > 2048 * 1024) {
                       console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，接入压缩流程`);
@@ -16939,8 +17144,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                     await doSubmit(newFD, true);
                     return;
                   } catch (convertErr) {
-                    console.error('[interceptReplyForm] WebP 格式转换失败:', convertErr);
-                    toast(convertErr && convertErr.message ? convertErr.message : 'WebP 格式转换失败，请手动转换后再试', 3000);
+                    console.error('[interceptReplyForm] 图片格式转换失败:', convertErr);
+                    toast(convertErr && convertErr.message ? convertErr.message : '图片格式转换失败，请手动转换为 JPG/PNG 后再试', 3000);
                     return;
                   } finally {
                     finishSubmitImageProcessing(form);
@@ -22145,7 +22350,7 @@ function 注册自动保存编辑() {
         'text/html': createClipboardBlob(html, 'text/html'),
         'text/plain': createClipboardBlob(imageUrl, 'text/plain')
       })]);
-      toast('APNG 已按富文本图片复制到剪贴板');
+      toast('APNG 已使用富文本图片格式复制到剪贴板');
       console.info('【右键菜单｜APNG复制】', { 阶段: 'web image/png成功', 附带: 'text/html,text/plain' });
       return true;
     } catch (err) {
@@ -22157,7 +22362,7 @@ function 注册自动保存编辑() {
         'text/html': createClipboardBlob(html, 'text/html'),
         'text/plain': createClipboardBlob(imageUrl, 'text/plain')
       })]);
-      toast('APNG 已按富文本图片复制到剪贴板');
+      toast('APNG 已使用富文本图片格式复制到剪贴板');
       console.info('【右键菜单｜APNG复制】', { 阶段: 'text/html成功' });
       return true;
     } catch (err) {
@@ -22201,7 +22406,7 @@ function 注册自动保存编辑() {
         'text/plain': createClipboardBlob(gifUrl, 'text/plain')
       };
       await navigator.clipboard.write([new ClipboardItem(data)]);
-      toast('GIF 已按富文本图片复制到剪贴板');
+      toast('GIF 已使用富文本图片格式复制到剪贴板');
       console.info('【右键菜单｜GIF复制】', { 阶段: 'web image/gif成功', 附带: 'text/html,text/plain' });
       return true;
     } catch (err) {
@@ -22213,7 +22418,7 @@ function 注册自动保存编辑() {
         'text/html': createClipboardBlob(html, 'text/html'),
         'text/plain': createClipboardBlob(gifUrl, 'text/plain')
       })]);
-      toast('GIF 已按富文本图片复制到剪贴板');
+      toast('GIF 已使用富文本图片格式复制到剪贴板');
       console.info('【右键菜单｜GIF复制】', { 阶段: 'text/html成功' });
       return true;
     } catch (err) {
