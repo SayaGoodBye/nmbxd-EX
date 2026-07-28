@@ -3147,7 +3147,6 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
   /* --------------------------------------------------
    * tag 3. 饼干标记 / 屏蔽 逻辑
    * -------------------------------------------------- */
-
   // 多分组标记时依次使用的背景色（可扩充）
   const markColors = [
     '#66CCFF','#00FFCC','#EE0000','#006666','#0080FF','#FFFF00',
@@ -5896,10 +5895,52 @@ ${markedSwatchHtml}
         || document.querySelector('#h-post-form .h-preview-box')
         || document.querySelector('.h-preview-box');
   }
+  function looksLikeHeifFile(file) {
+    if (!file) return false;
+    const type = String(file.type || '').toLowerCase();
+    if (type === 'image/heic' || type === 'image/heif' || type === 'image/heic-sequence' || type === 'image/heif-sequence') {
+      return true;
+    }
+    const name = String(file.name || '');
+    return /\.(heic|heif|hif)$/i.test(name);
+  }
+  let lastHeifPreviewTipKey = '';
+  let heifPreviewTipSeq = 0;
+  function maybeToastHeifPreviewUnsupported(file) {
+    if (!file) {
+      lastHeifPreviewTipKey = '';
+      return;
+    }
+    const key = [file.name || '', file.size || 0, file.lastModified || 0].join('|');
+    if (key === lastHeifPreviewTipKey) return;
+    lastHeifPreviewTipKey = key;
+    toast('当前不支持 HEIF/HEIC 预览（发送时将自动转为PNG）', 2500);
+  }
+  function notifyHeifPreviewUnsupportedIfNeeded(file, seq) {
+    if (!file) {
+      lastHeifPreviewTipKey = '';
+      return;
+    }
+    // 快路径：MIME/扩展名可立刻提示
+    if (looksLikeHeifFile(file)) {
+      if (seq === heifPreviewTipSeq) maybeToastHeifPreviewUnsupported(file);
+      return;
+    }
+    // 慢路径：无扩展名/MIME 时用魔数确认（与提交侧 detectImageFormat 一致）
+    if (typeof detectImageFormat !== 'function') return;
+    Promise.resolve(detectImageFormat(file)).then((fmt) => {
+      if (seq !== heifPreviewTipSeq) return;
+      if (fmt === 'heic') maybeToastHeifPreviewUnsupported(file);
+    }).catch(() => {});
+  }
   // === 全局：把图片文件渲染到当前活跃预览框 ===
   // 不依赖任何闭包快照，每次实时查询预览框与所在位置，避免 REPLY 浮窗
   // open() 早于 enhanceIsland 初始化时，粘贴图片更新到看不见的框。
   function updatePreviewImageFromFile(file) {
+    // HEIF 预览：浏览器 <img>+blob 通常无法解码，仅提示；不改 input 中的原文件
+    const tipSeq = ++heifPreviewTipSeq;
+    if (file) notifyHeifPreviewUnsupportedIfNeeded(file, tipSeq);
+    else lastHeifPreviewTipKey = '';
     const liveBox = getLivePreviewBox();
     if (!liveBox) return;
     const $liveBox = $(liveBox);
@@ -5926,7 +5967,7 @@ ${markedSwatchHtml}
       imgEl.style.left = '0px';
       imgEl.style.width = 'auto';
       imgEl.style.height = 'auto';
-      const isInOverlay = !!$liveBox.closest('.qp-body').length;
+      const isInOverlay = __omp_shell("!$liveBox.closest('.qp-body').length;")
       if (isInOverlay) {
         const wrapEl = $liveBox.closest('.qp-content-wrap')[0];
         if (wrapEl) {
@@ -17833,7 +17874,6 @@ function 注册自动保存编辑() {
   /* --------------------------------------------------
    * tag 22. 检查更新
    * -------------------------------------------------- */
-
   const UPDATE_CHECK_KEY = 'xdex_update_check_state';
   const UPDATE_EXTENSION_CHECK_KEY = 'xdex_extension_update_check_state';
   const UPDATE_GREASYFORK_META_URL = 'https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js';
