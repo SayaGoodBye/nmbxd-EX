@@ -114,3657 +114,6 @@
   function startXDexRuntime(){
   cat_version();
   console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
-  const UPDATE_CHECK_KEY = 'xdex_update_check_state';
-  const UPDATE_EXTENSION_CHECK_KEY = 'xdex_extension_update_check_state';
-  const UPDATE_GREASYFORK_META_URL = 'https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js';
-  const UPDATE_SCRIPTCAT_API_URL = 'https://scriptcat.org/api/v2/scripts/6289';
-  const UPDATE_EXTENSION_GITHUB_JSON_URL = 'https://raw.githubusercontent.com/SayaGoodBye/nmbxd-EX/main/nmbxd-EX-Extension/update.json';
-  const UPDATE_EXTENSION_JSDELIVR_JSON_URL = 'https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@main/nmbxd-EX-Extension/update.json';
-  const UPDATE_CHECK_HOUR = 11;
-  const THREAD_HISTORY_STORAGE_KEY = 'xdex_thread_history';
-  const THREAD_HISTORY_STORE_VERSION = 1;
-  // const THREAD_HISTORY_LIMIT = 500;
-  const THREAD_HISTORY_LIMIT = Infinity;
-  const THREAD_HISTORY_EXCERPT_LIMIT = 250;
-  const THREAD_HISTORY_RECORD_RETRY_LIMIT = 10;
-  const THREAD_HISTORY_RECORD_RETRY_DELAY = 500;
-  const THREAD_HISTORY_SYNC_EVENT = 'xdex:thread-history-changed';
-  const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
-  const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
-  const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
-  const POST_HISTORY_STORAGE_KEY = 'xdex_post_history';
-  const POST_HISTORY_STORE_VERSION = 1;
-  // const POST_HISTORY_LIMIT = 500;
-  const POST_HISTORY_THREAD_LIMIT = Infinity;
-  const POST_HISTORY_REPLY_LIMIT = Infinity;
-  const POST_HISTORY_SYNC_EVENT = 'xdex:post-history-changed';
-  const POST_HISTORY_API_BASE = `${location.origin}/Api`;
-  const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
-  const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
-  const POST_HISTORY_GET_LAST_POST_RETRY_DELAYS = [300, 800, 1500, 2500];
-  const POST_HISTORY_CONFIRM_TIMEOUT_MS = 10000;
-  const POST_HISTORY_REPLIES_PER_PAGE = 19;
-  const POST_HISTORY_MATCH_TIME_WINDOW_MS = 45000;
-  const POST_HISTORY_FORUM_FID_MAP = Object.freeze({
-    '-1': '时间线',
-    '4': '综合版1',
-    '98': 'DANGER/U/',
-    '20': '欢乐恶搞',
-    '121': '速报2',
-    // 测试版不在公开 getForumList，但 showf?id=122 可用；主串仅红名可见，发言历史需靠 showf 回查
-    '122': '测试',
-    '17': '绘画(二创)',
-    '110': '社畜(校园)',
-    '19': '故事(小说)',
-    '81': '都市怪谈(灵异)',
-    '37': '军武',
-    '30': '技术宅(代码)',
-    '75': '数码(装机)',
-    '118': '宠物',
-    '97': '女装(时尚)',
-    '106': '买买买(物品推荐)',
-    '14': '动画综合',
-    '12': '漫画',
-    '53': '婆罗门一',
-    '31': '电影/电视',
-    '116': '主播管人(圈内)',
-    '45': '卡牌桌游',
-    '9': '特摄(布袋戏)',
-    '102': '战锤',
-    '39': '胶佬(手办)',
-    '94': '铁道厨(车辆)',
-    '6': 'VOCALOID',
-    '90': '小马(美漫)',
-    '5': '东方Project',
-    '93': '舰娘',
-    '111': '跑团',
-    '57': '创作茶水间',
-    '91': '规则怪谈',
-    '11': '海龟汤(推理)',
-    '15': '科学(干货)',
-    '103': '文学(推书)',
-    '35': '音乐(推歌)',
-    '27': 'AI(Chatgpt)',
-    '115': '摄影(cos)',
-    '112': 'ROLL点',
-    '2': '游戏综合',
-    '3': '手游专楼',
-    '25': '任天堂NS',
-    '22': '腾讯游戏(LOL)',
-    '23': '暴雪游戏',
-    '124': 'SE(FF14)',
-    '70': 'V社(DOTA)',
-    '28': '怪物猎人',
-    '68': '鹰角游戏',
-    '47': '米哈游',
-    '34': '音游打卡',
-    '10': '联机(服务器发布）',
-    '62': '露营',
-    '113': '育儿',
-    '120': '自救互助',
-    '32': '料理(美食)',
-    '33': '体育(健身)',
-    '56': '学业打卡',
-    '89': '日记(树洞)',
-    '18': '值班室',
-    '117': '技术支持',
-    '96': '版务',
-    '60': '三百人委员会'
-  });
-  const POST_HISTORY_FORUM_GROUP_MAP = Object.freeze({
-
-    '-1': '综合', '4': '综合', '98': '综合', '20': '综合', '121': '综合', '122': '综合', '17': '综合', '110': '综合', '19': '综合', '81': '综合', '37': '综合', '30': '综合', '75': '综合', '118': '综合', '97': '综合', '106': '综合',
-    '14': '亚文化', '12': '亚文化', '53': '亚文化', '31': '亚文化', '116': '亚文化', '45': '亚文化', '9': '亚文化', '102': '亚文化', '39': '亚文化', '94': '亚文化', '6': '亚文化', '90': '亚文化', '5': '亚文化', '93': '亚文化',
-    '111': '创作', '57': '创作', '91': '创作', '11': '创作', '15': '创作', '103': '创作', '35': '创作', '27': '创作', '115': '创作', '112': '创作',
-    '2': '游戏', '3': '游戏', '25': '游戏', '22': '游戏', '23': '游戏', '124': '游戏', '70': '游戏', '28': '游戏', '68': '游戏', '47': '游戏', '34': '游戏', '10': '游戏',
-    '62': '生活', '113': '生活', '120': '生活', '32': '生活', '33': '生活', '56': '生活', '89': '生活',
-    '18': '管理', '117': '管理', '96': '管理', '60': '管理'
-  });
-  const POST_HISTORY_FORUM_SEARCH_META = Object.freeze({
-    '98': { rawName: 'DANGER_U', showName: 'DANGER/U/', groupName: '综合' },
-    '122': { rawName: '测试', showName: '测试', groupName: '综合' },
-    '17': { rawName: '绘画', showName: '绘画(二创)', groupName: '综合' },
-    '110': { rawName: '社畜', showName: '社畜(校园)', groupName: '综合' },
-    '19': { rawName: '故事', showName: '故事(小说)', groupName: '综合' },
-    '81': { rawName: '都市怪谈', showName: '都市怪谈(灵异)', groupName: '综合' },
-    '30': { rawName: '技术宅', showName: '技术宅(代码)', groupName: '综合' },
-    '75': { rawName: '数码', showName: '数码(装机)', groupName: '综合' },
-    '97': { rawName: '女装2', showName: '女装(时尚)', groupName: '综合' },
-    '106': { rawName: '买买买', showName: '买买买(物品推荐)', groupName: '综合' },
-    '31': { rawName: '影视', showName: '电影/电视', groupName: '亚文化' },
-    '116': { rawName: '主播管人', showName: '主播管人(圈内)', groupName: '亚文化' },
-    '9': { rawName: '特摄', showName: '特摄(布袋戏)', groupName: '亚文化' },
-    '39': { rawName: '胶佬', showName: '胶佬(手办)', groupName: '亚文化' },
-    '94': { rawName: '铁道厨', showName: '铁道厨(车辆)', groupName: '亚文化' },
-    '90': { rawName: '小马', showName: '小马(美漫)', groupName: '亚文化' },
-    '11': { rawName: '海龟汤', showName: '海龟汤(推理)', groupName: '创作' },
-    '15': { rawName: '科学', showName: '科学(干货)', groupName: '创作' },
-    '103': { rawName: '文学', showName: '文学(推书)', groupName: '创作' },
-    '35': { rawName: '音乐', showName: '音乐(推歌)', groupName: '创作' },
-    '27': { rawName: 'AI', showName: 'AI(Chatgpt)', groupName: '创作' },
-    '115': { rawName: '摄影', showName: '摄影(cos)', groupName: '创作' },
-    '25': { rawName: '任天堂', showName: '任天堂NS', groupName: '游戏' },
-    '22': { rawName: '腾讯游戏', showName: '腾讯游戏(LOL)', groupName: '游戏' },
-    '124': { rawName: 'SE', showName: 'SE(FF14)', groupName: '游戏' },
-    '70': { rawName: 'V社', showName: 'V社(DOTA)', groupName: '游戏' },
-    '10': { rawName: '联机', showName: '联机(服务器发布）', groupName: '游戏' },
-    '32': { rawName: '料理', showName: '料理(美食)', groupName: '生活' },
-    '33': { rawName: '体育', showName: '体育(健身)', groupName: '生活' },
-    '89': { rawName: '日记', showName: '日记(树洞)', groupName: '生活' },
-    '60': { rawName: '百脑汇', showName: '三百人委员会', groupName: '管理' }
-  });
-  const POST_HISTORY_TIMELINE_ID_MAP = Object.freeze({
-    '1': '综合线',
-    '2': '创作线',
-    '3': '非创作线',
-    '4': '亚文化线',
-    '5': '综合2线',
-    '6': '游戏线',
-    '7': '生活线'
-  });
-  const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\nhas:sage 被 SAGE 的串\n可组合：mode:po has:image has:sage 关键词';
-  const postHistoryConfirmationMap = new Map(); // 等待发串确认后跳转的 Promise 存储器 { localId -> resolver }
-  const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、板块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定板块 ID\nforum:综合 模糊匹配板块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
-  const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
-  const threadHistoryDebugState = {
-    loadedAt: new Date().toISOString(),
-    href: location.href,
-    runtime: XDEX_RUNTIME && XDEX_RUNTIME.kind,
-    storageKey: THREAD_HISTORY_STORAGE_KEY,
-    lastRecord: null,
-    lastRender: null,
-    lastPanelModule: ''
-  };
-  window.__xdexThreadHistoryDebug = threadHistoryDebugState;
-  let threadHistoryLiveSyncBound = false;
-  let threadHistoryLiveRenderTimer = 0;
-  let threadHistoryLiveRenderFirstAt = 0;
-  let threadHistoryLiveRenderPendingCount = 0;
-  let threadHistoryReactivationTrackingInstalled = false;
-  let threadHistoryDwellTimer = 0;
-  let threadHistoryVisibleSince = 0;
-  let threadHistoryVisibleSessionCounted = false;
-  let postHistoryLiveSyncBound = false;
-  let postHistoryLiveRenderTimer = 0;
-  let postHistoryLiveRenderFirstAt = 0;
-  let postHistoryLiveRenderPendingCount = 0;
-  let postHistoryLiveRenderDirty = false;
-  let postHistoryActiveType = 'reply';
-  function updateThreadHistoryDebugState(patch) {
-    Object.assign(threadHistoryDebugState, patch || {});
-    window.__xdexThreadHistoryDebug = threadHistoryDebugState;
-    return threadHistoryDebugState;
-  }
-  function logThreadHistory(message, details, level = 'info') {
-    const payload = Object.assign({ href: location.href }, details || {});
-    updateThreadHistoryDebugState({ lastLog: { message, details: payload, at: new Date().toISOString() } });
-    const logger = console[level] || console.info || console.log;
-    logger.call(console, `[thread-history] ${message}`, payload);
-  }
-  function logThreadHistoryFlat(message, details, level = 'info') {
-    const payload = Object.assign({ href: location.href }, details || {});
-    const text = Object.keys(payload)
-      .map(key => `${key}=${JSON.stringify(payload[key])}`)
-      .join(' ');
-    updateThreadHistoryDebugState({ lastFlatLog: { message, details: payload, at: new Date().toISOString() } });
-    const logger = console[level] || console.info || console.log;
-    logger.call(console, `[thread-history] ${message} ${text}`);
-  }
-  function normalizeMetaChangelog(text) {
-    return String(text || '')
-      .replace(/\\r\\n/g, '\n')
-      .replace(/\\n/g, '\n')
-      .replace(/\\r/g, '\n')
-      .trim();
-  }
-  function parseVersionAndChangelogFromMeta(metaText) {
-    const text = String(metaText || '');
-    const versionMatch = text.match(/^\/\/\s*@version\s+(.+)$/m);
-    const changelogMatches = [...text.matchAll(/^\/\/\s*@changelog\s+(.+)$/gm)];
-    const changelog = normalizeMetaChangelog(changelogMatches
-      .map(m => String(m[1] || '').trim())
-      .filter(Boolean)
-      .join('\n')
-      .trim());
-    return {
-      version: versionMatch ? String(versionMatch[1] || '').trim() : '',
-      changelog
-    };
-  }
-  const CHANGELOG = parseVersionAndChangelogFromMeta(GM_info.scriptMetaStr || '').changelog || '';
-  function getUpdateCheckStorageKey() {
-    return XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? UPDATE_EXTENSION_CHECK_KEY : UPDATE_CHECK_KEY;
-  }
-  function getDefaultUpdateCheckState() {
-    return {
-      lastCheckDate: '',
-      nextCheckAt: 0,
-      pendingUpdateVersion: '',
-      pendingUpdateChangelog: '',
-      pendingUpdateSource: '',
-      pendingUpdateDetectedAt: 0,
-      latestRemoteVersion: '',
-      ignoredVersion: '',
-      lastDismissDate: '',
-      dismissedUntil: 0
-    };
-  }
-  function getUpdateCheckState() {
-    try {
-      const saved = GM_getValue(getUpdateCheckStorageKey(), null);
-      const merged = Object.assign(getDefaultUpdateCheckState(), saved || {});
-      console.log('[update-check] get state:', merged);
-      return merged;
-    } catch (e) {
-      console.warn('[update-check] get state failed, fallback to default:', e);
-      return getDefaultUpdateCheckState();
-    }
-  }
-  function setUpdateCheckState(nextState) {
-    const merged = Object.assign(getDefaultUpdateCheckState(), nextState || {});
-    GM_setValue(getUpdateCheckStorageKey(), merged);
-    console.log('[update-check] set state:', merged);
-    return merged;
-  }
-  function createDefaultThreadHistoryStore() {
-    return {
-      version: 1,
-      limit: 500,
-      items: {},
-      index: {},
-      order: []
-    };
-  }
-  function getThreadHistoryKey(mode, threadId) {
-    return `${mode}:${String(threadId || '').slice(0, 8)}`;
-  }
-  function normalizeThreadHistoryStore(rawStore) {
-    const store = Object.assign(createDefaultThreadHistoryStore(), rawStore || {});
-    store.version = THREAD_HISTORY_STORE_VERSION;
-    store.limit = Number(store.limit) > 0 ? Number(store.limit) : THREAD_HISTORY_LIMIT;
-    store.items = store.items && typeof store.items === 'object' ? store.items : {};
-    store.index = store.index && typeof store.index === 'object' ? store.index : {};
-    const seen = new Set();
-    store.order = (Array.isArray(store.order) ? store.order : [])
-      .filter(key => {
-        if (!store.items[key] || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    Object.keys(store.items).forEach(key => {
-      if (!store.index[key]) store.index[key] = buildThreadHistoryIndexEntry(store.items[key]);
-      if (!seen.has(key)) {
-        seen.add(key);
-        store.order.push(key);
-      }
-    });
-    Object.keys(store.index).forEach(key => {
-      if (!store.items[key]) delete store.index[key];
-    });
-    store.order.sort((a, b) => {
-      const av = Number(store.items[a] && store.items[a].lastVisitedAt) || 0;
-      const bv = Number(store.items[b] && store.items[b].lastVisitedAt) || 0;
-      return bv - av;
-    });
-    while (store.order.length > store.limit) {
-      const key = store.order.pop();
-      delete store.items[key];
-      delete store.index[key];
-    }
-    return store;
-  }
-  function getThreadHistoryStore() {
-    try {
-      return normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
-    } catch (e) {
-      return createDefaultThreadHistoryStore();
-    }
-  }
-  function setThreadHistoryStore(store) {
-    const normalized = normalizeThreadHistoryStore(store);
-    GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
-    notifyThreadHistoryStoreChanged('local-write', false);
-    return normalized;
-  }
-  function isThreadHistoryPanelOpen() {
-    const cover = document.getElementById('sp_cover');
-    const module = document.getElementById('sp_module_history');
-    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
-  }
-  function scheduleThreadHistoryLiveRender(source, remote) {
-    const active = isThreadHistoryPanelOpen();
-    const now = Date.now();
-    if (!threadHistoryLiveRenderFirstAt) threadHistoryLiveRenderFirstAt = now;
-    threadHistoryLiveRenderPendingCount += 1;
-    updateThreadHistoryDebugState({
-      lastLiveSync: {
-        source,
-        remote: !!remote,
-        active,
-        pendingCount: threadHistoryLiveRenderPendingCount,
-        firstAt: threadHistoryLiveRenderFirstAt,
-        at: new Date().toISOString()
-      }
-    });
-    if (!active) {
-      if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
-      threadHistoryLiveRenderTimer = 0;
-      threadHistoryLiveRenderFirstAt = 0;
-      threadHistoryLiveRenderPendingCount = 0;
-      return;
-    }
-    const run = () => {
-      threadHistoryLiveRenderTimer = 0;
-      threadHistoryLiveRenderFirstAt = 0;
-      threadHistoryLiveRenderPendingCount = 0;
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderThreadHistoryModule());
-      else renderThreadHistoryModule();
-    };
-    if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
-    const elapsed = now - threadHistoryLiveRenderFirstAt;
-    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
-      ? 0
-      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
-    threadHistoryLiveRenderTimer = setTimeout(run, delay);
-  }
-  function notifyThreadHistoryStoreChanged(source, remote) {
-    try {
-      window.dispatchEvent(new CustomEvent(THREAD_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
-    } catch (e) {}
-    scheduleThreadHistoryLiveRender(source, remote);
-  }
-  function bindThreadHistoryLiveSync() {
-    if (threadHistoryLiveSyncBound) return;
-    threadHistoryLiveSyncBound = true;
-    if (typeof GM_addValueChangeListener === 'function') {
-      try {
-        GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
-          scheduleThreadHistoryLiveRender('gm-value-change', remote);
-          syncFavoriteThreadsLinks();
-        });
-      } catch (e) {
-        logThreadHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
-      }
-    }
-    window.addEventListener(THREAD_HISTORY_SYNC_EVENT, (event) => {
-      const detail = event && event.detail || {};
-      scheduleThreadHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
-    });
-  }
-  function createDefaultPostHistoryStore() {
-    return {
-      version: POST_HISTORY_STORE_VERSION,
-      // limit: POST_HISTORY_LIMIT,
-      items: {},
-      order: []
-    };
-  }
-  function normalizePostHistoryType(type) {
-    return type === 'reply' ? 'reply' : 'thread';
-  }
-  function normalizePostHistoryStatus(status) {
-    return ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(status) ? status : 'pending';
-  }
-  function normalizePostHistoryFid(fid) {
-    const value = String(fid == null ? '' : fid).trim();
-    return /^-?\d+$/.test(value) ? value : '';
-  }
-  function getPostHistoryForumNameByFid(fid) {
-    return POST_HISTORY_FORUM_FID_MAP[normalizePostHistoryFid(fid)] || '';
-  }
-  function normalizeHistorySearchValue(value) {
-    return String(value == null ? '' : value).trim().toLowerCase();
-  }
-  function getPostHistoryForumSearchText(item) {
-    const fid = normalizePostHistoryFid(item && item.fid);
-    const meta = POST_HISTORY_FORUM_SEARCH_META[fid] || {};
-    return [
-      fid,
-      item && item.forumName,
-      getPostHistoryForumNameByFid(fid),
-      meta.rawName,
-      meta.showName,
-      meta.groupName || POST_HISTORY_FORUM_GROUP_MAP[fid]
-    ].join(' ').toLowerCase();
-  }
-  function getPostHistoryPostFid(post) {
-    if (!post || typeof post !== 'object') return '';
-    return normalizePostHistoryFid(post.fid || post.Fid || post.forum_id || post.forumId || post.forum);
-  }
-  function getCurrentPostHistoryFid() {
-    const path = String(location && location.pathname || '');
-    const forumMatch = path.match(/^\/f\/([^/?#]+)/);
-    if (!forumMatch) return '';
-    let forumName = '';
-    try {
-      forumName = decodeURIComponent(forumMatch[1] || '');
-    } catch (e) {
-      forumName = forumMatch[1] || '';
-    }
-    const normalizedName = forumName.replace(/\s+/g, '').toLowerCase();
-    return Object.keys(POST_HISTORY_FORUM_FID_MAP).find(fid => {
-      const name = String(POST_HISTORY_FORUM_FID_MAP[fid] || '').replace(/\s+/g, '').toLowerCase();
-      return name === normalizedName;
-    }) || '';
-  }
-  function normalizePostHistoryText(text) {
-    // 旧版（破坏性）：暴力替换空白、移除标签、trim — 已禁用
-    // return String(text || '')
-    //   .replace(/<br\s*\/?\s*>/gi, ' ')
-    //   .replace(/<[^>]+>/g, '')
-    //   .replace(/&nbsp;/gi, ' ')
-    //   .replace(/&gt;/gi, '>')
-    //   .replace(/&lt;/gi, '<')
-    //   .replace(/&amp;/gi, '&')
-    //   .replace(/\r\n/g, '\n')
-    //   .replace(/\r/g, '\n')
-    //   .replace(/[\s\u00a0]+/g, ' ')
-    //   .trim();
-    // 新版：忠实保留原始内容
-    return String(text || '')
-      .replace(/<br\s*\/?\s*>/gi, '\n')     // <br> → 换行（不是空格）
-      .replace(/&gt;/gi, '>')               // 符号转义
-      .replace(/&lt;/gi, '<')
-      .replace(/&amp;/gi, '&')
-      .replace(/&nbsp;/gi, '\u00a0')         // &nbsp; → 不间断空格（保留语义）
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
-      // 不移除 HTML 标签，保留原始结构
-      // 不合并空白字符，保留原始空格/全角空格/零宽空格
-      // 不 trim，保留原始首尾空白
-  }
-  function sanitizePostHistoryServerContentHtml(content) {
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = String(content || '');
-    return sanitizeThreadHistoryContentHtml(wrapper);
-  }
-  function hashPostHistoryText(text) {
-    // 旧版：直接调用 normalizePostHistoryText — 已禁用（normalizePostHistoryText 已改为忠实模式）
-    // const normalized = normalizePostHistoryText(text);
-    // 新版：内部独立标准化，保持 hash 计算一致性
-    const normalized = String(text || '')
-      .replace(/<br\s*\/?\s*>/gi, ' ')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&gt;/gi, '>')
-      .replace(/&lt;/gi, '<')
-      .replace(/&amp;/gi, '&')
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .replace(/[\s\u00a0]+/g, ' ')
-      .trim();
-    let hash = 0;
-    for (let i = 0; i < normalized.length; i++) {
-      hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0;
-    }
-    return String(hash >>> 0);
-  }
-  const postHistoryDebugState = window.__xdexPostHistoryDebug = window.__xdexPostHistoryDebug || { events: [] };
-  function summarizePostHistoryText(text) {
-    const normalized = normalizePostHistoryText(text);
-    return {
-      length: normalized.length,
-      hash: hashPostHistoryText(normalized),
-      preview: normalized.slice(0, 40)
-    };
-  }
-  function summarizePostHistoryCandidate(post) {
-    if (!post) return null;
-    const resto = String(post.resto || '0').trim();
-    return {
-      id: String(post.id || '').trim(),
-      resto,
-      type: Number(resto) === 0 ? 'thread' : 'reply',
-      now: post.now || '',
-      img: post.img || '',
-      ext: post.ext || '',
-      content: summarizePostHistoryText(post.content || '')
-    };
-  }
-  function summarizePostHistorySnapshot(snapshot) {
-    if (!snapshot) return null;
-    return {
-      localId: snapshot.localId || '',
-      type: snapshot.type || '',
-      resto: snapshot.resto || '',
-      contentHash: snapshot.contentHash || '',
-      submittedAt: snapshot.submittedAt || 0,
-      sourceUrl: snapshot.sourceUrl || ''
-    };
-  }
-  function logPostHistory(stage, data, level = 'log') {
-    const detail = Object.assign({ stage, at: Date.now() }, data || {});
-    try {
-      postHistoryDebugState.events.push(detail);
-      if (postHistoryDebugState.events.length > 80) postHistoryDebugState.events.shift();
-      postHistoryDebugState.last = detail;
-    } catch (e) {}
-    const method = console[level] ? level : 'log';
-    console[method]('[post-history] ' + stage, detail);
-  }
-  window.__xdexGetPostHistoryDebug = function getPostHistoryDebug() {
-    return postHistoryDebugState;
-  };
-  window.__xdexClearPostHistoryDebug = function clearPostHistoryDebug() {
-    postHistoryDebugState.events = [];
-    postHistoryDebugState.last = null;
-    return postHistoryDebugState;
-  };
-  function normalizePostHistoryStore(rawStore) {
-    const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
-    store.version = POST_HISTORY_STORE_VERSION;
-    // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
-    store.items = store.items && typeof store.items === 'object' ? store.items : {};
-    const seen = new Set();
-    store.order = (Array.isArray(store.order) ? store.order : [])
-      .filter(key => {
-        if (!store.items[key] || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    Object.keys(store.items).forEach(key => {
-      const item = store.items[key] || {};
-      item.localId = item.localId || key;
-      item.status = normalizePostHistoryStatus(item.status);
-      item.type = normalizePostHistoryType(item.type);
-      item.fid = normalizePostHistoryFid(item.fid);
-      item.forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
-      item.contentText = normalizePostHistoryText(item.contentText || item.contentRaw || '');
-      item.contentHash = item.contentHash || hashPostHistoryText(item.contentText);
-      item.page = Math.max(0, Number(item.page) || 0);
-      store.items[key] = item;
-      if (!seen.has(key)) {
-        seen.add(key);
-        store.order.push(key);
-      }
-    });
-    store.order.sort((a, b) => {
-      const av = Number(store.items[a] && store.items[a].submittedAt) || 0;
-      const bv = Number(store.items[b] && store.items[b].submittedAt) || 0;
-      return bv - av;
-    });
-    // 旧：全局共享 limit 清理
-    // while (store.order.length > store.limit) {
-    //   const key = store.order.pop();
-    //   delete store.items[key];
-    // }
-    // 新增：按类型分别清理（仅在 limit !== Infinity 时生效）
-    const shouldCleanThread = POST_HISTORY_THREAD_LIMIT !== Infinity;
-    const shouldCleanReply = POST_HISTORY_REPLY_LIMIT !== Infinity;
-    if (shouldCleanThread || shouldCleanReply) {
-      const typeOrders = { thread: [], reply: [] };
-      store.order.forEach(key => {
-        const type = normalizePostHistoryType(store.items[key]?.type);
-        typeOrders[type].push(key);
-      });
-      while (shouldCleanThread && typeOrders.thread.length > POST_HISTORY_THREAD_LIMIT) {
-        const key = typeOrders.thread.pop();
-        delete store.items[key];
-      }
-      while (shouldCleanReply && typeOrders.reply.length > POST_HISTORY_REPLY_LIMIT) {
-        const key = typeOrders.reply.pop();
-        delete store.items[key];
-      }
-      store.order = store.order.filter(key => store.items[key]);
-    }
-    return store;
-  }
-  function getPostHistoryStore() {
-    try {
-      return normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
-    } catch (e) {
-      return createDefaultPostHistoryStore();
-    }
-  }
-  function isPostHistoryPanelOpen() {
-    const cover = document.getElementById('sp_cover');
-    const module = document.getElementById('sp_module_posts');
-    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
-  }
-  function schedulePostHistoryLiveRender(source, remote) {
-    const active = isPostHistoryPanelOpen();
-    const renderable = !!document.getElementById('sp_posts_results');
-    const now = Date.now();
-    if (!postHistoryLiveRenderFirstAt) postHistoryLiveRenderFirstAt = now;
-    postHistoryLiveRenderPendingCount += 1;
-    postHistoryLiveRenderDirty = true;
-    logPostHistory('live sync', {
-      source,
-      remote: !!remote,
-      active,
-      renderable,
-      pendingCount: postHistoryLiveRenderPendingCount,
-      firstAt: postHistoryLiveRenderFirstAt
-    });
-    if (!renderable) {
-      if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
-      postHistoryLiveRenderTimer = 0;
-      postHistoryLiveRenderFirstAt = 0;
-      postHistoryLiveRenderPendingCount = 0;
-      return;
-    }
-    const run = () => {
-      postHistoryLiveRenderTimer = 0;
-      postHistoryLiveRenderFirstAt = 0;
-      postHistoryLiveRenderPendingCount = 0;
-      postHistoryLiveRenderDirty = false;
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderPostHistoryModule());
-      else renderPostHistoryModule();
-    };
-    if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
-    const elapsed = now - postHistoryLiveRenderFirstAt;
-    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
-      ? 0
-      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
-    postHistoryLiveRenderTimer = setTimeout(run, delay);
-  }
-  function notifyPostHistoryStoreChanged(source, remote) {
-    try {
-      window.dispatchEvent(new CustomEvent(POST_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
-    } catch (e) {}
-    logPostHistory('store notify', { source, remote: !!remote });
-    schedulePostHistoryLiveRender(source, remote);
-  }
-  function setPostHistoryStore(store) {
-    const normalized = normalizePostHistoryStore(store);
-    GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
-    notifyPostHistoryStoreChanged('local-write', false);
-    return normalized;
-  }
-  function bindPostHistoryLiveSync() {
-    if (postHistoryLiveSyncBound) return;
-    postHistoryLiveSyncBound = true;
-    if (typeof GM_addValueChangeListener === 'function') {
-      try {
-        GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
-          schedulePostHistoryLiveRender('gm-value-change', remote);
-        });
-      } catch (e) {
-        logPostHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
-      }
-    }
-    window.addEventListener(POST_HISTORY_SYNC_EVENT, (event) => {
-      const detail = event && event.detail || {};
-      schedulePostHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
-    });
-  }
-  function buildCanonicalReplyUrl(threadId, replyId) {
-    const tid = String(threadId || '').trim();
-    const rid = String(replyId || '').trim();
-    if (!tid || !rid) return '';
-    return `${location.origin}/t/${tid}?r=${rid}`;
-  }
-  function buildPostHistoryUrl(type, id, resto) {
-    const postId = String(id || '').trim();
-    const threadId = String(type === 'reply' ? resto : id || '').trim();
-    if (!postId && !threadId) return '';
-    if (type === 'reply') return buildCanonicalReplyUrl(threadId, postId);
-    // 主题也使用 ?r=threadId 格式
-    // return `${location.origin}/t/${threadId}?r=${threadId}`;
-    // 主题:精简版 URL,不带 ?r=threadId
-    return `${location.origin}/t/${threadId}`;
-  }
-  function buildPostHistoryReplyActionUrl(type, id, resto, page) {
-    const postId = String(id || '').trim();
-    const threadId = String(type === 'reply' ? resto : id || '').trim();
-    const pageNum = Math.max(0, Number(page) || 0);
-    // reply 类型保持原来的行为：有 page 就用 ?page=N&r=${postId}`;，否则回退到 ?r=replyId
-    if (type === 'reply') {
-      if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`;
-      // if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
-      return buildPostHistoryUrl(type, postId, threadId);
-    }
-    // thread 类型优先从浏览历史获取最新页面（动态更新）
-    const historyUrl = getLatestThreadHistoryUrl(threadId);
-    if (historyUrl) return historyUrl;
-    // 没有浏览历史，回退到发言历史记录的页面
-    const fallbackPage = Math.max(1, Number(page) || 1);
-    if (threadId) return `${location.origin}/t/${threadId}?page=${fallbackPage}`;
-    return buildPostHistoryUrl(type, postId, threadId);
-  }
-  function getConfirmedPostHistoryIds(store) {
-    const ids = new Set();
-    Object.keys(store.items || {}).forEach(key => {
-      const item = store.items[key];
-      if (item && item.status === 'confirmed' && item.id) ids.add(String(item.id));
-    });
-    return ids;
-  }
-  function upsertPostHistoryRecord(record) {
-    if (!record || !record.localId) return getPostHistoryStore();
-    const store = getPostHistoryStore();
-    const old = store.items[record.localId] || {};
-    const merged = Object.assign({}, old, record, {
-      localId: record.localId,
-      status: normalizePostHistoryStatus(record.status),
-      type: normalizePostHistoryType(record.type),
-      contentText: normalizePostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
-      contentHash: record.contentHash || old.contentHash || hashPostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
-      submittedAt: Number(record.submittedAt || old.submittedAt) || Date.now()
-    });
-    store.items[merged.localId] = merged;
-    store.order = [merged.localId].concat((store.order || []).filter(key => key !== merged.localId));
-    const typeCounts = { thread: 0, reply: 0 };
-    store.order.forEach(key => {
-      const type = normalizePostHistoryType(store.items[key]?.type);
-      typeCounts[type]++;
-    });
-    logPostHistory('store upsert', {
-      localId: merged.localId,
-      status: merged.status,
-      type: merged.type,
-      contentHash: merged.contentHash,
-      submittedAt: merged.submittedAt,
-      total: store.order.length,
-      threadCount: typeCounts.thread,
-      replyCount: typeCounts.reply
-    });
-    return setPostHistoryStore(store);
-  }
-  function updatePostHistoryRecord(localId, patch) {
-    const store = getPostHistoryStore();
-    if (!store.items[localId]) {
-      logPostHistory('store update skipped', { localId, patch: patch || {} }, 'warn');
-      return store;
-    }
-    store.items[localId] = Object.assign({}, store.items[localId], patch || {});
-    logPostHistory('store update', {
-      localId,
-      patch: patch || {},
-      status: store.items[localId].status,
-      type: store.items[localId].type,
-      id: store.items[localId].id || '',
-      resto: store.items[localId].resto || ''
-    });
-    return setPostHistoryStore(store);
-  }
-  function deletePostHistoryItem(localId) {
-    const store = getPostHistoryStore();
-    delete store.items[localId];
-    store.order = (store.order || []).filter(key => key !== localId);
-    return setPostHistoryStore(store);
-  }
-  function clearPostHistory() {
-    return setPostHistoryStore(createDefaultPostHistoryStore());
-  }
-  function searchPostHistory(query, type) {
-    const store = getPostHistoryStore();
-    const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
-    const { filters, tokens } = parsePostHistorySearchQuery(query);
-    return (store.order || [])
-      .map(key => ({ key, item: store.items[key] }))
-      .filter(result => {
-        const item = result.item || {};
-        if (normalizePostHistoryType(item.type) !== selectedType) return false;
-        if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
-        if (filters.fidFilters.length && !filters.fidFilters.includes(normalizePostHistoryFid(item.fid))) return false;
-        if (filters.forumFilters.length && !filters.forumFilters.every(value => getPostHistoryForumSearchText(item).includes(value))) return false;
-        if (filters.hasImage && !item.imageFile) return false;
-        if (filters.isGif && !/\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || ''))) return false;
-        if (filters.hasZeroWidth && !ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))) return false;
-        if (filters.fieldFilters.length && !filters.fieldFilters.every(filter => getPostHistorySearchFieldText(item, filter.field).includes(filter.value))) return false;
-        const text = buildPostHistorySearchText(item);
-        return tokens.every(token => text.includes(token));
-      });
-  }
-  function parsePostHistorySearchQuery(query) {
-    const filters = { statusFilters: [], fidFilters: [], forumFilters: [], fieldFilters: [], hasImage: false, isGif: false, hasZeroWidth: false };
-    const tokens = [];
-    String(query || '').split(/\s+/).filter(Boolean).forEach(rawToken => {
-      const token = normalizeHistorySearchValue(rawToken);
-      const pair = token.match(/^([a-z]+):(.+)$/);
-      if (!pair) {
-        tokens.push(token);
-        return;
-      }
-      const key = pair[1];
-      const value = normalizeHistorySearchValue(pair[2]);
-      if (!value) return;
-      if (key === 'status' && ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(value)) filters.statusFilters.push(value);
-      else if (key === 'fid') {
-        const fid = normalizePostHistoryFid(value);
-        if (fid) filters.fidFilters.push(fid);
-      } else if (key === 'forum') filters.forumFilters.push(value);
-      else if (key === 'has' && value === 'image') filters.hasImage = true;
-      else if (key === 'has' && value === 'gif') filters.isGif = true;
-      else if (key === 'has' && (value === 'zwsp' || value === 'zerowidth')) filters.hasZeroWidth = true;
-      else if (['id', 'thread', 'page', 'cookie', 'name', 'email'].includes(key)) filters.fieldFilters.push({ field: key, value });
-      else tokens.push(token);
-    });
-    return { filters, tokens };
-  }
-  function getPostHistorySearchFieldText(item, field) {
-    if (field === 'id') return normalizeHistorySearchValue([item.id, item.postId].join(' '));
-    if (field === 'thread') return normalizeHistorySearchValue([item.threadId, item.resto].join(' '));
-    if (field === 'page') return normalizeHistorySearchValue(item.page);
-    if (field === 'cookie') return normalizeHistorySearchValue(item.userHash);
-    if (field === 'name') return normalizeHistorySearchValue(item.name);
-    if (field === 'email') return normalizeHistorySearchValue(item.email);
-    return '';
-  }
-  function buildPostHistorySearchText(item) {
-    return [
-      item.id,
-      item.threadId,
-      item.postId,
-      item.resto,
-      item.fid,
-      item.forumName,
-      getPostHistoryForumSearchText(item),
-      item.title,
-      item.name,
-      item.email,
-      item.contentText,
-      item.contentRaw,
-      item.userHash,
-      item.status,
-      item.type,
-      item.page,
-      item.url,
-      item.sourceUrl,
-      item.imageFile,
-      item.imageImg,
-      item.imageExt
-    ].join(' ').toLowerCase();
-  }
-  function parseLastPostResponse(resp, context) {
-    const text = resp && (resp.responseText || resp.response) || '';
-    try {
-      const json = typeof text === 'string' ? JSON.parse(text) : text;
-      const data = json && (json.data || json.post || json);
-      const post = Array.isArray(data) ? (data[0] || null) : data;
-      if (!post) {
-        logPostHistory('getLastPost empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
-        return null;
-      }
-      logPostHistory('getLastPost parse', Object.assign({}, context || {}, { candidate: summarizePostHistoryCandidate(post) }));
-      return post;
-    } catch (e) {
-      logPostHistory('getLastPost parse failed', Object.assign({}, context || {}, {
-        error: e && e.message ? e.message : String(e),
-        responseLength: String(text || '').length,
-        preview: String(text || '').slice(0, 80)
-      }), 'warn');
-      return null;
-    }
-  }
-  function fetchPostHistorySameOriginText(url, context, stage) {
-    const label = stage || 'post history api';
-    logPostHistory(label + ' request', Object.assign({}, context || {}, { url }));
-    return fetch(url, { credentials: 'include', cache: 'no-store' }).then(resp => {
-      return resp.text().then(text => {
-        logPostHistory(label + ' response', Object.assign({}, context || {}, {
-          status: resp.status,
-          responseLength: String(text || '').length
-        }));
-        if (!resp.ok) throw new Error(`HTTP ${resp.status} ${url}`);
-        return {
-          status: resp.status,
-          statusText: resp.statusText,
-          responseText: text,
-          response: text,
-          finalUrl: resp.url || url
-        };
-      });
-    }).catch(e => {
-      logPostHistory(label + ' error', Object.assign({}, context || {}, { error: e && e.message ? e.message : String(e) }), 'warn');
-      throw e;
-    });
-  }
-  function fetchLastPostHistoryPost(context) {
-    const url = `${POST_HISTORY_API_BASE}/getLastPost`;
-    return fetchPostHistorySameOriginText(url, context, 'getLastPost').then(resp => parseLastPostResponse(resp, context));
-  }
-  function getPostHistoryApiCookieHeaders() {
-    const userhash = getCurrentBrowserUserhash();
-    return userhash ? { Cookie: `userhash=${userhash}` } : null;
-  }
-  function buildPostHistoryImageFile(img, ext) {
-    const base = String(img || '').trim();
-    const extValue = String(ext || '').trim();
-    if (!base) return '';
-    const suffix = extValue ? (extValue[0] === '.' ? extValue : `.${extValue}`) : '';
-    if (!suffix) return base;
-    return base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : base + suffix;
-  }
-  function parsePostHistoryRefResponse(resp, context) {
-    const text = resp && (resp.responseText || resp.response) || '';
-    try {
-      const json = typeof text === 'string' ? JSON.parse(text) : text;
-      const data = json && (json.data || json.post || json);
-      const refPost = data && !Array.isArray(data) ? data : null;
-      if (refPost && refPost.success === false) throw new Error(refPost.error || 'ref api error');
-      if (!refPost) {
-        logPostHistory('ref empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
-        return null;
-      }
-      logPostHistory('ref parse', Object.assign({}, context || {}, {
-        id: refPost.id || '',
-        imageFile: buildPostHistoryImageFile(refPost.img, refPost.ext)
-      }));
-      return refPost;
-    } catch (e) {
-      logPostHistory('ref parse failed', Object.assign({}, context || {}, {
-        error: e && e.message ? e.message : String(e),
-        responseLength: String(text || '').length,
-        preview: String(text || '').slice(0, 80)
-      }), 'warn');
-      return null;
-    }
-  }
-  function postHistoryRefPostHasImage(refPost) {
-    return !!buildPostHistoryImageFile(refPost && refPost.img, refPost && refPost.ext);
-  }
-  function parsePostHistoryRefHtmlResponse(resp, context) {
-    const html = resp && (resp.responseText || resp.response) || '';
-    try {
-      const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
-      const root = doc.querySelector('.h-threads-img-box') || doc.querySelector('.h-threads-item-main') || doc.body;
-      let imageFile = extractThreadHistoryImageFile(root);
-      if (!imageFile) {
-        const imageNode = doc.querySelector('.h-threads-img-a[href], img.h-threads-image, img.h-threads-img, a[href*="/image/"], a[href*="/thumb/"]');
-        const imageAnchor = imageNode && imageNode.closest ? imageNode.closest('a[href]') : imageNode;
-        imageFile = normalizeThreadHistoryImageFile(
-          (imageAnchor && imageAnchor.getAttribute && imageAnchor.getAttribute('href')) ||
-          (imageNode && imageNode.getAttribute && (imageNode.getAttribute('data-src') || imageNode.getAttribute('src')))
-        );
-      }
-      if (!imageFile) {
-        logPostHistory('ref html empty', Object.assign({}, context || {}, { responseLength: String(html || '').length }));
-        return null;
-      }
-      logPostHistory('ref html parse', Object.assign({}, context || {}, { imageFile }));
-      return { img: imageFile, ext: '', imageFile };
-    } catch (e) {
-      logPostHistory('ref html parse failed', Object.assign({}, context || {}, {
-        error: e && e.message ? e.message : String(e),
-        responseLength: String(html || '').length,
-        preview: String(html || '').slice(0, 80)
-      }), 'warn');
-      return null;
-    }
-  }
-  function fetchPostHistoryRefPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const detail = Object.assign({}, context || {}, { id: postId });
-    return fetchPostHistoryRefApiPost(postId, detail)
-      .then(refPost => {
-        if (postHistoryRefPostHasImage(refPost)) return refPost;
-        return fetchPostHistorySameOriginRefPost(postId, detail);
-      })
-      .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
-  }
-  function fetchPostHistoryRefApiPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const url = `${POST_HISTORY_REF_API_FALLBACK_BASE}/ref?id=${encodeURIComponent(postId)}`;
-    const headers = getPostHistoryApiCookieHeaders();
-    const detail = Object.assign({}, context || {}, { id: postId, api: true, authenticated: !!headers });
-    logPostHistory('ref api request', Object.assign({}, detail, { url }));
-    return gmRequest(url, 'text', headers).then(resp => {
-      logPostHistory('ref api response', Object.assign({}, detail, {
-        status: resp.status,
-        responseLength: String(resp.responseText || resp.response || '').length
-      }));
-      const refPost = parsePostHistoryRefResponse(resp, detail);
-      return postHistoryRefPostHasImage(refPost) ? refPost : null;
-    }).catch(e => {
-      logPostHistory('ref api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
-      throw e;
-    });
-  }
-  function fetchPostHistorySameOriginRefPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
-    const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
-    return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
-      .then(resp => {
-        const refPost = parsePostHistoryRefResponse(resp, detail);
-        if (postHistoryRefPostHasImage(refPost)) return refPost;
-        return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
-      })
-      .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
-  }
-  function fetchPostHistoryRefHtmlFallbackPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
-    const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
-    return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
-      .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
-  }
-  function enrichPostHistoryRefImage(localId, postId) {
-    return fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
-      const imageFile = refPost ? buildPostHistoryImageFile(refPost.img, refPost.ext) : '';
-      if (!imageFile) return false;
-      updatePostHistoryRecord(localId, { imageFile, imageImg: refPost.img || '', imageExt: refPost.ext || '' });
-      return true;
-    }).catch(e => {
-      logPostHistory('ref image error', { localId, id: postId, error: e && e.message ? e.message : String(e) }, 'warn');
-      return false;
-    });
-  }
-  function parsePostHistoryThreadResponse(resp, context) {
-    const text = resp && (resp.responseText || resp.response) || '';
-    try {
-      const thread = typeof text === 'string' ? JSON.parse(text) : text;
-      if (thread && thread.success === false) throw new Error(thread.error || 'thread api error');
-      const replies = Array.isArray(thread && thread.Replies) ? thread.Replies : [];
-      const replyCount = Number(thread && (thread.ReplyCount || thread.replyCount || thread.reply_count)) || replies.length;
-      logPostHistory('thread fallback parse', Object.assign({}, context || {}, { replyCount, replies: replies.length }));
-      return { thread, replies, replyCount, page: Math.max(1, Number(context && context.page) || 1) };
-    } catch (e) {
-      logPostHistory('thread fallback parse failed', Object.assign({}, context || {}, {
-        error: e && e.message ? e.message : String(e),
-        responseLength: String(text || '').length,
-        preview: String(text || '').slice(0, 80)
-      }), 'warn');
-      throw e;
-    }
-  }
-  function fetchPostHistoryThreadPage(threadId, page, context) {
-    const detail = Object.assign({}, context || {}, { threadId, page });
-    return fetchPostHistoryThreadApiPage(threadId, page, detail)
-      .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
-  }
-  function fetchPostHistoryThreadApiPage(threadId, page, context) {
-    const url = `${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
-    const headers = getPostHistoryApiCookieHeaders();
-    const detail = Object.assign({}, context || {}, { threadId, page, api: true, authenticated: !!headers });
-    logPostHistory('thread api request', Object.assign({}, detail, { url }));
-    return gmRequest(url, 'text', headers).then(resp => {
-      logPostHistory('thread api response', Object.assign({}, detail, {
-        status: resp.status,
-        responseLength: String(resp.responseText || resp.response || '').length
-      }));
-      return parsePostHistoryThreadResponse(resp, detail);
-    }).catch(e => {
-      logPostHistory('thread api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
-      throw e;
-    });
-  }
-  function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
-    const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
-    const detail = Object.assign({}, context || {}, { threadId, page });
-    return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
-  }
-  function getPostHistoryThreadFallbackPages(replyCount) {
-    const total = Number(replyCount) || 0;
-    const tailPage = Math.max(1, Math.ceil(total / POST_HISTORY_REPLIES_PER_PAGE));
-    const pages = [tailPage, tailPage - 1]
-      .filter(page => page >= 1)
-      .map(page => Math.max(1, Number(page) || 1));
-    return Array.from(new Set(pages)).sort((a, b) => b - a);
-  }
-  function buildPostHistoryThreadCandidate(reply, thread, page) {
-    const threadId = String(thread && thread.id || '').trim();
-    const fid = getPostHistoryPostFid(reply) || getPostHistoryPostFid(thread);
-    return Object.assign({}, reply || {}, { fid, resto: threadId, page: Math.max(1, Number(page) || 1) });
-  }
-  function findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds) {
-    const replies = Array.isArray(pageData && pageData.replies) ? pageData.replies : [];
-    for (let i = replies.length - 1; i >= 0; i--) {
-      const candidate = buildPostHistoryThreadCandidate(replies[i], pageData && pageData.thread || { id: snapshot && snapshot.resto, fid: snapshot && snapshot.fid }, pageData && pageData.page);
-      if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
-    }
-    return null;
-  }
-  const POST_HISTORY_THREAD_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
-  async function completePostHistoryFromThreadFallback(localId, snapshot, retryAttempt) {
-    if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
-      logPostHistory('thread fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-      return false;
-    }
-    const threadId = String(snapshot.resto || '').trim();
-    try {
-      const firstPage = await fetchPostHistoryThreadPage(threadId, 1, { localId, phase: 'count', retryAttempt: retryAttempt || 0 });
-      const pages = getPostHistoryThreadFallbackPages(firstPage.replyCount);
-      const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
-      for (const page of pages) {
-        const pageData = page === 1 ? firstPage : await fetchPostHistoryThreadPage(threadId, page, { localId, phase: 'scan' });
-        const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
-        if (post) {
-          logPostHistory('thread fallback confirmed', { localId, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
-          confirmPostHistorySnapshot(localId, post);
-          return true;
-        }
-      }
-      logPostHistory('thread fallback exhausted', { localId, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-      return false;
-    } catch (e) {
-      const attempt = retryAttempt || 0;
-      if (attempt < POST_HISTORY_THREAD_PAGE_RETRY_DELAYS.length) {
-        const delay = POST_HISTORY_THREAD_PAGE_RETRY_DELAYS[attempt];
-        logPostHistory('thread page verify retry scheduled', { localId, threadId, attempt, nextAttempt: attempt + 1, delay, error: e && e.message ? e.message : String(e) });
-        setTimeout(() => {
-          completePostHistoryFromThreadFallback(localId, snapshot, attempt + 1);
-        }, delay);
-        return false;
-      }
-      logPostHistory('thread page verify error', { localId, threadId, attempts: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
-      return false;
-    }
-  }
-  // showf 版面主串回退：新开串在 getLastPost 失败、且 thread fallback 不适用时，按 fid 扫 /showf
-  // 典型场景：/f/测试（fid=122）主串不进时间线、对普通浏览半隐身，但 showf?id=122 可回查刚发主串
-  const POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
-  function parsePostHistoryShowfResponse(resp, context) {
-    const text = resp && (resp.responseText || resp.response) || '';
-    try {
-      const json = typeof text === 'string' ? JSON.parse(text) : text;
-      if (json && json.success === false) throw new Error(json.error || 'showf api error');
-      const posts = Array.isArray(json) ? json : (Array.isArray(json && json.data) ? json.data : []);
-      logPostHistory('showf fallback parse', Object.assign({}, context || {}, { posts: posts.length }));
-      return { posts, page: Math.max(1, Number(context && context.page) || 1) };
-    } catch (e) {
-      logPostHistory('showf fallback parse failed', Object.assign({}, context || {}, {
-        error: e && e.message ? e.message : String(e),
-        responseLength: String(text || '').length,
-        preview: String(text || '').slice(0, 80)
-      }), 'warn');
-      throw e;
-    }
-  }
-  function fetchPostHistoryShowfPage(fid, page, context) {
-    const detail = Object.assign({}, context || {}, { fid, page });
-    return fetchPostHistoryShowfApiPage(fid, page, detail)
-      .catch(() => fetchPostHistorySameOriginShowfPage(fid, page, detail));
-  }
-  function fetchPostHistoryShowfApiPage(fid, page, context) {
-    const url = `${POST_HISTORY_SHOWF_API_BASE}/showf?id=${encodeURIComponent(fid)}&page=${encodeURIComponent(page)}`;
-    const headers = getPostHistoryApiCookieHeaders();
-    const detail = Object.assign({}, context || {}, { fid, page, api: true, authenticated: !!headers });
-    logPostHistory('showf api request', Object.assign({}, detail, { url }));
-    return gmRequest(url, 'text', headers).then(resp => {
-      logPostHistory('showf api response', Object.assign({}, detail, {
-        status: resp.status,
-        responseLength: String(resp.responseText || resp.response || '').length
-      }));
-      return parsePostHistoryShowfResponse(resp, detail);
-    }).catch(e => {
-      logPostHistory('showf api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
-      throw e;
-    });
-  }
-  function fetchPostHistorySameOriginShowfPage(fid, page, context) {
-    const url = `${POST_HISTORY_API_BASE}/showf?id=${encodeURIComponent(fid)}&page=${encodeURIComponent(page)}`;
-    const detail = Object.assign({}, context || {}, { fid, page });
-    return fetchPostHistorySameOriginText(url, detail, 'showf same-origin fallback').then(resp => parsePostHistoryShowfResponse(resp, detail));
-  }
-  function buildPostHistoryShowfCandidate(post, page, snapshotFid) {
-    const fid = getPostHistoryPostFid(post) || normalizePostHistoryFid(snapshotFid);
-    // showf 列表项是主串；resto 缺省时按 0 处理，便于 postHistoryMatchesSnapshot 归类为 thread
-    return Object.assign({}, post || {}, {
-      fid,
-      resto: String(post && post.resto != null ? post.resto : '0'),
-      page: Math.max(1, Number(page) || 1)
-    });
-  }
-  function findPostHistoryShowfFallbackMatch(pageData, snapshot, usedIds) {
-    const posts = Array.isArray(pageData && pageData.posts) ? pageData.posts : [];
-    // 版面列表通常新串在前；从前往后扫即可，匹配逻辑仍靠内容/时间窗
-    for (let i = 0; i < posts.length; i++) {
-      const candidate = buildPostHistoryShowfCandidate(posts[i], pageData && pageData.page, snapshot && snapshot.fid);
-      if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
-    }
-    return null;
-  }
-  async function completePostHistoryFromShowfFallback(localId, snapshot, retryAttempt) {
-    if (!snapshot || snapshot.type !== 'thread') {
-      logPostHistory('showf fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-      return false;
-    }
-    const fid = normalizePostHistoryFid(snapshot.fid) || getCurrentPostHistoryFid();
-    if (!fid) {
-      logPostHistory('showf fallback exhausted', { localId, reason: 'missing-fid', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-      return false;
-    }
-    try {
-      // 只扫前两页：新开串通常在 page=1；page=2 覆盖并发/排序抖动
-      const pages = [1, 2];
-      const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
-      for (const page of pages) {
-        const pageData = await fetchPostHistoryShowfPage(fid, page, { localId, phase: 'scan', retryAttempt: retryAttempt || 0 });
-        const post = findPostHistoryShowfFallbackMatch(pageData, Object.assign({}, snapshot, { fid }), usedIds);
-        if (post) {
-          logPostHistory('showf fallback confirmed', { localId, fid, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
-          confirmPostHistorySnapshot(localId, post);
-          return true;
-        }
-      }
-      logPostHistory('showf fallback exhausted', { localId, fid, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-      return false;
-    } catch (e) {
-      const attempt = retryAttempt || 0;
-      if (attempt < POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS.length) {
-        const delay = POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS[attempt];
-        logPostHistory('showf page verify retry scheduled', { localId, fid, attempt, nextAttempt: attempt + 1, delay, error: e && e.message ? e.message : String(e) });
-        setTimeout(() => {
-          completePostHistoryFromShowfFallback(localId, snapshot, attempt + 1);
-        }, delay);
-        return false;
-      }
-      logPostHistory('showf page verify error', { localId, fid, attempts: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
-      return false;
-    }
-  }
-  function postHistoryMatchesSnapshot(post, snapshot, usedIds) {
-    const reject = (reason, extra) => {
-      logPostHistory('match rejected', Object.assign({
-        reason,
-        snapshot: summarizePostHistorySnapshot(snapshot),
-        candidate: summarizePostHistoryCandidate(post)
-      }, extra || {}));
-      return false;
-    };
-    if (!post || !snapshot) return reject('missing-post-or-snapshot');
-    const id = String(post.id || '').trim();
-    if (!id) return reject('missing-id');
-    const expectedId = String(snapshot.id || snapshot.postId || '').trim();
-    if (expectedId && id !== expectedId) return reject('id-mismatch', { expectedId, actualId: id });
-    if (usedIds.has(id) && id !== expectedId) return reject('duplicate-confirmed-id', { id });
-    const resto = String(post.resto || '0').trim();
-    const type = Number(resto) === 0 ? 'thread' : 'reply';
-    if (type !== snapshot.type) return reject('type-mismatch', { expectedType: snapshot.type, actualType: type });
-    if (type === 'reply' && String(snapshot.resto || '').trim() && String(snapshot.resto || '').trim() !== resto) return reject('reply-resto-mismatch', { expectedResto: String(snapshot.resto || '').trim(), actualResto: resto });
-    const postText = normalizePostHistoryText(post.content || '');
-    if (postText && snapshot.contentHash && hashPostHistoryText(postText) !== snapshot.contentHash && postText !== snapshot.contentText) {
-      logPostHistory('server content differs', {
-        snapshot: summarizePostHistorySnapshot(snapshot),
-        candidate: summarizePostHistoryCandidate(post),
-        expectedHash: snapshot.contentHash,
-        actualHash: hashPostHistoryText(postText)
-      });
-    }
-    const postTs = Date.parse(post.now || '');
-    if (!postTs) return reject('missing-time');
-    const timeDiff = Math.abs(postTs - Number(snapshot.submittedAt || Date.now()));
-    if (timeDiff > POST_HISTORY_MATCH_TIME_WINDOW_MS) return reject('time-window-mismatch', { postTs, submittedAt: Number(snapshot.submittedAt || Date.now()), timeDiff });
-    logPostHistory('match accepted', {
-      snapshot: summarizePostHistorySnapshot(snapshot),
-      candidate: summarizePostHistoryCandidate(post),
-      timeDiff
-    });
-    return true;
-  }
-  function confirmPostHistorySnapshot(localId, post) {
-    const resto = String(post.resto || '0').trim();
-    const type = Number(resto) === 0 ? 'thread' : 'reply';
-    const id = String(post.id || '').trim();
-    const url = buildPostHistoryUrl(type, id, resto);
-    const existing = getPostHistoryStore().items[localId] || {};
-    const existingPage = type === 'thread' ? (Number(existing.page) || 0) : 0;
-    const imageFile = buildPostHistoryImageFile(post.img, post.ext);
-    const serverContentRaw = post.content || '';
-    const serverContentText = normalizePostHistoryText(serverContentRaw);
-    const fid = getPostHistoryPostFid(post) || normalizePostHistoryFid(existing.fid);
-    const update = {
-      status: 'confirmed',
-      type,
-      id,
-      resto,
-      threadId: type === 'reply' ? resto : id,
-      postId: id,
-      page: Math.max(0, Number(post.page) || existingPage || (type === 'thread' ? 1 : 0)),
-      fid,
-      forumName: getPostHistoryForumNameByFid(fid),
-      title: post.title || '',
-      email: post.email || '',
-      contentRaw: serverContentRaw,
-      contentText: serverContentText,
-      contentHash: hashPostHistoryText(serverContentText),
-      contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
-      userHash: post.user_hash || post.userHash || '',
-      confirmedAt: Date.now(),
-      url
-    };
-    if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
-    logPostHistory('confirmed', { localId, type, id, resto, url });
-    updatePostHistoryRecord(localId, update);
-    // 新串发布成功 → 自动写入串内饼干偏好
-    if (type === 'thread' && update.userHash) {
-      try { setThreadCookiePref(id, update.userHash); } catch (e) {}
-    }
-    const resolver = postHistoryConfirmationMap.get(localId);
-    if (!imageFile) {
-      // 没有图片，异步获取后再通知等待者
-      enrichPostHistoryRefImage(localId, id).then(() => {
-        if (resolver) {
-          resolver(Object.assign({ localId }, update));
-          postHistoryConfirmationMap.delete(localId);
-        }
-      }).catch(() => {
-        if (resolver) {
-          resolver(Object.assign({ localId }, update));
-          postHistoryConfirmationMap.delete(localId);
-        }
-      });
-    } else {
-      // 已有图片，直接通知等待者
-      if (resolver) {
-        resolver(Object.assign({ localId }, update));
-        postHistoryConfirmationMap.delete(localId);
-      }
-    }
-  }
-  function completePostHistorySnapshot(localId, snapshot, attempt = 0) {
-    const delay = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS[attempt];
-    if (delay == null) {
-      logPostHistory('completion exhausted', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-      // 清理等待者（确认失败或超时）
-      const resolver = postHistoryConfirmationMap.get(localId);
-      if (resolver) {
-        resolver(null);
-        postHistoryConfirmationMap.delete(localId);
-      }
-      // reply → thread 尾页回退；thread（含测试版主串）→ showf 版面回退
-      completePostHistoryFromThreadFallback(localId, snapshot).then(confirmed => {
-        if (confirmed) return true;
-        return completePostHistoryFromShowfFallback(localId, snapshot);
-      }).then(confirmed => {
-        if (confirmed) return;
-        logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-        updatePostHistoryRecord(localId, { status: 'unconfirmed' });
-      }).catch(e => {
-        logPostHistory('thread fallback error', { localId, error: e && e.message ? e.message : String(e) }, 'warn');
-        // thread 路径异常时仍尝试 showf（新开串场景）
-        completePostHistoryFromShowfFallback(localId, snapshot).then(confirmed => {
-          if (confirmed) return;
-          logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-          updatePostHistoryRecord(localId, { status: 'unconfirmed' });
-        }).catch(showfErr => {
-          logPostHistory('showf fallback error', { localId, error: showfErr && showfErr.message ? showfErr.message : String(showfErr) }, 'warn');
-          logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
-          updatePostHistoryRecord(localId, { status: 'unconfirmed' });
-        });
-      });
-      return;
-    }
-    logPostHistory('completion scheduled', { localId, attempt, delay, snapshot: summarizePostHistorySnapshot(snapshot) });
-    setTimeout(() => {
-      fetchLastPostHistoryPost({ localId, attempt }).then(post => {
-        const store = getPostHistoryStore();
-        if (!postHistoryMatchesSnapshot(post, snapshot, getConfirmedPostHistoryIds(store))) {
-          logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1 });
-          completePostHistorySnapshot(localId, snapshot, attempt + 1);
-          return;
-        }
-        const id = String(post.id || '').trim();
-        const confirmedResto = String(post.resto || snapshot.resto || '').trim();
-        const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });
-        confirmPostHistorySnapshot(localId, post);
-        if (confirmedSnapshot.type === 'reply') {
-          completePostHistoryFromThreadFallback(localId, confirmedSnapshot);
-        }
-      }).catch(e => {
-        logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
-        completePostHistorySnapshot(localId, snapshot, attempt + 1);
-      });
-    }, delay);
-  }
-  function snapshotSubmittedPostHistory(fd, options) {
-    const type = options && options.isReply ? 'reply' : 'thread';
-    const submittedAt = Date.now();
-    const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
-    const contentText = normalizePostHistoryText(contentRaw);
-    const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
-    const fallbackFid = getCurrentPostHistoryFid();
-    const localId = `local-${submittedAt}-${Math.random().toString(36).slice(2, 8)}`;
-    const parsedSource = parseThreadHistoryUrl(location.href);
-    const snapshot = {
-      status: 'pending',
-      type,
-      localId,
-      id: '',
-      resto,
-      threadId: type === 'reply' ? resto : '',
-      postId: '',
-      page: type === 'thread' ? (parsedSource ? parsedSource.page : 1) : 0,
-      fid: fallbackFid,
-      forumName: getPostHistoryForumNameByFid(fallbackFid),
-      title: fd && fd.get ? String(fd.get('title') || '') : '',
-      name: fd && fd.get ? String(fd.get('name') || '') : '',
-      email: fd && fd.get ? String(fd.get('email') || '') : '',
-      contentRaw,
-      contentText,
-      contentHash: hashPostHistoryText(contentText),
-      userHash: '',
-      submittedAt,
-      confirmedAt: 0,
-      sourceUrl: location.href,
-      url: ''
-    };
-    // 为发串创建一个可等待的 Promise，用于确认后跳转
-    let confirmResolver;
-    const confirmPromise = new Promise(res => { confirmResolver = res; });
-    postHistoryConfirmationMap.set(localId, confirmResolver);
-    logPostHistory('snapshot', { snapshot: summarizePostHistorySnapshot(snapshot), content: summarizePostHistoryText(contentText) });
-    upsertPostHistoryRecord(snapshot);
-    completePostHistorySnapshot(localId, snapshot, 0);
-    return { snapshot, localId, confirmPromise };
-  }
-  function parseThreadHistoryUrl(inputUrl) {
-    let url;
-    try {
-      url = new URL(inputUrl || location.href, location.origin);
-    } catch (e) {
-      return null;
-    }
-    const path = url.pathname || '';
-    // 普通串支持 /t/12345678 与 /t/12345678/page/323（不再识别笔误的 /t/12345678/323）
-    const normalMatch = path.match(/\/t\/(\d{6,8})(?:\/page\/(\d+))?/);
-    const poMatch = path.match(/\/Forum\/po\/id\/(\d{6,8})(?:\/page\/(\d+)\.html)?/);
-    const match = normalMatch || poMatch;
-    if (!match) return null;
-    const pathPage = parseInt(match[2] || '', 10);
-    const queryPage = parseInt(url.searchParams.get('page') || '', 10);
-    return {
-      mode: poMatch ? 'po' : 'normal',
-      threadId: String(match[1]).slice(0, 8),
-      page: pathPage > 0 ? pathPage : (queryPage > 0 ? queryPage : 1),
-      url: url.toString()
-    };
-  }
-  function buildThreadHistoryPageUrl(mode, threadId, page) {
-    const tid = String(threadId || '').trim();
-    const pageNum = Math.max(1, Number(page) || 1);
-    if (!tid) return location.href;
-    if (mode === 'po') return `${location.origin}/Forum/po/id/${tid}/page/${pageNum}.html`;
-    // 普通串页码路径：/t/{id}/page/{n}（第 1 页保留 /t/{id}）
-    if (pageNum <= 1) return `${location.origin}/t/${tid}`;
-    return `${location.origin}/t/${tid}/page/${pageNum}`;
-  }
-  function parseThreadHistoryPageNumberFromElement(el) {
-    if (!el) return 0;
-    const text = String(el.textContent || '').trim();
-    const lastTextMatch = text.match(/末页\s*\((\d+)\)/);
-    if (lastTextMatch) return Number(lastTextMatch[1]) || 0;
-    const href = el.getAttribute && el.getAttribute('href');
-    const parsed = href ? parseThreadHistoryUrl(href) : null;
-    if (parsed && parsed.page) return Number(parsed.page) || 0;
-    const numericText = text.match(/^\d+$/);
-    return numericText ? Number(numericText[0]) || 0 : 0;
-  }
-  function getThreadHistoryPaginationBounds(root = document) {
-    const paginations = Array.from((root || document).querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
-    const pagination = paginations.length ? paginations[paginations.length - 1] : null;
-    if (!pagination) return null;
-    const items = Array.from(pagination.querySelectorAll('li'));
-    const elements = Array.from(pagination.querySelectorAll('a, span'));
-    const parsedLinks = elements
-      .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
-      .filter(Boolean);
-    const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
-    const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
-    const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
-    const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
-    const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
-    const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
-    const numericPages = elements
-      .map(parseThreadHistoryPageNumberFromElement)
-      .filter(num => num > 0);
-    let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
-    if (!lastPage && nextItem && !nextHasLink) {
-      lastPage = activePage || Math.max(0, ...numericPages);
-    }
-    if (!lastPage) return null;
-    return {
-      lastPage,
-      activePage,
-      threadId: parsedIdentity && parsedIdentity.threadId || '',
-      mode: parsedIdentity && parsedIdentity.mode || '',
-      source: lastPageLink ? 'last-link' : 'disabled-next'
-    };
-  }
-  function applyThreadHistoryPageBounds(record, root = document) {
-    if (!record || !record.threadId) return record;
-    const bounds = getThreadHistoryPaginationBounds(root);
-    if (!bounds || !bounds.lastPage) return record;
-    if (bounds.threadId && bounds.threadId !== String(record.threadId)) return record;
-    if (bounds.mode && record.mode && bounds.mode !== record.mode) return record;
-    const parsedUrl = record.url ? parseThreadHistoryUrl(record.url) : null;
-    const page = Math.max(1, Number(record.page || (parsedUrl && parsedUrl.page)) || 1);
-    const boundedPage = Math.min(page, bounds.lastPage);
-    const existingUrlPage = parsedUrl && parsedUrl.page || 0;
-    const next = Object.assign({}, record, {
-      page: boundedPage,
-      maxVisitedPage: Math.min(Math.max(Number(record.maxVisitedPage) || boundedPage, boundedPage), bounds.lastPage),
-      lastKnownPage: bounds.lastPage
-    });
-    if (page > bounds.lastPage || existingUrlPage > bounds.lastPage) {
-      next.url = buildThreadHistoryPageUrl(next.mode, next.threadId, boundedPage);
-    }
-    return next;
-  }
-  function getElementTextPreserveZeroWidth(el) {
-    return el ? String(el.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
-  }
-  function getVisibleTextForHistory(text) {
-    return String(text || '').replace(ZERO_WIDTH_RE, '').replace(/[\s\u00a0]+/g, '');
-  }
-  function trimThreadHistoryContentText(text) {
-    return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
-    // 只去除ASCII空白（空格/Tab/换行），保留全角空格/零宽空格等用户输入的Unicode空白
-  }
-  function sanitizeThreadHistoryInlineStyle(styleValue) {
-    const safeRules = [];
-    String(styleValue || '').split(';').forEach(rule => {
-      const separator = rule.indexOf(':');
-      if (separator === -1) return;
-      const name = rule.slice(0, separator).trim().toLowerCase();
-      const value = rule.slice(separator + 1).trim();
-      if (!/^(color|background-color|text-decoration|font-weight)$/.test(name) && !/^--darkreader-inline-(?:color|bgcolor)$/.test(name)) return;
-      if (/url\s*\(|expression\s*\(|javascript:/i.test(value)) return;
-      safeRules.push(`${name}: ${value}`);
-    });
-    return safeRules.join('; ');
-  }
-  function sanitizeThreadHistoryContentUrl(urlValue) {
-    try {
-      const url = new URL(urlValue, location.origin);
-      if (!/^https?:$/.test(url.protocol)) return '';
-      return url.href;
-    } catch (e) {
-      return '';
-    }
-  }
-  function escapeThreadHistoryHtml(text) {
-    return String(text || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-  function cleanThreadHistoryContentWhitespace(root) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    if (!nodes.length) return;
-    // 首尾文本节点去空白 — 只清理ASCII空白（空格/Tab/换行），保留用户输入的全角空格/零宽空格等Unicode空白
-    nodes[0].nodeValue = String(nodes[0].nodeValue || '').replace(/^[ \t\r\n]+/, '');
-    const last = nodes[nodes.length - 1];
-    last.nodeValue = String(last.nodeValue || '').replace(/[ \t\r\n]+$/, '');
-  }
-  function normalizeThreadHistoryContentWhitespace(root) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    nodes.forEach(node => {
-      const prev = node.previousSibling;
-      const next = node.nextSibling;
-      let value = String(node.nodeValue || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      // value = value.replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n'); // 连续空行压缩 — 已禁用，保留原始空行
-      if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR') value = value.replace(/^[ \t\r\n]+/, ''); // BR后空白清理 — 只清理ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
-      if (next && next.nodeType === Node.ELEMENT_NODE && next.tagName === 'BR') value = value.replace(/[ \t]+$/, ''); // BR前空白清理 — 保留：清理HTML源码格式化产生的空格
-      node.nodeValue = value;
-    });
-    cleanThreadHistoryContentWhitespace(root);
-  }
-  function removeThreadHistoryTrailingBreaks(root) {
-    while (root && root.lastChild) {
-      const node = root.lastChild;
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        removeThreadHistoryTrailingBreaks(node);
-      }
-      if (node.nodeType === Node.TEXT_NODE && !String(node.nodeValue || '').trim()) {
-        node.remove();
-        continue;
-      }
-      if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
-        node.remove();
-        continue;
-      }
-      if (isEmptyThreadHistoryInlineElement(node)) {
-        node.remove();
-        continue;
-      }
-      break;
-    }
-  }
-  function isEmptyThreadHistoryInlineElement(node) {
-    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-    if (!/^(A|SPAN|FONT|B|STRONG|I|EM|U|S|DEL|CODE|SUB|SUP)$/.test(node.tagName)) return false;
-    return !String(node.textContent || '').trim() && !node.querySelector('img, video, audio, canvas, svg');
-  }
-  function limitThreadHistoryContentText(root, limit) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    let remaining = Math.max(0, Number(limit) || 0);
-    let truncated = false;
-    for (const node of nodes) {
-      if (truncated || remaining <= 0) {
-        node.nodeValue = '';
-        continue;
-      }
-      const value = String(node.nodeValue || '');
-      if (value.length > remaining) {
-        node.nodeValue = value.slice(0, remaining).replace(/\s+$/, '');
-        pruneAfterThreadHistoryTextNode(root, node);
-        truncated = true;
-        remaining = 0;
-      } else {
-        remaining -= value.length;
-      }
-    }
-    cleanThreadHistoryContentWhitespace(root);
-    removeThreadHistoryTrailingBreaks(root);
-  }
-  function pruneAfterThreadHistoryTextNode(root, textNode) {
-    let current = textNode;
-    while (current && current.parentNode && current !== root) {
-      while (current.nextSibling) current.nextSibling.remove();
-      current = current.parentNode;
-    }
-    if (current === root) removeThreadHistoryTrailingBreaks(root);
-  }
-  function isThreadHistoryContentTruncated(text) {
-    return String(text || '').length > THREAD_HISTORY_EXCERPT_LIMIT;
-  }
-  function appendThreadHistoryTruncationMarker(contentEl) {
-    if (!contentEl) return;
-    removeThreadHistoryTrailingBreaks(contentEl);
-    contentEl.appendChild(document.createTextNode('……'));
-  }
-  function sanitizeThreadHistoryInlineHtml(sourceEl) {
-    if (!sourceEl) return '';
-    const clone = sourceEl.cloneNode(true);
-    clone.querySelectorAll('script, style, template, iframe, object, embed, svg, math').forEach(el => el.remove());
-    const allowedTags = new Set(['SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'SUB', 'SUP']);
-    Array.from(clone.querySelectorAll('*')).forEach(el => {
-      if (!allowedTags.has(el.tagName)) {
-        el.replaceWith(...Array.from(el.childNodes));
-        return;
-      }
-      Array.from(el.attributes).forEach(attr => {
-        const name = attr.name.toLowerCase();
-        const value = attr.value || '';
-        if (name === 'style') {
-          const safeStyle = sanitizeThreadHistoryInlineStyle(value);
-          if (safeStyle) el.setAttribute('style', safeStyle);
-          else el.removeAttribute(attr.name);
-          return;
-        }
-        if (el.tagName === 'FONT' && name === 'color') return;
-        if (name === 'class') return;
-        if (name === 'data-darkreader-inline-color' || name === 'data-darkreader-inline-bgcolor') return;
-        el.removeAttribute(attr.name);
-      });
-    });
-    cleanThreadHistoryContentWhitespace(clone);
-    return clone.innerHTML.replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
-    // 只去除ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
-  }
-  function extractThreadHistoryCookieId(cookieEl, fallbackText) {
-    if (cookieEl) {
-      const font = cookieEl.querySelector('font');
-      if (font) {
-        for (const node of font.childNodes) {
-          if (node.nodeType === Node.TEXT_NODE) {
-            const value = String(node.nodeValue || '').trim();
-            if (value) return value;
-          }
-        }
-      }
-    }
-    const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
-    const match = String(value).match(/[A-Za-z0-9]{3,8}/);
-    return match ? match[0] : value;
-  }
-  function buildThreadHistoryLegacyCookieHtml(cookieId) {
-    const value = String(cookieId || '').trim();
-    const match = value.match(/^([A-Za-z0-9]{3,8})(.+)$/);
-    if (!match || !match[2].trim()) return '';
-    const id = escapeThreadHistoryHtml(match[1]);
-    const badge = escapeThreadHistoryHtml(match[2].trim());
-    return `ID:<font color="red">${id}<sub style="color: darkorange; font-weight: bold;">${badge}</sub></font>`;
-  }
-  function getThreadHistoryCookieMarkId(item) {
-    const value = String(item && item.cookieId || '').trim();
-    const match = value.match(/^([A-Za-z0-9]{3,8})/);
-    return match ? match[1] : value;
-  }
-  function sanitizeThreadHistoryContentHtml(contentEl) {
-    if (!contentEl) return '';
-    const clone = contentEl.cloneNode(true);
-    clone.querySelectorAll('script, style, template, iframe, object, embed, svg, math').forEach(el => el.remove());
-    const allowedTags = new Set(['A', 'BR', 'SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'CODE', 'PRE', 'SUB', 'SUP']);
-    Array.from(clone.querySelectorAll('*')).forEach(el => {
-      if (!allowedTags.has(el.tagName)) {
-        el.replaceWith(...Array.from(el.childNodes));
-        return;
-      }
-      Array.from(el.attributes).forEach(attr => {
-        const name = attr.name.toLowerCase();
-        const value = attr.value || '';
-        if (name.startsWith('on') || name === 'id' || (name.startsWith('data-') && name !== 'data-darkreader-inline-color' && name !== 'data-darkreader-inline-bgcolor')) {
-          el.removeAttribute(attr.name);
-          return;
-        }
-        if (name === 'style') {
-          const safeStyle = sanitizeThreadHistoryInlineStyle(value);
-          if (safeStyle) el.setAttribute('style', safeStyle);
-          else el.removeAttribute(attr.name);
-          return;
-        }
-        if (el.tagName === 'A' && name === 'href') {
-          const safeHref = sanitizeThreadHistoryContentUrl(value);
-          if (safeHref) {
-            el.setAttribute('href', safeHref);
-            el.setAttribute('target', '_blank');
-            el.setAttribute('rel', 'noopener');
-          } else {
-            el.removeAttribute(attr.name);
-          }
-          return;
-        }
-        if (el.tagName === 'FONT' && name === 'color') return;
-        if (name !== 'class' && name !== 'title' && name !== 'target' && name !== 'rel') el.removeAttribute(attr.name);
-      });
-    });
-    normalizeThreadHistoryContentWhitespace(clone);
-    return clone.innerHTML.replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
-    // 只去除ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
-  }
-  function normalizeThreadHistoryImageFile(urlValue) {
-    if (!urlValue) return '';
-    try {
-      const url = new URL(urlValue, location.origin);
-      const match = url.pathname.match(/\/(?:image|thumb)\/([^?#]+)/);
-      return match ? decodeURIComponent(match[1]) : '';
-    } catch (e) {
-      const match = String(urlValue).match(/\/(?:image|thumb)\/([^?#]+)/);
-      return match ? decodeURIComponent(match[1]) : '';
-    }
-  }
-  const THREAD_HISTORY_IMAGE_FILE_CONTRACT_EXAMPLE = '2024-12-10/6757ea866e1aa.png';
-  function extractThreadHistoryImageFile(mainEl) {
-    if (!mainEl) return '';
-    const anchor = mainEl.querySelector('.h-threads-img-a[href]');
-    const img = mainEl.querySelector('.h-threads-img-a img, img.h-threads-img');
-    const sources = [
-      anchor && anchor.getAttribute('href'),
-      img && img.dataset && img.dataset.xdexHdSrc,
-      img && img.dataset && img.dataset.xdexThumbSrc,
-      img && img.dataset && img.dataset.src,
-      img && img.getAttribute && img.getAttribute('src')
-    ];
-    for (const source of sources) {
-      const imageFile = normalizeThreadHistoryImageFile(source);
-      if (imageFile) return imageFile;
-    }
-    return '';
-  }
-  function isThreadHistoryMainCandidate(el) {
-    return !!el && !el.closest('.h-preview-box') && !!el.querySelector('.h-threads-content');
-  }
-  function findThreadHistoryMainElement(root, parsed) {
-    const scope = root || document;
-    const primary = scope.querySelector('.h-threads-list .h-threads-item-main');
-    if (isThreadHistoryMainCandidate(primary)) return primary;
-    const mains = Array.from(scope.querySelectorAll('.h-threads-item-main'));
-    return mains.find(isThreadHistoryMainCandidate) || null;
-  }
-  function extractThreadHistoryRecord(root) {
-    const parsed = parseThreadHistoryUrl(location.href);
-    if (!parsed) {
-      logThreadHistory('skip record: unsupported url', { url: location.href });
-      return null;
-    }
-    const mainEl = findThreadHistoryMainElement(root, parsed);
-    if (!mainEl) {
-      logThreadHistory('skip record: missing h-threads-item-main', { url: location.href, parsed });
-      return null;
-    }
-    const contentEl = mainEl.querySelector('.h-threads-content');
-    const rawContent = getElementTextPreserveZeroWidth(contentEl);
-    const contentText = trimThreadHistoryContentText(rawContent);
-    const contentTruncated = isThreadHistoryContentTruncated(contentText);
-    const contentHtml = sanitizeThreadHistoryContentHtml(contentEl);
-    const hasZeroWidth = ZERO_WIDTH_RE.test(rawContent);
-    const hasVisibleText = !!getVisibleTextForHistory(rawContent);
-    const hasWhitespaceOnly = !hasVisibleText && /^[\s\u00a0]*$/.test(rawContent.replace(ZERO_WIDTH_RE, '')) && rawContent.length > 0;
-    const imageFile = extractThreadHistoryImageFile(mainEl);
-    const title = getElementTextPreserveZeroWidth(mainEl.querySelector('.h-threads-info-title')).trim();
-    const author = getElementTextPreserveZeroWidth(mainEl.querySelector('.h-threads-info-email')).trim();
-    const cookieEl = mainEl.querySelector('.h-threads-info-uid');
-    const cookieText = getElementTextPreserveZeroWidth(cookieEl).trim();
-    const cookieId = extractThreadHistoryCookieId(cookieEl, cookieText);
-    const cookieHtml = sanitizeThreadHistoryInlineHtml(cookieEl);
-    const createdAtEl = mainEl.querySelector('.h-threads-info-createdat, .h-threads-info time');
-    const createdAt = String(createdAtEl && (createdAtEl.getAttribute('title') || createdAtEl.getAttribute('datetime')) || getElementTextPreserveZeroWidth(createdAtEl)).trim();
-    const tipsEl = mainEl.querySelector('.h-threads-tips');
-    const sageHtml = (tipsEl && /SAGE/i.test(tipsEl.textContent || ''))
-      ? '<i class="uk-icon-thumbs-down"></i>&nbsp;本串已经被SAGE'
-      : '';
-    return {
-      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
-      mode: parsed.mode,
-      threadId: parsed.threadId,
-      page: parsed.page,
-      url: parsed.url,
-      title,
-      author,
-      cookieId,
-      cookieHtml,
-      createdAt,
-      contentText,
-      contentHtml,
-      contentTruncated,
-      excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
-      imageFile,
-      contentFlags: { hasVisibleText, hasWhitespaceOnly, hasZeroWidth },
-      sageHtml,
-            lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
-    };
-  }
-  function buildThreadHistoryIndexEntry(item) {
-    const contentFlags = item && item.contentFlags ? item.contentFlags : {};
-    const imageFile = String(item && item.imageFile || '');
-    const titleText = String(item && item.title || '').toLowerCase();
-    const authorText = String(item && item.author || '').toLowerCase();
-    const cookieIdText = String(item && item.cookieId || '').toLowerCase();
-    const excerptText = String(item && (item.contentText || item.excerpt) || '').toLowerCase();
-    const threadIdText = String(item && item.threadId || '');
-    return {
-      searchText: [threadIdText, titleText, authorText, cookieIdText, excerptText].join(' ').toLowerCase(),
-      threadIdText,
-      titleText,
-      authorText,
-      cookieIdText,
-      excerptText,
-      mode: item && item.mode === 'po' ? 'po' : 'normal',
-      hasImage: !!imageFile,
-      isGif: /\.gif(?:$|[?#])/i.test(imageFile),
-      hasZeroWidth: !!contentFlags.hasZeroWidth,
-      hasVisibleText: !!contentFlags.hasVisibleText,
-      hasWhitespaceOnly: !!contentFlags.hasWhitespaceOnly,
-      isSage: !!(item && item.sageHtml),
-      lastVisitedAt: Number(item && item.lastVisitedAt) || 0
-    };
-  }
-  function upsertThreadHistoryRecord(nextRecord, options = {}) {
-    if (!nextRecord || !nextRecord.threadId || !nextRecord.mode) return getThreadHistoryStore();
-    const now = Date.now();
-    const countVisit = options.countVisit !== false;
-    const touchVisitedAt = countVisit || options.touchVisitedAt === true;
-    const store = getThreadHistoryStore();
-    nextRecord = applyThreadHistoryPageBounds(nextRecord);
-    const key = nextRecord.key || getThreadHistoryKey(nextRecord.mode, nextRecord.threadId);
-    const old = store.items[key] || {};
-    const maxVisitedPage = Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1);
-    const boundedMaxVisitedPage = nextRecord.lastKnownPage ? Math.min(maxVisitedPage, Number(nextRecord.lastKnownPage) || maxVisitedPage) : maxVisitedPage;
-    const mergedBase = Object.assign({}, old, nextRecord);
-    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase), {
-      key,
-      firstVisitedAt: old.firstVisitedAt || now,
-      lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
-      visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
-      maxVisitedPage: boundedMaxVisitedPage,
-      cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
-    });
-    store.items[key] = merged;
-    store.index[key] = buildThreadHistoryIndexEntry(merged);
-    store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
-    const saved = setThreadHistoryStore(store);
-    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: merged });
-    // 同步常用串菜单中对应串的链接
-    try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
-    return saved;
-  }
-  function touchThreadHistoryCurrentLocation(options = {}) {
-    const parsed = parseThreadHistoryUrl(options.url || location.href);
-    if (!parsed) return getThreadHistoryStore();
-    const key = getThreadHistoryKey(parsed.mode, parsed.threadId);
-    const store = getThreadHistoryStore();
-    const item = store.items[key];
-    if (!item) return store;
-    const now = Date.now();
-    const bounded = applyThreadHistoryPageBounds(Object.assign({}, item, {
-      page: Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1),
-      url: options.url || parsed.url
-    }));
-    item.page = bounded.page;
-    item.url = bounded.url;
-    item.maxVisitedPage = bounded.lastKnownPage
-      ? Math.min(Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1), Number(bounded.lastKnownPage) || Number(item.page) || 1)
-      : Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
-    if (bounded.lastKnownPage) item.lastKnownPage = bounded.lastKnownPage;
-    item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
-    if (options.touchVisitedAt) item.lastVisitedAt = now;
-    store.index[key] = buildThreadHistoryIndexEntry(item);
-    store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
-    const saved = setThreadHistoryStore(store);
-    logThreadHistory('location touched', { key, reason: options.reason || '', page: item.page, url: item.url, maxVisitedPage: item.maxVisitedPage, touchVisitedAt: !!options.touchVisitedAt });
-    // 同步常用串菜单中对应串的链接
-    try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
-    return saved;
-  }
-  function recordThreadHistoryProgress(options = {}) {
-    const parsed = parseThreadHistoryUrl(options.url || location.href);
-    if (!parsed) return getThreadHistoryStore();
-    const record = extractThreadHistoryRecord(document) || {
-      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
-      mode: parsed.mode,
-      threadId: parsed.threadId
-    };
-    record.key = getThreadHistoryKey(parsed.mode, parsed.threadId);
-    record.mode = parsed.mode;
-    record.threadId = parsed.threadId;
-    record.page = Math.max(Number(record.page) || 1, Number(options.page || parsed.page) || 1);
-    record.url = options.url || parsed.url;
-    record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
-    return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
-  }
-  function updateThreadHistoryScrollPosition() {
-    touchThreadHistoryCurrentLocation({ reason: 'scroll-position' });
-  }
-  function deleteThreadHistoryItem(key) {
-    const store = getThreadHistoryStore();
-    delete store.items[key];
-    delete store.index[key];
-    store.order = (store.order || []).filter(itemKey => itemKey !== key);
-    return setThreadHistoryStore(store);
-  }
-  function clearThreadHistory() {
-    return setThreadHistoryStore(createDefaultThreadHistoryStore());
-  }
-  function parseThreadHistorySearchQuery(query) {
-    const filters = { mode: '', hasImage: false, isGif: false, hasZeroWidth: false, isSage: false };
-    const tokens = [];
-    String(query || '').toLowerCase().split(/\s+/).filter(Boolean).forEach(token => {
-      if (token === 'mode:po') filters.mode = 'po';
-      else if (token === 'mode:normal') filters.mode = 'normal';
-      else if (token === 'has:image') filters.hasImage = true;
-      else if (token === 'has:gif') filters.isGif = true;
-      else if (token === 'has:zwsp' || token === 'has:zerowidth') filters.hasZeroWidth = true;
-      else if (token === 'has:sage') filters.isSage = true;
-      else tokens.push(token);
-    });
-    return { filters, tokens };
-  }
-  function scoreThreadHistoryIndexEntry(entry, tokens) {
-    let score = Number(entry.lastVisitedAt) || 0;
-    tokens.forEach(token => {
-      if (/^\d{1,8}$/.test(token)) {
-        if (entry.threadIdText === token) score += 1000000000000000;
-        else if (entry.threadIdText.includes(token)) score += 500000000000000;
-      }
-    });
-    return score;
-  }
-  function getThreadHistorySortValue(item, field) {
-    if (!item) return 0;
-    if (field === 'visitCount') return Number(item.visitCount) || 0;
-    if (field === 'maxVisitedPage') return Number(item.maxVisitedPage || item.page) || 0;
-    return Number(item.lastVisitedAt) || 0;
-  }
-  function compareThreadHistoryResults(a, b, sortMode, tokens) {
-    const itemA = a.item || {};
-    const itemB = b.item || {};
-    if (sortMode === 'last-asc') return getThreadHistorySortValue(itemA, 'lastVisitedAt') - getThreadHistorySortValue(itemB, 'lastVisitedAt');
-    if (sortMode === 'visits-desc') return getThreadHistorySortValue(itemB, 'visitCount') - getThreadHistorySortValue(itemA, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
-    if (sortMode === 'visits-asc') return getThreadHistorySortValue(itemA, 'visitCount') - getThreadHistorySortValue(itemB, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
-    if (sortMode === 'page-desc') return getThreadHistorySortValue(itemB, 'maxVisitedPage') - getThreadHistorySortValue(itemA, 'maxVisitedPage') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
-    return scoreThreadHistoryIndexEntry(b.index, tokens) - scoreThreadHistoryIndexEntry(a.index, tokens);
-  }
-  function searchThreadHistory(query, storeInput, sortMode) {
-    const store = normalizeThreadHistoryStore(storeInput || getThreadHistoryStore());
-    const { filters, tokens } = parseThreadHistorySearchQuery(query);
-    return (store.order || [])
-      .filter(key => {
-        const entry = store.index[key];
-        if (!entry || !store.items[key]) return false;
-        if (filters.mode && entry.mode !== filters.mode) return false;
-        if (filters.hasImage && !entry.hasImage) return false;
-        if (filters.isGif && !entry.isGif) return false;
-        if (filters.hasZeroWidth && !entry.hasZeroWidth) return false;
-        if (filters.isSage && !entry.isSage) return false;
-        return tokens.every(token => entry.searchText.includes(token));
-      })
-      .map(key => ({ key, item: store.items[key], index: store.index[key] }))
-      .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', tokens));
-  }
-  let threadHistoryScrollTrackingInstalled = false;
-  function installThreadHistoryScrollTracking() {
-    if (threadHistoryScrollTrackingInstalled) return;
-    threadHistoryScrollTrackingInstalled = true;
-    let scrollTimer = 0;
-    window.addEventListener('scroll', () => {
-      if (scrollTimer) return;
-      scrollTimer = setTimeout(() => {
-        scrollTimer = 0;
-        updateThreadHistoryScrollPosition();
-      }, 1200);
-    }, { passive: true });
-    window.addEventListener('pagehide', updateThreadHistoryScrollPosition, { passive: true });
-  }
-  function isThreadHistoryPageActive() {
-    return document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
-  }
-  function cancelThreadHistoryDwellTimer(resetSession) {
-    if (threadHistoryDwellTimer) clearTimeout(threadHistoryDwellTimer);
-    threadHistoryDwellTimer = 0;
-    threadHistoryVisibleSince = 0;
-    if (resetSession) threadHistoryVisibleSessionCounted = false;
-  }
-  function scheduleThreadHistoryReactivationVisit(source) {
-    if (!parseThreadHistoryUrl(location.href)) return;
-    if (!isThreadHistoryPageActive()) {
-      cancelThreadHistoryDwellTimer(document.visibilityState !== 'visible');
-      return;
-    }
-    if (threadHistoryVisibleSessionCounted || threadHistoryDwellTimer) return;
-    threadHistoryVisibleSince = Date.now();
-    updateThreadHistoryDebugState({ lastDwell: { source, status: 'scheduled', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
-    threadHistoryDwellTimer = setTimeout(() => {
-      threadHistoryDwellTimer = 0;
-      if (!threadHistoryVisibleSince || !isThreadHistoryPageActive()) return;
-      if (Date.now() - threadHistoryVisibleSince < THREAD_HISTORY_REVISIT_DWELL_MS) return;
-      threadHistoryVisibleSessionCounted = true;
-      updateThreadHistoryDebugState({ lastDwell: { source, status: 'counted', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
-      recordCurrentThreadHistory(0, { reason: 'reactivation-dwell', countVisit: true });
-    }, THREAD_HISTORY_REVISIT_DWELL_MS);
-  }
-  function installThreadHistoryReactivationTracking(initialCounted) {
-    if (threadHistoryReactivationTrackingInstalled) return;
-    threadHistoryReactivationTrackingInstalled = true;
-    threadHistoryVisibleSessionCounted = !!initialCounted && document.visibilityState === 'visible';
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') scheduleThreadHistoryReactivationVisit('visibilitychange');
-      else cancelThreadHistoryDwellTimer(true);
-    }, { passive: true });
-    window.addEventListener('focus', () => scheduleThreadHistoryReactivationVisit('focus'), { passive: true });
-    window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
-    window.addEventListener('pagehide', () => cancelThreadHistoryDwellTimer(true), { passive: true });
-  }
-  function recordCurrentThreadHistory(attempt = 0, options = {}) {
-    const record = extractThreadHistoryRecord(document);
-    if (!record) {
-      const parsed = parseThreadHistoryUrl(location.href);
-      const missingMain = !!parsed && !findThreadHistoryMainElement(document, parsed);
-      updateThreadHistoryDebugState({
-        lastRecord: {
-          status: parsed ? (missingMain ? 'missing-main' : 'extract-failed') : 'unsupported-url',
-          attempt,
-          parsed,
-          at: new Date().toISOString(),
-          readyState: document.readyState,
-          mainCount: document.querySelectorAll('.h-threads-item-main').length,
-          listCount: document.querySelectorAll('.h-threads-list').length
-        }
-      });
-      if (missingMain && attempt < THREAD_HISTORY_RECORD_RETRY_LIMIT) {
-        logThreadHistory('retry record: waiting for h-threads-item-main', {
-          attempt: attempt + 1,
-          limit: THREAD_HISTORY_RECORD_RETRY_LIMIT,
-          delay: THREAD_HISTORY_RECORD_RETRY_DELAY,
-          readyState: document.readyState
-        });
-        setTimeout(() => recordCurrentThreadHistory(attempt + 1), THREAD_HISTORY_RECORD_RETRY_DELAY);
-      }
-      return;
-    }
-    upsertThreadHistoryRecord(record, Object.assign({ reason: 'initial-load', countVisit: true }, options));
-    updateThreadHistoryDebugState({ lastRecord: { status: 'saved', attempt, reason: options.reason || 'initial-load', record, at: new Date().toISOString() } });
-    installThreadHistoryScrollTracking();
-  }
-  function formatThreadHistoryTime(ts) {
-    if (!ts) return '';
-    const d = new Date(ts);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${day} ${hh}:${mm}`;
-  }
-  function formatRelativeTimeMachineTime(ts) {
-    if (!ts) return '';
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return '';
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const weekday = '日一二三四五六'[d.getDay()];
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    const ss = String(d.getSeconds()).padStart(2, '0');
-    return `${y}-${m}-${day}(${weekday})${hh}:${mm}:${ss}`;
-  }
-  function buildThreadHistoryImageUrl(imageFile, full) {
-    if (!imageFile) return '';
-    const path = /\.gif$/i.test(imageFile) || full ? 'image' : 'thumb';
-    const encodedFile = String(imageFile).split('/').map(encodeURIComponent).join('/');
-    return `https://image.nmb.best/${path}/${encodedFile}`;
-  }
-  function buildThreadHistoryItemUrl(item) {
-    if (item && item.url) return item.url;
-    const threadId = item && item.threadId ? item.threadId : '';
-    const page = item && item.page ? item.page : 1;
-    return buildThreadHistoryPageUrl(item && item.mode, threadId, page);
-  }
-  function buildHistorySearchHelpMark(title) {
-    const mark = document.createElement('span');
-    mark.className = 'xdex-history-search-help';
-    mark.textContent = '?';
-    mark.title = title || '';
-    mark.style.textDecoration = 'underline';
-    mark.style.cursor = 'help';
-    mark.style.whiteSpace = 'nowrap';
-    mark.setAttribute('aria-label', title || '高级检索说明');
-    return mark;
-  }
-  function getLatestThreadHistoryUrl(threadId) {
-    const tid = String(threadId || '').trim();
-    if (!isValidThreadId(tid)) return '';
-    const store = getThreadHistoryStore();
-    // 常用串/浏览历史联动：优先普通模式，没有再回退只看 PO；都没有返回空（调用方回退普通第 1 页）
-    const normal = store.items[getThreadHistoryKey('normal', tid)];
-    if (normal) return buildThreadHistoryItemUrl(normal);
-    const po = store.items[getThreadHistoryKey('po', tid)];
-    return po ? buildThreadHistoryItemUrl(po) : '';
-  }
-  function appendThreadHistoryText(parent, tagName, className, text) {
-    const el = document.createElement(tagName);
-    if (className) el.className = className;
-    el.textContent = text || '';
-    parent.appendChild(el);
-    return el;
-  }
-  function appendThreadHistoryInfoText(parent, className, text) {
-    const value = String(text || '').trim();
-    if (!value) return null;
-    return appendThreadHistoryText(parent, 'span', className, value);
-  }
-  function shouldRenderThreadHistoryTitle(title) {
-    const value = String(title || '').trim();
-    return !!value && value !== '无标题';
-  }
-  function shouldRenderThreadHistoryAuthor(author) {
-    const value = String(author || '').trim();
-    return !!value && value !== '无名氏';
-  }
-  function buildThreadHistoryItemElement(result) {
-    const item = result.item || {};
-    const wrapper = document.createElement('div');
-    wrapper.className = 'xdex-history-item';
-    wrapper.dataset.historyKey = result.key;
-    const main = document.createElement('div');
-    main.className = 'h-threads-item-main';
-    wrapper.appendChild(main);
-    const info = document.createElement('div');
-    info.className = 'h-threads-info xdex-history-info';
-    main.appendChild(info);
-    const infoMain = document.createElement('span');
-    infoMain.className = 'xdex-history-info-main';
-    info.appendChild(infoMain);
-    if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
-    if (shouldRenderThreadHistoryAuthor(item.author)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.author);
-    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', item.createdAt);
-    if (createdAtNode) {
-      createdAtNode.dataset.xdexOriginalTime = item.createdAt;
-      createdAtNode.title = item.createdAt;
-    }
-    const cookieHtml = item.cookieHtml || buildThreadHistoryLegacyCookieHtml(item.cookieId);
-    const cookieMarkId = getThreadHistoryCookieMarkId(item);
-    if (cookieHtml) {
-      const cookieSpan = appendThreadHistoryText(infoMain, 'span', 'h-threads-info-uid', '');
-      if (cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
-      cookieSpan.innerHTML = cookieHtml;
-    } else if (item.cookieId) {
-      const cookieSpan = appendThreadHistoryInfoText(infoMain, 'h-threads-info-uid', `ID:${item.cookieId}`);
-      if (cookieSpan && cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
-    }
-    const historyReplyUrl = buildCanonicalReplyUrl(item.threadId, item.threadId);
-    const historyReplyActionUrl = buildThreadHistoryItemUrl(item);
-    const replyLink = document.createElement('a');
-    replyLink.className = 'h-threads-info-id xdex-history-thread-id';
-    replyLink.href = historyReplyUrl;
-    replyLink.textContent = `No.${item.threadId || ''}`;
-    infoMain.appendChild(replyLink);
-    const replyAction = document.createElement('span');
-    replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
-    const replyActionLink = document.createElement('a');
-    replyActionLink.className = 'xdex-history-reply-action';
-    replyActionLink.href = historyReplyActionUrl;
-    replyActionLink.target = '_blank';
-    replyActionLink.rel = 'noopener';
-    replyActionLink.textContent = '回应';
-    replyAction.appendChild(document.createTextNode('['));
-    replyAction.appendChild(replyActionLink);
-    replyAction.appendChild(document.createTextNode(']'));
-    infoMain.appendChild(replyAction);
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'xdex-history-delete';
-    deleteButton.dataset.historyKey = result.key;
-    deleteButton.title = '删除';
-    deleteButton.textContent = '×';
-    main.appendChild(deleteButton);
-    if (item.imageFile) {
-      const imageLink = document.createElement('a');
-      imageLink.className = 'h-threads-img-a xdex-history-image';
-      imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
-      imageLink.dataset.historyQuoteId = item.threadId || '';
-      imageLink.target = '_blank';
-      imageLink.rel = 'noopener';
-      const img = document.createElement('img');
-      img.className = 'h-threads-img';
-      img.src = buildThreadHistoryImageUrl(item.imageFile, false);
-      img.alt = item.imageFile;
-      imageLink.appendChild(img);
-      main.appendChild(imageLink);
-    }
-    if (item.sageHtml) {
-      const sageDiv = document.createElement('div');
-      sageDiv.className = 'h-threads-tips uk-text-danger uk-text-bold';
-      sageDiv.innerHTML = item.sageHtml;
-      main.appendChild(sageDiv);
-    }
-        const content = document.createElement('div');
-    content.className = 'h-threads-content';
-    if (item.contentHtml) content.innerHTML = item.contentHtml;
-    else content.textContent = item.contentText || item.excerpt || '';
-    if (item.contentTruncated) {
-      limitThreadHistoryContentText(content, THREAD_HISTORY_EXCERPT_LIMIT);
-      appendThreadHistoryTruncationMarker(content);
-    }
-    main.appendChild(content);
-    enhanceHistoryRenderedContent(content);
-    const footer = document.createElement('div');
-    footer.className = 'xdex-history-footer';
-    appendThreadHistoryText(footer, 'span', 'xdex-history-time', formatThreadHistoryTime(item.lastVisitedAt));
-    appendThreadHistoryText(footer, 'span', 'xdex-history-visit-count', `共访问 ${item.visitCount || 1} 次`);
-    appendThreadHistoryText(footer, 'span', 'xdex-history-page', `串内最远：P${item.maxVisitedPage || item.page || 1}`);
-    appendThreadHistoryText(footer, 'span', 'xdex-history-current-page', `最近查看：P${item.page || 1}`);
-    if (item.mode === 'po') appendThreadHistoryText(footer, 'span', 'xdex-history-po-label', 'Po');
-    main.appendChild(footer);
-    enhanceHistoryRenderedContent(footer);
-    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
-    return wrapper;
-  }
-  const HISTORY_RENDER_INITIAL_COUNT = 50;
-  const HISTORY_RENDER_BATCH_SIZE = 20;
-  const HISTORY_RENDER_BATCH_THRESHOLD = 400;
-  const historyRenderQueues = new Map();
-  function findHistoryScrollContainer(element) {
-    let el = element;
-    while (el && el !== document.body && el !== document.documentElement) {
-      const style = window.getComputedStyle(el);
-      if (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflow === 'auto' || style.overflow === 'scroll') {
-        return el;
-      }
-      el = el.parentElement;
-    }
-    return element;
-  }
-  function batchRenderHistoryItems(root, results, buildFn, queueId) {
-    const prev = historyRenderQueues.get(queueId);
-    if (prev) {
-      prev.cancelled = true;
-      if (prev.scrollHandler && prev.scrollContainer) {
-        prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
-      }
-    }
-    if (!root) return;
-    const total = results.length;
-    if (total <= 0) return;
-    let cursor = 0;
-    const state = { cancelled: false };
-    const scrollContainer = findHistoryScrollContainer(root);
-    historyRenderQueues.set(queueId, state);
-    function appendBatch(count) {
-      if (state.cancelled) return;
-      const slice = results.slice(cursor, cursor + count);
-      const fragment = document.createDocumentFragment();
-      slice.forEach(r => fragment.appendChild(buildFn(r)));
-      root.appendChild(fragment);
-      cursor += slice.length;
-    }
-    function maybeLoadMore() {
-      if (state.cancelled || cursor >= total) return;
-      const nearBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - HISTORY_RENDER_BATCH_THRESHOLD;
-      if (nearBottom) {
-        appendBatch(HISTORY_RENDER_BATCH_SIZE);
-        requestAnimationFrame(() => {
-          if (!state.cancelled) maybeLoadMore();
-        });
-      }
-    }
-    const scrollHandler = () => {
-      if (state.cancelled) return;
-      if (cursor >= total) return;
-      requestAnimationFrame(() => {
-        if (state.cancelled) return;
-        maybeLoadMore();
-      });
-    };
-    state.scrollHandler = scrollHandler;
-    state.scrollContainer = scrollContainer;
-    scrollContainer.addEventListener('scroll', scrollHandler, { passive: true });
-    appendBatch(HISTORY_RENDER_INITIAL_COUNT);
-    if (cursor < total) {
-      requestAnimationFrame(() => {
-        if (state.cancelled) return;
-        maybeLoadMore();
-      });
-    }
-  }
-  function renderThreadHistoryModule(query) {
-    const root = document.getElementById('sp_history_results');
-    if (!root) {
-      logThreadHistory('render skipped: missing #sp_history_results');
-      return;
-    }
-    const input = document.getElementById('sp_history_search');
-    const sortSelect = document.getElementById('sp_history_sort');
-    const effectiveQuery = query == null && input ? input.value : query;
-    const sortMode = sortSelect ? sortSelect.value : 'last-desc';
-    const results = searchThreadHistory(effectiveQuery || '', null, sortMode);
-    updateThreadHistoryDebugState({ lastRender: { query: effectiveQuery || '', sortMode, count: results.length, at: new Date().toISOString() } });
-    logThreadHistory('render module', { query: effectiveQuery || '', sortMode, count: results.length });
-    const count = document.getElementById('sp_history_count');
-    if (count) {
-      count.textContent = `${results.length} 条 `;
-      count.appendChild(buildHistorySearchHelpMark(THREAD_HISTORY_SEARCH_HELP_TEXT));
-    }
-    root.textContent = '';
-    if (!results.length) {
-      const empty = document.createElement('div');
-      empty.className = 'xdex-history-empty';
-      empty.textContent = effectiveQuery ? '没有匹配的浏览历史' : '暂无浏览历史';
-      root.appendChild(empty);
-      return;
-    }
-    batchRenderHistoryItems(root, results, buildThreadHistoryItemElement, 'threadHistory');
-    const reportThreadHistoryRenderDom = () => {
-      const cover = document.getElementById('sp_cover');
-      const panel = document.getElementById('sp_panel');
-      const views = document.getElementById('sp_panel_views');
-      const module = document.getElementById('sp_module_history');
-      const panelContent = document.querySelector('#sp_module_history .sp_panel_content');
-      const historyContent = document.getElementById('sp_history_content');
-      const firstItem = root.querySelector('.xdex-history-item');
-      updateThreadHistoryDebugState({
-        lastRenderDom: {
-          activeModule: module?.classList.contains('active') || false,
-          contentDisplay: getComputedStyle(historyContent || root).display,
-          resultsDisplay: getComputedStyle(root).display,
-          coverDisplay: getComputedStyle(cover || document.body).display,
-          panelDisplay: getComputedStyle(panel || document.body).display,
-          viewsDisplay: getComputedStyle(views || document.body).display,
-          moduleDisplay: getComputedStyle(module || document.body).display,
-          panelContentDisplay: getComputedStyle(panelContent || document.body).display,
-          childCount: root.children.length,
-          itemCount: root.querySelectorAll('.xdex-history-item').length,
-          coverHeight: cover?.offsetHeight || 0,
-          panelHeight: panel?.offsetHeight || 0,
-          viewsHeight: views?.offsetHeight || 0,
-          moduleHeight: module?.offsetHeight || 0,
-          panelContentHeight: panelContent?.offsetHeight || 0,
-          historyContentHeight: historyContent?.offsetHeight || 0,
-          offsetHeight: root.offsetHeight,
-          scrollHeight: root.scrollHeight,
-          firstItemHeight: firstItem?.offsetHeight || 0,
-          firstItemText: firstItem?.textContent?.slice(0, 80) || '',
-          at: new Date().toISOString()
-        }
-      });
-      logThreadHistory('render dom', threadHistoryDebugState.lastRenderDom);
-      logThreadHistoryFlat('render dom flat', threadHistoryDebugState.lastRenderDom);
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reportThreadHistoryRenderDom);
-    else setTimeout(reportThreadHistoryRenderDom, 0);
-  }
-  function renderThreadHistoryModuleSoon(query) {
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => renderThreadHistoryModule(query));
-      return;
-    }
-    setTimeout(() => renderThreadHistoryModule(query), 0);
-  }
-  function openHistoryImageQuotePreview(tid) {
-    const quoteId = String(tid || '').trim();
-    if (!/^\d+$/.test(quoteId) || quoteId === '9999999') return false;
-    try {
-      if (typeof window.__xdexOpenQuoteByTid !== 'function' && typeof enableQuotePreview === 'function') {
-        enableQuotePreview();
-      }
-      if (typeof window.__xdexOpenQuoteByTid !== 'function') return false;
-      const ret = window.__xdexOpenQuoteByTid(quoteId, { fromPOImage: true });
-      if (ret && typeof ret.then === 'function') ret.catch(() => {});
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-  function enhanceHistoryRenderedContent(root) {
-    if (!root) return;
-    try { renderHiddenTextContent(root); } catch (e) {}
-    try { if (typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
-    try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
-    try {
-      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
-      if (cfg && cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', root);
-      if (cfg && cfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root);
-    } catch (e) {}
-  }
-  // 清空历史二次确认：首层自定义弹窗（可高亮「清空」「无法恢复」），确认后再走 window.confirm
-  function showClearHistoryWarningDialog(onConfirm, onCancel) {
-    const existing = document.getElementById('xdex-clear-history-warning-modal');
-    if (existing) existing.remove();
-    const $m = $(
-      '<div id="xdex-clear-history-warning-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10003;display:flex;align-items:center;justify-content:center;outline:none;">' +
-        '<div class="xdex-clear-history-warning-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>' +
-        '<div class="xdex-clear-history-warning-dialog" role="dialog" aria-modal="true" aria-labelledby="xdex-clear-history-warning-title" style="position:relative;width:min(380px,92vw);background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px 18px 14px;color:var(--foreground, #333);">' +
-          '<h3 id="xdex-clear-history-warning-title" style="margin:0 0 10px;font-size:16px;font-weight:700;color:#c62828;">操作警告</h3>' +
-          '<p style="margin:0 0 8px;font-size:14px;line-height:1.65;">请注意此按钮为' +
-            '<span style="color:#c62828;font-weight:800;font-size:16px;padding:0 2px;">「清空」</span>' +
-            '按钮而非「搜索」</p>' +
-          '<p style="margin:0 0 12px;font-size:14px;line-height:1.65;">操作后将' +
-            '<span style="color:#c62828;font-weight:800;font-size:16px;padding:0 2px;">无法恢复</span></p>' +
-          '<p style="margin:0 0 14px;font-size:13px;color:var(--muted-foreground, #666);">是否确认继续？</p>' +
-          '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
-            '<button type="button" id="xdex-clear-history-warning-cancel" style="padding:6px 14px;">取消</button>' +
-            '<button type="button" id="xdex-clear-history-warning-ok" style="padding:6px 14px;background:#c62828;color:#fff;border:1px solid #b71c1c;border-radius:4px;font-weight:700;">确认清空</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>'
-    );
-    function close() {
-      $m.remove();
-      $(document).off('keydown.xdex-clear-history-warning');
-    }
-    function cancel() {
-      close();
-      if (typeof onCancel === 'function') onCancel();
-    }
-    function confirm() {
-      close();
-      if (typeof onConfirm === 'function') onConfirm();
-    }
-    $m.find('.xdex-clear-history-warning-backdrop').on('click', cancel);
-    $m.find('#xdex-clear-history-warning-cancel').on('click', cancel);
-    $m.find('#xdex-clear-history-warning-ok').on('click', confirm);
-    $(document).on('keydown.xdex-clear-history-warning', function (e) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        cancel();
-      }
-      // 危险操作：不响应 Enter 确认，必须点红色「确认清空」
-    });
-    $('body').append($m);
-    try { $m.find('#xdex-clear-history-warning-cancel')[0].focus(); } catch (e) {}
-  }
-  function bindThreadHistoryModuleEvents() {
-    $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
-      renderThreadHistoryModule(this.value || '');
-    });
-    $('#sp_history_sort').off('change.xdex-history').on('change.xdex-history', function () {
-      renderThreadHistoryModule();
-    });
-    $('#sp_history_results').off('click.xdex-history-reply', '.xdex-history-reply-action').on('click.xdex-history-reply', '.xdex-history-reply-action', function (e) {
-      if (e.button !== 0) return;
-      const url = this.href || '';
-      if (!url) return;
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        window.location.href = url;
-        return;
-      }
-      window.open(url, '_blank', 'noopener');
-    });
-    $('#sp_history_results').off('click.xdex-history-image-quote', '.xdex-history-image').on('click.xdex-history-image-quote', '.xdex-history-image', function (e) {
-      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-      const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
-      if (!opened) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-    });
-    $('#sp_history_results').off('click.xdex-history-delete', '.xdex-history-delete').on('click.xdex-history-delete', '.xdex-history-delete', function (e) {
-      e.preventDefault();
-      const key = this.dataset.historyKey || '';
-      if (!key) return;
-      deleteThreadHistoryItem(key);
-      renderThreadHistoryModule();
-      toast('已删除浏览历史');
-    });
-    $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
-      e.preventDefault();
-      showClearHistoryWarningDialog(function () {
-        if (!window.confirm('确定要清空全部浏览历史吗？')) return;
-        clearThreadHistory();
-        renderThreadHistoryModule();
-        toast('已清空浏览历史');
-      });
-    });
-  }
-  function buildPostHistoryItemElement(result) {
-    const item = result.item || {};
-    const wrapper = document.createElement('div');
-    wrapper.className = 'xdex-history-item xdex-post-history-item';
-    wrapper.dataset.postHistoryKey = result.key;
-    const main = document.createElement('div');
-    main.className = 'h-threads-item-main';
-    wrapper.appendChild(main);
-    const info = document.createElement('div');
-    info.className = 'h-threads-info xdex-history-info xdex-post-history-info';
-    main.appendChild(info);
-    const infoMain = document.createElement('span');
-    infoMain.className = 'xdex-history-info-main';
-    info.appendChild(infoMain);
-    if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
-    if (shouldRenderThreadHistoryAuthor(item.name)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.name);
-    if (item.email) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.email);
-    const submittedAtText = formatRelativeTimeMachineTime(item.submittedAt);
-    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', submittedAtText);
-    if (createdAtNode) {
-      createdAtNode.dataset.xdexOriginalTime = submittedAtText;
-      createdAtNode.title = submittedAtText;
-    }
-    if (item.userHash) appendThreadHistoryInfoText(infoMain, 'h-threads-info-uid', `ID:${item.userHash}`);
-    const displayPostId = item.postId || item.id || (item.type === 'reply' ? '' : item.threadId);
-    const postUrl = buildPostHistoryUrl(item.type, displayPostId, item.resto || item.threadId);
-    const postReplyActionUrl = buildPostHistoryReplyActionUrl(item.type, displayPostId, item.resto || item.threadId, item.page);
-    if (postUrl) {
-      const postLink = document.createElement('a');
-      postLink.className = 'h-threads-info-id xdex-post-history-thread-id';
-      postLink.href = postUrl;
-      postLink.textContent = `No.${displayPostId}`;
-      infoMain.appendChild(postLink);
-      const replyAction = document.createElement('span');
-      replyAction.className = 'h-threads-info-reply-btn xdex-post-history-reply-label';
-      const replyActionLink = document.createElement('a');
-      replyActionLink.className = 'xdex-post-history-reply-action';
-      replyActionLink.href = postReplyActionUrl;
-      replyActionLink.target = '_blank';
-      replyActionLink.rel = 'noopener';
-      replyActionLink.textContent = '回应';
-      replyAction.appendChild(document.createTextNode('['));
-      replyAction.appendChild(replyActionLink);
-      replyAction.appendChild(document.createTextNode(']'));
-      infoMain.appendChild(replyAction);
-    } else {
-      appendThreadHistoryInfoText(infoMain, 'h-threads-info-id xdex-post-history-thread-id', '未确认');
-    }
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'xdex-post-history-delete';
-    deleteButton.dataset.postHistoryKey = result.key;
-    deleteButton.title = '删除';
-    deleteButton.textContent = '×';
-    main.appendChild(deleteButton);
-    if (item.imageFile) {
-      const imageLink = document.createElement('a');
-      imageLink.className = 'h-threads-img-a xdex-post-history-image';
-      imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
-      imageLink.dataset.postHistoryQuoteId = displayPostId || item.threadId || '';
-      imageLink.target = '_blank';
-      imageLink.rel = 'noopener';
-      const image = document.createElement('img');
-      image.className = 'h-threads-img';
-      image.src = buildThreadHistoryImageUrl(item.imageFile, false);
-      image.alt = item.imageFile;
-      imageLink.appendChild(image);
-      main.appendChild(imageLink);
-    }
-    const content = document.createElement('div');
-    content.className = 'h-threads-content';
-    if (item.contentHtml) content.innerHTML = item.contentHtml;
-    else content.textContent = item.contentText || item.contentRaw || '';
-    main.appendChild(content);
-    enhanceHistoryRenderedContent(content);
-    const footer = document.createElement('div');
-    footer.className = 'xdex-history-footer xdex-post-history-footer';
-    if (item.status !== 'confirmed') appendThreadHistoryText(footer, 'span', 'xdex-post-history-status', item.status === 'pending' ? '确认中' : item.status === 'failed' ? '失败' : '未确认');
-    const forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
-    if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', `${forumName}`);
-    appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', item.type === 'reply' ? '回复' : '主题');
-    if (item.threadId) appendThreadHistoryText(footer, 'span', 'xdex-post-history-thread', `串号：${item.threadId}`);
-    // 优先从浏览历史获取最近浏览页（仅 thread 类型），否则回退到记录中的 page
-    // const displayPage = item.page;
-    let displayPage = item.page;
-    if (item.type === 'thread' && item.threadId) {
-      const historyUrl = getLatestThreadHistoryUrl(item.threadId);
-      if (historyUrl) {
-        const parsed = parseThreadHistoryUrl(historyUrl);
-        if (parsed && parsed.page) displayPage = parsed.page;
-      }
-    }
-    if (displayPage) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${displayPage}`);
-    main.appendChild(footer);
-    enhanceHistoryRenderedContent(footer);
-    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
-    return wrapper;
-  }
-  function renderPostHistoryModule(query) {
-    const root = document.getElementById('sp_posts_results');
-    if (!root) return;
-    postHistoryLiveRenderDirty = false;
-    const input = document.getElementById('sp_posts_search');
-    const effectiveQuery = query == null && input ? input.value : query;
-    const results = searchPostHistory(effectiveQuery || '', postHistoryActiveType);
-    const count = document.getElementById('sp_posts_count');
-    if (count) {
-      count.textContent = `${results.length} 条 `;
-      count.appendChild(buildHistorySearchHelpMark(POST_HISTORY_SEARCH_HELP_TEXT));
-    }
-    root.textContent = '';
-    if (!results.length) {
-      const empty = document.createElement('div');
-      empty.className = 'xdex-history-empty xdex-post-history-empty';
-      empty.textContent = effectiveQuery ? '没有匹配的我的发言' : (postHistoryActiveType === 'reply' ? '暂无我的回复' : '暂无我的主题');
-      root.appendChild(empty);
-      return;
-    }
-    batchRenderHistoryItems(root, results, buildPostHistoryItemElement, 'postHistory');
-  }
-  function renderPostHistoryModuleSoon(query) {
-    postHistoryLiveRenderDirty = false;
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => renderPostHistoryModule(query));
-      return;
-    }
-    setTimeout(() => renderPostHistoryModule(query), 0);
-  }
-  // ─── 订阅 Feed 渲染 ──────────────────────────────────────────────────────
-  const SUBSCRIPTION_FEED_API_BASE = 'https://api.nmb.best/api';
-  const SUBSCRIPTION_FEED_SESSION_STORE_KEY = 'xdex_subscription_feed_sessions_v3';
-  const SUBSCRIPTION_FEED_SESSION_VERSION = 3;
-  const SUBSCRIPTION_FEED_SESSION_TTL_MS = 2 * 60 * 1000;
-  const SUBSCRIPTION_FEED_SESSION_MAX_COUNT = 5;
-  let subscriptionFeedCurrentPage = 1;
-  let subscriptionFeedCurrentUuid = '';
-  let subscriptionFeedLoading = false;
-  let subscriptionFeedAllItems = [];
-  let subscriptionFeedHasMore = true;
-  let subscriptionFeedRequestSeq = 0;
-  const subscriptionFeedInflightPages = Object.create(null);
-  let subscriptionFeedRenderedPages = Object.create(null);
-  let subscriptionFeedHighestRenderedPage = 0;
-  let subscriptionFeedCurrentDisplayPage = 1;
-  let subscriptionFeedCacheExpired = false;
-  const ACTIVE_FEED_STORAGE_KEY = 'xdex_active_subscription_feed_uuid';
-  function getActiveSubscriptionFeedUuid() {
-    try { return GM_getValue(ACTIVE_FEED_STORAGE_KEY, ''); } catch (e) { return ''; }
-  }
-  function setActiveSubscriptionFeedUuid(uuid) {
-    try { GM_setValue(ACTIVE_FEED_STORAGE_KEY, uuid || ''); } catch (e) {}
-  }
-  function createDefaultSubscriptionFeedSessionStore() {
-    return {
-      version: SUBSCRIPTION_FEED_SESSION_VERSION,
-      sessions: {}
-    };
-  }
-  function normalizeSubscriptionFeedSessionStore(rawStore) {
-    const store = Object.assign(createDefaultSubscriptionFeedSessionStore(), rawStore || {});
-    store.version = SUBSCRIPTION_FEED_SESSION_VERSION;
-    store.sessions = store.sessions && typeof store.sessions === 'object' ? store.sessions : {};
-    return store;
-  }
-  function getSubscriptionFeedSessionStore() {
-    try {
-      return normalizeSubscriptionFeedSessionStore(GM_getValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, null));
-    } catch (e) {
-      return createDefaultSubscriptionFeedSessionStore();
-    }
-  }
-  function setSubscriptionFeedSessionStore(store) {
-    const normalized = normalizeSubscriptionFeedSessionStore(store);
-    GM_setValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, normalized);
-    return normalized;
-  }
-  function getSubscriptionFeedItemId(item) {
-    return String(Number(item && item.id) || 0);
-  }
-  function normalizeSubscriptionFeedPageItems(items) {
-    const list = Array.isArray(items) ? items : [];
-    const seen = new Set();
-    return list.filter((item) => {
-      const id = getSubscriptionFeedItemId(item);
-      if (!id || id === '0' || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-  }
-  function buildSubscriptionFeedPageEntry(page, items) {
-    const normalizedPage = Math.max(1, Number(page) || 1);
-    const normalizedItems = normalizeSubscriptionFeedPageItems(items);
-    return {
-      page: normalizedPage,
-      fetchedAt: Date.now(),
-      itemIds: normalizedItems.map(getSubscriptionFeedItemId),
-      items: normalizedItems
-    };
-  }
-  function computeHighestContiguousSubscriptionFeedPage(pages) {
-    let page = 1;
-    while (pages && pages[String(page)] && Number(pages[String(page)].page) === page) page++;
-    return page - 1;
-  }
-  function normalizeSubscriptionFeedSession(session) {
-    if (!session || typeof session !== 'object') return null;
-    const uuid = String(session.uuid || '').trim();
-    if (!uuid) return null;
-    const cachedPages = session.cachedPages && typeof session.cachedPages === 'object' ? session.cachedPages : {};
-    const normalizedPages = {};
-    Object.keys(cachedPages).forEach((key) => {
-      const entry = cachedPages[key] || {};
-      const page = Math.max(1, Number(entry.page || key) || 1);
-      const normalizedItems = normalizeSubscriptionFeedPageItems(entry.items);
-      normalizedPages[String(page)] = {
-        page,
-        fetchedAt: Number(entry.fetchedAt) || 0,
-        itemIds: normalizedItems.map(getSubscriptionFeedItemId),
-        items: normalizedItems
-      };
-    });
-    const highestCachedPage = computeHighestContiguousSubscriptionFeedPage(normalizedPages);
-    const createdAt = Number(session.createdAt) || 0;
-    const expiresAt = Number(session.expiresAt) || 0;
-    const lastAccessAt = Number(session.lastAccessAt) || createdAt || Date.now();
-    return {
-      version: SUBSCRIPTION_FEED_SESSION_VERSION,
-      uuid,
-      createdAt,
-      expiresAt,
-      lastAccessAt,
-      highestCachedPage,
-      cachedPages: normalizedPages
-    };
-  }
-  function isSubscriptionFeedSessionExpired(session) {
-    return !session || !session.expiresAt || Date.now() > Number(session.expiresAt);
-  }
-  function isSubscriptionFeedSessionStructurallyValid(session) {
-    const normalized = normalizeSubscriptionFeedSession(session);
-    if (!normalized) return false;
-    if (!normalized.createdAt || !normalized.expiresAt) return false;
-    for (let page = 1; page <= normalized.highestCachedPage; page++) {
-      const entry = normalized.cachedPages[String(page)];
-      if (!entry || Number(entry.page) !== page || !Array.isArray(entry.items)) return false;
-    }
-    return true;
-  }
-  function getSubscriptionFeedSession(uuid) {
-    const key = String(uuid || '').trim();
-    if (!key) return null;
-    const store = getSubscriptionFeedSessionStore();
-    return normalizeSubscriptionFeedSession(store.sessions[key]);
-  }
-  function saveSubscriptionFeedSession(session) {
-    const normalized = normalizeSubscriptionFeedSession(session);
-    if (!normalized) return null;
-    const store = getSubscriptionFeedSessionStore();
-    store.sessions[normalized.uuid] = normalized;
-    const ordered = Object.values(store.sessions)
-      .map(normalizeSubscriptionFeedSession)
-      .filter(Boolean)
-      .sort((a, b) => (Number(b.lastAccessAt) || 0) - (Number(a.lastAccessAt) || 0));
-    const limited = ordered.slice(0, SUBSCRIPTION_FEED_SESSION_MAX_COUNT);
-    store.sessions = {};
-    limited.forEach((item) => {
-      store.sessions[item.uuid] = item;
-    });
-    setSubscriptionFeedSessionStore(store);
-    return normalized;
-  }
-  function deleteSubscriptionFeedSession(uuid) {
-    const key = String(uuid || '').trim();
-    if (!key) return;
-    const store = getSubscriptionFeedSessionStore();
-    if (!store.sessions[key]) return;
-    delete store.sessions[key];
-    setSubscriptionFeedSessionStore(store);
-  }
-  function pruneExpiredSubscriptionFeedSessions() {
-    const store = getSubscriptionFeedSessionStore();
-    let changed = false;
-    Object.keys(store.sessions).forEach((uuid) => {
-      const session = normalizeSubscriptionFeedSession(store.sessions[uuid]);
-      if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
-        delete store.sessions[uuid];
-        changed = true;
-        return;
-      }
-      store.sessions[uuid] = session;
-    });
-    if (changed) setSubscriptionFeedSessionStore(store);
-  }
-  function createSubscriptionFeedSession(uuid, firstPageEntry) {
-    const now = Date.now();
-    const normalizedUuid = String(uuid || '').trim();
-    const cachedPages = {};
-    let highestCachedPage = 0;
-    if (firstPageEntry && Array.isArray(firstPageEntry.items) && firstPageEntry.items.length) {
-      cachedPages[String(firstPageEntry.page)] = firstPageEntry;
-      highestCachedPage = firstPageEntry.page === 1 ? 1 : 0;
-    }
-    return {
-      version: SUBSCRIPTION_FEED_SESSION_VERSION,
-      uuid: normalizedUuid,
-      createdAt: now,
-      expiresAt: now + SUBSCRIPTION_FEED_SESSION_TTL_MS,
-      lastAccessAt: now,
-      highestCachedPage,
-      cachedPages
-    };
-  }
-  function flattenSubscriptionFeedSessionItems(session) {
-    const normalized = normalizeSubscriptionFeedSession(session);
-    if (!normalized || normalized.highestCachedPage <= 0) return [];
-    const items = [];
-    for (let page = 1; page <= normalized.highestCachedPage; page++) {
-      const entry = normalized.cachedPages[String(page)];
-      if (!entry || !Array.isArray(entry.items)) break;
-      items.push(...entry.items);
-    }
-    return items;
-  }
-  function resetSubscriptionFeedRuntimeState(uuid) {
-    subscriptionFeedCurrentUuid = String(uuid || '').trim();
-    subscriptionFeedCurrentPage = 0;
-    subscriptionFeedAllItems = [];
-    subscriptionFeedHasMore = true;
-    subscriptionFeedRenderedPages = Object.create(null);
-    subscriptionFeedHighestRenderedPage = 0;
-    subscriptionFeedCurrentDisplayPage = 1;
-    subscriptionFeedCacheExpired = false;
-  }
-  function rebuildSubscriptionFeedRuntimeList() {
-    const items = [];
-    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
-      const entry = subscriptionFeedRenderedPages[String(page)];
-      if (!entry || !Array.isArray(entry.items)) break;
-      items.push(...entry.items);
-    }
-    subscriptionFeedAllItems = items;
-    subscriptionFeedCurrentPage = subscriptionFeedHighestRenderedPage;
-  }
-  function applySubscriptionFeedSessionToRuntime(session) {
-    const normalized = normalizeSubscriptionFeedSession(session);
-    if (!normalized) return false;
-    subscriptionFeedCurrentUuid = normalized.uuid;
-    subscriptionFeedRenderedPages = Object.create(null);
-    for (let page = 1; page <= normalized.highestCachedPage; page++) {
-      const entry = normalized.cachedPages[String(page)];
-      if (!entry) break;
-      subscriptionFeedRenderedPages[String(page)] = entry;
-    }
-    subscriptionFeedHighestRenderedPage = normalized.highestCachedPage;
-    subscriptionFeedCurrentDisplayPage = normalized.highestCachedPage > 0 ? 1 : 0;
-    rebuildSubscriptionFeedRuntimeList();
-    subscriptionFeedHasMore = true;
-    subscriptionFeedCacheExpired = false;
-    return true;
-  }
-  function appendSubscriptionFeedRenderedPage(pageEntry) {
-    if (!pageEntry || !pageEntry.page || !Array.isArray(pageEntry.items)) return false;
-    const page = Math.max(1, Number(pageEntry.page) || 1);
-    if (page !== subscriptionFeedHighestRenderedPage + 1) return false;
-    subscriptionFeedRenderedPages[String(page)] = pageEntry;
-    subscriptionFeedHighestRenderedPage = page;
-    subscriptionFeedCurrentDisplayPage = page;
-    rebuildSubscriptionFeedRuntimeList();
-    return true;
-  }
-  function getSubscriptionFeedNextRenderPage() {
-    return Math.max(0, Number(subscriptionFeedHighestRenderedPage) || 0) + 1;
-  }
-  function appendSubscriptionFeedPageSeparator(root, page) {
-    if (!root || !page || page <= 1) return;
-    const sep = document.createElement('div');
-    sep.className = 'xdex-feed-page-separator';
-    sep.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px 0;border-top:1px dashed #ddd;margin-top:8px;';
-    sep.textContent = `——第${page}页——`;
-    root.appendChild(sep);
-  }
-  function updateSubscriptionFeedDisplayPageFromScroll() {
-    const container = document.querySelector('#sp_module_feeds .sp_panel_content');
-    const results = document.getElementById('sp_feeds_results');
-    if (!container || !results || subscriptionFeedHighestRenderedPage <= 0) return;
-    const separators = Array.from(results.querySelectorAll('.xdex-feed-page-separator'));
-    let displayPage = 1;
-    const threshold = container.scrollTop + container.clientHeight / 2;
-    separators.forEach((sep) => {
-      const page = Number((sep.textContent || '').match(/第(\d+)页/)?.[1] || 0);
-      if (!page) return;
-      const top = sep.offsetTop;
-      if (threshold >= top) displayPage = page;
-    });
-    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
-    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
-  }
-  function renderSubscriptionFeedRenderedPages(options = {}) {
-    const $results = $('#sp_feeds_results').empty();
-    const displayPage = Math.max(0, Number(options.displayPage) || 0) || subscriptionFeedCurrentDisplayPage || subscriptionFeedHighestRenderedPage || 0;
-    if (subscriptionFeedHighestRenderedPage <= 0) {
-      $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
-      $('#sp_feeds_page_label').text('第0页');
-      return;
-    }
-    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
-      const entry = subscriptionFeedRenderedPages[String(page)];
-      if (!entry || !Array.isArray(entry.items)) break;
-      appendSubscriptionFeedPageSeparator($results[0], page);
-      entry.items.forEach((item) => {
-        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
-      });
-    }
-    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
-    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(updateSubscriptionFeedDisplayPageFromScroll);
-    else setTimeout(updateSubscriptionFeedDisplayPageFromScroll, 0);
-  }
-  function restoreSubscriptionFeedSession(uuid) {
-    const session = getSubscriptionFeedSession(uuid);
-    if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
-      if (session) deleteSubscriptionFeedSession(uuid);
-      return false;
-    }
-    const restored = Object.assign({}, session, { lastAccessAt: Date.now() });
-    saveSubscriptionFeedSession(restored);
-    applySubscriptionFeedSessionToRuntime(restored);
-    renderSubscriptionFeedRenderedPages({ displayPage: 1 });
-    return true;
-  }
-  function invalidateSubscriptionFeedSession(uuid, reason) {
-    const key = String(uuid || '').trim();
-    if (!key) return;
-    console.info('[subscription-feed] invalidate session', { uuid: key, reason: reason || '' });
-    deleteSubscriptionFeedSession(key);
-  }
-  function populateSubscriptionFeedSelector() {
-    const $sel = $('#sp_feeds_selector').empty();
-    const $display = $('#sp_feeds_selector_display');
-    const $dropdown = $('#sp_feeds_selector_dropdown').empty().hide();
-    const $desc = $display.find('.xdex-feed-display-desc');
-    const $uuid = $display.find('.xdex-feed-display-uuid');
-    const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
-    if (!feeds.length) {
-      $sel.append('<option value="">(请先添加订阅号)</option>');
-      $desc.text('请先在设置中添加订阅号');
-      $uuid.text('');
-      return '';
-    }
-    feeds.forEach((f, i) => {
-      const label = f.desc ? `${f.desc}：${f.uuid}` : f.uuid;
-      $sel.append(`<option value="${Utils.escapeHTML ? Utils.escapeHTML(f.uuid) : f.uuid}">${Utils.escapeHTML ? Utils.escapeHTML(label) : label}</option>`);
-      const $opt = $('<div class="xdex-feed-option" role="option"></div>')
-        .attr('data-uuid', f.uuid)
-        .text(label);
-      $dropdown.append($opt);
-    });
-    const saved = getActiveSubscriptionFeedUuid();
-    const match = feeds.find(f => f.uuid === saved);
-    const selected = match ? match.uuid : feeds[0].uuid;
-    $sel.val(selected);
-    const activeFeed = feeds.find(f => f.uuid === selected);
-    $desc.text(activeFeed && activeFeed.desc ? activeFeed.desc : '');
-    // 无备注时也要显示订阅号（打码），避免选择框看起来是空的
-    $uuid.text(activeFeed && activeFeed.uuid ? activeFeed.uuid : '');
-    $uuid.toggleClass('xdex-feed-uuid-light-blur', !!(activeFeed && activeFeed.uuid && !activeFeed.desc));
-    $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
-    return selected;
-  }
-  function buildSubscriptionFeedItemElement(item) {
-    const threadId = Number(item.id) || 0;
-    const wrapper = document.createElement('div');
-    wrapper.className = 'xdex-history-item';
-    wrapper.dataset.feedThreadId = String(threadId);
-    const main = document.createElement('div');
-    main.className = 'h-threads-item-main';
-    wrapper.appendChild(main);
-    const info = document.createElement('div');
-    info.className = 'h-threads-info xdex-history-info';
-    main.appendChild(info);
-    const infoMain = document.createElement('span');
-    infoMain.className = 'xdex-history-info-main';
-    info.appendChild(infoMain);
-    const title = String(item.title || '');
-    const email = String(item.email || '');
-    const now = String(item.now || '');
-    const userHash = String(item.user_hash || '');
-    if (title && title !== '无标题') appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', title);
-    if (email) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', email);
-    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', now);
-    if (createdAtNode) {
-      createdAtNode.dataset.xdexOriginalTime = now;
-      createdAtNode.title = now;
-    }
-    if (userHash) {
-      const cookieSpan = appendThreadHistoryText(infoMain, 'span', 'h-threads-info-uid', `ID:${userHash}`);
-      if (cookieSpan) cookieSpan.setAttribute('data-xdex-cookie-id', userHash);
-    }
-    const replyLink = document.createElement('a');
-    replyLink.className = 'h-threads-info-id xdex-history-thread-id';
-    replyLink.href = `${location.origin}/t/${threadId}`;
-    replyLink.textContent = `No.${threadId}`;
-    infoMain.appendChild(replyLink);
-    const replyCount = Number(item.reply_count) || 0;
-    if (replyCount > 0) {
-      appendThreadHistoryText(infoMain, 'span', 'xdex-history-visit-count', `${replyCount} 回`);
-    }
-    // 从浏览历史查找最近查看页
-    const tid = String(threadId || '').trim();
-    const histStore = getThreadHistoryStore();
-    const histCandidates = ['normal', 'po']
-      .map((mode) => histStore.items[getThreadHistoryKey(mode, tid)])
-      .filter(Boolean)
-      .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
-    const histItem = histCandidates[0] || null;
-    const histPage = histItem ? (Number(histItem.page) || 1) : 1;
-    // [回应] 链接
-    const replyAction = document.createElement('span');
-    replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
-    const replyActionLink = document.createElement('a');
-    replyActionLink.className = 'xdex-history-reply-action';
-    replyActionLink.href = `${location.origin}/t/${tid}?page=${histPage}`;
-    replyActionLink.target = '_blank';
-    replyActionLink.rel = 'noopener';
-    replyActionLink.textContent = '回应';
-    replyAction.appendChild(document.createTextNode('['));
-    replyAction.appendChild(replyActionLink);
-    replyAction.appendChild(document.createTextNode(']'));
-    infoMain.appendChild(replyAction);
-    // 取消订阅按钮
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'xdex-post-history-delete';
-    deleteButton.dataset.feedThreadId = String(threadId);
-    deleteButton.title = '取消订阅';
-    deleteButton.textContent = '×';
-    main.appendChild(deleteButton);
-    // 图片
-    const imgRaw = String(item.img || '');
-    const extRaw = String(item.ext || '');
-    if (imgRaw) {
-      const suffix = extRaw ? (extRaw[0] === '.' ? extRaw : `.${extRaw}`) : '';
-      const imageFile = suffix && imgRaw.toLowerCase().endsWith(suffix.toLowerCase()) ? imgRaw : imgRaw + suffix;
-      const imageLink = document.createElement('a');
-      imageLink.className = 'h-threads-img-a xdex-history-image';
-      imageLink.dataset.historyQuoteId = threadId;
-      imageLink.href = buildThreadHistoryImageUrl(imageFile, true);
-      imageLink.target = '_blank';
-      imageLink.rel = 'noopener';
-      const img = document.createElement('img');
-      img.className = 'h-threads-img';
-      img.src = buildThreadHistoryImageUrl(imageFile, false);
-      img.alt = imageFile;
-      imageLink.appendChild(img);
-      main.appendChild(imageLink);
-    }
-    // 正文
-    const content = document.createElement('div');
-    content.className = 'h-threads-content';
-    const contentHtml = String(item.content || '');
-    if (contentHtml) content.innerHTML = contentHtml;
-    else content.textContent = '';
-    main.appendChild(content);
-    enhanceHistoryRenderedContent(content);
-    // 脚注
-    const footer = document.createElement('div');
-    footer.className = 'xdex-history-footer';
-    const fid = String(item.fid || '');
-    const forumName = fid ? (POST_HISTORY_FORUM_FID_MAP[fid] || '') : '';
-    if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', forumName);
-    appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', '订阅');
-    appendThreadHistoryText(footer, 'span', 'xdex-history-time', now);
-    main.appendChild(footer);
-    enhanceHistoryRenderedContent(footer);
-    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
-    return wrapper;
-  }
-  async function fetchSubscriptionFeedPage(uuid, page) {
-    const url = `${SUBSCRIPTION_FEED_API_BASE}/feed?uuid=${encodeURIComponent(uuid)}&page=${encodeURIComponent(page)}`;
-    const resp = await gmRequest(url, 'json');
-    const data = resp.response || resp.responseText;
-    if (Array.isArray(data)) return data;
-    try { return JSON.parse(typeof data === 'string' ? data : '[]'); } catch (e) { return []; }
-  }
-  function renderSubscriptionFeedModule() {
-    const $results = $('#sp_feeds_results').empty();
-    pruneExpiredSubscriptionFeedSessions();
-    const uuid = populateSubscriptionFeedSelector();
-    if (!uuid) {
-      $results.html('<div style="text-align:center;color:#999;padding:40px 0;">请先在设置中添加订阅号</div>');
-      subscriptionFeedCurrentUuid = '';
-      subscriptionFeedHasMore = false;
-      return;
-    }
-    subscriptionFeedCurrentUuid = uuid;
-    if (restoreSubscriptionFeedSession(uuid)) return;
-    resetSubscriptionFeedRuntimeState(uuid);
-    $results.html('<div style="text-align:center;color:#999;padding:40px 0;">正在获取订阅……</div>');
-    loadSubscriptionFeedPage(uuid, 1, { replace: true, source: 'init' });
-  }
-  async function loadSubscriptionFeedPage(uuid, page, options = {}) {
-    const replace = !!options.replace;
-    if (!uuid || subscriptionFeedLoading) return;
-    const requestPage = Math.max(1, Number(page) || 1);
-    const $results = $('#sp_feeds_results');
-    if (replace && subscriptionFeedHighestRenderedPage <= 0) {
-      resetSubscriptionFeedRuntimeState(uuid);
-      if ($results.length) $results.empty();
-    }
-    const expectedPage = getSubscriptionFeedNextRenderPage();
-    if (requestPage !== expectedPage) {
-      console.warn('[subscription-feed] reject non-contiguous page', {
-        uuid,
-        page: requestPage,
-        expectedPage,
-        source: options.source || '',
-        currentPage: subscriptionFeedCurrentPage,
-        highestRenderedPage: subscriptionFeedHighestRenderedPage,
-        allItems: subscriptionFeedAllItems.length,
-        cacheExpired: subscriptionFeedCacheExpired
-      });
-      return;
-    }
-    const session = getSubscriptionFeedSession(uuid);
-    if (session && isSubscriptionFeedSessionExpired(session)) subscriptionFeedCacheExpired = true;
-    subscriptionFeedLoading = true;
-    const seq = ++subscriptionFeedRequestSeq;
-    subscriptionFeedInflightPages[requestPage] = seq;
-    try {
-      const items = normalizeSubscriptionFeedPageItems(await fetchSubscriptionFeedPage(uuid, requestPage));
-      if (subscriptionFeedInflightPages[requestPage] !== seq) return;
-      if (uuid !== subscriptionFeedCurrentUuid) return;
-      if (!items.length) {
-        subscriptionFeedHasMore = false;
-        renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
-        return;
-      }
-      const pageEntry = buildSubscriptionFeedPageEntry(requestPage, items);
-      if (!appendSubscriptionFeedRenderedPage(pageEntry)) return;
-      subscriptionFeedHasMore = true;
-      renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
-      if (!subscriptionFeedCacheExpired) {
-        let nextSession = getSubscriptionFeedSession(uuid);
-        if (!nextSession || isSubscriptionFeedSessionExpired(nextSession) || !isSubscriptionFeedSessionStructurallyValid(nextSession)) {
-          nextSession = createSubscriptionFeedSession(uuid, pageEntry);
-        } else {
-          nextSession.cachedPages[String(requestPage)] = pageEntry;
-          nextSession.highestCachedPage = computeHighestContiguousSubscriptionFeedPage(nextSession.cachedPages);
-          nextSession.lastAccessAt = Date.now();
-        }
-        saveSubscriptionFeedSession(nextSession);
-      }
-    } catch (err) {
-      console.error('[subscription-feed] load error', err);
-      if (replace) {
-        $results.html(`<div style="text-align:center;color:#c00;padding:40px 0;">加载失败：${Utils.escapeHTML ? Utils.escapeHTML(err.message) : err.message}</div>`);
-      }
-    } finally {
-      if (subscriptionFeedInflightPages[requestPage] === seq) delete subscriptionFeedInflightPages[requestPage];
-      subscriptionFeedLoading = false;
-    }
-  }
-  function bindSubscriptionFeedModuleEvents() {
-    // 订阅号切换
-    // 自定义下拉菜单交互
-    const $wrap = $('.xdex-feed-selector-wrap');
-    const $display = $('#sp_feeds_selector_display');
-    const $dropdown = $('#sp_feeds_selector_dropdown');
-    // 鼠标悬停时临时显示 UUID，移出后恢复模糊（比 CSS :hover 更可靠）
-    const $uuid = $display.find('.xdex-feed-display-uuid');
-    $wrap.off('mouseenter.feedBlur mouseleave.feedBlur')
-      .on('mouseenter.feedBlur', () => $uuid.css('filter', 'none'))
-      .on('mouseleave.feedBlur', () => $uuid.css('filter', ''));
-    $display.off('click.feedDropdown').on('click.feedDropdown', (e) => {
-      e.stopPropagation();
-      const isOpen = $dropdown.is(':visible');
-      $dropdown.toggle(!isOpen);
-      $display.attr('aria-expanded', String(!isOpen));
-    });
-    $dropdown.off('click.feedOption', '.xdex-feed-option').on('click.feedOption', '.xdex-feed-option', function (e) {
-      e.stopPropagation();
-      const uuid = $(this).data('uuid') || '';
-      if (!uuid) return;
-      $('#sp_feeds_selector').val(uuid).trigger('change.subscriptionFeed');
-      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
-      const feed = feeds.find(f => f.uuid === uuid);
-      const $uuidEl = $display.find('.xdex-feed-display-uuid');
-      $display.find('.xdex-feed-display-desc').text(feed && feed.desc ? feed.desc : '');
-      // 无备注时也显示打码订阅号
-      $uuidEl.text(feed && feed.uuid ? feed.uuid : '');
-      $uuidEl.toggleClass('xdex-feed-uuid-light-blur', !!(feed && feed.uuid && !feed.desc));
-      $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
-      $dropdown.hide();
-      $display.attr('aria-expanded', 'false');
-    });
-    $(document).off('click.feedDropdownClose').on('click.feedDropdownClose', () => {
-      $dropdown.hide();
-      $display.attr('aria-expanded', 'false');
-    });
-    $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
-      subscriptionFeedCurrentUuid = $(this).val() || '';
-      if (subscriptionFeedCurrentUuid) {
-        setActiveSubscriptionFeedUuid(subscriptionFeedCurrentUuid);
-        renderSubscriptionFeedModule();
-      }
-    });
-    // 跨页面同步：其他标签页切换订阅号时自动刷新
-    if (typeof GM_addValueChangeListener === 'function') {
-      GM_addValueChangeListener(ACTIVE_FEED_STORAGE_KEY, (_key, _oldVal, newVal, remote) => {
-        if (!remote) return;
-        const uuid = String(newVal || '');
-        if (uuid && uuid !== subscriptionFeedCurrentUuid) {
-          subscriptionFeedCurrentUuid = uuid;
-          $('#sp_feeds_selector').val(uuid);
-          renderSubscriptionFeedModule();
-        }
-      });
-    }
-    // 跳转
-    $('#sp_feeds_page_jump').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
-      e.preventDefault();
-      const page = parseInt($('#sp_feeds_page_input').val(), 10);
-      if (!page || page < 1 || !subscriptionFeedCurrentUuid) return;
-      const expectedPage = getSubscriptionFeedNextRenderPage();
-      if (page !== expectedPage) {
-        toast(`当前缓存会话仅支持连续翻页，请先加载第${expectedPage}页`);
-        return;
-      }
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, page, { replace: false, source: 'jump' });
-    });
-    // 滚动加载下一页
-    const $scrollContainer = $('#sp_module_feeds .sp_panel_content');
-    $scrollContainer.off('scroll.subscriptionFeed').on('scroll.subscriptionFeed', function () {
-      updateSubscriptionFeedDisplayPageFromScroll();
-      if (subscriptionFeedLoading || !subscriptionFeedHasMore || !subscriptionFeedCurrentUuid) return;
-      const el = this;
-      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
-        const nextPage = getSubscriptionFeedNextRenderPage();
-        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'scroll' });
-      }
-    });
-    // 上一页
-    $('#sp_feeds_prev').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
-      e.preventDefault();
-      toast('当前缓存会话仅支持向后连续翻页');
-    });
-    // 下一页
-    $('#sp_feeds_next').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
-      e.preventDefault();
-      if (!subscriptionFeedCurrentUuid) return;
-      const nextPage = getSubscriptionFeedNextRenderPage();
-      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'next-button' });
-    });
-    // 订阅面板图片点击 → 打开引用弹窗（图片激活态）
-    $('#sp_feeds_results').off('click.xdex-feed-image-quote', '.xdex-history-image').on('click.xdex-feed-image-quote', '.xdex-history-image', function (e) {
-      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-      const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
-      if (!opened) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-    });
-    // 取消订阅
-    $('#sp_feeds_results').off('click.xdex-feed-delete', '.xdex-post-history-delete').on('click.xdex-feed-delete', '.xdex-post-history-delete', function (e) {
-      e.preventDefault();
-      const tid = this.dataset.feedThreadId || '';
-      if (!tid || !subscriptionFeedCurrentUuid) return;
-      if (!window.confirm('确定要取消订阅这个串吗？')) return;
-      GM_xmlhttpRequest({
-        method: 'POST',
-        url: `${SUBSCRIPTION_FEED_API_BASE}/delFeed`,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        data: `uuid=${encodeURIComponent(subscriptionFeedCurrentUuid)}&tid=${encodeURIComponent(tid)}`,
-        onload: () => {
-          invalidateSubscriptionFeedSession(subscriptionFeedCurrentUuid, 'delete-feed');
-          resetSubscriptionFeedRuntimeState(subscriptionFeedCurrentUuid);
-          toast('已取消订阅');
-          renderSubscriptionFeedModule();
-        },
-          onerror: () => toast('取消订阅失败')
-      });
-    });
-    // ── 批量添加订阅 ──
-    $('#sp_feeds_bulk_add_input').attr('autocomplete', 'off');
-    $('#sp_feeds_bulk_add_btn').off('click.subscriptionFeedBulkAdd').on('click.subscriptionFeedBulkAdd', (e) => {
-      e.preventDefault();
-      const uuid = subscriptionFeedCurrentUuid || resolveSubscriptionFeedUuid();
-      if (!uuid) { toast('请先在设置中添加一个订阅号'); return; }
-      const raw = ($('#sp_feeds_bulk_add_input').val() || '').trim();
-      if (!raw) { toast('请输入串号'); return; }
-      const tids = raw.split(/[,，\s]+/).map(s => s.replace(/^(?:No\.)/i, '').trim()).filter(s => /^\d{6,8}$/.test(s));
-      if (!tids.length) { toast('未识别到有效串号'); return; }
-      const $btn = $(e.currentTarget);
-      $btn.prop('disabled', true).text('添加中…');
-      let success = 0, fail = 0, idx = 0;
-      const failedTids = [];
-      const BATCH_DELAY = 300;
-      function next() {
-        if (idx >= tids.length) {
-           $btn.prop('disabled', false).text('批量添加');
-           invalidateSubscriptionFeedSession(uuid, 'bulk-add');
-           renderSubscriptionFeedModule();
-           toast(`批量添加完成：成功 ${success}，失败 ${fail}，共 ${tids.length} 条`);
-           if (failedTids.length) {
-             $('#sp_feeds_bulk_add_input').val(failedTids.join(','));
-           } else {
-             $('#sp_feeds_bulk_add_input').val('');
-           }
-          return;
-        }
-        const tid = tids[idx++];
-        GM_xmlhttpRequest({
-          method: 'POST',
-          url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
-             onload: (resp) => {
-                try {
-                  const raw = String(resp.responseText || resp.response || '');
-                  const msg = JSON.parse(raw);
-                  if (typeof msg === 'string' && /不存在|失败|错误/.test(msg)) { fail++; failedTids.push(tid); }
-                  else success++;
-                } catch (_) {
-                  success++;
-                }
-               setTimeout(next, BATCH_DELAY);
-             },
-           onerror: () => { fail++; failedTids.push(tid); setTimeout(next, BATCH_DELAY); }
-        });
-      }
-      next();
-    });
-    // ── 导出串号到剪贴板 ──
-    $('#sp_feeds_export_clipboard').off('click.subscriptionFeedExport').on('click.subscriptionFeedExport', (e) => {
-      e.preventDefault();
-      const uuid = subscriptionFeedCurrentUuid || resolveSubscriptionFeedUuid();
-      if (!uuid) { toast('请先在设置中添加一个订阅号'); return; }
-      const $btn = $(e.currentTarget);
-      $btn.prop('disabled', true).text('导出中…');
-      const allTids = [];
-      let page = 1;
-      const PAGE_DELAY = 500;
-      function fetchNext() {
-        fetchSubscriptionFeedPage(uuid, page).then(items => {
-          if (!items || !items.length) {
-            // 全部拉完
-            $btn.prop('disabled', false).text('导出串号');
-            if (!allTids.length) { toast('该订阅号下无订阅内容'); return; }
-            const text = allTids.join(',');
-            navigator.clipboard.writeText(text).then(() => {
-              toast(`已导出 ${allTids.length} 个串号到剪贴板`);
-            }).catch(() => {
-              toast('导出失败，无法写入剪贴板');
-            });
-            return;
-          }
-          items.forEach(item => {
-            const id = String(item.id || '').trim();
-            if (id && id !== '0' && !allTids.includes(id)) allTids.push(id);
-          });
-          page++;
-          setTimeout(fetchNext, PAGE_DELAY);
-        }).catch(() => {
-          $btn.prop('disabled', false).text('导出串号');
-          toast('导出失败，网络错误');
-        });
-      }
-      fetchNext();
-    });
-  }
-  function setPostHistoryType(type) {
-    postHistoryActiveType = normalizePostHistoryType(type);
-    $('#sp_posts_type_buttons [data-post-history-type]').removeClass('active')
-      .filter(`[data-post-history-type="${postHistoryActiveType}"]`).addClass('active');
-    renderPostHistoryModule();
-  }
-  function bindPostHistoryModuleEvents() {
-    $('#sp_posts_search').off('input.xdex-post-history').on('input.xdex-post-history', function () {
-      renderPostHistoryModule(this.value || '');
-    });
-    $('#sp_posts_type_buttons').off('click.xdex-post-history', '[data-post-history-type]').on('click.xdex-post-history', '[data-post-history-type]', function (e) {
-      e.preventDefault();
-      setPostHistoryType(this.dataset.postHistoryType || 'thread');
-    });
-    $('#sp_posts_results').off('click.xdex-post-history-reply', '.xdex-post-history-reply-action').on('click.xdex-post-history-reply', '.xdex-post-history-reply-action', function (e) {
-      if (e.button !== 0) return;
-      const url = this.href || '';
-      if (!url) return;
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        window.location.href = url;
-        return;
-      }
-      window.open(url, '_blank', 'noopener');
-    });
-    $('#sp_posts_results').off('click.xdex-post-history-image-quote', '.xdex-post-history-image').on('click.xdex-post-history-image-quote', '.xdex-post-history-image', function (e) {
-      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-      const opened = openHistoryImageQuotePreview(this.dataset.postHistoryQuoteId || '');
-      if (!opened) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-    });
-    $('#sp_posts_results').off('click.xdex-post-history-delete', '.xdex-post-history-delete').on('click.xdex-post-history-delete', '.xdex-post-history-delete', function (e) {
-      e.preventDefault();
-      const key = this.dataset.postHistoryKey || '';
-      if (!key) return;
-      if (!window.confirm('确定要删除这条发言记录吗？')) return;
-      deletePostHistoryItem(key);
-      renderPostHistoryModule();
-      toast('已删除发言记录');
-    });
-    $('#sp_posts_clear').off('click.xdex-post-history').on('click.xdex-post-history', function (e) {
-      e.preventDefault();
-      showClearHistoryWarningDialog(function () {
-        if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
-        clearPostHistory();
-        renderPostHistoryModule();
-        toast('已清空我的发言');
-      });
-    });
-    // 手动添加发言历史
-    // 禁用浏览器自动填充
-    $('#sp_posts_manual_add_input').attr('autocomplete', 'off');
-    $('#sp_posts_manual_add_btn').off('click.xdex-post-history-manual').on('click.xdex-post-history-manual', function (e) {
-      e.preventDefault();
-      const raw = ($('#sp_posts_manual_add_input').val() || '').trim();
-      // 支持格式：No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23
-      let postId = '';
-      let replyId = '';
-      let inputPage = 0;
-      // 解析 URL 中的主题号、回复号、页码
-      const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{6,8})(?:\?([^#]*))?(?:#.*)?$/i);
-      const simpleMatch = raw.match(/^(?:No\.)?(\d{6,8})$/);
-      if (urlMatch) {
-        postId = urlMatch[1];
-        const qs = urlMatch[2] || '';
-        const rMatch = qs.match(/(?:^|&)r=(\d{6,8})(?:&|$)/);
-        const pMatch = qs.match(/(?:^|&)page=(\d+)(?:&|$)/);
-        replyId = rMatch ? rMatch[1] : '';
-        inputPage = pMatch ? parseInt(pMatch[1], 10) : 0;
-      } else if (simpleMatch) {
-        postId = simpleMatch[1];
-      } else {
-        toast('格式错误，支持:No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23');
-        return;
-      }
-      // 前后号相同 → 直接当主题处理
-      if (replyId && replyId === postId) replyId = '';
-      const existingStore = getPostHistoryStore();
-      // 查找是否已存在匹配记录：有 replyId 时只匹配回复号，无 replyId 时匹配主题号
-      const existingMatch = replyId
-        ? Object.values(existingStore.items).find(item =>
-            String(item.id) === replyId || String(item.postId) === replyId
-          )
-        : Object.values(existingStore.items).find(item =>
-            String(item.id) === postId || String(item.postId) === postId
-          );
-      // 已存在且有完整信息 → 检查是否需要补充页码
-      if (existingMatch && existingMatch.resto && existingMatch.resto !== '0') {
-        if (inputPage && inputPage !== Number(existingMatch.page || 0)) {
-          // 有新页码且与已有记录不同 → 更新页码
-          updatePostHistoryRecord(existingMatch.localId, { page: inputPage });
-          renderPostHistoryModule();
-          $('#sp_posts_manual_add_input').val('');
-          toast('已更新 No.' + (replyId || postId) + ' 的页码为 ' + inputPage);
-        } else {
-          toast(replyId ? '回复 No.' + replyId + ' 已存在' : '主题 No.' + postId + ' 已存在');
-        }
-        return;
-      }
-      const $btn = $(this);
-      $btn.prop('disabled', true).text('获取中…');
-      // 有 replyId → 直接用 ref API 获取回复内容
-      // 无 replyId → 用 ref API 获取帖子内容，再用 thread API 判定类型
-      const refTarget = replyId || postId;
-      const refUrl = 'https://api.nmb.best/api/ref?id=' + encodeURIComponent(refTarget);
-      const refHeaders = getPostHistoryApiCookieHeaders();
-      const refDetail = { id: refTarget, source: 'manual-add', api: true };
-      gmRequest(refUrl, 'text', refHeaders).then(async (resp) => {
-        const post = parsePostHistoryRefResponse(resp, refDetail);
-        if (!post || !post.id) { toast('未找到该串/回复'); return; }
-        let type = 'thread';
-        let resto = '0';
-        let fid = getPostHistoryPostFid(post);
-        if (replyId) {
-          // 有 replyId → 明确是回复，resto = 主题号
-          type = 'reply';
-          resto = postId;
-          try {
-            const pageData = await fetchPostHistoryThreadPage(postId, 1, { source: 'manual-add-fid' });
-            if (!fid) fid = getPostHistoryPostFid(pageData && pageData.thread) || '';
-          } catch (e) {}
-        } else {
-          // 无 replyId → 用 thread API 判定类型
-          try {
-            const pageData = await fetchPostHistoryThreadPage(post.id, 1, { source: 'manual-add-type' });
-            const thread = pageData && pageData.thread;
-            if (thread && thread.id && String(thread.id) === String(post.id)) {
-              if (!fid) fid = getPostHistoryPostFid(thread) || '';
-            } else {
-              type = 'reply';
-              toast('该串号为回复，无法确定所属主题');
-            }
-          } catch (e) {
-            type = 'reply';
-            toast('该串号为回复，无法确定所属主题');
-          }
-        }
-        // 饼干校验
-        const userHash = String(post.user_hash || post.userHash || '').trim();
-        const cookieList = getCookiesList();
-        const matchedCookie = userHash
-          ? Object.values(cookieList).find(c => abbreviateName(c.name || '') === userHash)
-          : null;
-        if (userHash && !matchedCookie) {
-          if (!window.confirm('No.' + (replyId || postId) + ' 对应的饼干 ' + userHash + ' 不在当前列表之中，是否确认添加？')) {
-            $btn.prop('disabled', false).text('手动添加');
-            return;
-          }
-        }
-        const serverContentRaw = post.content || '';
-        const serverContentText = normalizePostHistoryText(serverContentRaw);
-        const imageFile = buildPostHistoryImageFile(post.img, post.ext);
-        // 无主题号的回复 → url 留空，不构建跳转链接
-        const url = (type === 'reply' && resto === '0') ? '' : buildPostHistoryUrl(type, replyId || post.id, resto);
-        if (existingMatch) {
-          // 已存在但 resto=0 → 补充真实串号和相关信息
-          const patch = {};
-          if (type === 'reply' && resto !== '0') {
-            patch.resto = resto;
-            patch.threadId = resto;
-            patch.url = url;
-          }
-          if (inputPage && !existingMatch.page) {
-            patch.page = inputPage;
-          }
-          if (fid && !existingMatch.fid) {
-            patch.fid = fid;
-            patch.forumName = getPostHistoryForumNameByFid(fid);
-          }
-          if (imageFile && !existingMatch.imageFile) {
-            Object.assign(patch, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
-          }
-          updatePostHistoryRecord(existingMatch.localId, patch);
-          renderPostHistoryModule();
-          $('#sp_posts_manual_add_input').val('');
-          const updated = [];
-          if (patch.resto) updated.push('串号');
-          if (patch.page) updated.push('页码');
-          if (patch.fid) updated.push('板块');
-          if (patch.imageFile) updated.push('图片');
-          toast('已更新 No.' + (replyId || postId) + '：' + (updated.join('、') || '无变化'));
-        } else {
-          // 新记录
-          const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-          const record = {
-            status: 'confirmed',
-            type,
-            localId,
-            id: post.id,
-            resto,
-            threadId: type === 'reply' ? resto : post.id,
-            postId: post.id,
-            page: inputPage || Number(post.page) || (type === 'thread' ? 1 : 0),
-            fid,
-            forumName: getPostHistoryForumNameByFid(fid),
-            title: post.title || '',
-            name: post.name || '',
-            email: post.email || '',
-            contentRaw: serverContentRaw,
-            contentText: serverContentText,
-            contentHash: hashPostHistoryText(serverContentText),
-            contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
-            userHash,
-            submittedAt: Date.parse(post.now) || Date.now(),
-            confirmedAt: Date.now(),
-            sourceUrl: location.href,
-            url
-          };
-          if (imageFile) Object.assign(record, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
-          upsertPostHistoryRecord(record);
-          renderPostHistoryModule();
-          $('#sp_posts_manual_add_input').val('');
-          toast(type === 'thread' ? '已添加主题 No.' + postId : '已添加回复 No.' + (replyId || postId));
-        }
-      }).catch(() => {
-        toast('获取失败，请检查串号或网络');
-      }).finally(() => {
-        $btn.prop('disabled', false).text('手动添加');
-      });
-    });
-    $('#sp_posts_manual_add_input').off('keydown.xdex-post-history-manual').on('keydown.xdex-post-history-manual', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); $('#sp_posts_manual_add_btn').trigger('click.xdex-post-history-manual'); }
-    });
-  }
-  function formatLocalDateKey(ts = Date.now()) {
-    const d = new Date(ts);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-  function getNextNaturalCheckAt(nowTs = Date.now(), hour = UPDATE_CHECK_HOUR) {
-    const d = new Date(nowTs);
-    d.setDate(d.getDate() + 1);
-    d.setHours(hour, 0, 0, 0);
-    return d.getTime();
-  }
-  function compareVersionStrings(a, b) {
-    const pa = String(a || '').split('.').map(v => parseInt(v, 10) || 0);
-    const pb = String(b || '').split('.').map(v => parseInt(v, 10) || 0);
-    const len = Math.max(pa.length, pb.length);
-    for (let i = 0; i < len; i++) {
-      const av = pa[i] || 0;
-      const bv = pb[i] || 0;
-      if (av > bv) return 1;
-      if (av < bv) return -1;
-    }
-    return 0;
-  }
   function gmRequest(url, responseType = 'text', headers = null) {
     return new Promise((resolve, reject) => {
       const request = {
@@ -3784,266 +133,6 @@
       if (headers) request.headers = headers;
       GM_xmlhttpRequest(request);
     });
-  }
-  async function fetchMetaVersionAndChangelog(url, source) {
-    const resp = await gmRequest(url, 'text');
-    const parsed = parseVersionAndChangelogFromMeta(resp.responseText || '');
-    return {
-      source,
-      url,
-      version: parsed.version,
-      changelog: parsed.changelog
-    };
-  }
-  async function fetchScriptCatVersionAndChangelog(url, source = 'scriptcat') {
-    const resp = await gmRequest(url, 'text');
-    const json = JSON.parse(resp.responseText || '{}');
-    const script = (json && json.data && json.data.script) || {};
-    return {
-      source,
-      url,
-      version: String(script.version || '').trim(),
-      changelog: String(script.changelog || '').trim()
-    };
-  }
-  async function fetchExtensionUpdateJson(url, source) {
-    const resp = await gmRequest(url, 'text');
-    const json = JSON.parse(resp.responseText || '{}');
-    const extension = json && json.extension ? json.extension : json;
-    return {
-      source,
-      url,
-      version: String(extension.version || '').trim(),
-      changelog: String(extension.changelog || '').trim(),
-      downloads: extension.downloads || {}
-    };
-  }
-  function getUpdateCheckRequestsForRuntime() {
-    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
-      return [
-        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_GITHUB_JSON_URL, 'github'),
-        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_JSDELIVR_JSON_URL, 'jsdelivr')
-      ];
-    }
-    return [
-      () => fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork'),
-      () => fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')
-    ];
-  }
-  function choosePreferredRemoteMeta(results) {
-    const valid = (results || []).filter(item => item && item.version);
-    if (!valid.length) return null;
-    valid.sort((a, b) => compareVersionStrings(b.version, a.version));
-    const topVersion = valid[0].version;
-    const topCandidates = valid.filter(item => compareVersionStrings(item.version, topVersion) === 0);
-    const preferredSource = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? 'github' : 'greasyfork';
-    const preferred = topCandidates.find(item => item.source === preferredSource) || topCandidates[0];
-    return preferred;
-  }
-  function shouldShowPendingUpdateReminder(state, currentVersion = VERSION) {
-    if (!state || !state.pendingUpdateVersion) return false;
-    if (compareVersionStrings(state.pendingUpdateVersion, currentVersion) <= 0) return false;
-    if (state.ignoredVersion && state.ignoredVersion === state.pendingUpdateVersion) return false;
-    if (state.lastDismissDate && state.lastDismissDate === formatLocalDateKey()) return false;
-    if (state.dismissedUntil && Date.now() < state.dismissedUntil) return false;
-    return true;
-  }
-  function updateSettingsButtonBadge(state = getUpdateCheckState()) {
-    const $btn = $('#sp_btn');
-    if (!$btn.length) return;
-    if (typeof isUpdateCheckEnabled === 'function' && !isUpdateCheckEnabled()) {
-      $btn.removeClass('xdex-has-update');
-      return;
-    }
-    $btn.toggleClass('xdex-has-update', shouldShowPendingUpdateReminder(state));
-  }
-  function clearFooterUpdateHighlight() {
-    const $links = $('#sp_panel_footer .sp_panel_links');
-    $links.removeClass('xdex-update-highlight xdex-update-source-greasyfork xdex-update-source-scriptcat xdex-update-source-github');
-    $links.find('[data-update-channel]').removeClass('xdex-update-link-primary xdex-update-link-secondary');
-  }
-  function flashFooterUpdateHighlight(source = '') {
-    const $links = $('#sp_panel_footer .sp_panel_links');
-    if (!$links.length) return;
-    clearFooterUpdateHighlight();
-    $links.addClass('xdex-update-highlight');
-    const sourceKey = String(source || '').trim().toLowerCase();
-    const channelMap = {
-      greasyfork: {
-        containerClass: 'xdex-update-source-greasyfork',
-        primary: 'greasyfork',
-        secondary: ['github']
-      },
-      scriptcat: {
-        containerClass: 'xdex-update-source-scriptcat',
-        primary: 'scriptcat',
-        secondary: ['baidupan']
-      },
-      github: {
-        containerClass: 'xdex-update-source-github',
-        primary: 'github',
-        secondary: ['baidupan']
-      },
-      jsdelivr: {
-        containerClass: 'xdex-update-source-github',
-        primary: 'baidupan',
-        secondary: ['github']
-      }
-    };
-    const config = channelMap[sourceKey];
-    if (config) {
-      $links.addClass(config.containerClass);
-      $links.find(`[data-update-channel="${config.primary}"]`).addClass('xdex-update-link-primary');
-      (config.secondary || []).forEach((channel) => {
-        $links.find(`[data-update-channel="${channel}"]`).addClass('xdex-update-link-secondary');
-      });
-    }
-    setTimeout(() => {
-      clearFooterUpdateHighlight();
-    }, 5000);
-  }
-  function renderUpdateLogDialog(mode = 'local', state = getUpdateCheckState()) {
-    const $dlg = $('#sp_update_log');
-    if (!$dlg.length) return;
-    const isRemote = mode === 'remote' && state && state.pendingUpdateVersion && compareVersionStrings(state.pendingUpdateVersion, VERSION) > 0;
-    const title = isRemote ? `发现新版本 v${state.pendingUpdateVersion}` : '更新日志';
-    const bodyText = isRemote
-      ? (state.pendingUpdateChangelog || `发现新版本 v${state.pendingUpdateVersion}，但未提取到更新说明。`)
-      : (CHANGELOG || '暂无更新说明');
-    $dlg.attr('data-update-mode', isRemote ? 'remote' : 'local');
-    $dlg.find('.xdex-update-log-title').text(title);
-    $dlg.find('.xdex-update-log-body').text(bodyText);
-    $dlg.find('.xdex-update-log-actions').css('display', isRemote ? 'flex' : 'none');
-  }
-  function openUpdateLogDialog(mode = 'local') {
-    const state = getUpdateCheckState();
-    renderUpdateLogDialog(mode, state);
-    $('#sp_update_log').fadeIn(120);
-  }
-  function closeUpdateLogDialog(options = {}) {
-    const { treatAsDismiss = false, reason = 'unknown' } = options || {};
-    const mode = $('#sp_update_log').attr('data-update-mode') || '';
-    if (treatAsDismiss) {
-      const state = getUpdateCheckState();
-      state.lastDismissDate = formatLocalDateKey();
-      state.dismissedUntil = state.nextCheckAt || getNextNaturalCheckAt();
-      setUpdateCheckState(state);
-      updateSettingsButtonBadge(state);
-      console.log('[update-check] dismiss dialog:', {
-        reason,
-        mode,
-        treatAsDismiss: true,
-        lastDismissDate: state.lastDismissDate,
-        dismissedUntil: state.dismissedUntil,
-        dismissedUntilISO: state.dismissedUntil ? new Date(state.dismissedUntil).toISOString() : ''
-      });
-    } else {
-      console.log('[update-check] close dialog:', {
-        reason,
-        mode,
-        treatAsDismiss: false
-      });
-    }
-    $('#sp_update_log').fadeOut(120);
-  }
-  function maybeShowPendingUpdateDialogOnPanelOpen() {
-    if (!isUpdateCheckEnabled()) {
-      const state = getDefaultUpdateCheckState();
-      updateSettingsButtonBadge(state);
-      clearFooterUpdateHighlight();
-      return;
-    }
-    const state = getUpdateCheckState();
-    updateSettingsButtonBadge(state);
-    if (shouldShowPendingUpdateReminder(state)) {
-      openUpdateLogDialog('remote');
-    }
-  }
-  async function checkForDailyScriptUpdate(force = false) {
-    if (!isUpdateCheckEnabled()) {
-      const state = getUpdateCheckState();
-      updateSettingsButtonBadge(state);
-      clearFooterUpdateHighlight();
-      return state;
-    }
-    const now = Date.now();
-    const today = formatLocalDateKey(now);
-    const state = getUpdateCheckState();
-    const alreadyChecked = !force && state.nextCheckAt && now < state.nextCheckAt;
-    console.log('[update-check] start:', {
-      force,
-      now,
-      today,
-      currentVersion: VERSION,
-      state: Object.assign({}, state),
-      alreadyChecked,
-      nextCheckAtISO: state.nextCheckAt ? new Date(state.nextCheckAt).toISOString() : ''
-    });
-    if (alreadyChecked) {
-      console.log('[update-check] skip: already checked for current window', {
-        force,
-        now,
-        nextCheckAt: state.nextCheckAt,
-        nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
-      });
-      updateSettingsButtonBadge(state);
-      return state;
-    }
-    state.lastCheckDate = today;
-    state.nextCheckAt = getNextNaturalCheckAt(now);
-    console.log('[update-check] scheduled next check:', {
-      lastCheckDate: state.lastCheckDate,
-      nextCheckAt: state.nextCheckAt,
-      nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
-    });
-    try {
-      const requests = getUpdateCheckRequestsForRuntime();
-      const settled = await Promise.allSettled(requests.map((request) => request()));
-      const sourceResults = settled.map((item, index) => {
-        const source = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension'
-          ? (index === 0 ? 'github' : 'jsdelivr')
-          : (index === 0 ? 'greasyfork' : 'scriptcat');
-        if (item.status === 'fulfilled') {
-          console.log('[update-check] remote meta success:', item.value);
-          return item.value;
-        }
-        console.warn(`[update-check] remote meta failed: ${source}`, item.reason);
-        return null;
-      });
-      const preferredRemote = choosePreferredRemoteMeta(sourceResults);
-      console.log('[update-check] remote meta choice:', {
-        localVersion: VERSION,
-        candidates: sourceResults,
-        preferred: preferredRemote
-      });
-      const remoteVersion = preferredRemote ? String(preferredRemote.version || '').trim() : '';
-      const remoteChangelog = preferredRemote ? String(preferredRemote.changelog || '').trim() : '';
-      state.latestRemoteVersion = remoteVersion;
-      if (remoteVersion && compareVersionStrings(remoteVersion, VERSION) > 0) {
-        state.pendingUpdateVersion = remoteVersion;
-        state.pendingUpdateDetectedAt = now;
-        state.pendingUpdateChangelog = remoteChangelog || `发现新版本 v${remoteVersion}，但未提取到更新说明。`;
-        state.pendingUpdateSource = preferredRemote ? String(preferredRemote.source || '').trim() : '';
-        if (state.dismissedUntil && now >= state.dismissedUntil) {
-          state.dismissedUntil = 0;
-          state.lastDismissDate = '';
-        }
-        if (state.ignoredVersion && compareVersionStrings(state.ignoredVersion, remoteVersion) < 0) {
-          state.ignoredVersion = '';
-        }
-      } else {
-        state.pendingUpdateVersion = '';
-        state.pendingUpdateChangelog = '';
-        state.pendingUpdateSource = '';
-        state.pendingUpdateDetectedAt = 0;
-      }
-    } catch (e) {
-      console.warn('[update-check] daily update check failed:', e);
-    }
-    console.log('[update-check] final state before save:', state);
-    setUpdateCheckState(state);
-    updateSettingsButtonBadge(state);
-    return state;
   }
   const toastQueue = [];
   let isShowing = false;
@@ -4163,592 +252,28 @@
         GM_setValue('quote_' + id, html);
       }
   };
-  // 多分组标记时依次使用的背景色（可扩充）
-  const markColors = [
-    '#66CCFF','#00FFCC','#EE0000','#006666','#0080FF','#FFFF00',
-    '#39C5BB','#9999FF','#FF4004','#3399FF','#D80000','#F6BE71',
-    '#EE82EE','#FFA500','#FFE211','#FAAFBE','#0000FF'
-  ];
-  // 解析"最后一个冒号分隔"的分组：返回 {desc, list}
-  function parseDescAndListByLastColon(raw) {
-    const idx = Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('：'));
-    let desc = '';
-    let cookiePart = '';
-    if (idx > 0) {
-      // 有冒号：冒号前是备注/说明，冒号后是饼干
-      desc = raw.slice(0, idx).trim();
-      cookiePart = raw.slice(idx + 1).trim();
-    } else {
-      // 没有冒号：整个字符串都是饼干
-      cookiePart = raw.trim();
+
+  // XDex 门面：设置面板经 spUi/spData/spUpdate 调用，便于实现迁出 tag 0
+  const XDex = {
+    ui: Object.create(null),
+    data: Object.create(null),
+    update: Object.create(null)
+  };
+  function xdexCall(bucket, name, args) {
+    const table = XDex[bucket];
+    const fn = table && table[name];
+    if (typeof fn !== 'function') {
+      throw new Error('[XDex.' + bucket + '] missing ' + name);
     }
-    const list = Utils.strToList(cookiePart);
-    return { desc, list };
+    return fn.apply(null, args);
   }
-  // 校验分组说明长度（<=20 字符；满足“10个汉字/20个英文字符”的近似约束）
-  function isValidDesc(desc) { return !desc || desc.length <= 20; }
-  function isValidHexColor(color) {
-    return /^#[0-9A-Fa-f]{6}$/.test(color);
-  }
-  function normalizeHexColor(color) {
-    if (typeof color !== 'string') return '';
-    const trimmed = color.trim();
-    return isValidHexColor(trimmed) ? trimmed.toUpperCase() : '';
-  }
-  function clampColorChannel(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-  }
-  function rgbToHex(rgb) {
-    if (!rgb) return '';
-    const r = clampColorChannel(Math.round(rgb.r || 0), 0, 255);
-    const g = clampColorChannel(Math.round(rgb.g || 0), 0, 255);
-    const b = clampColorChannel(Math.round(rgb.b || 0), 0, 255);
-    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
-  }
-  function hexToRgb(color) {
-    const normalized = normalizeHexColor(color);
-    if (!normalized) return null;
-    return {
-      r: parseInt(normalized.slice(1, 3), 16),
-      g: parseInt(normalized.slice(3, 5), 16),
-      b: parseInt(normalized.slice(5, 7), 16),
-    };
-  }
-  function hsvToRgb(h, s, v) {
-    const hue = ((Number(h) % 360) + 360) % 360;
-    const sat = clampColorChannel(Number(s), 0, 1);
-    const val = clampColorChannel(Number(v), 0, 1);
-    const c = val * sat;
-    const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
-    const m = val - c;
-    let r1 = 0;
-    let g1 = 0;
-    let b1 = 0;
-    if (hue < 60) {
-      r1 = c; g1 = x;
-    } else if (hue < 120) {
-      r1 = x; g1 = c;
-    } else if (hue < 180) {
-      g1 = c; b1 = x;
-    } else if (hue < 240) {
-      g1 = x; b1 = c;
-    } else if (hue < 300) {
-      r1 = x; b1 = c;
-    } else {
-      r1 = c; b1 = x;
-    }
-    return {
-      r: Math.round((r1 + m) * 255),
-      g: Math.round((g1 + m) * 255),
-      b: Math.round((b1 + m) * 255),
-    };
-  }
-  function rgbToHsv(r, g, b) {
-    const red = clampColorChannel(Number(r), 0, 255) / 255;
-    const green = clampColorChannel(Number(g), 0, 255) / 255;
-    const blue = clampColorChannel(Number(b), 0, 255) / 255;
-    const max = Math.max(red, green, blue);
-    const min = Math.min(red, green, blue);
-    const delta = max - min;
-    let h = 0;
-    if (delta) {
-      if (max === red) h = 60 * (((green - blue) / delta) % 6);
-      else if (max === green) h = 60 * (((blue - red) / delta) + 2);
-      else h = 60 * (((red - green) / delta) + 4);
-    }
-    if (h < 0) h += 360;
-    return {
-      h,
-      s: max === 0 ? 0 : delta / max,
-      v: max,
-    };
-  }
-  function hexToHsv(color) {
-    const rgb = hexToRgb(color);
-    return rgb ? rgbToHsv(rgb.r, rgb.g, rgb.b) : { h: 0, s: 0, v: 1 };
-  }
-  function hsvToHex(h, s, v) {
-    return rgbToHex(hsvToRgb(h, s, v));
-  }
-  function parseRgbColorString(value) {
-    if (typeof value !== 'string') return null;
-    const match = value.trim().match(/^rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
-    if (!match) return null;
-    const r = Number(match[1]);
-    const g = Number(match[2]);
-    const b = Number(match[3]);
-    if ([r, g, b].some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null;
-    return { r, g, b };
-  }
-  function formatRgbColor(rgb) {
-    if (!rgb) return '';
-    return `rgb(${clampColorChannel(Math.round(rgb.r || 0), 0, 255)}, ${clampColorChannel(Math.round(rgb.g || 0), 0, 255)}, ${clampColorChannel(Math.round(rgb.b || 0), 0, 255)})`;
-  }
-  function getMarkedGroupEffectiveColor(group, index) {
-    return normalizeHexColor(group && group.color) || markColors[index % markColors.length];
-  }
-  function isValidThreadId(threadId) {
-    return /^\d{6,8}$/.test(threadId);
-  }
-  function normalizeFavoriteThreadInput(raw) {
-    const value = String(raw || '').trim();
-    if (isValidThreadId(value)) return value;
-    let url;
-    try {
-      url = new URL(value, location.origin);
-    } catch (e) {
-      return '';
-    }
-    if (url.hostname && !['www.nmbxd1.com', 'nmbxd1.com', 'www.nmbxd.com', 'nmbxd.com'].includes(url.hostname)) return '';
-    const path = url.pathname || '';
-    const threadMatch = path.match(/^\/t\/(\d{6,8})(?:\/\d+)?\/?$/);
-    if (threadMatch) return threadMatch[1];
-    const poMatch = path.match(/^\/Forum\/po\/id\/(\d{6,8})(?:\/page\/\d+)?(?:\.html)?$/);
-    if (poMatch) return poMatch[1];
-    return '';
-  }
-  function makeFavoriteThreadUrl(threadId) {
-    return `https://www.nmbxd1.com/t/${threadId}`;
-  }
-  function trimFavoriteThreadDesc(desc) {
-    return String(desc || '').trim().slice(0, 20);
-  }
-  // 判断码点是否为全角/CJK字符（视觉宽度 2）
-  function _isFullWidthCodePoint(cp) {
-    return (
-      (cp >= 0x1100 && cp <= 0x115F) ||        // Hangul Jamo
-      (cp >= 0x2E80 && cp <= 0x303E) ||        // CJK Radicals, Kangxi, etc.
-      (cp >= 0x3040 && cp <= 0x33BF) ||        // Hiragana, Katakana, Bopomofo, etc.
-      (cp >= 0x3400 && cp <= 0x4DBF) ||        // CJK Extension A
-      (cp >= 0x4E00 && cp <= 0x9FFF) ||        // CJK Unified Ideographs
-      (cp >= 0xA000 && cp <= 0xA4CF) ||        // Yi Syllables
-      (cp >= 0xAC00 && cp <= 0xD7AF) ||        // Hangul Syllables
-      (cp >= 0xF900 && cp <= 0xFAFF) ||        // CJK Compatibility Ideographs
-      (cp >= 0xFE30 && cp <= 0xFE4F) ||        // CJK Compatibility Forms
-      (cp >= 0xFF01 && cp <= 0xFF60) ||        // Fullwidth Forms（含全角字母/数字/标点）
-      (cp >= 0xFFE0 && cp <= 0xFFE6) ||        // Fullwidth Signs
-      (cp >= 0x20000 && cp <= 0x2FA1F) ||      // CJK Extensions B-F
-      cp === 0x2026                             // HORIZONTAL ELLIPSIS（东亚语境占全角宽度）
-    );
-  }
-  // 按视觉宽度截断（CJK/全角=2，其余=1）
-  function _truncateByVisualWidth(str, maxWidth) {
-    let w = 0;
-    for (let i = 0; i < str.length; i++) {
-      const cp = str.codePointAt(i);
-      const cw = _isFullWidthCodePoint(cp) ? 2 : 1;
-      if (w + cw > maxWidth) return str.slice(0, i);
-      w += cw;
-      if (cp > 0xFFFF) i++; // surrogate pair 跳过
-    }
-    return str;
-  }
-  function _visualWidth(str) {
-    let w = 0;
-    for (const ch of str) w += _isFullWidthCodePoint(ch.codePointAt(0)) ? 2 : 1;
-    return w;
-  }
-  function formatFavoriteThreadMenuText(item) {
-    const text = item && item.desc ? item.desc : item && item.threadId ? item.threadId : '';
-    const VISUAL_MAX = 18; // 侧边栏实际可用：≈7个汉字 + "……"
-    const ELLIPSIS_W = 4;  // "……" 两个全角省略号 = 4个半角宽度
-    const w = _visualWidth(text);
-    if (w <= VISUAL_MAX) return text;
-    const truncated = _truncateByVisualWidth(text, VISUAL_MAX - ELLIPSIS_W);
-    // 截断后加"……"反而比原文更宽（或差不多）→ 直接显示原文，接受轻微溢出
-    if (_visualWidth(truncated) + ELLIPSIS_W >= w) return text;
-    return `${truncated}……`;
-  }
-  function normalizeFavoriteThreads(val) {
-    if (!Array.isArray(val)) return [];
-    const seen = new Set();
-    return val.map((item) => {
-      const desc = item && typeof item.desc === 'string' && isValidDesc(item.desc.trim()) ? item.desc.trim() : '';
-      const threadId = normalizeFavoriteThreadInput(item && typeof item.threadId === 'string' ? item.threadId : '');
-      return { desc, threadId };
-    }).filter((item) => {
-      if (!isValidThreadId(item.threadId) || seen.has(item.threadId)) return false;
-      seen.add(item.threadId);
-      return true;
-    });
-  }
-  function collectSubscriptionFeedsFromPanel() {
-    const parsed = [];
-    const seen = new Map();
-    let valid = true;
-    $('#subscription-feed-inputs-container .subscription-feed-row').each((idx, el) => {
-      const $row = $(el);
-      const desc = ($row.find('.subscription-feed-desc-input').val() || '').trim();
-      const uuid = ($row.find('.subscription-feed-uuid-input').val() || '').trim();
-      if (!desc && !uuid) return;
-      if (!isValidDesc(desc)) { toast(`第${idx + 1}组备注过长`); valid = false; return false; }
-      if (!uuid) { toast(`第${idx + 1}组未指定订阅号`); valid = false; return false; }
-      if (seen.has(uuid)) {
-        const first = seen.get(uuid);
-        const suffix = first.desc ? `（${first.desc}）` : '';
-        toast(`第${idx + 1}组与第${first.index}组${suffix}订阅号重复`);
-        valid = false;
-        return false;
-      }
-      seen.set(uuid, { index: idx + 1, desc });
-      parsed.push({ desc, uuid });
-    });
-    return valid ? parsed : null;
-  }
-  function collectFavoriteThreadsFromPanel() {
-    const parsed = [];
-    const seen = new Map();
-    let valid = true;
-    $('#favorite-thread-inputs-container .favorite-thread-row').each((idx, el) => {
-      const $row = $(el);
-      const desc = ($row.find('.favorite-thread-desc-input').val() || '').trim();
-      const rawThread = ($row.find('.favorite-thread-id-input').val() || '').trim();
-      const threadId = normalizeFavoriteThreadInput(rawThread);
-      if (!desc && !rawThread) return;
-      if (!isValidDesc(desc)) { toast(`第${idx + 1}组备注过长`); valid = false; return false; }
-      if (!rawThread) { toast(`第${idx + 1}组未指定串号或链接`); valid = false; return false; }
-      if (!threadId) { toast(`第${idx + 1}组存在不合法串号或链接`); valid = false; return false; }
-      if (seen.has(threadId)) {
-        const first = seen.get(threadId);
-        const suffix = first.desc ? `（${first.desc}）` : '';
-        toast(`第${idx + 1}组与第${first.index}组${suffix}重复`);
-        valid = false;
-        return false;
-      }
-      seen.set(threadId, { index: idx + 1, desc });
-      parsed.push({ desc, threadId });
-    });
-    return valid ? parsed : null;
-  }
-  function buildFavoriteThreadRowHtml(index, item = {}) {
-    const desc = item.desc || '';
-    const threadId = item.threadId || '';
-    return `
-      <div class="favorite-thread-row" style="position:relative;margin:10px 0 8px;">
-        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
-        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
-          <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
-        </div>
-      </div>`;
-  }
-  function buildSubscriptionFeedRowHtml(index, item = {}) {
-    const desc = item.desc || '';
-    const uuid = item.uuid || '';
-    return `
-      <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
-        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
-        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
-          <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
-        </div>
-      </div>`;
-  }
-  function parseThreadCookieWhitelistRule(raw) {
-    const idx = Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('：'));
-    let threadPart = '';
-    let cookiePart = '';
-    if (idx > 0) {
-      threadPart = raw.slice(0, idx).trim();
-      cookiePart = raw.slice(idx + 1).trim();
-    } else {
-      threadPart = raw.trim();
-    }
-    return {
-      threads: Utils.strToList(threadPart),
-      cookies: Utils.strToList(cookiePart),
-    };
-  }
-  function buildThreadCookieWhitelistRowHtml(index, group = {}) {
-    const desc = group.desc || '';
-    const threadText = Array.isArray(group.threads) ? group.threads.join(',') : '';
-    const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
-    return `
-      <div class="thread-cookie-whitelist-row" style="position:relative;margin:10px 0 8px;">
-        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
-        <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
-          <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
-          <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
-        </div>
-      </div>`;
-  }
-  function buildCookieGroupRowHtml(type, index, value, placeholder) {
-    return `
-      <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
-        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
-        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
-          <input class="${type}-input" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${placeholder}" value="${Utils.escapeHTML ? Utils.escapeHTML(value || '') : (value || '')}">
-        </div>
-      </div>`;
-  }
-  function getBlockedKeywordPlaceholder(regexOn) {
-    return regexOn
-      ? '正则模式：整组作为一条正则，如 foo|bar 或 (串|回复)\\d+'
-      : '关键词1,关键词2；7/8/9位数字同时也作为串号/回复号匹配';
-  }
-  function buildBlockedKeywordGroupRowHtml(index, group = {}) {
-    const keywordText = typeof group.value === 'string'
-      ? group.value
-      : (Array.isArray(group.keywords) ? group.keywords.join(',') : '');
-    const regexOn = isBlockedKeywordRegexGroup(group);
-    const placeholder = getBlockedKeywordPlaceholder(regexOn);
-    const checkedAttr = regexOn ? ' checked' : '';
-    const safeValue = Utils.escapeHTML ? Utils.escapeHTML(keywordText || '') : (keywordText || '');
-    const safePlaceholder = Utils.escapeHTML ? Utils.escapeHTML(placeholder) : placeholder;
-    // 右侧开关样式对齐设置页 xdex-switch；默认关闭=普通逗号关键词，开启=整组正则
-    return `
-      <div class="blocked-keyword-row" style="position:relative;margin:10px 0 8px;" data-regex="${regexOn ? '1' : '0'}">
-        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
-        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input class="blocked-keyword-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${safePlaceholder}" value="${safeValue}">
-            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;">
-              <input type="checkbox" id="blocked-keyword-regex-${index}" class="xdex-switch blocked-keyword-regex" role="switch"${checkedAttr}>
-              <label for="blocked-keyword-regex-${index}" style="font-size:12px;color:#6f5d50;user-select:none;">正则</label>
-            </div>
-          </div>
-        </div>
-      </div>`;
-  }
-  function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
-    const desc = group.desc || '';
-    const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
-    const color = normalizeHexColor(group.color);
-    const effectiveColor = type === 'marked' ? getMarkedGroupEffectiveColor(group, index - 1) : '';
-    const gridTemplateColumns = type === 'marked'
-      ? 'minmax(0,2fr) minmax(0,3fr) 34px'
-      : 'minmax(0,2fr) minmax(0,3fr)';
-    const markedSwatchHtml = type === 'marked' ? `
-          <div class="marked-color-cell" style="position:relative;min-width:0;">
-            <input type="hidden" class="marked-color-value" value="${Utils.escapeHTML ? Utils.escapeHTML(color) : color}">
-            <button
-              type="button"
-              class="marked-color-swatch"
-              aria-label="设置标记颜色"
-              data-default-color="${effectiveColor}"
-              style="width:100%;height:31px;padding:0;border:1px solid #a98f7a;border-radius:8px;box-sizing:border-box;background:${effectiveColor};cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.42);"
-            ></button>
-            <div class="marked-color-popover" style="display:none;position:absolute;right:0;z-index:12;width:220px;padding:10px;border:1px solid #bfa58f;border-radius:10px;background:var(--xdex-sp-panel-bg);box-shadow:0 8px 18px var(--xdex-sp-shadow);">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <div class="marked-color-preview" style="width:30px;height:30px;flex:0 0 30px;border:1px solid #a98f7a;border-radius:8px;background:${effectiveColor};box-shadow:inset 0 0 0 1px rgba(255,255,255,0.42);"></div>
-                <div style="min-width:0;flex:1;">
-                  <div class="marked-color-status" style="font-size:12px;line-height:1.25;color:#6f5d50;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">#RRGGBB，自定义为空时按默认序列</div>
-                  <div class="marked-color-default-hint" style="font-size:11px;line-height:1.25;color:#8a7768;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">默认 ${effectiveColor}</div>
-                </div>
-              </div>
-              <div class="marked-color-sv" style="position:relative;height:110px;border:1px solid #a98f7a;border-radius:8px;cursor:crosshair;overflow:hidden;background:linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, hsl(0,100%,50%) 100%);margin-bottom:8px;">
-                <div class="marked-color-sv-thumb" style="position:absolute;left:100%;top:0;width:12px;height:12px;margin-left:-6px;margin-top:-6px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,0.35);pointer-events:none;background:transparent;"></div>
-              </div>
-              <div class="marked-color-hue" style="position:relative;height:14px;border:1px solid #a98f7a;border-radius:999px;cursor:pointer;overflow:hidden;background:linear-gradient(to right, #FF0000 0%, #FFFF00 16.66%, #00FF00 33.33%, #00FFFF 50%, #0000FF 66.66%, #FF00FF 83.33%, #FF0000 100%);margin-bottom:8px;">
-                <div class="marked-color-hue-thumb" style="position:absolute;left:0;top:50%;width:12px;height:12px;margin-left:-6px;margin-top:-6px;border:2px solid #fff;border-radius:50%;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.35);pointer-events:none;background:transparent;"></div>
-              </div>
-              <div style="display:flex;gap:6px;margin-bottom:8px;">
-                <button type="button" class="marked-color-format" data-format="hex" style="flex:1;padding:4px 0;border:1px solid #7da6bf;border-radius:8px;background:#66CCFF;color:#fff;cursor:pointer;">HEX</button>
-                <button type="button" class="marked-color-format" data-format="rgb" style="flex:1;padding:4px 0;border:1px solid #a98f7a;border-radius:8px;background:#F0E0D6;color:#6f5d50;cursor:pointer;">RGB</button>
-              </div>
-              <input class="marked-color-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;margin-bottom:8px;" placeholder="#66CCFF" value="${Utils.escapeHTML ? Utils.escapeHTML(color) : color}">
-              <div style="display:flex;gap:6px;">
-                <button type="button" class="marked-color-clear" style="flex:1;padding:4px 0;border:1px solid #a98f7a;border-radius:8px;background:#F0E0D6;cursor:pointer;">恢复默认</button>
-                <button type="button" class="marked-color-save" style="flex:1;padding:4px 0;border:1px solid #7da6bf;border-radius:8px;background:#66CCFF;color:#fff;cursor:pointer;">保存</button>
-              </div>
-            </div>
-          </div>` : '';
-    return `
-      <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
-        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
-        <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
-          <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
-${markedSwatchHtml}
-        </div>
-      </div>`;
-  }
-  function normalizeThreadCookieWhitelistGroups(val) {
-    if (!Array.isArray(val)) return [];
-    return val.map((g) => ({
-      desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
-      threads: Array.isArray(g.threads) ? [...new Set(g.threads.filter(isValidThreadId))] : [],
-      cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : [],
-    })).filter((g) => g.threads.length && g.cookies.length);
-  }
-  function mergeThreadCookieWhitelistGroups(groups) {
-    const threadOrder = [];
-    const threadToState = new Map();
-    const mergeEvents = [];
-    groups.forEach((group, idx) => {
-      const desc = typeof group.desc === 'string' && isValidDesc(group.desc.trim()) ? group.desc.trim() : '';
-      const cookies = [...new Set((group.cookies || []).filter(Utils.cookieLegal))];
-      const threads = [...new Set((group.threads || []).filter(isValidThreadId))];
-      threads.forEach((threadId) => {
-        if (!threadToState.has(threadId)) {
-          threadToState.set(threadId, { desc, cookies: new Set(), firstIndex: typeof group.rowIndex === 'number' ? group.rowIndex : idx });
-          threadOrder.push(threadId);
-        } else {
-          mergeEvents.push({
-            threadId,
-            rowIndex: typeof group.rowIndex === 'number' ? group.rowIndex : idx,
-            desc,
-            cookies,
-          });
-        }
-        cookies.forEach((cookie) => threadToState.get(threadId).cookies.add(cookie));
-      });
-    });
-    const grouped = new Map();
-    const mergedGroups = [];
-    threadOrder.forEach((threadId) => {
-      const state = threadToState.get(threadId);
-      const cookies = Array.from(state.cookies);
-      const desc = state.desc || '';
-      const key = `${desc}\u0002${cookies.slice().sort().join('\u0001')}`;
-      if (!grouped.has(key)) {
-        const group = { desc, threads: [], cookies };
-        grouped.set(key, group);
-        mergedGroups.push(group);
-      }
-      grouped.get(key).threads.push(threadId);
-    });
-    return {
-      groups: mergedGroups,
-      mergeEvents,
-    };
-  }
-  // 兼容旧版本 blockedCookies 值到“组结构”
-  function normalizeBlockedGroups(val) {
-    if (!val) return [];
-    if (typeof val === 'string') {
-      const tokens = Utils.strToList(val);
-      return tokens.map(t=>{
-        const {desc, list} = parseDescAndListByLastColon(t);
-        const id = list[0] || '';
-        return id && Utils.cookieLegal(id) ? { desc, cookies:[id] } : null;
-      }).filter(Boolean);
-    }
-    if (Array.isArray(val)) {
-      if (val.length && 'cookies' in val[0]) {
-        return val.map(g=>({
-          desc: g.desc || '',
-          cookies: Array.isArray(g.cookies) ? g.cookies.filter(Utils.cookieLegal) : []
-        })).filter(g=>g.cookies.length);
-      }
-      if (val.length && 'cookie' in val[0]) {
-        const map = new Map();
-        val.forEach(({cookie, desc})=>{
-          if (!Utils.cookieLegal(cookie)) return;
-          const key = desc || '';
-          if (!map.has(key)) map.set(key, []);
-          map.get(key).push(cookie);
-        });
-        return [...map.entries()].map(([desc, cookies])=>({desc, cookies}));
-      }
-    }
-    return [];
-  }
-  function escapeBlockedKeywordInputToken(keyword) {
-    return String(keyword || '').trim().replace(/([\\,，])/g, '\\$1');
-  }
-  function joinBlockedKeywordInputTokens(keywords) {
-    return keywords.map(escapeBlockedKeywordInputToken).filter(Boolean).join(',');
-  }
-  function normalizeBlockedKeywordGroupValue(group) {
-    if (typeof group === 'string') return group.trim();
-    if (Array.isArray(group)) return joinBlockedKeywordInputTokens(group);
-    if (!group || typeof group !== 'object') return '';
-    if (typeof group.value === 'string') return group.value.trim();
-    if (typeof group.text === 'string') return group.text.trim();
-    if (typeof group.keywords === 'string') return group.keywords.trim();
-    if (Array.isArray(group.keywords)) return joinBlockedKeywordInputTokens(group.keywords);
-    return '';
-  }
-  function isBlockedKeywordRegexGroup(group) {
-    return !!(group && typeof group === 'object' && (group.regex === true || group.isRegex === true || group.useRegex === true));
-  }
-  function normalizeBlockedKeywordGroups(val) {
-    if (!val) return [];
-    if (typeof val === 'string') {
-      const value = normalizeBlockedKeywordGroupValue(val);
-      return Utils.strToList(value).length ? [{ value, regex: false }] : [];
-    }
-    if (!Array.isArray(val)) return [];
-    return val.map((group) => {
-      const value = normalizeBlockedKeywordGroupValue(group);
-      const regex = isBlockedKeywordRegexGroup(group);
-      return { value, regex };
-    }).filter((group) => {
-      if (!group.value) return false;
-      // 正则组：整段 pattern 原样保留；普通组：仍按逗号切词后判断是否为空
-      return group.regex ? true : Utils.strToList(group.value).length > 0;
-    });
-  }
-  // 仅扁平化“普通关键词组”（正则组不参与逗号切分）
-  function flattenBlockedKeywords(groups) {
-    return [...new Set(
-      normalizeBlockedKeywordGroups(groups)
-        .filter((group) => !group.regex)
-        .flatMap((group) => Utils.strToList(group.value))
-    )];
-  }
-  // 编译屏蔽关键词正则；非法 pattern 返回 null（匹配时跳过，保存时再提示）
-  function compileBlockedKeywordRegex(pattern) {
-    const source = String(pattern || '').trim();
-    if (!source) return null;
-    try {
-      // 正文 textContent 常带前导/段落换行；默认 ignoreCase + dotAll，让 .* 可跨行
-      // 不用 m：^/$ 仍表示整段正文起止，而不是每一行
-      return new RegExp(source, 'is');
-    } catch (e) {
-      try {
-        // 极旧环境无 s 标志时回退到仅 i
-        return new RegExp(source, 'i');
-      } catch (e2) {
-        return null;
-      }
-    }
-  }
-  // 7/8/9 位纯数字关键词：除正文子串外，也按串号/回复号做 ID 匹配
-  function isThreadIdKeyword(keyword) {
-    return /^\d{7,9}$/.test(String(keyword || '').trim());
-  }
-  // 兼容旧名
-  function isEightDigitKeyword(keyword) { return isThreadIdKeyword(keyword); }
-  function normalizeMarkedGroups(val) {
-    if (!val) return [];
-    if (typeof val === 'string') {
-      const tokens = Utils.strToList(val);
-        return tokens.map(t => {
-          const { desc, list } = parseDescAndListByLastColon(t);
-          const cookies = list.filter(Utils.cookieLegal);
-          return cookies.length ? { desc, color: '', cookies } : null;
-        }).filter(Boolean);
-      }
-      if (Array.isArray(val)) {
-        if (val.length && 'cookies' in val[0]) {
-          return val.map(g => ({
-            desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
-            color: normalizeHexColor(g.color),
-            cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : []
-          })).filter(g => g.cookies.length);
-        }
-      if (val.length && 'cookie' in val[0]) {
-        const map = new Map();
-        val.forEach(({ cookie, desc }) => {
-          if (!Utils.cookieLegal(cookie)) return;
-          const key = typeof desc === 'string' && isValidDesc(desc.trim()) ? desc.trim() : '';
-          if (!map.has(key)) map.set(key, []);
-          map.get(key).push(cookie);
-        });
-        return [...map.entries()].map(([desc, cookies]) => ({ desc, color: '', cookies: [...new Set(cookies)] }));
-      }
-    }
-    return [];
-  }
+  function spUi(name) { return xdexCall('ui', name, Array.prototype.slice.call(arguments, 1)); }
+  function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
+  function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
+  /* --------------------------------------------------
+   * tag 1. 设置面板
+   * -------------------------------------------------- */
+
   // 双刷新支持：如果上一次保存设置时要求执行第二次重载（localStorage 标记），
   // 则在页面加载时触发第二次重载并清理标记。
   try {
@@ -4761,9 +286,6 @@ ${markedSwatchHtml}
     }
   } catch (e) { /* ignore */ }
 
-  /* --------------------------------------------------
-   * tag 1. 设置面板
-   * -------------------------------------------------- */
   const SETTINGS_BUTTON_ICON_32 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IB2cksfwAAAAlwSFlzAAAuIwAALiMBeKU/dgAACkBJREFUeJy1l3twU3UWx+soPphZd3Udl3XYdZxdfMz6nF1n1BnHXR/soi5EQBaxFkQB0UHXVUFAiyWBIhZZoLUItAVKIfRBaXuT9JFnkyZNbto0zyb35p3cVx6l0IKKytlzb0stD/lHNzOfSXPzy/l+f+f8HqcFBf/HV6xxtsTP/uJDO25gqaoZHH3obj5UeXuW2nXTxWPCjS8U0A2y+5HHkCk/izAX2D6FjTbOZNP2vWwm6mIzcQ8rROws5+9iEx3v8vSeu86PRdFpiAZJIc/+dPHgrn9yKQvP8jSwOQHYfB4ZGn/Pjz3jvEk+Wv+3SQaOIcPi3+KzBlp2Qz0t+8MVhejVsjuQe8NrZDPEz0HHlgIu1vZXJt33LRUjwTRoBiJgho5eNWidnWAIWYGkSQin/JDmKckEF29+vL//86vCDbJrUHz6UVr2NFKOMOPceCUDzyPTkVnh1bJrGPrwrSzraWW4AGj79dA5oAU7ZQNf2AMe2g2WsAM6fN3QbtOBPURCSjQh0EmXv271QcOWWxTHSwpQsASBScz9UQMoOmvcyDO7mzfcru0/siaZcuSotAeMQTOE4k5IcmIZeGCyHMSFJFBsFHQ+Gxx394A/QgKbTUE0pk+ZnZW7jpm3/VkURLhJBjZfKQMPBNfOfU69c0WRsnuHPBBstgX8WognbMBmksCKM8ymse45NJGdWANpNONLeEFj14EvYgZOCDN8vG2hiSybv8Pwwfy6wQVrUbgCeQrXwbUXiCbnvlFAy1ZMRx4kl6+6upSQ34MsCQ0qC2PUcY6idMAke1GYRQMR4DIJFM+MfRbf81mJdCYO9mAvtJMaSLO+b+iI/l0tWXNzqWrjy2Wd62dVOV/7xeVnLVsxFalEKN1H7z+jNG5Zbe3bWcgmDPXpFAkMNwhMwgQcF4KMQAOPKZYyIBqQSEslkUwIEXC7tVgC+whFt7lae2sVOJmbkFnIfZc1EJGtuBrFixHnFweLX96vL33A6Kx5KRhsDLJJI8VmUAAXYZbzw8lsAgRJLCfVWuAHgctxWJ4oZiY6lo0sgxmzDHMRZbnXW9kqJ6pnovhU5PUfrb34wgHTkQX4g98jCxiq7t10rItlhDgG5WAYBc4MZSGfTUoiooEhgcLnYchgFnixNLwfM+aFVKrvHB9tjgt01R6Fqvp5jPcXjP0wMkddbJ+mKbZfP57+milhWc005Eb8sriUKL1FFEceTAZrl7vsdQOBkBsYPICGUfjMiSEYzfPAp51YkgBkeB+M5FL4jIMhNJhifTAQ7gFXb+3XubT5TD6pt2xrr5qB8WQKYu+vUGNji7x7BZp4CJlaEJZV34rMtr65+z78skSuqpmGg5/e1Vl1m0p95KMm5dZ37KR+mM2kIIclOHMiJ5k4iWInhBBkGRKGBT+M5tKQY9wQTLpg25H94CPrY/mUPjKUtuWTEdXCzarqRzHujO312//esLXjVRSfidxTEJtTXRCVVV+ztUUxGw2Iqb8PuVdeTsxAHvfbyq6LBpvXsEzfiJBywEg2jgbykomxbHBweigjGRLSJLj6tWCxagyZmOrRE4ytcZhzscOsO0eHTV0HTIf/gaLvHFcYnfi+Fflkcv2Ltqg2XYUZeAi5E8XnINItx8VbfsdFG1SxQNPZk7gLzmdhMkO4U9Jxy7lUwjacoNVP5eKqhblE+5doYuBUJgI5Pvy1mjxegqLzDu1q+rxV3i2W4JcFe2ThO5E5pa2bFotiOPsn0MBvULxIXtEumeODO6bS3oNrbKaqUcqjgiRthVM59ocsYPozWPt4nDw3MNA+FPFWv3OC6THlk6b4Sd7/1SjunJFc4mxHv+aAGG/zvoNvlbYpbpaCo/ivkbvwQZH4WaGqeVqu3n+TvFz1ihDaOSXkrv2T3a4qN/SYvFpT53dWaxt4XW3fn8RZncb0iyURDQjpAQj4dYDjzvX0diUSlLYaDbxwkvM0jeIiPT0kfO8MaHGZ259TbDI2bP6y7rcXb8FXxjPwpFxdc0tpZetSh61FgwG/7jTbYDJGqwGYuE8yIGbgdF4ALtkPJKmeGKOzmIftdmJt1H/44YjfwLudNthdsfW78m2d59BEUl7seET+kfVSA+sJ5RPLCPOTH9bqN5iMxFcXi2stFrD0GrHe/vES5KVtmGdD4MabcvJYk1XP2W0tH++rVLiL166FooVLobq86is0MIIUKood111g4E2i9drFhGP1a0TP/Dfq7C+o25vtBrPhgqB9fSZIx3xwStoNY/UfzTFYCgbCIdcFYzVaE+iPHeE+2yRP/LtwJby1aDlsLnlvtLSsw4kGqpE7C2QEvQ55ajmhWfEvYkC5jOieWUj0leCz4vJWNemwNOUngnabgXLp4BQXHUs9noojUn0zkMWb0GUlfhDv1IP20Jeeg/sOVJeUfFA2f34RzJ7zMpRsePvb7XvrD6N4G/KsaOCPyP0vEr5H1xDV++YRg4Xr1E0r20jlfwJR6ygdsILRbJSCHiNUYNMehXzSIy4qPANY6RzIxgehsXYnaLraQKMzgq6rHfrNGvCHuvwd1raWaLB9JeXRfeN3mSERNYwe1SjLlAc6PjzwRceDooGZyIvI/FVE08dvEKql27o79zvoXoYXYsCxceh36CQDh5ua4NDuUohh83Eaj+MRvH5DePWWl22Eisod0K5WAWnqhDgdwAsrAxzelAmeOhuOdtO4E86JWRNSHtD3mM64zEor3V3xGBoI34bi9yB3v05oH3lTpa7U+nTtUYb6hs/EpEDRwR5c1Raoa2gA+fr3oM+kQXEGaGzRSj/5EJYtWwZtjbXg7NZAKkGDgA2KCI8XGB31g9dvlzIlGsgyfmky/aajPWHDzkdEA4vE2Y9lITyH6N1TFE66RkVhnseZ4LUr5DNAOdqghWiCD95/Gw5WyGHHp8Xw0qLFsHjJUthf+SnEcQGeFxaJpyLQQ9qgy2IFr9cp3aKigWGxt8TJ9OuUtbSxXMxA5CrkehFxN4Rp9TKGj56VZsC6JwKyuO/tpgY4slcBhyrWwaLCJSCbVwjln60H0nBs3OjYWA6z4xywQ5fZKs3W7ycn7o8RPMD0uKZchiOVdrdy3SU9QTRqUvM4e0FsNsTmY9KsaHcXfLZpHaxauRw2Fq+CPeUfQ8jbjf0fc8G4cNQuHkQTO2IwQE4c2+KOMfd0gd6lptooHX+BeMy1bVo8PfCdFAiv2slBpSykKagsV8CCRUugeMNaoEI9l4wZq30aNIMG0JFaMGG7HvDZxxctdk0sNq4BHSjpXuiLmk9NiBvU6wo8/rrdPB4oggiu8EuCY2ZsxmYo3VQMQcpzWfHzDKRc0BRxwtGwHeopMzRQFhR1QH3EBV1xD0R43GHcoHnCgNu77w46Zh6RAmCdJBOXCZyO9EPIY7qiuIA3pbiA49jEUnho+dkI+LkYBLk4RPH/CC7LS2sGs/HfCQOk79ASBltuKQAesxfX/3wG0qFuSIWubIDnsXzYqIo9otjATl6gE2MyyTMs4371f1z0RWiHZ4pgAAAAAElFTkSuQmCC';
   const SETTINGS_BUTTON_ICON_64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IB2cksfwAAAAlwSFlzAAAuIwAALiMBeKU/dgAAHVVJREFUeJztewl0G/W9LkmA5raldKX0Ao+errzS0ntvOa/tLfRyeb20r9DYgUIuSUggkA0SAiSQFEISIie2yeJ4i7d4je14X0eWN1m7ZHmXJUuWNNo1iySvCSkJTfJ7v/9IdqR4ycI9r+edc+ec72hGM575f99vHyW33fbf239v/99urpoVS/7ea7jpzd+fsYQZTl/mM6bdETBm3DIBuib+cXt1fC9dHb/GURN/+3/lGv9LN0tP8hLWkvIgZy96kXM1Slh3i4P1Sj/hvLJPOU/nGOduMXJuSsK7GpJZW8lz/Gjmv4Rs6Xcsdk8k/UMk34QAxEVEPX733f9HlG5scxuOLWPNKfdy1pOPs562DpY1TLMhBtjxMcT4VYyFgA1xwAacwHIj51mfjubtp0Qhe/pPnOaMOfdFol9AwhmI6YgABH/D7x/9O9CcuwVGU28PWFN/zNvyPuacjS2sS9zNcqYL7Fgwlvi8QHGISExPgHPVVwdsGT+/9v7o+l9CwlURy88IoCPf/z34xmwBa9odnL04j3G1nmdYCzCcDdigHxjeAV7cd+J3TsYCLnYUvH48z9N43hf2gmvFCPHAemTneFvO20Fb+j9EPwfJfgEt/iQSVyKGEE/MnKuyx99RaY+/Dz9XIRJxf+3nJkbvjruD3h3/CP1e/I/wc8H45K3pTzM+/UWGNQOB362EXloGrbQGGu1aaDDJQaJrAaq/A7qUzdBpkIHCoYYhpxxcHh0wATfCAYx/EMWzojAB9Ia+i7w9f9eYPf0L1z4Pid+H+CmKsbzWEb8Myf4BkYtQI84jADFS5Yq79WqBpB+yvxe/E/EWYjcKsJXePbf8BO3pX2GdDSVk4X4k4GOGQWbvgiZ9O5zpU0FZnwaqVDJoaJNAQ3srNLZKoFrVBRUGFVSNqkA8imLZZOBwydEz7CiABfOCC0jocF75CG/P/VXAnr5svjVW2VcuRaJpiIEI8SsR8gQXquj4B2+JPBL+AWIv4p8EMfY8QwR5AkXIdO1ZOSsCYz7xFdZRs4Xl7eeJ9fy8E7T97VCllkGtvBMqjSqoo9UgcfRAl00HapMSlIMykJhQFHs3nDFooEYphdquDqhTdIDe3AUOEkLsSDg5Ek/wq31uW+mhkq6kBxOpg0uj11lLP78kYnVYAAerHStvvlQi8ScQK5DwrPvR78Utxe9Ujt3xs3HJ2Ip+w3o6u9igFxi0PO0fgRZtG1R0K6Gltx26R8VgdbbhOQOwPOYFzAksWtiNYg27VCB3aqHFqIQ6VUfYQzQYIhg2Ho7GcOjFfMAi/ODxyC509aSeONV5+NEkSvTl6LWilTcuIkAL4ua9AIn+b8RTjihrR75vQ1HuIvuJlOj7o9ZaOcPbLjG+Hly0DbQODVQY1aC1SsDhHQA/fs8GPfNn/jEsgSich7PDkA2FGJJB6YAOygc1ILepUCwMB9aE14YE8VwO8WX1QLatuCspD5/91VkB7HFfRpK+BQTwIt6+aQGQ5E/R5Xcivh/13fdRAAlaYBkuYEt62yEbw/SBP0AD7WgFs98IraMSMNFtQnZnOEyIeO76JTAMPzcKNUi8yNgLjZIW0AzVA8saw/kAz3N+/QWGrjnvHC290qD+WJUiSfj3mbUhyYwFBOAq6fi/3LwH7BbcfRXiL4g/IZ5HHGw9selHSH5fslh0smcou86Pbm82d4J5pBNcbgXY3BrBbUmZY3x9kcXfSB8QBol/BYpQq+mCaoUU+gYlmFQHwz1CwPkZ72l5Gxulxx0jqe/r+o9VlMqStiaKRaT8PYOYjpB2IjoRf8FyeG+t/9mb5i9s7t3xS9AD7kXijyF+WZX75s+QfB1i1+DgsSdZd7vMPloNSm0dWEaUSFgvZG4Cv7cnTD7oBk7oAmfcnl9cBDzvxb9TY2UgOaFZ0QYGazMQoUn+4LzSap7OfzixWbQsSSz6H7iWFMSxYsO6B5HsAST9AeJRzAvfqqY/Rwm8dsOHfBkhijzwXtaSvp1xtXmMw+Ug7WvF+JSD36MIk8AGhwl4wrGP4EK+qCaHtL6OhQUIefH8KDZNJmgdaoXyXjW0GyVg96jD9/IqGJwd4iJrWoL4n4jGJPHBTeWWF4gI37hlknT85m/Z4zdvQRxCPOaI33x75EE/RBxC7CDH43TG11hnY5vfXn3F4WgAj38IS5Ue/E6JkLiEzE3IkIaGlDJCKnoO4EfDLo3JjQs653oFJkeOxzLIGkA5IoWmdjHo+yWCAKQ8Wu2thqOS/IdEzQVCSUxsPEhy0nGSlxDf/DwCrELiEwhAtODxd5KbRLcdEYt24Y1PI+4n12F7+gjjaBjx2htwQYawVZl+FKAVS1dfuJHB+s37upEILRDkZkSZ6fvJNYLF/cAF7OF6H+MJKBA7CE6XGtSddaBUNQgVA4U+73F2fJYvzcsRUQUPJzQXLIkY6Z8RZxDP37IASDo9Qp7Aj/hXvOGj5fIk6eBgyvGANXMXay9NxrovZ9jhC2GLhFtfEuuMR0qmOqHmcyjE2ZATgjPNzLVWJj3BTG5AD+F4Y8RToj0hKNzPieE1YqgRcgrnkVTyrvpSTX/+uZOdpyQowg8jAixFPIOowPzwrVsV4GmEBRFEFObn7v0zuWEyJfr2hCPzbs6a9XtZf2n7gKnGzzprtayL8gm9Ox+JaeINpG4j+XNjPvjr5ASM8Zaw5YQQiAoD9IAgWjh8bjxc6wNW9AY6/F30kITEiaiMRwacm2rg6eKXeFv6keHhk4aM9nwxivDtGQ643v+FyEY8cCsC3IVuvw4/D/Rv2Easn4Y4MHMeH3QfQirtyT/BWXOP8t52tdDhhfjZBEcalwBWA0KeYCpgA35GAIFURAgsbRMBC4Q4YyRJhsUh4cBxpogQnquiobcwfhJm1EXsPkcCtvRs3paRc1qeV4treh/zQThfNQqeQBqlN0mluCVPiCj5W0Q64hGBvLhwOT7oY5G44AXGkvErjq7ScnTFWFgAfzgPCNZywyQufkaA8+M8hHjrlVkrj0XcHq8ZYwfg/EQQr7cCj6RnQ4IIhSHFovdwbA8KgiUw5BGe4/dqPmNs5V7OktrFj6aWGYazHsN11eD6no5a+9ORnPXDzyNAEuKpRIloScT6jyH5ZLLPWU4s451VH7OOxgkGuzfG1xu2FCl9aKXpMe+sAARngw6hKxSmO9wXiCICXkWUUBxMcoNIeADP+WJyARekgWN0gB4HvEeCpbAVWNspJmBNP8qZU7+Ja7sLUYkifCOy9i9FKsLmln36f0T8DnH3DZPHVvfr+MflMyUFif8AH3AQ8VtybOs/fqdpoGyXm26nNYpysOGUN2N9MsBMobWiBSAI+buBdXcJZZFDiwsJj3jAOBtzXViIIWDcUox5NVpcC7RLBgp5CRgHqoF1tVwc98onzgYt/KSvPZG3pn0xYqDtuM5nEcsjIpD+oFB8QBuH5Fsk+/TbJPt65p8K7fGFP6HjC3fS8QXfi/zxOsTWw1gCIzdfh8hGCK+eGHP6i+6RQoXbUibKydx7SSqtizRAHiFZjSPBawX4BImO+3sg4O4EnrS2JM45A4QYPYZBKEqAAIyTGYIMQgEvDLu7ocvQCvWNJ8E2VMDz7s4LY96OsSkMiwmfkuftBc9E1vgI4jjinyIc7iAhXHW05SSSX4FYh0LsFu/rju0OHXH5S5H4ayjA4/i5Af9oOSKLKDhzjYgqTMAbbxaJ82/DavAdvaqgtaP99MGB7vwHc9J3e/JOpYcTIXkFho1KAHuCawX46+S4IMIUZv4p7PSCDLbKWDY5Zy1MMlo8PyZcN425gXNJhVdqDJbONrscDpWdgoyswxB0y6Ymmb4rk0z3lSnecGU6YLk85m5q9Y+cuAstT8IgH7Fq1pObElbXJnWUI/lvovXvQQHScf+3MQJY/k8+NkCFcegFm/HzKSS+gmTRq+QL7sHYyk4QFwrWF2VQdyJKEMKUWFbw/oaivA99dpsmEgbo4h4ljPvUQoKbK8SMR3AYFnr4dGpKsLogECbIMa8avWIAQ2kAzKY22HsqC/YeSoTW5hzdpKd+17gj948B+nTmmKfzHBFzGqtMyNVo5a3ZvzjUUriCeMHM2sX7dU+VpzYoqo9I/g0F+DHiARQhGfFbFGL5rAiuuIJljviCB8yr8kkJ+RDxUZQA/0Hia/Y4g3oEUYgQbjCiO/qAQZOy32mTTJIcQOaAALp4yNMJ50LuBQUQSiS68V8nJ2ePz2HjNI0JL8AO41yhhr7uekhIPg4yuXjCPNy0GbP+HSF300sTfl3fdGD0s7NB22UiwLhPByFnbVVXb+Hjh8UFJWisO1s+7F6CRPfXH+6aaP5IrcD904ijiFJEDuJHc3IB1s3lQieFOWCWsLgQk1/hI1EC5CJi3raG7Bl34ZRWwrrbLrEe2YVwk2PA7E8vKsCM28ckS2YIE58OfPZ6/OwFJshc9rhUH9PGkvs5W8kjU5zBMsX2uMc94uMTPsUkIT/NW1E812eTfpmiQn1aTfIAWvhbSLITAYhPEcOICiIK4jnEvXMFwO4JUYx4khwfpAq+jAKUiepPCQ1FQqZ4GZKfRvzjtX/LmFMf5NziIf9IWoVnOPUyg3NCCDu3c9eUxEU9AgcgH42jr7MNfB7tFZ+r65LPPzLsMOQ8RJ4x7m5JHvdKx8ZctesDdMUH417F36axcZrxItJzDIw0T6MAryLBr6MIq06W5IiSGw7XkKQ4h/DMdireMiPAzxPFoqOIn0es/wu8WfrMdQmZ1E+QvF2U2TrvnM3bc1/3mjLbZeLDkyxdi5ax3DD5v06MYZXAidKPLS8mU4e1dQwHqytO85k3Ohr2LAmMpn0haMt6KUifSQzQleUYPpeneTMm0F4gn4Q8EcLt6JwgDVuUUf+AKEPcMy/53HjHA3nx9F7EF/Gix0kOSKISvisIQBXEowiimWuR/ApE2UJCBm0Z3+ZGM94V14qmhrRZlwOYDElW/2TcDxM41Ezj6DsfeZIsp/F8wNcjlD6PSwfm4UYwDYvBOlSYxI9m/Hrc0/LxNG+ynAvSn05ikiTihnPIOO6PYgiEPW3cr/HjuktEzfnh1rgq5YnEuiPFSWLRD+ZdNBL/aW48LUUh7hY6P0q0EwW4JyLAa5hQZt+nIfmNogzx/mvvwVnSlmKC+s3IYKlF2916RaHpgOqyw6CQJABVmwDi2kSg0a0DrHFe8hPYPJ3DChAkXSVjAnq0Ewx9Z6BdpQO5VgYOY8E5jPlPMMYvBh3VZt5aIEP3nzw/MTabTGcqzjTXf+5wS8EZFOBrwpoPaJsPHRNbEpsSfraQ4W6ren5qxl2eEYYISvS1iABvoAfsihJgBwogvBSh9cfJz2HfGDWcfn14oLoNiV8gC76KbpBpFNDT0wx6PQW8W3ZxGhsk4qpksaRCEMtNY9zPJMMQHjusEjAO1kOHSjt7ry7hPk1u61DRr93D4R9IUIgnJv1aHWmiJvxXhy/ibZQury2rrvzHCfv0O0WYBBNESufh9Nrr/4CKxP+E2I7V4KsRAV5HD3g3SoDtiHf40bQvuk25rxj6qxsU2q5PO9VqiCV/FeRcTw8FQwPiy36HCs6iCFM4+2PWRiECMd4wht3hiKEe+nvr5tyHCNKtFw+jCE+xlrTlvDV1+Zi7YdW5ED1NKkH0fUaHSvw1ZYXihP36ABEAMSXa3/2HGxGATFE7EF+PCPCqKDYEXsNE+BE9nP+WvoeyIvkLCxGPhlrXAUqdDKwWrdDsfCK8KxiPCoOQgAl05eHBBkJ03vtI1apLfb0NSquh6DmynpCj6L4Jbwc15lXOltWQzwjpKR9cSjmSfPFYovpKRIDLiHduRIAnEbsR90UE+CMKkBglwFNZxdW+ga7yv0W76PXQpZYL4dA3oJtNVtEg34WFYcBiqAAVCra4oO2f2YeLXkRPvNvSn/OolEqCjpYzkHJ0P6zf8Co8vWI1vP3mNjh5goKIAIieftFe7dKF2YcF+DV5AYLT4PcjAvxLAlWYHk/Rd8dT9oc2nulbvydf6unuPD0lVSlviDwJAY1OAgqtAoYNSmyO5naHZ7FShNvhCfDZKEDvuu59B/oaBlGE1cM9uc9v27YJ1qx5GVbEr4U/Ivk1f34Fdm97HbLTSv92VQD9ecT91xPgYUQq4hfk+IC49Cu7qMZSJJ+PSF7ZbN+57bQuWN1ebVCrWm9IgO5uCpOaGMdbI0ywpjntMRmQsK2dPZ7ESjAyLL2+sCrVFY283t9cVyRPOPgWvLLqVXh99SbYsXYL7Fm/Dfa9th0aio6YkbR1RoSEfT0HrifAvZH3AL+Pa6ZvR8vveZEy+N4Utz0WFQa5ZWVlWQPqM4xMLVt0kTKNHHyObsG1Z1z92hAY8yhjjqdwmLKYFNcVgKqnoDUt9UplyenPqDMi58ENO2DfK29C0sZ34I01m2H9CxsgO/29T5JOVr+TkNQ54wXjon3dVztCtOrDSHL2l97E5oO3I/mSj6ij7+C5XXju0FuUeDuGwo5nxfY74yjHV/eckv5bck5TjUV2kupWNV1cbJFaFQVjzt7ZeZ+Uv+gJkbj+tR4R8g2DYaBtwXu2KjTQ3NwKHTkpPllZtjg5u7HEpDlStOq59bDzpdfhnZe2CjngT3FrYO8Hb8CpjsTKw6XZ5Ui+P5ILfhctwElEHhLdgJ+/wc9/3US1lq+n1AN4vBWPv7aRUt2/iVIaV1L2Ivwum4TD5upea7vytNSoLBhfVIDOQhh3DsRk/OhxmAwxscnQA3ZlOXTrmue9n1iqgPr8YpDmp07oatLWHc2t340e+UrAlrbjhRfXQRzmgD+vXAd/+NOLEP/ntZCVtvtC6qlK66ETTYeR/GZEEAVIwVBYGhGA/iUSWo84gPsnEMdXU715b1I1g89Slnvw+Gd4LhFF0KMImbj/u/+kTM/kaST9MpN4YlRbclGh6Zp3saRKNJYnw7hrMEIu1tLngq6YcCD7nKEVZA0ZoNR2zrlfm1ID9UXFoKjOAmNXujqzsObJyGT66Bid/pOSU/vO79q5FTZveQ32f7gDyoqSoEed7U4qPqVIEKleRuLYFPUMIhoT9vXeHRHAMWdCSqIOLj1MJSRtoGQiJJyL+A+RuCAOUdCqOfm41lRh6nWqhBegPGcDQ0cZdKnmxqxaK4GEvTuAt2kEtz8bcggJb8bS01GvzaaYUdA3Z8HhD9+ChoaiWKu3d0FTZQV0nM4Dr7ETnB4V9DqkIO+rmmyQVlOW4RyhZE9zg5Pk/eInQoPFhxsiW8ulWsXx4+aB00+ODJT+u8eY/s/6ztIvHdyrmw2Bo2jl38c308LbnnixYwl+9721VPfxVyi5chVl+B6KtPQAVXLvsdbCd6n+crvRIQcOM3UgxEJgfAycvfXQJ62eI4C8qwze2LQJRnWV2KqGfyghb4eFfl2YEiN9PDsC3Y0n4c03NsPW1zeCTN05G+vlZVXQWZoLFp0Y/K5h4XkEfNADVq8eBuzUefVobafPkrlimhu+eG2YeR1qLL/tU0qtdEyhlYYsshw7Zz7xRFQOoHciMpB0MeIY7qchcJ8+8gGVVXmISnwQBfjqs5R1//tSlUY10niFC7iAx+QVCPlwMePA2PVgls/1AnFTLrz88gbQi/Ngwt0vkA+PrOgB44wwB4x7dGDvKoIP390Occ+thSMf78XQ0YC4Uw51BcWgqckB+6AMON4DgbGQ8LwZ8CE/eDkLmJztl5SWOgPOFFeuFcDv7IlZk0mSC4wpZXWMy8c1OEkofBHxXcR34ihaGCP3Uye2bKTaGldS1tNHlPLtvSPVMjczEn64IIA3vJixADCOHhhUx/bvNZXH4ZmVa6Ay7UPgzao5Lz4YkwyaCw/D2nUvC83LwYPvQiNVDfVl5dBekgXOoXbgx4IxpGOA5xjOBRZsr7XoIWfnGbV5T1/MmiwtGcCMpDwV5QFzcwDZVoodSzEZbttAdXlfpaRbBk3FG0fs4mku6I0IYL8qADlGCzn6arBXv9od1lYeE7Jx8gdvw4i84mr2Jz+IjKqgsfAQbHz1VeGaVWvWw5kzWSCurwZFRQ64DVK0MLcweQwDj9cMRpMaew0lunmnkFfmCtAfk5TtrSeAG019OLoMzpsDEG8hPt5LZZ7AhJgxYqnQuL09kRgkAlhxgd6YBbGeARhQVGLrqwo3Kg3pArnVa9dDc94hYQCaYixgVZVD8v63gZQtcp4gNWUfNBbngbIyG1ifRbDuQuR5FNCJpVXVrcRnaYRnabpbUVj/3PeLvqsCkJHa0ZpyJWBLFypA0Jb2m9sE8hRdiWQDCCPu2xAWxL6VEiv51xf/kNeekD1qb8UH87OL4Nh+jEuL4P6zi5sYB2dPBfTKwqGgUxXD758JE9z33nZwqXNAV58EWzdvnCVO8M47W6CjLhv6GrOAwZK5sNWRfNAPRmOXMFhFu7YO2+1rR+vw26He2WuU2g6gm06cZa3vL/GbTixjhk8ULJoDyDagTLjDYMg5TP7lZ/RCOK8cvcA5Z4GMYwCs8lJQqKQ40DRDVeEHQoIrTN8DR0Vvw5qXXo4hv2nzayA5cwiUNbnA+rGyjIcWsTyL5NVkJJ5TcfqwEs28HYrJNZwBOtTaSFcqRgFSteP2jCW20VNrXd1phvnCP2ajB4/90mwuVcdYenwCOE97pAxes1CMW/+oBgYVVYKVOhsOgqn6GJjrj8Pe3W/AyufXzpJ/EUOjNG0P9DZlInnrbHjNb3mP8PvjfOQJhvpr5u02zwZtOIqH85JO2gROaUqGw5r3U6mV6jUMFZkXJZ997NXbjIbs3Q5azMRmXx54X9eCC+YYGuyqMiHmqOpDkC7aBflH90BbxQHIT90tZH0iwIG/bIe+phScEocWJU+8wunQQ3fv/B0ngXGwat6XrZ+MeUGuCQ9suo4G8Pac2Nlrr86psyk+7TVXtC0qgLk/9X7zSJnWy5hireHXQgAtsliskrJoVhRASXEKPB2/WiD8n5jpEz/aAS1V+0F04E2g+4qBZWyL3mcm6ZnMHaDSty8ogHmoCj6dmpwrAg5hmm7yd1rQK2qg11rJF9v7oMkmhQFbRcKiAhiHsh+3060Mw7uirB8A3ttx3UUHcNFuTT401GTGZPs/xq2GDz/YBkOadGC9fdex/NUKY/dgrTe1gLRbFgmD2LdRpsEFBED09lIg13WBfKgZSuw9UEL3Q6+96ZLDdnrz4h5gyt/r9g9ejilJLGbp4NzkNx9YnxH07WmweeuWWQGefeElqCo7gn3D6A2Sv+oFBrcOKke1IMYqIMVxWdMtAZWuHWNcAQO9dejurDBrkH6ANFpjzAC4sHRLza1Qa1FBkb0f8u2DoMc5xufpcrPOhqcWJD+sPrTcPFrr4QLuWOuzfTe8aAI3uu6RQ7sF4hs3b4HqyhzgAouHz8JexUKLXQWn6CHIow2QTw/CaVsPVNlUUGeTQ4NVBrX4WWVTI9m+2evIZwkeSxzd4CReR/7lmVd92mfJ+/GCAlj6jv/MQrddicn+2PuTf8dzM4tmPCNAnTkCm7H2l5RkgtdnvjXyEZhcMmi0K6Hc3o3EDALBhUDOF9t7oYHWg8KpB7c/snbyL9Q9KpHHlPntecnLWt6/vc9YeNjju8ba6Pp8wHGTVgtgi9wEjeXHwcfcWOgsfC8vVh8VitiNk2Av6B0ykNk7QGLtgGZrJzRau4CySqHV1gUKWoWujrnBZwAv7xBCaDacgu7PGLfsRUt/7vw/lroNxx/vM5Xq5/TiZAAiv93fzKJxgvP0NYJLW/z5yJMRmNFHPofQEDOJeUJ4BulSFx2covMJT3t9topfzUt+tDvpTr2pLMtil5yd88c4zgYC1y9bMQ8LsuA1UeAxNn8+8tjRkflDuCd6IY9j8K3ej2MG5S7D8fnd32LIfEg/Ujns8A/N44I4//PGGyePscZgvLr7ysGlL4HF2tzFRUTX581C7M6S4Mzzd6I3AL+jMbFXJpr/BxKtsWzFsI2a9nH2edwZEyLbe4OuHwDPMAUuTTEOQXn4iYOOQ3VriyahJ+SeqLKJ4clxI7cgphu8Izmz/3vi/wLKEJjy325E2wAAAABJRU5ErkJggg==';
   function installSettingPanelEasterEgg(root = document) {
@@ -4882,7 +404,7 @@ ${markedSwatchHtml}
         if (!(key in defaults)) continue;
         if (key === 'blockedKeywords') {
           if (typeof val !== 'string' && !Array.isArray(val)) { skipped++; continue; }
-          validated[key] = normalizeBlockedKeywordGroups(val);
+          validated[key] = spData('normalizeBlockedKeywordGroups', val);
           continue;
         }
         if (typeof val !== typeof defaults[key]) { skipped++; continue; }
@@ -4992,11 +514,11 @@ ${markedSwatchHtml}
       this.state.enableImageHideMode = true;
       console.log('init合并后的state:', JSON.stringify(this.state));
       // 兼容迁移：屏蔽饼干到组结构
-      this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
-      this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
-      this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
-      this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
-      this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
+      this.state.markedGroups = spData('normalizeMarkedGroups', this.state.markedGroups);
+      this.state.blockedCookies = spData('normalizeBlockedGroups', this.state.blockedCookies);
+      this.state.blockedKeywords = spData('normalizeBlockedKeywordGroups', this.state.blockedKeywords);
+      this.state.favoriteThreads = spData('normalizeFavoriteThreads', this.state.favoriteThreads);
+      this.state.threadCookieWhitelistGroups = spData('normalizeThreadCookieWhitelistGroups', this.state.threadCookieWhitelistGroups);
       // 清理废弃字段
       const validKeys = Object.keys(this.defaults);
       let needCleanup = false;
@@ -5016,11 +538,11 @@ ${markedSwatchHtml}
       GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
         if(remote){
           this.state = Object.assign({}, this.defaults, nv);
-          this.state.markedGroups = normalizeMarkedGroups(this.state.markedGroups);
-          this.state.blockedCookies = normalizeBlockedGroups(this.state.blockedCookies);
-          this.state.blockedKeywords = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
-          this.state.favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
-          this.state.threadCookieWhitelistGroups = normalizeThreadCookieWhitelistGroups(this.state.threadCookieWhitelistGroups);
+          this.state.markedGroups = spData('normalizeMarkedGroups', this.state.markedGroups);
+          this.state.blockedCookies = spData('normalizeBlockedGroups', this.state.blockedCookies);
+          this.state.blockedKeywords = spData('normalizeBlockedKeywordGroups', this.state.blockedKeywords);
+          this.state.favoriteThreads = spData('normalizeFavoriteThreads', this.state.favoriteThreads);
+          this.state.threadCookieWhitelistGroups = spData('normalizeThreadCookieWhitelistGroups', this.state.threadCookieWhitelistGroups);
           if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
           this.syncInputs();
           this.syncAuxiliaryControls();
@@ -5460,10 +982,10 @@ ${markedSwatchHtml}
                   this.syncAuxiliaryControls();
                   if (typeof window.__xdexSyncDarkReaderTheme === 'function') window.__xdexSyncDarkReaderTheme();
                   $('#sp_cover').fadeIn();
-                  maybeShowPendingUpdateDialogOnPanelOpen();
+                  spUpdate('maybeShowPendingUpdateDialogOnPanelOpen');
                 })
         );
-        updateSettingsButtonBadge(getUpdateCheckState());
+        spUpdate('updateSettingsButtonBadge', spUpdate('getUpdateCheckState'));
     }
       const fold = (id,title,ph) => `
         <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
@@ -6073,7 +1595,7 @@ ${markedSwatchHtml}
         e.stopPropagation();
         const nextIndex = $('#marked-inputs-container .marked-row').length + 1;
         $('#marked-inputs-container').append(
-          buildCookieGroupTwoFieldRowHtml('marked', nextIndex)
+          spUi('buildCookieGroupTwoFieldRowHtml', 'marked', nextIndex)
         ).find('.marked-desc-input').last().focus();
       });
       // 屏蔽：新增组输入
@@ -6081,31 +1603,31 @@ ${markedSwatchHtml}
         e.stopPropagation();
         const nextIndex = $('#blocked-inputs-container .blocked-row').length + 1;
         $('#blocked-inputs-container').append(
-          buildCookieGroupTwoFieldRowHtml('blocked', nextIndex)
+          spUi('buildCookieGroupTwoFieldRowHtml', 'blocked', nextIndex)
         ).find('.blocked-desc-input').last().focus();
       });
       $('#btn_group_threadCookieWhitelist').off('click').on('click', e=>{
         e.stopPropagation();
         const nextIndex = $('#thread-cookie-whitelist-inputs-container .thread-cookie-whitelist-row').length + 1;
-        $('#thread-cookie-whitelist-inputs-container').append(buildThreadCookieWhitelistRowHtml(nextIndex));
+        $('#thread-cookie-whitelist-inputs-container').append(spUi('buildThreadCookieWhitelistRowHtml', nextIndex));
         $('#thread-cookie-whitelist-inputs-container .thread-cookie-whitelist-row').last().find('.thread-cookie-whitelist-desc-input').focus();
       });
       $('#btn_group_blockedKeywords').off('click').on('click', e=>{
         e.stopPropagation();
         const nextIndex = $('#blocked-keyword-inputs-container .blocked-keyword-row').length + 1;
-        $('#blocked-keyword-inputs-container').append(buildBlockedKeywordGroupRowHtml(nextIndex));
+        $('#blocked-keyword-inputs-container').append(spUi('buildBlockedKeywordGroupRowHtml', nextIndex));
         $('#blocked-keyword-inputs-container .blocked-keyword-row').last().find('.blocked-keyword-input').focus();
       });
       $('#btn_group_favoriteThreads').off('click').on('click', e=>{
         e.stopPropagation();
         const nextIndex = $('#favorite-thread-inputs-container .favorite-thread-row').length + 1;
-        $('#favorite-thread-inputs-container').append(buildFavoriteThreadRowHtml(nextIndex));
+        $('#favorite-thread-inputs-container').append(spUi('buildFavoriteThreadRowHtml', nextIndex));
         $('#favorite-thread-inputs-container .favorite-thread-row').last().find('.favorite-thread-desc-input').focus();
       });
       $('#btn_group_subscriptionFeeds').off('click').on('click', e=>{
         e.stopPropagation();
         const nextIndex = $('#subscription-feed-inputs-container .subscription-feed-row').length + 1;
-        $('#subscription-feed-inputs-container').append(buildSubscriptionFeedRowHtml(nextIndex));
+        $('#subscription-feed-inputs-container').append(spUi('buildSubscriptionFeedRowHtml', nextIndex));
         $('#subscription-feed-inputs-container .subscription-feed-row').last().find('.subscription-feed-desc-input').focus();
       });
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
@@ -6126,7 +1648,7 @@ ${markedSwatchHtml}
           const desc = ($row.find('.blocked-desc-input').val() || '').trim();
           const cookies = Utils.strToList(($row.find('.blocked-cookies-input').val() || '').trim());
           if (!desc && !cookies.length) return;
-          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!spData('isValidDesc', desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
           if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
           if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
           parsed.push({ desc, cookies });
@@ -6148,15 +1670,15 @@ ${markedSwatchHtml}
           const threads = Utils.strToList(($row.find('.thread-cookie-whitelist-threads-input').val() || '').trim());
           const cookies = Utils.strToList(($row.find('.thread-cookie-whitelist-cookies-input').val() || '').trim());
           if (!desc && !threads.length && !cookies.length) return;
-          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid = false; return false; }
+          if (!spData('isValidDesc', desc)) { toast(`第${idx + 1}条备注过长`); valid = false; return false; }
           if (!threads.length) { toast(`第${idx + 1}条未指定串号`); valid = false; return false; }
-          if (threads.some(id => !isValidThreadId(id))) { toast(`第${idx + 1}条存在不合法串号`); valid = false; return false; }
+          if (threads.some(id => !spData('isValidThreadId', id))) { toast(`第${idx + 1}条存在不合法串号`); valid = false; return false; }
           if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid = false; return false; }
           if (cookies.some(id => !Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid = false; return false; }
           parsed.push({ desc, threads, cookies, rowIndex: idx + 1 });
         });
         if (!valid) return false;
-        const { groups, mergeEvents } = mergeThreadCookieWhitelistGroups(parsed);
+        const { groups, mergeEvents } = spData('mergeThreadCookieWhitelistGroups', parsed);
         this.state.threadCookieWhitelistGroups = groups;
         GM_setValue(this.key, this.state);
         mergeEvents.forEach((event) => {
@@ -6180,7 +1702,7 @@ ${markedSwatchHtml}
           const regex = !!$row.find('.blocked-keyword-regex').prop('checked');
           if (!rawValue) return;
           if (regex) {
-            if (!compileBlockedKeywordRegex(rawValue)) {
+            if (!spData('compileBlockedKeywordRegex', rawValue)) {
               toast(`第${idx + 1}组正则无效，请检查表达式`);
               valid = false;
               return false;
@@ -6206,7 +1728,7 @@ ${markedSwatchHtml}
         return true;
       };
       const saveFavoriteThreads = ({ fromDelete = false } = {}) => {
-        const parsed = collectFavoriteThreadsFromPanel();
+        const parsed = spUi('collectFavoriteThreadsFromPanel');
         if (!parsed) return false;
         this.state.favoriteThreads = parsed;
         GM_setValue(this.key, this.state);
@@ -6250,12 +1772,12 @@ ${markedSwatchHtml}
         const on = !!$sw.prop('checked');
         const toggleIndex = $('#blocked-keyword-inputs-container .blocked-keyword-row').index($row) + 1;
         $row.attr('data-regex', on ? '1' : '0');
-        $row.find('.blocked-keyword-input').attr('placeholder', getBlockedKeywordPlaceholder(on));
+        $row.find('.blocked-keyword-input').attr('placeholder', spUi('getBlockedKeywordPlaceholder', on));
         // 实时写入配置并 applyFilters；失败（如正则非法）则回滚开关
         if (!saveBlockedKeywordGroups({ fromToggle: true, toggleIndex, toggleOn: on })) {
           $sw.prop('checked', !on);
           $row.attr('data-regex', !on ? '1' : '0');
-          $row.find('.blocked-keyword-input').attr('placeholder', getBlockedKeywordPlaceholder(!on));
+          $row.find('.blocked-keyword-input').attr('placeholder', spUi('getBlockedKeywordPlaceholder', !on));
         }
       });
 $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').on('click', '.favorite-thread-delete', (e) => {
@@ -6292,7 +1814,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       });
       // 订阅号：保存
       const saveSubscriptionFeeds = ({ fromDelete = false } = {}) => {
-        const parsed = collectSubscriptionFeedsFromPanel();
+        const parsed = spUi('collectSubscriptionFeedsFromPanel');
         if (!parsed) return false;
         this.state.subscriptionFeeds = parsed;
         GM_setValue(this.key, this.state);
@@ -6313,10 +1835,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       };
       const getMarkedRowDefaultColor = ($row) => {
         const rowIndex = Math.max($row.index(), 0);
-        return markColors[rowIndex % markColors.length];
+        return XDex.data.markColors[rowIndex % XDex.data.markColors.length];
       };
       const updateMarkedRowSwatch = ($row, draftColor) => {
-        const color = normalizeHexColor(draftColor) || getMarkedRowDefaultColor($row);
+        const color = spData('normalizeHexColor', draftColor) || getMarkedRowDefaultColor($row);
         $row.find('.marked-color-swatch').css('background', color).attr('data-default-color', color);
         $row.find('.marked-color-preview').css('background', color);
       };
@@ -6326,10 +1848,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const rawValue = readMarkedColorInputValue($popover);
         if (!rawValue) return '';
         if ((state.format || 'hex') === 'rgb') {
-          const rgb = parseRgbColorString(rawValue);
-          return rgb ? rgbToHex(rgb) : null;
+          const rgb = spData('parseRgbColorString', rawValue);
+          return rgb ? spData('rgbToHex', rgb) : null;
         }
-        const normalized = normalizeHexColor(rawValue);
+        const normalized = spData('normalizeHexColor', rawValue);
         return normalized || null;
       };
       const setMarkedColorInputFromState = ($popover) => {
@@ -6337,7 +1859,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (!state) return;
         const inputValue = state.inputEmpty
           ? ''
-          : (state.format === 'rgb' ? formatRgbColor(hexToRgb(state.hex)) : state.hex);
+          : (state.format === 'rgb' ? spData('formatRgbColor', spData('hexToRgb', state.hex)) : state.hex);
         $popover.find('.marked-color-input').val(inputValue);
       };
       const updateMarkedColorFormatButtons = ($popover) => {
@@ -6356,9 +1878,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const $popover = $row.find('.marked-color-popover');
         const state = $popover.data('pickerState');
         if (!state) return;
-        const displayHex = normalizeHexColor(state.hex) || state.defaultHex;
-        const displayHsv = hexToHsv(displayHex);
-        const hueHex = hsvToHex(state.hsv.h, 1, 1);
+        const displayHex = spData('normalizeHexColor', state.hex) || state.defaultHex;
+        const displayHsv = spData('hexToHsv', displayHex);
+        const hueHex = spData('hsvToHex', state.hsv.h, 1, 1);
         const $sv = $popover.find('.marked-color-sv');
         const $svThumb = $popover.find('.marked-color-sv-thumb');
         const $hueThumb = $popover.find('.marked-color-hue-thumb');
@@ -6376,12 +1898,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const $popover = $row.find('.marked-color-popover');
         const state = $popover.data('pickerState');
         if (!state) return;
-        const normalized = normalizeHexColor(nextHex);
+        const normalized = spData('normalizeHexColor', nextHex);
         const allowEmpty = !!options.allowEmpty;
         if (!normalized && !allowEmpty) return;
         state.inputEmpty = !normalized;
         state.hex = normalized || state.defaultHex;
-        state.hsv = hexToHsv(state.hex);
+        state.hsv = spData('hexToHsv', state.hex);
         $popover.data('pickerState', state);
         renderMarkedColorPicker($row);
       };
@@ -6399,17 +1921,17 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (!state) return;
         if (areaType === 'sv') {
           const rect = $popover.find('.marked-color-sv')[0].getBoundingClientRect();
-          const s = clampColorChannel((clientX - rect.left) / rect.width, 0, 1);
-          const v = clampColorChannel(1 - ((clientY - rect.top) / rect.height), 0, 1);
+          const s = spData('clampColorChannel', (clientX - rect.left) / rect.width, 0, 1);
+          const v = spData('clampColorChannel', 1 - ((clientY - rect.top) / rect.height), 0, 1);
           state.hsv.s = s;
           state.hsv.v = v;
         } else {
           const rect = $popover.find('.marked-color-hue')[0].getBoundingClientRect();
-          state.hsv.h = clampColorChannel(((clientX - rect.left) / rect.width) * 360, 0, 360);
+          state.hsv.h = spData('clampColorChannel', ((clientX - rect.left) / rect.width) * 360, 0, 360);
           if (state.hsv.h === 360) state.hsv.h = 359.999;
         }
         state.inputEmpty = false;
-        state.hex = hsvToHex(state.hsv.h, state.hsv.s, state.hsv.v);
+        state.hex = spData('hsvToHex', state.hsv.h, state.hsv.s, state.hsv.v);
         $popover.data('pickerState', state);
         renderMarkedColorPicker($row);
       };
@@ -6446,13 +1968,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const $popover = $row.find('.marked-color-popover');
         const storedColor = ($row.find('.marked-color-value').val() || '').trim();
         const defaultHex = getMarkedRowDefaultColor($row);
-        const displayHex = normalizeHexColor(storedColor) || defaultHex;
+        const displayHex = spData('normalizeHexColor', storedColor) || defaultHex;
         $popover.data('pickerState', {
           format: 'hex',
           defaultHex,
-          inputEmpty: !normalizeHexColor(storedColor),
+          inputEmpty: !spData('normalizeHexColor', storedColor),
           hex: displayHex,
-          hsv: hexToHsv(displayHex),
+          hsv: spData('hexToHsv', displayHex),
         });
         renderMarkedColorPicker($row);
         $popover.show();
@@ -6488,11 +2010,11 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const cookies = Utils.strToList(($row.find('.marked-cookies-input').val() || '').trim());
           const rawColor = ($row.find('.marked-color-value').val() || '').trim();
           if (!desc && !cookies.length) return;
-          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!spData('isValidDesc', desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
           if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
           if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
-          if (rawColor && !isValidHexColor(rawColor)) { toast(`第${idx + 1}条颜色格式无效，应为 #RRGGBB`); valid=false; return false; }
-          parsed.push({ desc, color: normalizeHexColor(rawColor), cookies });
+          if (rawColor && !spData('isValidHexColor', rawColor)) { toast(`第${idx + 1}条颜色格式无效，应为 #RRGGBB`); valid=false; return false; }
+          parsed.push({ desc, color: spData('normalizeHexColor', rawColor), cookies });
         });
         return valid ? parsed : null;
       };
@@ -6585,7 +2107,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           $row.find('.marked-color-input').trigger('focus');
           return false;
         }
-        const normalized = normalizeHexColor(parsedHex);
+        const normalized = spData('normalizeHexColor', parsedHex);
         $row.find('.marked-color-value').val(normalized);
         if (normalized) {
           setMarkedColorPickerHex($row, normalized);
@@ -6669,8 +2191,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'postAfterAction'
       ];
       function mergeFavoriteThreads(localItems, importedItems) {
-        const local = Array.isArray(localItems) ? normalizeFavoriteThreads(localItems) : [];
-        const imported = Array.isArray(importedItems) ? normalizeFavoriteThreads(importedItems) : [];
+        const local = Array.isArray(localItems) ? spData('normalizeFavoriteThreads', localItems) : [];
+        const imported = Array.isArray(importedItems) ? spData('normalizeFavoriteThreads', importedItems) : [];
         const seen = new Map();
         local.forEach((item) => {
           const key = String(item.threadId || '').trim();
@@ -6744,12 +2266,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       }
       function mergeWhitelistGroupsForImport(localGroups, importedGroups) {
         const combined = [...(Array.isArray(localGroups) ? localGroups : []), ...(Array.isArray(importedGroups) ? importedGroups : [])];
-        return mergeThreadCookieWhitelistGroups(combined).groups;
+        return spData('mergeThreadCookieWhitelistGroups', combined).groups;
       }
       function mergeBlockedKeywords(localValue, importedValue) {
-        const localGroups = normalizeBlockedKeywordGroups(localValue);
-        const importedGroups = normalizeBlockedKeywordGroups(importedValue);
-        const allLocalKws = new Set(flattenBlockedKeywords(localGroups));
+        const localGroups = spData('normalizeBlockedKeywordGroups', localValue);
+        const importedGroups = spData('normalizeBlockedKeywordGroups', importedValue);
+        const allLocalKws = new Set(spData('flattenBlockedKeywords', localGroups));
         const localRegexKeys = new Set(
           localGroups.filter((g) => g.regex).map((g) => String(g.value || ''))
         );
@@ -7242,7 +2764,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const blockedKeywords = collectBlockedKeywordGroupsFromPanel();
         if (!blockedKeywords) return;
         this.state.blockedKeywords = blockedKeywords;
-        const favoriteThreads = collectFavoriteThreadsFromPanel();
+        const favoriteThreads = spUi('collectFavoriteThreadsFromPanel');
         if (!favoriteThreads) return;
         this.state.favoriteThreads = favoriteThreads;
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
@@ -7263,7 +2785,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const desc = ($row.find('.blocked-desc-input').val() || '').trim();
           const cookies = Utils.strToList(($row.find('.blocked-cookies-input').val() || '').trim());
           if (!desc && !cookies.length) return;
-          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
+          if (!spData('isValidDesc', desc)) { toast(`第${idx + 1}条备注过长`); valid=false; return false; }
           if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
           if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
           bk.push({ desc, cookies });
@@ -7277,15 +2799,15 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const threads = Utils.strToList(($row.find('.thread-cookie-whitelist-threads-input').val() || '').trim());
           const cookies = Utils.strToList(($row.find('.thread-cookie-whitelist-cookies-input').val() || '').trim());
           if (!desc && !threads.length && !cookies.length) return;
-          if (!isValidDesc(desc)) { toast(`第${idx + 1}条备注过长`); valid = false; return false; }
+          if (!spData('isValidDesc', desc)) { toast(`第${idx + 1}条备注过长`); valid = false; return false; }
           if (!threads.length) { toast(`第${idx + 1}条未指定串号`); valid = false; return false; }
-          if (threads.some(id => !isValidThreadId(id))) { toast(`第${idx + 1}条存在不合法串号`); valid = false; return false; }
+          if (threads.some(id => !spData('isValidThreadId', id))) { toast(`第${idx + 1}条存在不合法串号`); valid = false; return false; }
           if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid = false; return false; }
           if (cookies.some(id => !Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid = false; return false; }
           wlg.push({ desc, threads, cookies, rowIndex: idx + 1 });
         });
         if (!valid) return;
-        const { groups: mergedWhitelistGroups, mergeEvents } = mergeThreadCookieWhitelistGroups(wlg);
+        const { groups: mergedWhitelistGroups, mergeEvents } = spData('mergeThreadCookieWhitelistGroups', wlg);
         this.state.threadCookieWhitelistGroups = mergedWhitelistGroups;
         mergeEvents.forEach((event) => {
           if (event.desc) {
@@ -7413,30 +2935,30 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         $('body').append($log);
         $('#sp_update_log_close,#sp_update_log').on('click', (e) => {
           if (e.target.id === 'sp_update_log') {
-            closeUpdateLogDialog({ treatAsDismiss: false, reason: 'overlay' });
+            spUpdate('closeUpdateLogDialog', { treatAsDismiss: false, reason: 'overlay' });
             return;
           }
           if (e.target.id === 'sp_update_log_close') {
             const isRemoteMode = $('#sp_update_log').attr('data-update-mode') === 'remote';
-            closeUpdateLogDialog({ treatAsDismiss: isRemoteMode, reason: 'close-button' });
+            spUpdate('closeUpdateLogDialog', { treatAsDismiss: isRemoteMode, reason: 'close-button' });
           }
         });
         $('#sp_update_log_update_now').on('click', () => {
-          const state = getUpdateCheckState();
-          closeUpdateLogDialog({ reason: 'update-now' });
-          flashFooterUpdateHighlight(state.pendingUpdateSource || '');
+          const state = spUpdate('getUpdateCheckState');
+          spUpdate('closeUpdateLogDialog', { reason: 'update-now' });
+          spUpdate('flashFooterUpdateHighlight', state.pendingUpdateSource || '');
         });
         $('#sp_update_log_ignore_version').on('click', () => {
-          const state = getUpdateCheckState();
+          const state = spUpdate('getUpdateCheckState');
           if (state.pendingUpdateVersion) {
             state.ignoredVersion = state.pendingUpdateVersion;
-            setUpdateCheckState(state);
-            updateSettingsButtonBadge(state);
+            spUpdate('setUpdateCheckState', state);
+            spUpdate('updateSettingsButtonBadge', state);
           }
-          closeUpdateLogDialog({ reason: 'ignore-version' });
+          spUpdate('closeUpdateLogDialog', { reason: 'ignore-version' });
         });
         $('#sp_update_log_dismiss_today').on('click', () => {
-          closeUpdateLogDialog({ treatAsDismiss: true, reason: 'dismiss-today' });
+          spUpdate('closeUpdateLogDialog', { treatAsDismiss: true, reason: 'dismiss-today' });
         });
       }
       // 版本号同步到当前脚本版本
@@ -7446,7 +2968,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       } catch (e) {}
       $('#sp_version_link').off('click').on('click', (e) => {
         e.preventDefault();
-        openUpdateLogDialog('local');
+        spUpdate('openUpdateLogDialog', 'local');
       });
 // ====== 2. 创建 tooltip 元素并添加样式 ======
       if (!$('#sp_tooltip').length) {
@@ -7558,33 +3080,33 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
       const $m = $('#marked-inputs-container').empty();
       groupsM.forEach((g, idx)=>{
-        $m.append(buildCookieGroupTwoFieldRowHtml('marked', idx + 1, g));
+        $m.append(spUi('buildCookieGroupTwoFieldRowHtml', 'marked', idx + 1, g));
       });
       // 屏蔽分组
       const groupsB = this.state.blockedCookies.length ? this.state.blockedCookies : [{desc:'',cookies:[]}];
       const $b = $('#blocked-inputs-container').empty();
       groupsB.forEach((g, idx)=>{
-        $b.append(buildCookieGroupTwoFieldRowHtml('blocked', idx + 1, g));
+        $b.append(spUi('buildCookieGroupTwoFieldRowHtml', 'blocked', idx + 1, g));
       });
       const groupsW = this.state.threadCookieWhitelistGroups.length ? this.state.threadCookieWhitelistGroups : [{threads:[],cookies:[]}];
       const $w = $('#thread-cookie-whitelist-inputs-container').empty();
       groupsW.forEach((g, idx)=>{
-        $w.append(buildThreadCookieWhitelistRowHtml(idx + 1, g));
+        $w.append(spUi('buildThreadCookieWhitelistRowHtml', idx + 1, g));
       });
-      const groupsK = normalizeBlockedKeywordGroups(this.state.blockedKeywords);
+      const groupsK = spData('normalizeBlockedKeywordGroups', this.state.blockedKeywords);
       const $k = $('#blocked-keyword-inputs-container').empty();
       (groupsK.length ? groupsK : [{value:''}]).forEach((g, idx)=>{
-        $k.append(buildBlockedKeywordGroupRowHtml(idx + 1, g));
+        $k.append(spUi('buildBlockedKeywordGroupRowHtml', idx + 1, g));
       });
-      const favoriteThreads = normalizeFavoriteThreads(this.state.favoriteThreads);
+      const favoriteThreads = spData('normalizeFavoriteThreads', this.state.favoriteThreads);
       const $favoriteThreads = $('#favorite-thread-inputs-container').empty();
       (favoriteThreads.length ? favoriteThreads : [{desc:'', threadId:''}]).forEach((item, idx)=>{
-        $favoriteThreads.append(buildFavoriteThreadRowHtml(idx + 1, item));
+        $favoriteThreads.append(spUi('buildFavoriteThreadRowHtml', idx + 1, item));
       });
       const subscriptionFeeds = Array.isArray(this.state.subscriptionFeeds) ? this.state.subscriptionFeeds : [];
       const $feeds = $('#subscription-feed-inputs-container').empty();
       (subscriptionFeeds.length ? subscriptionFeeds : [{desc:'', uuid:''}]).forEach((item, idx)=>{
-        $feeds.append(buildSubscriptionFeedRowHtml(idx + 1, item));
+        $feeds.append(spUi('buildSubscriptionFeedRowHtml', idx + 1, item));
       });
       $('#sp_replyModeDefault').val(this.state.replyModeDefault);
       $('#sp_replyExtraDefault').val(this.state.replyExtraDefault);
@@ -7625,6 +3147,435 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
   /* --------------------------------------------------
    * tag 3. 饼干标记 / 屏蔽 逻辑
    * -------------------------------------------------- */
+  // 多分组标记时依次使用的背景色（可扩充）
+  const markColors = [
+    '#66CCFF','#00FFCC','#EE0000','#006666','#0080FF','#FFFF00',
+    '#39C5BB','#9999FF','#FF4004','#3399FF','#D80000','#F6BE71',
+    '#EE82EE','#FFA500','#FFE211','#FAAFBE','#0000FF'
+  ];
+  // 解析"最后一个冒号分隔"的分组：返回 {desc, list}
+  function parseDescAndListByLastColon(raw) {
+    const idx = Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('：'));
+    let desc = '';
+    let cookiePart = '';
+    if (idx > 0) {
+      // 有冒号：冒号前是备注/说明，冒号后是饼干
+      desc = raw.slice(0, idx).trim();
+      cookiePart = raw.slice(idx + 1).trim();
+    } else {
+      // 没有冒号：整个字符串都是饼干
+      cookiePart = raw.trim();
+    }
+    const list = Utils.strToList(cookiePart);
+    return { desc, list };
+  }
+  // 校验分组说明长度（<=20 字符；满足“10个汉字/20个英文字符”的近似约束）
+  function isValidDesc(desc) { return !desc || desc.length <= 20; }
+  function isValidHexColor(color) {
+    return /^#[0-9A-Fa-f]{6}$/.test(color);
+  }
+  function normalizeHexColor(color) {
+    if (typeof color !== 'string') return '';
+    const trimmed = color.trim();
+    return isValidHexColor(trimmed) ? trimmed.toUpperCase() : '';
+  }
+  function clampColorChannel(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+  function rgbToHex(rgb) {
+    if (!rgb) return '';
+    const r = clampColorChannel(Math.round(rgb.r || 0), 0, 255);
+    const g = clampColorChannel(Math.round(rgb.g || 0), 0, 255);
+    const b = clampColorChannel(Math.round(rgb.b || 0), 0, 255);
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+  }
+  function hexToRgb(color) {
+    const normalized = normalizeHexColor(color);
+    if (!normalized) return null;
+    return {
+      r: parseInt(normalized.slice(1, 3), 16),
+      g: parseInt(normalized.slice(3, 5), 16),
+      b: parseInt(normalized.slice(5, 7), 16),
+    };
+  }
+  function hsvToRgb(h, s, v) {
+    const hue = ((Number(h) % 360) + 360) % 360;
+    const sat = clampColorChannel(Number(s), 0, 1);
+    const val = clampColorChannel(Number(v), 0, 1);
+    const c = val * sat;
+    const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+    const m = val - c;
+    let r1 = 0;
+    let g1 = 0;
+    let b1 = 0;
+    if (hue < 60) {
+      r1 = c; g1 = x;
+    } else if (hue < 120) {
+      r1 = x; g1 = c;
+    } else if (hue < 180) {
+      g1 = c; b1 = x;
+    } else if (hue < 240) {
+      g1 = x; b1 = c;
+    } else if (hue < 300) {
+      r1 = x; b1 = c;
+    } else {
+      r1 = c; b1 = x;
+    }
+    return {
+      r: Math.round((r1 + m) * 255),
+      g: Math.round((g1 + m) * 255),
+      b: Math.round((b1 + m) * 255),
+    };
+  }
+  function rgbToHsv(r, g, b) {
+    const red = clampColorChannel(Number(r), 0, 255) / 255;
+    const green = clampColorChannel(Number(g), 0, 255) / 255;
+    const blue = clampColorChannel(Number(b), 0, 255) / 255;
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const delta = max - min;
+    let h = 0;
+    if (delta) {
+      if (max === red) h = 60 * (((green - blue) / delta) % 6);
+      else if (max === green) h = 60 * (((blue - red) / delta) + 2);
+      else h = 60 * (((red - green) / delta) + 4);
+    }
+    if (h < 0) h += 360;
+    return {
+      h,
+      s: max === 0 ? 0 : delta / max,
+      v: max,
+    };
+  }
+  function hexToHsv(color) {
+    const rgb = hexToRgb(color);
+    return rgb ? rgbToHsv(rgb.r, rgb.g, rgb.b) : { h: 0, s: 0, v: 1 };
+  }
+  function hsvToHex(h, s, v) {
+    return rgbToHex(hsvToRgb(h, s, v));
+  }
+  function parseRgbColorString(value) {
+    if (typeof value !== 'string') return null;
+    const match = value.trim().match(/^rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+    if (!match) return null;
+    const r = Number(match[1]);
+    const g = Number(match[2]);
+    const b = Number(match[3]);
+    if ([r, g, b].some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null;
+    return { r, g, b };
+  }
+  function formatRgbColor(rgb) {
+    if (!rgb) return '';
+    return `rgb(${clampColorChannel(Math.round(rgb.r || 0), 0, 255)}, ${clampColorChannel(Math.round(rgb.g || 0), 0, 255)}, ${clampColorChannel(Math.round(rgb.b || 0), 0, 255)})`;
+  }
+  function getMarkedGroupEffectiveColor(group, index) {
+    return normalizeHexColor(group && group.color) || markColors[index % markColors.length];
+  }
+
+  function parseThreadCookieWhitelistRule(raw) {
+    const idx = Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('：'));
+    let threadPart = '';
+    let cookiePart = '';
+    if (idx > 0) {
+      threadPart = raw.slice(0, idx).trim();
+      cookiePart = raw.slice(idx + 1).trim();
+    } else {
+      threadPart = raw.trim();
+    }
+    return {
+      threads: Utils.strToList(threadPart),
+      cookies: Utils.strToList(cookiePart),
+    };
+  }
+  function buildThreadCookieWhitelistRowHtml(index, group = {}) {
+    const desc = group.desc || '';
+    const threadText = Array.isArray(group.threads) ? group.threads.join(',') : '';
+    const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
+    return `
+      <div class="thread-cookie-whitelist-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
+          <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+        </div>
+      </div>`;
+  }
+  function buildCookieGroupRowHtml(type, index, value, placeholder) {
+    return `
+      <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="${type}-input" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${placeholder}" value="${Utils.escapeHTML ? Utils.escapeHTML(value || '') : (value || '')}">
+        </div>
+      </div>`;
+  }
+  function getBlockedKeywordPlaceholder(regexOn) {
+    return regexOn
+      ? '正则模式：整组作为一条正则，如 foo|bar 或 (串|回复)\\d+'
+      : '关键词1,关键词2；7/8/9位数字同时也作为串号/回复号匹配';
+  }
+  function buildBlockedKeywordGroupRowHtml(index, group = {}) {
+    const keywordText = typeof group.value === 'string'
+      ? group.value
+      : (Array.isArray(group.keywords) ? group.keywords.join(',') : '');
+    const regexOn = isBlockedKeywordRegexGroup(group);
+    const placeholder = getBlockedKeywordPlaceholder(regexOn);
+    const checkedAttr = regexOn ? ' checked' : '';
+    const safeValue = Utils.escapeHTML ? Utils.escapeHTML(keywordText || '') : (keywordText || '');
+    const safePlaceholder = Utils.escapeHTML ? Utils.escapeHTML(placeholder) : placeholder;
+    // 右侧开关样式对齐设置页 xdex-switch；默认关闭=普通逗号关键词，开启=整组正则
+    return `
+      <div class="blocked-keyword-row" style="position:relative;margin:10px 0 8px;" data-regex="${regexOn ? '1' : '0'}">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input class="blocked-keyword-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${safePlaceholder}" value="${safeValue}">
+            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;">
+              <input type="checkbox" id="blocked-keyword-regex-${index}" class="xdex-switch blocked-keyword-regex" role="switch"${checkedAttr}>
+              <label for="blocked-keyword-regex-${index}" style="font-size:12px;color:#6f5d50;user-select:none;">正则</label>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
+    const desc = group.desc || '';
+    const cookieText = Array.isArray(group.cookies) ? group.cookies.join(',') : '';
+    const color = normalizeHexColor(group.color);
+    const effectiveColor = type === 'marked' ? getMarkedGroupEffectiveColor(group, index - 1) : '';
+    const gridTemplateColumns = type === 'marked'
+      ? 'minmax(0,2fr) minmax(0,3fr) 34px'
+      : 'minmax(0,2fr) minmax(0,3fr)';
+    const markedSwatchHtml = type === 'marked' ? `
+          <div class="marked-color-cell" style="position:relative;min-width:0;">
+            <input type="hidden" class="marked-color-value" value="${Utils.escapeHTML ? Utils.escapeHTML(color) : color}">
+            <button
+              type="button"
+              class="marked-color-swatch"
+              aria-label="设置标记颜色"
+              data-default-color="${effectiveColor}"
+              style="width:100%;height:31px;padding:0;border:1px solid #a98f7a;border-radius:8px;box-sizing:border-box;background:${effectiveColor};cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.42);"
+            ></button>
+            <div class="marked-color-popover" style="display:none;position:absolute;right:0;z-index:12;width:220px;padding:10px;border:1px solid #bfa58f;border-radius:10px;background:var(--xdex-sp-panel-bg);box-shadow:0 8px 18px var(--xdex-sp-shadow);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <div class="marked-color-preview" style="width:30px;height:30px;flex:0 0 30px;border:1px solid #a98f7a;border-radius:8px;background:${effectiveColor};box-shadow:inset 0 0 0 1px rgba(255,255,255,0.42);"></div>
+                <div style="min-width:0;flex:1;">
+                  <div class="marked-color-status" style="font-size:12px;line-height:1.25;color:#6f5d50;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">#RRGGBB，自定义为空时按默认序列</div>
+                  <div class="marked-color-default-hint" style="font-size:11px;line-height:1.25;color:#8a7768;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">默认 ${effectiveColor}</div>
+                </div>
+              </div>
+              <div class="marked-color-sv" style="position:relative;height:110px;border:1px solid #a98f7a;border-radius:8px;cursor:crosshair;overflow:hidden;background:linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, hsl(0,100%,50%) 100%);margin-bottom:8px;">
+                <div class="marked-color-sv-thumb" style="position:absolute;left:100%;top:0;width:12px;height:12px;margin-left:-6px;margin-top:-6px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,0.35);pointer-events:none;background:transparent;"></div>
+              </div>
+              <div class="marked-color-hue" style="position:relative;height:14px;border:1px solid #a98f7a;border-radius:999px;cursor:pointer;overflow:hidden;background:linear-gradient(to right, #FF0000 0%, #FFFF00 16.66%, #00FF00 33.33%, #00FFFF 50%, #0000FF 66.66%, #FF00FF 83.33%, #FF0000 100%);margin-bottom:8px;">
+                <div class="marked-color-hue-thumb" style="position:absolute;left:0;top:50%;width:12px;height:12px;margin-left:-6px;margin-top:-6px;border:2px solid #fff;border-radius:50%;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.35);pointer-events:none;background:transparent;"></div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <button type="button" class="marked-color-format" data-format="hex" style="flex:1;padding:4px 0;border:1px solid #7da6bf;border-radius:8px;background:#66CCFF;color:#fff;cursor:pointer;">HEX</button>
+                <button type="button" class="marked-color-format" data-format="rgb" style="flex:1;padding:4px 0;border:1px solid #a98f7a;border-radius:8px;background:#F0E0D6;color:#6f5d50;cursor:pointer;">RGB</button>
+              </div>
+              <input class="marked-color-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;margin-bottom:8px;" placeholder="#66CCFF" value="${Utils.escapeHTML ? Utils.escapeHTML(color) : color}">
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="marked-color-clear" style="flex:1;padding:4px 0;border:1px solid #a98f7a;border-radius:8px;background:#F0E0D6;cursor:pointer;">恢复默认</button>
+                <button type="button" class="marked-color-save" style="flex:1;padding:4px 0;border:1px solid #7da6bf;border-radius:8px;background:#66CCFF;color:#fff;cursor:pointer;">保存</button>
+              </div>
+            </div>
+          </div>` : '';
+    return `
+      <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
+${markedSwatchHtml}
+        </div>
+      </div>`;
+  }
+  function normalizeThreadCookieWhitelistGroups(val) {
+    if (!Array.isArray(val)) return [];
+    return val.map((g) => ({
+      desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
+      threads: Array.isArray(g.threads) ? [...new Set(g.threads.filter(isValidThreadId))] : [],
+      cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : [],
+    })).filter((g) => g.threads.length && g.cookies.length);
+  }
+  function mergeThreadCookieWhitelistGroups(groups) {
+    const threadOrder = [];
+    const threadToState = new Map();
+    const mergeEvents = [];
+    groups.forEach((group, idx) => {
+      const desc = typeof group.desc === 'string' && isValidDesc(group.desc.trim()) ? group.desc.trim() : '';
+      const cookies = [...new Set((group.cookies || []).filter(Utils.cookieLegal))];
+      const threads = [...new Set((group.threads || []).filter(isValidThreadId))];
+      threads.forEach((threadId) => {
+        if (!threadToState.has(threadId)) {
+          threadToState.set(threadId, { desc, cookies: new Set(), firstIndex: typeof group.rowIndex === 'number' ? group.rowIndex : idx });
+          threadOrder.push(threadId);
+        } else {
+          mergeEvents.push({
+            threadId,
+            rowIndex: typeof group.rowIndex === 'number' ? group.rowIndex : idx,
+            desc,
+            cookies,
+          });
+        }
+        cookies.forEach((cookie) => threadToState.get(threadId).cookies.add(cookie));
+      });
+    });
+    const grouped = new Map();
+    const mergedGroups = [];
+    threadOrder.forEach((threadId) => {
+      const state = threadToState.get(threadId);
+      const cookies = Array.from(state.cookies);
+      const desc = state.desc || '';
+      const key = `${desc}\u0002${cookies.slice().sort().join('\u0001')}`;
+      if (!grouped.has(key)) {
+        const group = { desc, threads: [], cookies };
+        grouped.set(key, group);
+        mergedGroups.push(group);
+      }
+      grouped.get(key).threads.push(threadId);
+    });
+    return {
+      groups: mergedGroups,
+      mergeEvents,
+    };
+  }
+  // 兼容旧版本 blockedCookies 值到“组结构”
+  function normalizeBlockedGroups(val) {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      const tokens = Utils.strToList(val);
+      return tokens.map(t=>{
+        const {desc, list} = parseDescAndListByLastColon(t);
+        const id = list[0] || '';
+        return id && Utils.cookieLegal(id) ? { desc, cookies:[id] } : null;
+      }).filter(Boolean);
+    }
+    if (Array.isArray(val)) {
+      if (val.length && 'cookies' in val[0]) {
+        return val.map(g=>({
+          desc: g.desc || '',
+          cookies: Array.isArray(g.cookies) ? g.cookies.filter(Utils.cookieLegal) : []
+        })).filter(g=>g.cookies.length);
+      }
+      if (val.length && 'cookie' in val[0]) {
+        const map = new Map();
+        val.forEach(({cookie, desc})=>{
+          if (!Utils.cookieLegal(cookie)) return;
+          const key = desc || '';
+          if (!map.has(key)) map.set(key, []);
+          map.get(key).push(cookie);
+        });
+        return [...map.entries()].map(([desc, cookies])=>({desc, cookies}));
+      }
+    }
+    return [];
+  }
+  function escapeBlockedKeywordInputToken(keyword) {
+    return String(keyword || '').trim().replace(/([\\,，])/g, '\\$1');
+  }
+  function joinBlockedKeywordInputTokens(keywords) {
+    return keywords.map(escapeBlockedKeywordInputToken).filter(Boolean).join(',');
+  }
+  function normalizeBlockedKeywordGroupValue(group) {
+    if (typeof group === 'string') return group.trim();
+    if (Array.isArray(group)) return joinBlockedKeywordInputTokens(group);
+    if (!group || typeof group !== 'object') return '';
+    if (typeof group.value === 'string') return group.value.trim();
+    if (typeof group.text === 'string') return group.text.trim();
+    if (typeof group.keywords === 'string') return group.keywords.trim();
+    if (Array.isArray(group.keywords)) return joinBlockedKeywordInputTokens(group.keywords);
+    return '';
+  }
+  function isBlockedKeywordRegexGroup(group) {
+    return !!(group && typeof group === 'object' && (group.regex === true || group.isRegex === true || group.useRegex === true));
+  }
+  function normalizeBlockedKeywordGroups(val) {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      const value = normalizeBlockedKeywordGroupValue(val);
+      return Utils.strToList(value).length ? [{ value, regex: false }] : [];
+    }
+    if (!Array.isArray(val)) return [];
+    return val.map((group) => {
+      const value = normalizeBlockedKeywordGroupValue(group);
+      const regex = isBlockedKeywordRegexGroup(group);
+      return { value, regex };
+    }).filter((group) => {
+      if (!group.value) return false;
+      // 正则组：整段 pattern 原样保留；普通组：仍按逗号切词后判断是否为空
+      return group.regex ? true : Utils.strToList(group.value).length > 0;
+    });
+  }
+  // 仅扁平化“普通关键词组”（正则组不参与逗号切分）
+  function flattenBlockedKeywords(groups) {
+    return [...new Set(
+      normalizeBlockedKeywordGroups(groups)
+        .filter((group) => !group.regex)
+        .flatMap((group) => Utils.strToList(group.value))
+    )];
+  }
+  // 编译屏蔽关键词正则；非法 pattern 返回 null（匹配时跳过，保存时再提示）
+  function compileBlockedKeywordRegex(pattern) {
+    const source = String(pattern || '').trim();
+    if (!source) return null;
+    try {
+      // 正文 textContent 常带前导/段落换行；默认 ignoreCase + dotAll，让 .* 可跨行
+      // 不用 m：^/$ 仍表示整段正文起止，而不是每一行
+      return new RegExp(source, 'is');
+    } catch (e) {
+      try {
+        // 极旧环境无 s 标志时回退到仅 i
+        return new RegExp(source, 'i');
+      } catch (e2) {
+        return null;
+      }
+    }
+  }
+  // 7/8/9 位纯数字关键词：除正文子串外，也按串号/回复号做 ID 匹配
+  function isThreadIdKeyword(keyword) {
+    return /^\d{7,9}$/.test(String(keyword || '').trim());
+  }
+  // 兼容旧名
+  function isEightDigitKeyword(keyword) { return isThreadIdKeyword(keyword); }
+  function normalizeMarkedGroups(val) {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      const tokens = Utils.strToList(val);
+        return tokens.map(t => {
+          const { desc, list } = parseDescAndListByLastColon(t);
+          const cookies = list.filter(Utils.cookieLegal);
+          return cookies.length ? { desc, color: '', cookies } : null;
+        }).filter(Boolean);
+      }
+      if (Array.isArray(val)) {
+        if (val.length && 'cookies' in val[0]) {
+          return val.map(g => ({
+            desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
+            color: normalizeHexColor(g.color),
+            cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : []
+          })).filter(g => g.cookies.length);
+        }
+      if (val.length && 'cookie' in val[0]) {
+        const map = new Map();
+        val.forEach(({ cookie, desc }) => {
+          if (!Utils.cookieLegal(cookie)) return;
+          const key = typeof desc === 'string' && isValidDesc(desc.trim()) ? desc.trim() : '';
+          if (!map.has(key)) map.set(key, []);
+          map.get(key).push(cookie);
+        });
+        return [...map.entries()].map(([desc, cookies]) => ({ desc, color: '', cookies: [...new Set(cookies)] }));
+      }
+    }
+    return [];
+  }
+
   // 标记：支持同一饼干命中多个分组时，title 展示多行备注，颜色取首匹配组
   function extractCookieIdFromUidElement(el, fallbackText) {
     const datasetId = el && el.dataset ? el.dataset.xdexCookieId : '';
@@ -21881,6 +17832,356 @@ function 注册自动保存编辑() {
   /* --------------------------------------------------
    * tag 22. 检查更新
    * -------------------------------------------------- */
+  const UPDATE_CHECK_KEY = 'xdex_update_check_state';
+  const UPDATE_EXTENSION_CHECK_KEY = 'xdex_extension_update_check_state';
+  const UPDATE_GREASYFORK_META_URL = 'https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js';
+  const UPDATE_SCRIPTCAT_API_URL = 'https://scriptcat.org/api/v2/scripts/6289';
+  const UPDATE_EXTENSION_GITHUB_JSON_URL = 'https://raw.githubusercontent.com/SayaGoodBye/nmbxd-EX/main/nmbxd-EX-Extension/update.json';
+  const UPDATE_EXTENSION_JSDELIVR_JSON_URL = 'https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@main/nmbxd-EX-Extension/update.json';
+  const UPDATE_CHECK_HOUR = 11;
+  function normalizeMetaChangelog(text) {
+    return String(text || '')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\n')
+      .trim();
+  }
+  function parseVersionAndChangelogFromMeta(metaText) {
+    const text = String(metaText || '');
+    const versionMatch = text.match(/^\/\/\s*@version\s+(.+)$/m);
+    const changelogMatches = [...text.matchAll(/^\/\/\s*@changelog\s+(.+)$/gm)];
+    const changelog = normalizeMetaChangelog(changelogMatches
+      .map(m => String(m[1] || '').trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim());
+    return {
+      version: versionMatch ? String(versionMatch[1] || '').trim() : '',
+      changelog
+    };
+  }
+  const CHANGELOG = parseVersionAndChangelogFromMeta(GM_info.scriptMetaStr || '').changelog || '';
+  function getUpdateCheckStorageKey() {
+    return XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? UPDATE_EXTENSION_CHECK_KEY : UPDATE_CHECK_KEY;
+  }
+  function getDefaultUpdateCheckState() {
+    return {
+      lastCheckDate: '',
+      nextCheckAt: 0,
+      pendingUpdateVersion: '',
+      pendingUpdateChangelog: '',
+      pendingUpdateSource: '',
+      pendingUpdateDetectedAt: 0,
+      latestRemoteVersion: '',
+      ignoredVersion: '',
+      lastDismissDate: '',
+      dismissedUntil: 0
+    };
+  }
+  function getUpdateCheckState() {
+    try {
+      const saved = GM_getValue(getUpdateCheckStorageKey(), null);
+      const merged = Object.assign(getDefaultUpdateCheckState(), saved || {});
+      console.log('[update-check] get state:', merged);
+      return merged;
+    } catch (e) {
+      console.warn('[update-check] get state failed, fallback to default:', e);
+      return getDefaultUpdateCheckState();
+    }
+  }
+  function setUpdateCheckState(nextState) {
+    const merged = Object.assign(getDefaultUpdateCheckState(), nextState || {});
+    GM_setValue(getUpdateCheckStorageKey(), merged);
+    console.log('[update-check] set state:', merged);
+    return merged;
+  }
+  function formatLocalDateKey(ts = Date.now()) {
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function getNextNaturalCheckAt(nowTs = Date.now(), hour = UPDATE_CHECK_HOUR) {
+    const d = new Date(nowTs);
+    d.setDate(d.getDate() + 1);
+    d.setHours(hour, 0, 0, 0);
+    return d.getTime();
+  }
+  function compareVersionStrings(a, b) {
+    const pa = String(a || '').split('.').map(v => parseInt(v, 10) || 0);
+    const pb = String(b || '').split('.').map(v => parseInt(v, 10) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+      const av = pa[i] || 0;
+      const bv = pb[i] || 0;
+      if (av > bv) return 1;
+      if (av < bv) return -1;
+    }
+    return 0;
+  }
+
+  async function fetchMetaVersionAndChangelog(url, source) {
+    const resp = await gmRequest(url, 'text');
+    const parsed = parseVersionAndChangelogFromMeta(resp.responseText || '');
+    return {
+      source,
+      url,
+      version: parsed.version,
+      changelog: parsed.changelog
+    };
+  }
+  async function fetchScriptCatVersionAndChangelog(url, source = 'scriptcat') {
+    const resp = await gmRequest(url, 'text');
+    const json = JSON.parse(resp.responseText || '{}');
+    const script = (json && json.data && json.data.script) || {};
+    return {
+      source,
+      url,
+      version: String(script.version || '').trim(),
+      changelog: String(script.changelog || '').trim()
+    };
+  }
+  async function fetchExtensionUpdateJson(url, source) {
+    const resp = await gmRequest(url, 'text');
+    const json = JSON.parse(resp.responseText || '{}');
+    const extension = json && json.extension ? json.extension : json;
+    return {
+      source,
+      url,
+      version: String(extension.version || '').trim(),
+      changelog: String(extension.changelog || '').trim(),
+      downloads: extension.downloads || {}
+    };
+  }
+  function getUpdateCheckRequestsForRuntime() {
+    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
+      return [
+        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_GITHUB_JSON_URL, 'github'),
+        () => fetchExtensionUpdateJson(UPDATE_EXTENSION_JSDELIVR_JSON_URL, 'jsdelivr')
+      ];
+    }
+    return [
+      () => fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork'),
+      () => fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')
+    ];
+  }
+  function choosePreferredRemoteMeta(results) {
+    const valid = (results || []).filter(item => item && item.version);
+    if (!valid.length) return null;
+    valid.sort((a, b) => compareVersionStrings(b.version, a.version));
+    const topVersion = valid[0].version;
+    const topCandidates = valid.filter(item => compareVersionStrings(item.version, topVersion) === 0);
+    const preferredSource = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? 'github' : 'greasyfork';
+    const preferred = topCandidates.find(item => item.source === preferredSource) || topCandidates[0];
+    return preferred;
+  }
+  function shouldShowPendingUpdateReminder(state, currentVersion = VERSION) {
+    if (!state || !state.pendingUpdateVersion) return false;
+    if (compareVersionStrings(state.pendingUpdateVersion, currentVersion) <= 0) return false;
+    if (state.ignoredVersion && state.ignoredVersion === state.pendingUpdateVersion) return false;
+    if (state.lastDismissDate && state.lastDismissDate === formatLocalDateKey()) return false;
+    if (state.dismissedUntil && Date.now() < state.dismissedUntil) return false;
+    return true;
+  }
+  function updateSettingsButtonBadge(state = getUpdateCheckState()) {
+    const $btn = $('#sp_btn');
+    if (!$btn.length) return;
+    if (typeof isUpdateCheckEnabled === 'function' && !isUpdateCheckEnabled()) {
+      $btn.removeClass('xdex-has-update');
+      return;
+    }
+    $btn.toggleClass('xdex-has-update', shouldShowPendingUpdateReminder(state));
+  }
+  function clearFooterUpdateHighlight() {
+    const $links = $('#sp_panel_footer .sp_panel_links');
+    $links.removeClass('xdex-update-highlight xdex-update-source-greasyfork xdex-update-source-scriptcat xdex-update-source-github');
+    $links.find('[data-update-channel]').removeClass('xdex-update-link-primary xdex-update-link-secondary');
+  }
+  function flashFooterUpdateHighlight(source = '') {
+    const $links = $('#sp_panel_footer .sp_panel_links');
+    if (!$links.length) return;
+    clearFooterUpdateHighlight();
+    $links.addClass('xdex-update-highlight');
+    const sourceKey = String(source || '').trim().toLowerCase();
+    const channelMap = {
+      greasyfork: {
+        containerClass: 'xdex-update-source-greasyfork',
+        primary: 'greasyfork',
+        secondary: ['github']
+      },
+      scriptcat: {
+        containerClass: 'xdex-update-source-scriptcat',
+        primary: 'scriptcat',
+        secondary: ['baidupan']
+      },
+      github: {
+        containerClass: 'xdex-update-source-github',
+        primary: 'github',
+        secondary: ['baidupan']
+      },
+      jsdelivr: {
+        containerClass: 'xdex-update-source-github',
+        primary: 'baidupan',
+        secondary: ['github']
+      }
+    };
+    const config = channelMap[sourceKey];
+    if (config) {
+      $links.addClass(config.containerClass);
+      $links.find(`[data-update-channel="${config.primary}"]`).addClass('xdex-update-link-primary');
+      (config.secondary || []).forEach((channel) => {
+        $links.find(`[data-update-channel="${channel}"]`).addClass('xdex-update-link-secondary');
+      });
+    }
+    setTimeout(() => {
+      clearFooterUpdateHighlight();
+    }, 5000);
+  }
+  function renderUpdateLogDialog(mode = 'local', state = getUpdateCheckState()) {
+    const $dlg = $('#sp_update_log');
+    if (!$dlg.length) return;
+    const isRemote = mode === 'remote' && state && state.pendingUpdateVersion && compareVersionStrings(state.pendingUpdateVersion, VERSION) > 0;
+    const title = isRemote ? `发现新版本 v${state.pendingUpdateVersion}` : '更新日志';
+    const bodyText = isRemote
+      ? (state.pendingUpdateChangelog || `发现新版本 v${state.pendingUpdateVersion}，但未提取到更新说明。`)
+      : (CHANGELOG || '暂无更新说明');
+    $dlg.attr('data-update-mode', isRemote ? 'remote' : 'local');
+    $dlg.find('.xdex-update-log-title').text(title);
+    $dlg.find('.xdex-update-log-body').text(bodyText);
+    $dlg.find('.xdex-update-log-actions').css('display', isRemote ? 'flex' : 'none');
+  }
+  function openUpdateLogDialog(mode = 'local') {
+    const state = getUpdateCheckState();
+    renderUpdateLogDialog(mode, state);
+    $('#sp_update_log').fadeIn(120);
+  }
+  function closeUpdateLogDialog(options = {}) {
+    const { treatAsDismiss = false, reason = 'unknown' } = options || {};
+    const mode = $('#sp_update_log').attr('data-update-mode') || '';
+    if (treatAsDismiss) {
+      const state = getUpdateCheckState();
+      state.lastDismissDate = formatLocalDateKey();
+      state.dismissedUntil = state.nextCheckAt || getNextNaturalCheckAt();
+      setUpdateCheckState(state);
+      updateSettingsButtonBadge(state);
+      console.log('[update-check] dismiss dialog:', {
+        reason,
+        mode,
+        treatAsDismiss: true,
+        lastDismissDate: state.lastDismissDate,
+        dismissedUntil: state.dismissedUntil,
+        dismissedUntilISO: state.dismissedUntil ? new Date(state.dismissedUntil).toISOString() : ''
+      });
+    } else {
+      console.log('[update-check] close dialog:', {
+        reason,
+        mode,
+        treatAsDismiss: false
+      });
+    }
+    $('#sp_update_log').fadeOut(120);
+  }
+  function maybeShowPendingUpdateDialogOnPanelOpen() {
+    if (!isUpdateCheckEnabled()) {
+      const state = getDefaultUpdateCheckState();
+      updateSettingsButtonBadge(state);
+      clearFooterUpdateHighlight();
+      return;
+    }
+    const state = getUpdateCheckState();
+    updateSettingsButtonBadge(state);
+    if (shouldShowPendingUpdateReminder(state)) {
+      openUpdateLogDialog('remote');
+    }
+  }
+  async function checkForDailyScriptUpdate(force = false) {
+    if (!isUpdateCheckEnabled()) {
+      const state = getUpdateCheckState();
+      updateSettingsButtonBadge(state);
+      clearFooterUpdateHighlight();
+      return state;
+    }
+    const now = Date.now();
+    const today = formatLocalDateKey(now);
+    const state = getUpdateCheckState();
+    const alreadyChecked = !force && state.nextCheckAt && now < state.nextCheckAt;
+    console.log('[update-check] start:', {
+      force,
+      now,
+      today,
+      currentVersion: VERSION,
+      state: Object.assign({}, state),
+      alreadyChecked,
+      nextCheckAtISO: state.nextCheckAt ? new Date(state.nextCheckAt).toISOString() : ''
+    });
+    if (alreadyChecked) {
+      console.log('[update-check] skip: already checked for current window', {
+        force,
+        now,
+        nextCheckAt: state.nextCheckAt,
+        nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
+      });
+      updateSettingsButtonBadge(state);
+      return state;
+    }
+    state.lastCheckDate = today;
+    state.nextCheckAt = getNextNaturalCheckAt(now);
+    console.log('[update-check] scheduled next check:', {
+      lastCheckDate: state.lastCheckDate,
+      nextCheckAt: state.nextCheckAt,
+      nextCheckAtISO: new Date(state.nextCheckAt).toISOString()
+    });
+    try {
+      const requests = getUpdateCheckRequestsForRuntime();
+      const settled = await Promise.allSettled(requests.map((request) => request()));
+      const sourceResults = settled.map((item, index) => {
+        const source = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension'
+          ? (index === 0 ? 'github' : 'jsdelivr')
+          : (index === 0 ? 'greasyfork' : 'scriptcat');
+        if (item.status === 'fulfilled') {
+          console.log('[update-check] remote meta success:', item.value);
+          return item.value;
+        }
+        console.warn(`[update-check] remote meta failed: ${source}`, item.reason);
+        return null;
+      });
+      const preferredRemote = choosePreferredRemoteMeta(sourceResults);
+      console.log('[update-check] remote meta choice:', {
+        localVersion: VERSION,
+        candidates: sourceResults,
+        preferred: preferredRemote
+      });
+      const remoteVersion = preferredRemote ? String(preferredRemote.version || '').trim() : '';
+      const remoteChangelog = preferredRemote ? String(preferredRemote.changelog || '').trim() : '';
+      state.latestRemoteVersion = remoteVersion;
+      if (remoteVersion && compareVersionStrings(remoteVersion, VERSION) > 0) {
+        state.pendingUpdateVersion = remoteVersion;
+        state.pendingUpdateDetectedAt = now;
+        state.pendingUpdateChangelog = remoteChangelog || `发现新版本 v${remoteVersion}，但未提取到更新说明。`;
+        state.pendingUpdateSource = preferredRemote ? String(preferredRemote.source || '').trim() : '';
+        if (state.dismissedUntil && now >= state.dismissedUntil) {
+          state.dismissedUntil = 0;
+          state.lastDismissDate = '';
+        }
+        if (state.ignoredVersion && compareVersionStrings(state.ignoredVersion, remoteVersion) < 0) {
+          state.ignoredVersion = '';
+        }
+      } else {
+        state.pendingUpdateVersion = '';
+        state.pendingUpdateChangelog = '';
+        state.pendingUpdateSource = '';
+        state.pendingUpdateDetectedAt = 0;
+      }
+    } catch (e) {
+      console.warn('[update-check] daily update check failed:', e);
+    }
+    console.log('[update-check] final state before save:', state);
+    setUpdateCheckState(state);
+    updateSettingsButtonBadge(state);
+    return state;
+  }
+
   function initializeUpdateReminderUI() {
     updateSettingsButtonBadge(getUpdateCheckState());
     clearFooterUpdateHighlight();
@@ -22522,6 +18823,3733 @@ function 注册自动保存编辑() {
   /* --------------------------------------------------
    * tag 24. 常用串/浏览历史/发言历史/移动端订阅
    * -------------------------------------------------- */
+
+  function isValidThreadId(threadId) {
+    return /^\d{6,8}$/.test(threadId);
+  }
+  function normalizeFavoriteThreadInput(raw) {
+    const value = String(raw || '').trim();
+    if (isValidThreadId(value)) return value;
+    let url;
+    try {
+      url = new URL(value, location.origin);
+    } catch (e) {
+      return '';
+    }
+    if (url.hostname && !['www.nmbxd1.com', 'nmbxd1.com', 'www.nmbxd.com', 'nmbxd.com'].includes(url.hostname)) return '';
+    const path = url.pathname || '';
+    const threadMatch = path.match(/^\/t\/(\d{6,8})(?:\/\d+)?\/?$/);
+    if (threadMatch) return threadMatch[1];
+    const poMatch = path.match(/^\/Forum\/po\/id\/(\d{6,8})(?:\/page\/\d+)?(?:\.html)?$/);
+    if (poMatch) return poMatch[1];
+    return '';
+  }
+  function makeFavoriteThreadUrl(threadId) {
+    return `https://www.nmbxd1.com/t/${threadId}`;
+  }
+  function trimFavoriteThreadDesc(desc) {
+    return String(desc || '').trim().slice(0, 20);
+  }
+  // 判断码点是否为全角/CJK字符（视觉宽度 2）
+  function _isFullWidthCodePoint(cp) {
+    return (
+      (cp >= 0x1100 && cp <= 0x115F) ||        // Hangul Jamo
+      (cp >= 0x2E80 && cp <= 0x303E) ||        // CJK Radicals, Kangxi, etc.
+      (cp >= 0x3040 && cp <= 0x33BF) ||        // Hiragana, Katakana, Bopomofo, etc.
+      (cp >= 0x3400 && cp <= 0x4DBF) ||        // CJK Extension A
+      (cp >= 0x4E00 && cp <= 0x9FFF) ||        // CJK Unified Ideographs
+      (cp >= 0xA000 && cp <= 0xA4CF) ||        // Yi Syllables
+      (cp >= 0xAC00 && cp <= 0xD7AF) ||        // Hangul Syllables
+      (cp >= 0xF900 && cp <= 0xFAFF) ||        // CJK Compatibility Ideographs
+      (cp >= 0xFE30 && cp <= 0xFE4F) ||        // CJK Compatibility Forms
+      (cp >= 0xFF01 && cp <= 0xFF60) ||        // Fullwidth Forms（含全角字母/数字/标点）
+      (cp >= 0xFFE0 && cp <= 0xFFE6) ||        // Fullwidth Signs
+      (cp >= 0x20000 && cp <= 0x2FA1F) ||      // CJK Extensions B-F
+      cp === 0x2026                             // HORIZONTAL ELLIPSIS（东亚语境占全角宽度）
+    );
+  }
+  // 按视觉宽度截断（CJK/全角=2，其余=1）
+  function _truncateByVisualWidth(str, maxWidth) {
+    let w = 0;
+    for (let i = 0; i < str.length; i++) {
+      const cp = str.codePointAt(i);
+      const cw = _isFullWidthCodePoint(cp) ? 2 : 1;
+      if (w + cw > maxWidth) return str.slice(0, i);
+      w += cw;
+      if (cp > 0xFFFF) i++; // surrogate pair 跳过
+    }
+    return str;
+  }
+  function _visualWidth(str) {
+    let w = 0;
+    for (const ch of str) w += _isFullWidthCodePoint(ch.codePointAt(0)) ? 2 : 1;
+    return w;
+  }
+  function formatFavoriteThreadMenuText(item) {
+    const text = item && item.desc ? item.desc : item && item.threadId ? item.threadId : '';
+    const VISUAL_MAX = 18; // 侧边栏实际可用：≈7个汉字 + "……"
+    const ELLIPSIS_W = 4;  // "……" 两个全角省略号 = 4个半角宽度
+    const w = _visualWidth(text);
+    if (w <= VISUAL_MAX) return text;
+    const truncated = _truncateByVisualWidth(text, VISUAL_MAX - ELLIPSIS_W);
+    // 截断后加"……"反而比原文更宽（或差不多）→ 直接显示原文，接受轻微溢出
+    if (_visualWidth(truncated) + ELLIPSIS_W >= w) return text;
+    return `${truncated}……`;
+  }
+  function normalizeFavoriteThreads(val) {
+    if (!Array.isArray(val)) return [];
+    const seen = new Set();
+    return val.map((item) => {
+      const desc = item && typeof item.desc === 'string' && isValidDesc(item.desc.trim()) ? item.desc.trim() : '';
+      const threadId = normalizeFavoriteThreadInput(item && typeof item.threadId === 'string' ? item.threadId : '');
+      return { desc, threadId };
+    }).filter((item) => {
+      if (!isValidThreadId(item.threadId) || seen.has(item.threadId)) return false;
+      seen.add(item.threadId);
+      return true;
+    });
+  }
+  function collectSubscriptionFeedsFromPanel() {
+    const parsed = [];
+    const seen = new Map();
+    let valid = true;
+    $('#subscription-feed-inputs-container .subscription-feed-row').each((idx, el) => {
+      const $row = $(el);
+      const desc = ($row.find('.subscription-feed-desc-input').val() || '').trim();
+      const uuid = ($row.find('.subscription-feed-uuid-input').val() || '').trim();
+      if (!desc && !uuid) return;
+      if (!isValidDesc(desc)) { toast(`第${idx + 1}组备注过长`); valid = false; return false; }
+      if (!uuid) { toast(`第${idx + 1}组未指定订阅号`); valid = false; return false; }
+      if (seen.has(uuid)) {
+        const first = seen.get(uuid);
+        const suffix = first.desc ? `（${first.desc}）` : '';
+        toast(`第${idx + 1}组与第${first.index}组${suffix}订阅号重复`);
+        valid = false;
+        return false;
+      }
+      seen.set(uuid, { index: idx + 1, desc });
+      parsed.push({ desc, uuid });
+    });
+    return valid ? parsed : null;
+  }
+  function collectFavoriteThreadsFromPanel() {
+    const parsed = [];
+    const seen = new Map();
+    let valid = true;
+    $('#favorite-thread-inputs-container .favorite-thread-row').each((idx, el) => {
+      const $row = $(el);
+      const desc = ($row.find('.favorite-thread-desc-input').val() || '').trim();
+      const rawThread = ($row.find('.favorite-thread-id-input').val() || '').trim();
+      const threadId = normalizeFavoriteThreadInput(rawThread);
+      if (!desc && !rawThread) return;
+      if (!isValidDesc(desc)) { toast(`第${idx + 1}组备注过长`); valid = false; return false; }
+      if (!rawThread) { toast(`第${idx + 1}组未指定串号或链接`); valid = false; return false; }
+      if (!threadId) { toast(`第${idx + 1}组存在不合法串号或链接`); valid = false; return false; }
+      if (seen.has(threadId)) {
+        const first = seen.get(threadId);
+        const suffix = first.desc ? `（${first.desc}）` : '';
+        toast(`第${idx + 1}组与第${first.index}组${suffix}重复`);
+        valid = false;
+        return false;
+      }
+      seen.set(threadId, { index: idx + 1, desc });
+      parsed.push({ desc, threadId });
+    });
+    return valid ? parsed : null;
+  }
+  function buildFavoriteThreadRowHtml(index, item = {}) {
+    const desc = item.desc || '';
+    const threadId = item.threadId || '';
+    return `
+      <div class="favorite-thread-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
+        </div>
+      </div>`;
+  }
+  function buildSubscriptionFeedRowHtml(index, item = {}) {
+    const desc = item.desc || '';
+    const uuid = item.uuid || '';
+    return `
+      <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
+        <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+          <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
+          <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
+        </div>
+      </div>`;
+  }
+
+  // ─── 浏览历史 / 发言历史 / 订阅 ───
+  const THREAD_HISTORY_STORAGE_KEY = 'xdex_thread_history';
+  const THREAD_HISTORY_STORE_VERSION = 1;
+  // const THREAD_HISTORY_LIMIT = 500;
+  const THREAD_HISTORY_LIMIT = Infinity;
+  const THREAD_HISTORY_EXCERPT_LIMIT = 250;
+  const THREAD_HISTORY_RECORD_RETRY_LIMIT = 10;
+  const THREAD_HISTORY_RECORD_RETRY_DELAY = 500;
+  const THREAD_HISTORY_SYNC_EVENT = 'xdex:thread-history-changed';
+  const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
+  const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
+  const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
+  const POST_HISTORY_STORAGE_KEY = 'xdex_post_history';
+  const POST_HISTORY_STORE_VERSION = 1;
+  // const POST_HISTORY_LIMIT = 500;
+  const POST_HISTORY_THREAD_LIMIT = Infinity;
+  const POST_HISTORY_REPLY_LIMIT = Infinity;
+  const POST_HISTORY_SYNC_EVENT = 'xdex:post-history-changed';
+  const POST_HISTORY_API_BASE = `${location.origin}/Api`;
+  const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
+  const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
+  const POST_HISTORY_GET_LAST_POST_RETRY_DELAYS = [300, 800, 1500, 2500];
+  const POST_HISTORY_CONFIRM_TIMEOUT_MS = 10000;
+  const POST_HISTORY_REPLIES_PER_PAGE = 19;
+  const POST_HISTORY_MATCH_TIME_WINDOW_MS = 45000;
+  const POST_HISTORY_FORUM_FID_MAP = Object.freeze({
+    '-1': '时间线',
+    '4': '综合版1',
+    '98': 'DANGER/U/',
+    '20': '欢乐恶搞',
+    '121': '速报2',
+    // 测试版不在公开 getForumList，但 showf?id=122 可用；主串仅红名可见，发言历史需靠 showf 回查
+    '122': '测试',
+    '17': '绘画(二创)',
+    '110': '社畜(校园)',
+    '19': '故事(小说)',
+    '81': '都市怪谈(灵异)',
+    '37': '军武',
+    '30': '技术宅(代码)',
+    '75': '数码(装机)',
+    '118': '宠物',
+    '97': '女装(时尚)',
+    '106': '买买买(物品推荐)',
+    '14': '动画综合',
+    '12': '漫画',
+    '53': '婆罗门一',
+    '31': '电影/电视',
+    '116': '主播管人(圈内)',
+    '45': '卡牌桌游',
+    '9': '特摄(布袋戏)',
+    '102': '战锤',
+    '39': '胶佬(手办)',
+    '94': '铁道厨(车辆)',
+    '6': 'VOCALOID',
+    '90': '小马(美漫)',
+    '5': '东方Project',
+    '93': '舰娘',
+    '111': '跑团',
+    '57': '创作茶水间',
+    '91': '规则怪谈',
+    '11': '海龟汤(推理)',
+    '15': '科学(干货)',
+    '103': '文学(推书)',
+    '35': '音乐(推歌)',
+    '27': 'AI(Chatgpt)',
+    '115': '摄影(cos)',
+    '112': 'ROLL点',
+    '2': '游戏综合',
+    '3': '手游专楼',
+    '25': '任天堂NS',
+    '22': '腾讯游戏(LOL)',
+    '23': '暴雪游戏',
+    '124': 'SE(FF14)',
+    '70': 'V社(DOTA)',
+    '28': '怪物猎人',
+    '68': '鹰角游戏',
+    '47': '米哈游',
+    '34': '音游打卡',
+    '10': '联机(服务器发布）',
+    '62': '露营',
+    '113': '育儿',
+    '120': '自救互助',
+    '32': '料理(美食)',
+    '33': '体育(健身)',
+    '56': '学业打卡',
+    '89': '日记(树洞)',
+    '18': '值班室',
+    '117': '技术支持',
+    '96': '版务',
+    '60': '三百人委员会'
+  });
+  const POST_HISTORY_FORUM_GROUP_MAP = Object.freeze({
+
+    '-1': '综合', '4': '综合', '98': '综合', '20': '综合', '121': '综合', '122': '综合', '17': '综合', '110': '综合', '19': '综合', '81': '综合', '37': '综合', '30': '综合', '75': '综合', '118': '综合', '97': '综合', '106': '综合',
+    '14': '亚文化', '12': '亚文化', '53': '亚文化', '31': '亚文化', '116': '亚文化', '45': '亚文化', '9': '亚文化', '102': '亚文化', '39': '亚文化', '94': '亚文化', '6': '亚文化', '90': '亚文化', '5': '亚文化', '93': '亚文化',
+    '111': '创作', '57': '创作', '91': '创作', '11': '创作', '15': '创作', '103': '创作', '35': '创作', '27': '创作', '115': '创作', '112': '创作',
+    '2': '游戏', '3': '游戏', '25': '游戏', '22': '游戏', '23': '游戏', '124': '游戏', '70': '游戏', '28': '游戏', '68': '游戏', '47': '游戏', '34': '游戏', '10': '游戏',
+    '62': '生活', '113': '生活', '120': '生活', '32': '生活', '33': '生活', '56': '生活', '89': '生活',
+    '18': '管理', '117': '管理', '96': '管理', '60': '管理'
+  });
+  const POST_HISTORY_FORUM_SEARCH_META = Object.freeze({
+    '98': { rawName: 'DANGER_U', showName: 'DANGER/U/', groupName: '综合' },
+    '122': { rawName: '测试', showName: '测试', groupName: '综合' },
+    '17': { rawName: '绘画', showName: '绘画(二创)', groupName: '综合' },
+    '110': { rawName: '社畜', showName: '社畜(校园)', groupName: '综合' },
+    '19': { rawName: '故事', showName: '故事(小说)', groupName: '综合' },
+    '81': { rawName: '都市怪谈', showName: '都市怪谈(灵异)', groupName: '综合' },
+    '30': { rawName: '技术宅', showName: '技术宅(代码)', groupName: '综合' },
+    '75': { rawName: '数码', showName: '数码(装机)', groupName: '综合' },
+    '97': { rawName: '女装2', showName: '女装(时尚)', groupName: '综合' },
+    '106': { rawName: '买买买', showName: '买买买(物品推荐)', groupName: '综合' },
+    '31': { rawName: '影视', showName: '电影/电视', groupName: '亚文化' },
+    '116': { rawName: '主播管人', showName: '主播管人(圈内)', groupName: '亚文化' },
+    '9': { rawName: '特摄', showName: '特摄(布袋戏)', groupName: '亚文化' },
+    '39': { rawName: '胶佬', showName: '胶佬(手办)', groupName: '亚文化' },
+    '94': { rawName: '铁道厨', showName: '铁道厨(车辆)', groupName: '亚文化' },
+    '90': { rawName: '小马', showName: '小马(美漫)', groupName: '亚文化' },
+    '11': { rawName: '海龟汤', showName: '海龟汤(推理)', groupName: '创作' },
+    '15': { rawName: '科学', showName: '科学(干货)', groupName: '创作' },
+    '103': { rawName: '文学', showName: '文学(推书)', groupName: '创作' },
+    '35': { rawName: '音乐', showName: '音乐(推歌)', groupName: '创作' },
+    '27': { rawName: 'AI', showName: 'AI(Chatgpt)', groupName: '创作' },
+    '115': { rawName: '摄影', showName: '摄影(cos)', groupName: '创作' },
+    '25': { rawName: '任天堂', showName: '任天堂NS', groupName: '游戏' },
+    '22': { rawName: '腾讯游戏', showName: '腾讯游戏(LOL)', groupName: '游戏' },
+    '124': { rawName: 'SE', showName: 'SE(FF14)', groupName: '游戏' },
+    '70': { rawName: 'V社', showName: 'V社(DOTA)', groupName: '游戏' },
+    '10': { rawName: '联机', showName: '联机(服务器发布）', groupName: '游戏' },
+    '32': { rawName: '料理', showName: '料理(美食)', groupName: '生活' },
+    '33': { rawName: '体育', showName: '体育(健身)', groupName: '生活' },
+    '89': { rawName: '日记', showName: '日记(树洞)', groupName: '生活' },
+    '60': { rawName: '百脑汇', showName: '三百人委员会', groupName: '管理' }
+  });
+  const POST_HISTORY_TIMELINE_ID_MAP = Object.freeze({
+    '1': '综合线',
+    '2': '创作线',
+    '3': '非创作线',
+    '4': '亚文化线',
+    '5': '综合2线',
+    '6': '游戏线',
+    '7': '生活线'
+  });
+  const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\nhas:sage 被 SAGE 的串\n可组合：mode:po has:image has:sage 关键词';
+  const postHistoryConfirmationMap = new Map(); // 等待发串确认后跳转的 Promise 存储器 { localId -> resolver }
+  const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、板块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定板块 ID\nforum:综合 模糊匹配板块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
+  const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
+  const threadHistoryDebugState = {
+    loadedAt: new Date().toISOString(),
+    href: location.href,
+    runtime: XDEX_RUNTIME && XDEX_RUNTIME.kind,
+    storageKey: THREAD_HISTORY_STORAGE_KEY,
+    lastRecord: null,
+    lastRender: null,
+    lastPanelModule: ''
+  };
+  window.__xdexThreadHistoryDebug = threadHistoryDebugState;
+  let threadHistoryLiveSyncBound = false;
+  let threadHistoryLiveRenderTimer = 0;
+  let threadHistoryLiveRenderFirstAt = 0;
+  let threadHistoryLiveRenderPendingCount = 0;
+  let threadHistoryReactivationTrackingInstalled = false;
+  let threadHistoryDwellTimer = 0;
+  let threadHistoryVisibleSince = 0;
+  let threadHistoryVisibleSessionCounted = false;
+  let postHistoryLiveSyncBound = false;
+  let postHistoryLiveRenderTimer = 0;
+  let postHistoryLiveRenderFirstAt = 0;
+  let postHistoryLiveRenderPendingCount = 0;
+  let postHistoryLiveRenderDirty = false;
+  let postHistoryActiveType = 'reply';
+  function updateThreadHistoryDebugState(patch) {
+    Object.assign(threadHistoryDebugState, patch || {});
+    window.__xdexThreadHistoryDebug = threadHistoryDebugState;
+    return threadHistoryDebugState;
+  }
+  function logThreadHistory(message, details, level = 'info') {
+    const payload = Object.assign({ href: location.href }, details || {});
+    updateThreadHistoryDebugState({ lastLog: { message, details: payload, at: new Date().toISOString() } });
+    const logger = console[level] || console.info || console.log;
+    logger.call(console, `[thread-history] ${message}`, payload);
+  }
+  function logThreadHistoryFlat(message, details, level = 'info') {
+    const payload = Object.assign({ href: location.href }, details || {});
+    const text = Object.keys(payload)
+      .map(key => `${key}=${JSON.stringify(payload[key])}`)
+      .join(' ');
+    updateThreadHistoryDebugState({ lastFlatLog: { message, details: payload, at: new Date().toISOString() } });
+    const logger = console[level] || console.info || console.log;
+    logger.call(console, `[thread-history] ${message} ${text}`);
+  }
+
+  function createDefaultThreadHistoryStore() {
+    return {
+      version: 1,
+      limit: 500,
+      items: {},
+      index: {},
+      order: []
+    };
+  }
+  function getThreadHistoryKey(mode, threadId) {
+    return `${mode}:${String(threadId || '').slice(0, 8)}`;
+  }
+  function normalizeThreadHistoryStore(rawStore) {
+    const store = Object.assign(createDefaultThreadHistoryStore(), rawStore || {});
+    store.version = THREAD_HISTORY_STORE_VERSION;
+    store.limit = Number(store.limit) > 0 ? Number(store.limit) : THREAD_HISTORY_LIMIT;
+    store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    store.index = store.index && typeof store.index === 'object' ? store.index : {};
+    const seen = new Set();
+    store.order = (Array.isArray(store.order) ? store.order : [])
+      .filter(key => {
+        if (!store.items[key] || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    Object.keys(store.items).forEach(key => {
+      if (!store.index[key]) store.index[key] = buildThreadHistoryIndexEntry(store.items[key]);
+      if (!seen.has(key)) {
+        seen.add(key);
+        store.order.push(key);
+      }
+    });
+    Object.keys(store.index).forEach(key => {
+      if (!store.items[key]) delete store.index[key];
+    });
+    store.order.sort((a, b) => {
+      const av = Number(store.items[a] && store.items[a].lastVisitedAt) || 0;
+      const bv = Number(store.items[b] && store.items[b].lastVisitedAt) || 0;
+      return bv - av;
+    });
+    while (store.order.length > store.limit) {
+      const key = store.order.pop();
+      delete store.items[key];
+      delete store.index[key];
+    }
+    return store;
+  }
+  function getThreadHistoryStore() {
+    try {
+      return normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+    } catch (e) {
+      return createDefaultThreadHistoryStore();
+    }
+  }
+  function setThreadHistoryStore(store) {
+    const normalized = normalizeThreadHistoryStore(store);
+    GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
+    notifyThreadHistoryStoreChanged('local-write', false);
+    return normalized;
+  }
+  function isThreadHistoryPanelOpen() {
+    const cover = document.getElementById('sp_cover');
+    const module = document.getElementById('sp_module_history');
+    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
+  }
+  function scheduleThreadHistoryLiveRender(source, remote) {
+    const active = isThreadHistoryPanelOpen();
+    const now = Date.now();
+    if (!threadHistoryLiveRenderFirstAt) threadHistoryLiveRenderFirstAt = now;
+    threadHistoryLiveRenderPendingCount += 1;
+    updateThreadHistoryDebugState({
+      lastLiveSync: {
+        source,
+        remote: !!remote,
+        active,
+        pendingCount: threadHistoryLiveRenderPendingCount,
+        firstAt: threadHistoryLiveRenderFirstAt,
+        at: new Date().toISOString()
+      }
+    });
+    if (!active) {
+      if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
+      threadHistoryLiveRenderTimer = 0;
+      threadHistoryLiveRenderFirstAt = 0;
+      threadHistoryLiveRenderPendingCount = 0;
+      return;
+    }
+    const run = () => {
+      threadHistoryLiveRenderTimer = 0;
+      threadHistoryLiveRenderFirstAt = 0;
+      threadHistoryLiveRenderPendingCount = 0;
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderThreadHistoryModule());
+      else renderThreadHistoryModule();
+    };
+    if (threadHistoryLiveRenderTimer) clearTimeout(threadHistoryLiveRenderTimer);
+    const elapsed = now - threadHistoryLiveRenderFirstAt;
+    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
+      ? 0
+      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
+    threadHistoryLiveRenderTimer = setTimeout(run, delay);
+  }
+  function notifyThreadHistoryStoreChanged(source, remote) {
+    try {
+      window.dispatchEvent(new CustomEvent(THREAD_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
+    } catch (e) {}
+    scheduleThreadHistoryLiveRender(source, remote);
+  }
+  function bindThreadHistoryLiveSync() {
+    if (threadHistoryLiveSyncBound) return;
+    threadHistoryLiveSyncBound = true;
+    if (typeof GM_addValueChangeListener === 'function') {
+      try {
+        GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          scheduleThreadHistoryLiveRender('gm-value-change', remote);
+          syncFavoriteThreadsLinks();
+        });
+      } catch (e) {
+        logThreadHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
+      }
+    }
+    window.addEventListener(THREAD_HISTORY_SYNC_EVENT, (event) => {
+      const detail = event && event.detail || {};
+      scheduleThreadHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
+    });
+  }
+  function createDefaultPostHistoryStore() {
+    return {
+      version: POST_HISTORY_STORE_VERSION,
+      // limit: POST_HISTORY_LIMIT,
+      items: {},
+      order: []
+    };
+  }
+  function normalizePostHistoryType(type) {
+    return type === 'reply' ? 'reply' : 'thread';
+  }
+  function normalizePostHistoryStatus(status) {
+    return ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(status) ? status : 'pending';
+  }
+  function normalizePostHistoryFid(fid) {
+    const value = String(fid == null ? '' : fid).trim();
+    return /^-?\d+$/.test(value) ? value : '';
+  }
+  function getPostHistoryForumNameByFid(fid) {
+    return POST_HISTORY_FORUM_FID_MAP[normalizePostHistoryFid(fid)] || '';
+  }
+  function normalizeHistorySearchValue(value) {
+    return String(value == null ? '' : value).trim().toLowerCase();
+  }
+  function getPostHistoryForumSearchText(item) {
+    const fid = normalizePostHistoryFid(item && item.fid);
+    const meta = POST_HISTORY_FORUM_SEARCH_META[fid] || {};
+    return [
+      fid,
+      item && item.forumName,
+      getPostHistoryForumNameByFid(fid),
+      meta.rawName,
+      meta.showName,
+      meta.groupName || POST_HISTORY_FORUM_GROUP_MAP[fid]
+    ].join(' ').toLowerCase();
+  }
+  function getPostHistoryPostFid(post) {
+    if (!post || typeof post !== 'object') return '';
+    return normalizePostHistoryFid(post.fid || post.Fid || post.forum_id || post.forumId || post.forum);
+  }
+  function getCurrentPostHistoryFid() {
+    const path = String(location && location.pathname || '');
+    const forumMatch = path.match(/^\/f\/([^/?#]+)/);
+    if (!forumMatch) return '';
+    let forumName = '';
+    try {
+      forumName = decodeURIComponent(forumMatch[1] || '');
+    } catch (e) {
+      forumName = forumMatch[1] || '';
+    }
+    const normalizedName = forumName.replace(/\s+/g, '').toLowerCase();
+    return Object.keys(POST_HISTORY_FORUM_FID_MAP).find(fid => {
+      const name = String(POST_HISTORY_FORUM_FID_MAP[fid] || '').replace(/\s+/g, '').toLowerCase();
+      return name === normalizedName;
+    }) || '';
+  }
+  function normalizePostHistoryText(text) {
+    // 旧版（破坏性）：暴力替换空白、移除标签、trim — 已禁用
+    // return String(text || '')
+    //   .replace(/<br\s*\/?\s*>/gi, ' ')
+    //   .replace(/<[^>]+>/g, '')
+    //   .replace(/&nbsp;/gi, ' ')
+    //   .replace(/&gt;/gi, '>')
+    //   .replace(/&lt;/gi, '<')
+    //   .replace(/&amp;/gi, '&')
+    //   .replace(/\r\n/g, '\n')
+    //   .replace(/\r/g, '\n')
+    //   .replace(/[\s\u00a0]+/g, ' ')
+    //   .trim();
+    // 新版：忠实保留原始内容
+    return String(text || '')
+      .replace(/<br\s*\/?\s*>/gi, '\n')     // <br> → 换行（不是空格）
+      .replace(/&gt;/gi, '>')               // 符号转义
+      .replace(/&lt;/gi, '<')
+      .replace(/&amp;/gi, '&')
+      .replace(/&nbsp;/gi, '\u00a0')         // &nbsp; → 不间断空格（保留语义）
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+      // 不移除 HTML 标签，保留原始结构
+      // 不合并空白字符，保留原始空格/全角空格/零宽空格
+      // 不 trim，保留原始首尾空白
+  }
+  function sanitizePostHistoryServerContentHtml(content) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = String(content || '');
+    return sanitizeThreadHistoryContentHtml(wrapper);
+  }
+  function hashPostHistoryText(text) {
+    // 旧版：直接调用 normalizePostHistoryText — 已禁用（normalizePostHistoryText 已改为忠实模式）
+    // const normalized = normalizePostHistoryText(text);
+    // 新版：内部独立标准化，保持 hash 计算一致性
+    const normalized = String(text || '')
+      .replace(/<br\s*\/?\s*>/gi, ' ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&gt;/gi, '>')
+      .replace(/&lt;/gi, '<')
+      .replace(/&amp;/gi, '&')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/[\s\u00a0]+/g, ' ')
+      .trim();
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0;
+    }
+    return String(hash >>> 0);
+  }
+  const postHistoryDebugState = window.__xdexPostHistoryDebug = window.__xdexPostHistoryDebug || { events: [] };
+  function summarizePostHistoryText(text) {
+    const normalized = normalizePostHistoryText(text);
+    return {
+      length: normalized.length,
+      hash: hashPostHistoryText(normalized),
+      preview: normalized.slice(0, 40)
+    };
+  }
+  function summarizePostHistoryCandidate(post) {
+    if (!post) return null;
+    const resto = String(post.resto || '0').trim();
+    return {
+      id: String(post.id || '').trim(),
+      resto,
+      type: Number(resto) === 0 ? 'thread' : 'reply',
+      now: post.now || '',
+      img: post.img || '',
+      ext: post.ext || '',
+      content: summarizePostHistoryText(post.content || '')
+    };
+  }
+  function summarizePostHistorySnapshot(snapshot) {
+    if (!snapshot) return null;
+    return {
+      localId: snapshot.localId || '',
+      type: snapshot.type || '',
+      resto: snapshot.resto || '',
+      contentHash: snapshot.contentHash || '',
+      submittedAt: snapshot.submittedAt || 0,
+      sourceUrl: snapshot.sourceUrl || ''
+    };
+  }
+  function logPostHistory(stage, data, level = 'log') {
+    const detail = Object.assign({ stage, at: Date.now() }, data || {});
+    try {
+      postHistoryDebugState.events.push(detail);
+      if (postHistoryDebugState.events.length > 80) postHistoryDebugState.events.shift();
+      postHistoryDebugState.last = detail;
+    } catch (e) {}
+    const method = console[level] ? level : 'log';
+    console[method]('[post-history] ' + stage, detail);
+  }
+  window.__xdexGetPostHistoryDebug = function getPostHistoryDebug() {
+    return postHistoryDebugState;
+  };
+  window.__xdexClearPostHistoryDebug = function clearPostHistoryDebug() {
+    postHistoryDebugState.events = [];
+    postHistoryDebugState.last = null;
+    return postHistoryDebugState;
+  };
+  function normalizePostHistoryStore(rawStore) {
+    const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
+    store.version = POST_HISTORY_STORE_VERSION;
+    // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
+    store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    const seen = new Set();
+    store.order = (Array.isArray(store.order) ? store.order : [])
+      .filter(key => {
+        if (!store.items[key] || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    Object.keys(store.items).forEach(key => {
+      const item = store.items[key] || {};
+      item.localId = item.localId || key;
+      item.status = normalizePostHistoryStatus(item.status);
+      item.type = normalizePostHistoryType(item.type);
+      item.fid = normalizePostHistoryFid(item.fid);
+      item.forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
+      item.contentText = normalizePostHistoryText(item.contentText || item.contentRaw || '');
+      item.contentHash = item.contentHash || hashPostHistoryText(item.contentText);
+      item.page = Math.max(0, Number(item.page) || 0);
+      store.items[key] = item;
+      if (!seen.has(key)) {
+        seen.add(key);
+        store.order.push(key);
+      }
+    });
+    store.order.sort((a, b) => {
+      const av = Number(store.items[a] && store.items[a].submittedAt) || 0;
+      const bv = Number(store.items[b] && store.items[b].submittedAt) || 0;
+      return bv - av;
+    });
+    // 旧：全局共享 limit 清理
+    // while (store.order.length > store.limit) {
+    //   const key = store.order.pop();
+    //   delete store.items[key];
+    // }
+    // 新增：按类型分别清理（仅在 limit !== Infinity 时生效）
+    const shouldCleanThread = POST_HISTORY_THREAD_LIMIT !== Infinity;
+    const shouldCleanReply = POST_HISTORY_REPLY_LIMIT !== Infinity;
+    if (shouldCleanThread || shouldCleanReply) {
+      const typeOrders = { thread: [], reply: [] };
+      store.order.forEach(key => {
+        const type = normalizePostHistoryType(store.items[key]?.type);
+        typeOrders[type].push(key);
+      });
+      while (shouldCleanThread && typeOrders.thread.length > POST_HISTORY_THREAD_LIMIT) {
+        const key = typeOrders.thread.pop();
+        delete store.items[key];
+      }
+      while (shouldCleanReply && typeOrders.reply.length > POST_HISTORY_REPLY_LIMIT) {
+        const key = typeOrders.reply.pop();
+        delete store.items[key];
+      }
+      store.order = store.order.filter(key => store.items[key]);
+    }
+    return store;
+  }
+  function getPostHistoryStore() {
+    try {
+      return normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+    } catch (e) {
+      return createDefaultPostHistoryStore();
+    }
+  }
+  function isPostHistoryPanelOpen() {
+    const cover = document.getElementById('sp_cover');
+    const module = document.getElementById('sp_module_posts');
+    return !!module && module.classList.contains('active') && (!cover || getComputedStyle(cover).display !== 'none');
+  }
+  function schedulePostHistoryLiveRender(source, remote) {
+    const active = isPostHistoryPanelOpen();
+    const renderable = !!document.getElementById('sp_posts_results');
+    const now = Date.now();
+    if (!postHistoryLiveRenderFirstAt) postHistoryLiveRenderFirstAt = now;
+    postHistoryLiveRenderPendingCount += 1;
+    postHistoryLiveRenderDirty = true;
+    logPostHistory('live sync', {
+      source,
+      remote: !!remote,
+      active,
+      renderable,
+      pendingCount: postHistoryLiveRenderPendingCount,
+      firstAt: postHistoryLiveRenderFirstAt
+    });
+    if (!renderable) {
+      if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
+      postHistoryLiveRenderTimer = 0;
+      postHistoryLiveRenderFirstAt = 0;
+      postHistoryLiveRenderPendingCount = 0;
+      return;
+    }
+    const run = () => {
+      postHistoryLiveRenderTimer = 0;
+      postHistoryLiveRenderFirstAt = 0;
+      postHistoryLiveRenderPendingCount = 0;
+      postHistoryLiveRenderDirty = false;
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => renderPostHistoryModule());
+      else renderPostHistoryModule();
+    };
+    if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
+    const elapsed = now - postHistoryLiveRenderFirstAt;
+    const delay = elapsed >= THREAD_HISTORY_LIVE_RENDER_MAX_WAIT
+      ? 0
+      : Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed);
+    postHistoryLiveRenderTimer = setTimeout(run, delay);
+  }
+  function notifyPostHistoryStoreChanged(source, remote) {
+    try {
+      window.dispatchEvent(new CustomEvent(POST_HISTORY_SYNC_EVENT, { detail: { source, remote: !!remote, at: Date.now() } }));
+    } catch (e) {}
+    logPostHistory('store notify', { source, remote: !!remote });
+    schedulePostHistoryLiveRender(source, remote);
+  }
+  function setPostHistoryStore(store) {
+    const normalized = normalizePostHistoryStore(store);
+    GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
+    notifyPostHistoryStoreChanged('local-write', false);
+    return normalized;
+  }
+  function bindPostHistoryLiveSync() {
+    if (postHistoryLiveSyncBound) return;
+    postHistoryLiveSyncBound = true;
+    if (typeof GM_addValueChangeListener === 'function') {
+      try {
+        GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          schedulePostHistoryLiveRender('gm-value-change', remote);
+        });
+      } catch (e) {
+        logPostHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
+      }
+    }
+    window.addEventListener(POST_HISTORY_SYNC_EVENT, (event) => {
+      const detail = event && event.detail || {};
+      schedulePostHistoryLiveRender(detail.source || 'window-event', !!detail.remote);
+    });
+  }
+  function buildCanonicalReplyUrl(threadId, replyId) {
+    const tid = String(threadId || '').trim();
+    const rid = String(replyId || '').trim();
+    if (!tid || !rid) return '';
+    return `${location.origin}/t/${tid}?r=${rid}`;
+  }
+  function buildPostHistoryUrl(type, id, resto) {
+    const postId = String(id || '').trim();
+    const threadId = String(type === 'reply' ? resto : id || '').trim();
+    if (!postId && !threadId) return '';
+    if (type === 'reply') return buildCanonicalReplyUrl(threadId, postId);
+    // 主题也使用 ?r=threadId 格式
+    // return `${location.origin}/t/${threadId}?r=${threadId}`;
+    // 主题:精简版 URL,不带 ?r=threadId
+    return `${location.origin}/t/${threadId}`;
+  }
+  function buildPostHistoryReplyActionUrl(type, id, resto, page) {
+    const postId = String(id || '').trim();
+    const threadId = String(type === 'reply' ? resto : id || '').trim();
+    const pageNum = Math.max(0, Number(page) || 0);
+    // reply 类型保持原来的行为：有 page 就用 ?page=N&r=${postId}`;，否则回退到 ?r=replyId
+    if (type === 'reply') {
+      if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}&r=${postId}`;
+      // if (threadId && pageNum > 0) return `${location.origin}/t/${threadId}?page=${pageNum}`;
+      return buildPostHistoryUrl(type, postId, threadId);
+    }
+    // thread 类型优先从浏览历史获取最新页面（动态更新）
+    const historyUrl = getLatestThreadHistoryUrl(threadId);
+    if (historyUrl) return historyUrl;
+    // 没有浏览历史，回退到发言历史记录的页面
+    const fallbackPage = Math.max(1, Number(page) || 1);
+    if (threadId) return `${location.origin}/t/${threadId}?page=${fallbackPage}`;
+    return buildPostHistoryUrl(type, postId, threadId);
+  }
+  function getConfirmedPostHistoryIds(store) {
+    const ids = new Set();
+    Object.keys(store.items || {}).forEach(key => {
+      const item = store.items[key];
+      if (item && item.status === 'confirmed' && item.id) ids.add(String(item.id));
+    });
+    return ids;
+  }
+  function upsertPostHistoryRecord(record) {
+    if (!record || !record.localId) return getPostHistoryStore();
+    const store = getPostHistoryStore();
+    const old = store.items[record.localId] || {};
+    const merged = Object.assign({}, old, record, {
+      localId: record.localId,
+      status: normalizePostHistoryStatus(record.status),
+      type: normalizePostHistoryType(record.type),
+      contentText: normalizePostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
+      contentHash: record.contentHash || old.contentHash || hashPostHistoryText(record.contentText || record.contentRaw || old.contentText || ''),
+      submittedAt: Number(record.submittedAt || old.submittedAt) || Date.now()
+    });
+    store.items[merged.localId] = merged;
+    store.order = [merged.localId].concat((store.order || []).filter(key => key !== merged.localId));
+    const typeCounts = { thread: 0, reply: 0 };
+    store.order.forEach(key => {
+      const type = normalizePostHistoryType(store.items[key]?.type);
+      typeCounts[type]++;
+    });
+    logPostHistory('store upsert', {
+      localId: merged.localId,
+      status: merged.status,
+      type: merged.type,
+      contentHash: merged.contentHash,
+      submittedAt: merged.submittedAt,
+      total: store.order.length,
+      threadCount: typeCounts.thread,
+      replyCount: typeCounts.reply
+    });
+    return setPostHistoryStore(store);
+  }
+  function updatePostHistoryRecord(localId, patch) {
+    const store = getPostHistoryStore();
+    if (!store.items[localId]) {
+      logPostHistory('store update skipped', { localId, patch: patch || {} }, 'warn');
+      return store;
+    }
+    store.items[localId] = Object.assign({}, store.items[localId], patch || {});
+    logPostHistory('store update', {
+      localId,
+      patch: patch || {},
+      status: store.items[localId].status,
+      type: store.items[localId].type,
+      id: store.items[localId].id || '',
+      resto: store.items[localId].resto || ''
+    });
+    return setPostHistoryStore(store);
+  }
+  function deletePostHistoryItem(localId) {
+    const store = getPostHistoryStore();
+    delete store.items[localId];
+    store.order = (store.order || []).filter(key => key !== localId);
+    return setPostHistoryStore(store);
+  }
+  function clearPostHistory() {
+    return setPostHistoryStore(createDefaultPostHistoryStore());
+  }
+  function searchPostHistory(query, type) {
+    const store = getPostHistoryStore();
+    const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
+    const { filters, tokens } = parsePostHistorySearchQuery(query);
+    return (store.order || [])
+      .map(key => ({ key, item: store.items[key] }))
+      .filter(result => {
+        const item = result.item || {};
+        if (normalizePostHistoryType(item.type) !== selectedType) return false;
+        if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
+        if (filters.fidFilters.length && !filters.fidFilters.includes(normalizePostHistoryFid(item.fid))) return false;
+        if (filters.forumFilters.length && !filters.forumFilters.every(value => getPostHistoryForumSearchText(item).includes(value))) return false;
+        if (filters.hasImage && !item.imageFile) return false;
+        if (filters.isGif && !/\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || ''))) return false;
+        if (filters.hasZeroWidth && !ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))) return false;
+        if (filters.fieldFilters.length && !filters.fieldFilters.every(filter => getPostHistorySearchFieldText(item, filter.field).includes(filter.value))) return false;
+        const text = buildPostHistorySearchText(item);
+        return tokens.every(token => text.includes(token));
+      });
+  }
+  function parsePostHistorySearchQuery(query) {
+    const filters = { statusFilters: [], fidFilters: [], forumFilters: [], fieldFilters: [], hasImage: false, isGif: false, hasZeroWidth: false };
+    const tokens = [];
+    String(query || '').split(/\s+/).filter(Boolean).forEach(rawToken => {
+      const token = normalizeHistorySearchValue(rawToken);
+      const pair = token.match(/^([a-z]+):(.+)$/);
+      if (!pair) {
+        tokens.push(token);
+        return;
+      }
+      const key = pair[1];
+      const value = normalizeHistorySearchValue(pair[2]);
+      if (!value) return;
+      if (key === 'status' && ['pending', 'confirmed', 'unconfirmed', 'failed'].includes(value)) filters.statusFilters.push(value);
+      else if (key === 'fid') {
+        const fid = normalizePostHistoryFid(value);
+        if (fid) filters.fidFilters.push(fid);
+      } else if (key === 'forum') filters.forumFilters.push(value);
+      else if (key === 'has' && value === 'image') filters.hasImage = true;
+      else if (key === 'has' && value === 'gif') filters.isGif = true;
+      else if (key === 'has' && (value === 'zwsp' || value === 'zerowidth')) filters.hasZeroWidth = true;
+      else if (['id', 'thread', 'page', 'cookie', 'name', 'email'].includes(key)) filters.fieldFilters.push({ field: key, value });
+      else tokens.push(token);
+    });
+    return { filters, tokens };
+  }
+  function getPostHistorySearchFieldText(item, field) {
+    if (field === 'id') return normalizeHistorySearchValue([item.id, item.postId].join(' '));
+    if (field === 'thread') return normalizeHistorySearchValue([item.threadId, item.resto].join(' '));
+    if (field === 'page') return normalizeHistorySearchValue(item.page);
+    if (field === 'cookie') return normalizeHistorySearchValue(item.userHash);
+    if (field === 'name') return normalizeHistorySearchValue(item.name);
+    if (field === 'email') return normalizeHistorySearchValue(item.email);
+    return '';
+  }
+  function buildPostHistorySearchText(item) {
+    return [
+      item.id,
+      item.threadId,
+      item.postId,
+      item.resto,
+      item.fid,
+      item.forumName,
+      getPostHistoryForumSearchText(item),
+      item.title,
+      item.name,
+      item.email,
+      item.contentText,
+      item.contentRaw,
+      item.userHash,
+      item.status,
+      item.type,
+      item.page,
+      item.url,
+      item.sourceUrl,
+      item.imageFile,
+      item.imageImg,
+      item.imageExt
+    ].join(' ').toLowerCase();
+  }
+  function parseLastPostResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      const data = json && (json.data || json.post || json);
+      const post = Array.isArray(data) ? (data[0] || null) : data;
+      if (!post) {
+        logPostHistory('getLastPost empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
+        return null;
+      }
+      logPostHistory('getLastPost parse', Object.assign({}, context || {}, { candidate: summarizePostHistoryCandidate(post) }));
+      return post;
+    } catch (e) {
+      logPostHistory('getLastPost parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+  function fetchPostHistorySameOriginText(url, context, stage) {
+    const label = stage || 'post history api';
+    logPostHistory(label + ' request', Object.assign({}, context || {}, { url }));
+    return fetch(url, { credentials: 'include', cache: 'no-store' }).then(resp => {
+      return resp.text().then(text => {
+        logPostHistory(label + ' response', Object.assign({}, context || {}, {
+          status: resp.status,
+          responseLength: String(text || '').length
+        }));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} ${url}`);
+        return {
+          status: resp.status,
+          statusText: resp.statusText,
+          responseText: text,
+          response: text,
+          finalUrl: resp.url || url
+        };
+      });
+    }).catch(e => {
+      logPostHistory(label + ' error', Object.assign({}, context || {}, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+  function fetchLastPostHistoryPost(context) {
+    const url = `${POST_HISTORY_API_BASE}/getLastPost`;
+    return fetchPostHistorySameOriginText(url, context, 'getLastPost').then(resp => parseLastPostResponse(resp, context));
+  }
+  function getPostHistoryApiCookieHeaders() {
+    const userhash = getCurrentBrowserUserhash();
+    return userhash ? { Cookie: `userhash=${userhash}` } : null;
+  }
+  function buildPostHistoryImageFile(img, ext) {
+    const base = String(img || '').trim();
+    const extValue = String(ext || '').trim();
+    if (!base) return '';
+    const suffix = extValue ? (extValue[0] === '.' ? extValue : `.${extValue}`) : '';
+    if (!suffix) return base;
+    return base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : base + suffix;
+  }
+  function parsePostHistoryRefResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      const data = json && (json.data || json.post || json);
+      const refPost = data && !Array.isArray(data) ? data : null;
+      if (refPost && refPost.success === false) throw new Error(refPost.error || 'ref api error');
+      if (!refPost) {
+        logPostHistory('ref empty', Object.assign({}, context || {}, { responseLength: String(text || '').length }));
+        return null;
+      }
+      logPostHistory('ref parse', Object.assign({}, context || {}, {
+        id: refPost.id || '',
+        imageFile: buildPostHistoryImageFile(refPost.img, refPost.ext)
+      }));
+      return refPost;
+    } catch (e) {
+      logPostHistory('ref parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+  function postHistoryRefPostHasImage(refPost) {
+    return !!buildPostHistoryImageFile(refPost && refPost.img, refPost && refPost.ext);
+  }
+  function parsePostHistoryRefHtmlResponse(resp, context) {
+    const html = resp && (resp.responseText || resp.response) || '';
+    try {
+      const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+      const root = doc.querySelector('.h-threads-img-box') || doc.querySelector('.h-threads-item-main') || doc.body;
+      let imageFile = extractThreadHistoryImageFile(root);
+      if (!imageFile) {
+        const imageNode = doc.querySelector('.h-threads-img-a[href], img.h-threads-image, img.h-threads-img, a[href*="/image/"], a[href*="/thumb/"]');
+        const imageAnchor = imageNode && imageNode.closest ? imageNode.closest('a[href]') : imageNode;
+        imageFile = normalizeThreadHistoryImageFile(
+          (imageAnchor && imageAnchor.getAttribute && imageAnchor.getAttribute('href')) ||
+          (imageNode && imageNode.getAttribute && (imageNode.getAttribute('data-src') || imageNode.getAttribute('src')))
+        );
+      }
+      if (!imageFile) {
+        logPostHistory('ref html empty', Object.assign({}, context || {}, { responseLength: String(html || '').length }));
+        return null;
+      }
+      logPostHistory('ref html parse', Object.assign({}, context || {}, { imageFile }));
+      return { img: imageFile, ext: '', imageFile };
+    } catch (e) {
+      logPostHistory('ref html parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(html || '').length,
+        preview: String(html || '').slice(0, 80)
+      }), 'warn');
+      return null;
+    }
+  }
+  function fetchPostHistoryRefPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const detail = Object.assign({}, context || {}, { id: postId });
+    return fetchPostHistoryRefApiPost(postId, detail)
+      .then(refPost => {
+        if (postHistoryRefPostHasImage(refPost)) return refPost;
+        return fetchPostHistorySameOriginRefPost(postId, detail);
+      })
+      .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
+  }
+  function fetchPostHistoryRefApiPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `${POST_HISTORY_REF_API_FALLBACK_BASE}/ref?id=${encodeURIComponent(postId)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { id: postId, api: true, authenticated: !!headers });
+    logPostHistory('ref api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('ref api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      const refPost = parsePostHistoryRefResponse(resp, detail);
+      return postHistoryRefPostHasImage(refPost) ? refPost : null;
+    }).catch(e => {
+      logPostHistory('ref api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+  function fetchPostHistorySameOriginRefPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
+    const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
+    return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
+      .then(resp => {
+        const refPost = parsePostHistoryRefResponse(resp, detail);
+        if (postHistoryRefPostHasImage(refPost)) return refPost;
+        return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
+      })
+      .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
+  }
+  function fetchPostHistoryRefHtmlFallbackPost(id, context) {
+    const postId = String(id || '').trim();
+    if (!postId) return Promise.resolve(null);
+    const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
+    const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
+    return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
+      .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
+  }
+  function enrichPostHistoryRefImage(localId, postId) {
+    return fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
+      const imageFile = refPost ? buildPostHistoryImageFile(refPost.img, refPost.ext) : '';
+      if (!imageFile) return false;
+      updatePostHistoryRecord(localId, { imageFile, imageImg: refPost.img || '', imageExt: refPost.ext || '' });
+      return true;
+    }).catch(e => {
+      logPostHistory('ref image error', { localId, id: postId, error: e && e.message ? e.message : String(e) }, 'warn');
+      return false;
+    });
+  }
+  function parsePostHistoryThreadResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const thread = typeof text === 'string' ? JSON.parse(text) : text;
+      if (thread && thread.success === false) throw new Error(thread.error || 'thread api error');
+      const replies = Array.isArray(thread && thread.Replies) ? thread.Replies : [];
+      const replyCount = Number(thread && (thread.ReplyCount || thread.replyCount || thread.reply_count)) || replies.length;
+      logPostHistory('thread fallback parse', Object.assign({}, context || {}, { replyCount, replies: replies.length }));
+      return { thread, replies, replyCount, page: Math.max(1, Number(context && context.page) || 1) };
+    } catch (e) {
+      logPostHistory('thread fallback parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      throw e;
+    }
+  }
+  function fetchPostHistoryThreadPage(threadId, page, context) {
+    const detail = Object.assign({}, context || {}, { threadId, page });
+    return fetchPostHistoryThreadApiPage(threadId, page, detail)
+      .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
+  }
+  function fetchPostHistoryThreadApiPage(threadId, page, context) {
+    const url = `${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { threadId, page, api: true, authenticated: !!headers });
+    logPostHistory('thread api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('thread api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      return parsePostHistoryThreadResponse(resp, detail);
+    }).catch(e => {
+      logPostHistory('thread api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+  function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
+    const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+    const detail = Object.assign({}, context || {}, { threadId, page });
+    return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
+  }
+  function getPostHistoryThreadFallbackPages(replyCount) {
+    const total = Number(replyCount) || 0;
+    const tailPage = Math.max(1, Math.ceil(total / POST_HISTORY_REPLIES_PER_PAGE));
+    const pages = [tailPage, tailPage - 1]
+      .filter(page => page >= 1)
+      .map(page => Math.max(1, Number(page) || 1));
+    return Array.from(new Set(pages)).sort((a, b) => b - a);
+  }
+  function buildPostHistoryThreadCandidate(reply, thread, page) {
+    const threadId = String(thread && thread.id || '').trim();
+    const fid = getPostHistoryPostFid(reply) || getPostHistoryPostFid(thread);
+    return Object.assign({}, reply || {}, { fid, resto: threadId, page: Math.max(1, Number(page) || 1) });
+  }
+  function findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds) {
+    const replies = Array.isArray(pageData && pageData.replies) ? pageData.replies : [];
+    for (let i = replies.length - 1; i >= 0; i--) {
+      const candidate = buildPostHistoryThreadCandidate(replies[i], pageData && pageData.thread || { id: snapshot && snapshot.resto, fid: snapshot && snapshot.fid }, pageData && pageData.page);
+      if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
+    }
+    return null;
+  }
+  const POST_HISTORY_THREAD_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
+  async function completePostHistoryFromThreadFallback(localId, snapshot, retryAttempt) {
+    if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
+      logPostHistory('thread fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    }
+    const threadId = String(snapshot.resto || '').trim();
+    try {
+      const firstPage = await fetchPostHistoryThreadPage(threadId, 1, { localId, phase: 'count', retryAttempt: retryAttempt || 0 });
+      const pages = getPostHistoryThreadFallbackPages(firstPage.replyCount);
+      const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
+      for (const page of pages) {
+        const pageData = page === 1 ? firstPage : await fetchPostHistoryThreadPage(threadId, page, { localId, phase: 'scan' });
+        const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
+        if (post) {
+          logPostHistory('thread fallback confirmed', { localId, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
+          confirmPostHistorySnapshot(localId, post);
+          return true;
+        }
+      }
+      logPostHistory('thread fallback exhausted', { localId, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    } catch (e) {
+      const attempt = retryAttempt || 0;
+      if (attempt < POST_HISTORY_THREAD_PAGE_RETRY_DELAYS.length) {
+        const delay = POST_HISTORY_THREAD_PAGE_RETRY_DELAYS[attempt];
+        logPostHistory('thread page verify retry scheduled', { localId, threadId, attempt, nextAttempt: attempt + 1, delay, error: e && e.message ? e.message : String(e) });
+        setTimeout(() => {
+          completePostHistoryFromThreadFallback(localId, snapshot, attempt + 1);
+        }, delay);
+        return false;
+      }
+      logPostHistory('thread page verify error', { localId, threadId, attempts: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
+      return false;
+    }
+  }
+  // showf 版面主串回退：新开串在 getLastPost 失败、且 thread fallback 不适用时，按 fid 扫 /showf
+  // 典型场景：/f/测试（fid=122）主串不进时间线、对普通浏览半隐身，但 showf?id=122 可回查刚发主串
+  const POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
+  function parsePostHistoryShowfResponse(resp, context) {
+    const text = resp && (resp.responseText || resp.response) || '';
+    try {
+      const json = typeof text === 'string' ? JSON.parse(text) : text;
+      if (json && json.success === false) throw new Error(json.error || 'showf api error');
+      const posts = Array.isArray(json) ? json : (Array.isArray(json && json.data) ? json.data : []);
+      logPostHistory('showf fallback parse', Object.assign({}, context || {}, { posts: posts.length }));
+      return { posts, page: Math.max(1, Number(context && context.page) || 1) };
+    } catch (e) {
+      logPostHistory('showf fallback parse failed', Object.assign({}, context || {}, {
+        error: e && e.message ? e.message : String(e),
+        responseLength: String(text || '').length,
+        preview: String(text || '').slice(0, 80)
+      }), 'warn');
+      throw e;
+    }
+  }
+  function fetchPostHistoryShowfPage(fid, page, context) {
+    const detail = Object.assign({}, context || {}, { fid, page });
+    return fetchPostHistoryShowfApiPage(fid, page, detail)
+      .catch(() => fetchPostHistorySameOriginShowfPage(fid, page, detail));
+  }
+  function fetchPostHistoryShowfApiPage(fid, page, context) {
+    const url = `${POST_HISTORY_SHOWF_API_BASE}/showf?id=${encodeURIComponent(fid)}&page=${encodeURIComponent(page)}`;
+    const headers = getPostHistoryApiCookieHeaders();
+    const detail = Object.assign({}, context || {}, { fid, page, api: true, authenticated: !!headers });
+    logPostHistory('showf api request', Object.assign({}, detail, { url }));
+    return gmRequest(url, 'text', headers).then(resp => {
+      logPostHistory('showf api response', Object.assign({}, detail, {
+        status: resp.status,
+        responseLength: String(resp.responseText || resp.response || '').length
+      }));
+      return parsePostHistoryShowfResponse(resp, detail);
+    }).catch(e => {
+      logPostHistory('showf api error', Object.assign({}, detail, { error: e && e.message ? e.message : String(e) }), 'warn');
+      throw e;
+    });
+  }
+  function fetchPostHistorySameOriginShowfPage(fid, page, context) {
+    const url = `${POST_HISTORY_API_BASE}/showf?id=${encodeURIComponent(fid)}&page=${encodeURIComponent(page)}`;
+    const detail = Object.assign({}, context || {}, { fid, page });
+    return fetchPostHistorySameOriginText(url, detail, 'showf same-origin fallback').then(resp => parsePostHistoryShowfResponse(resp, detail));
+  }
+  function buildPostHistoryShowfCandidate(post, page, snapshotFid) {
+    const fid = getPostHistoryPostFid(post) || normalizePostHistoryFid(snapshotFid);
+    // showf 列表项是主串；resto 缺省时按 0 处理，便于 postHistoryMatchesSnapshot 归类为 thread
+    return Object.assign({}, post || {}, {
+      fid,
+      resto: String(post && post.resto != null ? post.resto : '0'),
+      page: Math.max(1, Number(page) || 1)
+    });
+  }
+  function findPostHistoryShowfFallbackMatch(pageData, snapshot, usedIds) {
+    const posts = Array.isArray(pageData && pageData.posts) ? pageData.posts : [];
+    // 版面列表通常新串在前；从前往后扫即可，匹配逻辑仍靠内容/时间窗
+    for (let i = 0; i < posts.length; i++) {
+      const candidate = buildPostHistoryShowfCandidate(posts[i], pageData && pageData.page, snapshot && snapshot.fid);
+      if (postHistoryMatchesSnapshot(candidate, snapshot, usedIds)) return candidate;
+    }
+    return null;
+  }
+  async function completePostHistoryFromShowfFallback(localId, snapshot, retryAttempt) {
+    if (!snapshot || snapshot.type !== 'thread') {
+      logPostHistory('showf fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    }
+    const fid = normalizePostHistoryFid(snapshot.fid) || getCurrentPostHistoryFid();
+    if (!fid) {
+      logPostHistory('showf fallback exhausted', { localId, reason: 'missing-fid', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    }
+    try {
+      // 只扫前两页：新开串通常在 page=1；page=2 覆盖并发/排序抖动
+      const pages = [1, 2];
+      const usedIds = getConfirmedPostHistoryIds(getPostHistoryStore());
+      for (const page of pages) {
+        const pageData = await fetchPostHistoryShowfPage(fid, page, { localId, phase: 'scan', retryAttempt: retryAttempt || 0 });
+        const post = findPostHistoryShowfFallbackMatch(pageData, Object.assign({}, snapshot, { fid }), usedIds);
+        if (post) {
+          logPostHistory('showf fallback confirmed', { localId, fid, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
+          confirmPostHistorySnapshot(localId, post);
+          return true;
+        }
+      }
+      logPostHistory('showf fallback exhausted', { localId, fid, pages, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      return false;
+    } catch (e) {
+      const attempt = retryAttempt || 0;
+      if (attempt < POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS.length) {
+        const delay = POST_HISTORY_SHOWF_PAGE_RETRY_DELAYS[attempt];
+        logPostHistory('showf page verify retry scheduled', { localId, fid, attempt, nextAttempt: attempt + 1, delay, error: e && e.message ? e.message : String(e) });
+        setTimeout(() => {
+          completePostHistoryFromShowfFallback(localId, snapshot, attempt + 1);
+        }, delay);
+        return false;
+      }
+      logPostHistory('showf page verify error', { localId, fid, attempts: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
+      return false;
+    }
+  }
+  function postHistoryMatchesSnapshot(post, snapshot, usedIds) {
+    const reject = (reason, extra) => {
+      logPostHistory('match rejected', Object.assign({
+        reason,
+        snapshot: summarizePostHistorySnapshot(snapshot),
+        candidate: summarizePostHistoryCandidate(post)
+      }, extra || {}));
+      return false;
+    };
+    if (!post || !snapshot) return reject('missing-post-or-snapshot');
+    const id = String(post.id || '').trim();
+    if (!id) return reject('missing-id');
+    const expectedId = String(snapshot.id || snapshot.postId || '').trim();
+    if (expectedId && id !== expectedId) return reject('id-mismatch', { expectedId, actualId: id });
+    if (usedIds.has(id) && id !== expectedId) return reject('duplicate-confirmed-id', { id });
+    const resto = String(post.resto || '0').trim();
+    const type = Number(resto) === 0 ? 'thread' : 'reply';
+    if (type !== snapshot.type) return reject('type-mismatch', { expectedType: snapshot.type, actualType: type });
+    if (type === 'reply' && String(snapshot.resto || '').trim() && String(snapshot.resto || '').trim() !== resto) return reject('reply-resto-mismatch', { expectedResto: String(snapshot.resto || '').trim(), actualResto: resto });
+    const postText = normalizePostHistoryText(post.content || '');
+    if (postText && snapshot.contentHash && hashPostHistoryText(postText) !== snapshot.contentHash && postText !== snapshot.contentText) {
+      logPostHistory('server content differs', {
+        snapshot: summarizePostHistorySnapshot(snapshot),
+        candidate: summarizePostHistoryCandidate(post),
+        expectedHash: snapshot.contentHash,
+        actualHash: hashPostHistoryText(postText)
+      });
+    }
+    const postTs = Date.parse(post.now || '');
+    if (!postTs) return reject('missing-time');
+    const timeDiff = Math.abs(postTs - Number(snapshot.submittedAt || Date.now()));
+    if (timeDiff > POST_HISTORY_MATCH_TIME_WINDOW_MS) return reject('time-window-mismatch', { postTs, submittedAt: Number(snapshot.submittedAt || Date.now()), timeDiff });
+    logPostHistory('match accepted', {
+      snapshot: summarizePostHistorySnapshot(snapshot),
+      candidate: summarizePostHistoryCandidate(post),
+      timeDiff
+    });
+    return true;
+  }
+  function confirmPostHistorySnapshot(localId, post) {
+    const resto = String(post.resto || '0').trim();
+    const type = Number(resto) === 0 ? 'thread' : 'reply';
+    const id = String(post.id || '').trim();
+    const url = buildPostHistoryUrl(type, id, resto);
+    const existing = getPostHistoryStore().items[localId] || {};
+    const existingPage = type === 'thread' ? (Number(existing.page) || 0) : 0;
+    const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+    const serverContentRaw = post.content || '';
+    const serverContentText = normalizePostHistoryText(serverContentRaw);
+    const fid = getPostHistoryPostFid(post) || normalizePostHistoryFid(existing.fid);
+    const update = {
+      status: 'confirmed',
+      type,
+      id,
+      resto,
+      threadId: type === 'reply' ? resto : id,
+      postId: id,
+      page: Math.max(0, Number(post.page) || existingPage || (type === 'thread' ? 1 : 0)),
+      fid,
+      forumName: getPostHistoryForumNameByFid(fid),
+      title: post.title || '',
+      email: post.email || '',
+      contentRaw: serverContentRaw,
+      contentText: serverContentText,
+      contentHash: hashPostHistoryText(serverContentText),
+      contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
+      userHash: post.user_hash || post.userHash || '',
+      confirmedAt: Date.now(),
+      url
+    };
+    if (imageFile) Object.assign(update, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+    logPostHistory('confirmed', { localId, type, id, resto, url });
+    updatePostHistoryRecord(localId, update);
+    // 新串发布成功 → 自动写入串内饼干偏好
+    if (type === 'thread' && update.userHash) {
+      try { setThreadCookiePref(id, update.userHash); } catch (e) {}
+    }
+    const resolver = postHistoryConfirmationMap.get(localId);
+    if (!imageFile) {
+      // 没有图片，异步获取后再通知等待者
+      enrichPostHistoryRefImage(localId, id).then(() => {
+        if (resolver) {
+          resolver(Object.assign({ localId }, update));
+          postHistoryConfirmationMap.delete(localId);
+        }
+      }).catch(() => {
+        if (resolver) {
+          resolver(Object.assign({ localId }, update));
+          postHistoryConfirmationMap.delete(localId);
+        }
+      });
+    } else {
+      // 已有图片，直接通知等待者
+      if (resolver) {
+        resolver(Object.assign({ localId }, update));
+        postHistoryConfirmationMap.delete(localId);
+      }
+    }
+  }
+  function completePostHistorySnapshot(localId, snapshot, attempt = 0) {
+    const delay = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS[attempt];
+    if (delay == null) {
+      logPostHistory('completion exhausted', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+      // 清理等待者（确认失败或超时）
+      const resolver = postHistoryConfirmationMap.get(localId);
+      if (resolver) {
+        resolver(null);
+        postHistoryConfirmationMap.delete(localId);
+      }
+      // reply → thread 尾页回退；thread（含测试版主串）→ showf 版面回退
+      completePostHistoryFromThreadFallback(localId, snapshot).then(confirmed => {
+        if (confirmed) return true;
+        return completePostHistoryFromShowfFallback(localId, snapshot);
+      }).then(confirmed => {
+        if (confirmed) return;
+        logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+        updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+      }).catch(e => {
+        logPostHistory('thread fallback error', { localId, error: e && e.message ? e.message : String(e) }, 'warn');
+        // thread 路径异常时仍尝试 showf（新开串场景）
+        completePostHistoryFromShowfFallback(localId, snapshot).then(confirmed => {
+          if (confirmed) return;
+          logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+          updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+        }).catch(showfErr => {
+          logPostHistory('showf fallback error', { localId, error: showfErr && showfErr.message ? showfErr.message : String(showfErr) }, 'warn');
+          logPostHistory('unconfirmed', { localId, attempt, snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
+          updatePostHistoryRecord(localId, { status: 'unconfirmed' });
+        });
+      });
+      return;
+    }
+    logPostHistory('completion scheduled', { localId, attempt, delay, snapshot: summarizePostHistorySnapshot(snapshot) });
+    setTimeout(() => {
+      fetchLastPostHistoryPost({ localId, attempt }).then(post => {
+        const store = getPostHistoryStore();
+        if (!postHistoryMatchesSnapshot(post, snapshot, getConfirmedPostHistoryIds(store))) {
+          logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1 });
+          completePostHistorySnapshot(localId, snapshot, attempt + 1);
+          return;
+        }
+        const id = String(post.id || '').trim();
+        const confirmedResto = String(post.resto || snapshot.resto || '').trim();
+        const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });
+        confirmPostHistorySnapshot(localId, post);
+        if (confirmedSnapshot.type === 'reply') {
+          completePostHistoryFromThreadFallback(localId, confirmedSnapshot);
+        }
+      }).catch(e => {
+        logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
+        completePostHistorySnapshot(localId, snapshot, attempt + 1);
+      });
+    }, delay);
+  }
+  function snapshotSubmittedPostHistory(fd, options) {
+    const type = options && options.isReply ? 'reply' : 'thread';
+    const submittedAt = Date.now();
+    const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
+    const contentText = normalizePostHistoryText(contentRaw);
+    const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
+    const fallbackFid = getCurrentPostHistoryFid();
+    const localId = `local-${submittedAt}-${Math.random().toString(36).slice(2, 8)}`;
+    const parsedSource = parseThreadHistoryUrl(location.href);
+    const snapshot = {
+      status: 'pending',
+      type,
+      localId,
+      id: '',
+      resto,
+      threadId: type === 'reply' ? resto : '',
+      postId: '',
+      page: type === 'thread' ? (parsedSource ? parsedSource.page : 1) : 0,
+      fid: fallbackFid,
+      forumName: getPostHistoryForumNameByFid(fallbackFid),
+      title: fd && fd.get ? String(fd.get('title') || '') : '',
+      name: fd && fd.get ? String(fd.get('name') || '') : '',
+      email: fd && fd.get ? String(fd.get('email') || '') : '',
+      contentRaw,
+      contentText,
+      contentHash: hashPostHistoryText(contentText),
+      userHash: '',
+      submittedAt,
+      confirmedAt: 0,
+      sourceUrl: location.href,
+      url: ''
+    };
+    // 为发串创建一个可等待的 Promise，用于确认后跳转
+    let confirmResolver;
+    const confirmPromise = new Promise(res => { confirmResolver = res; });
+    postHistoryConfirmationMap.set(localId, confirmResolver);
+    logPostHistory('snapshot', { snapshot: summarizePostHistorySnapshot(snapshot), content: summarizePostHistoryText(contentText) });
+    upsertPostHistoryRecord(snapshot);
+    completePostHistorySnapshot(localId, snapshot, 0);
+    return { snapshot, localId, confirmPromise };
+  }
+  function parseThreadHistoryUrl(inputUrl) {
+    let url;
+    try {
+      url = new URL(inputUrl || location.href, location.origin);
+    } catch (e) {
+      return null;
+    }
+    const path = url.pathname || '';
+    // 普通串支持 /t/12345678 与 /t/12345678/page/323（不再识别笔误的 /t/12345678/323）
+    const normalMatch = path.match(/\/t\/(\d{6,8})(?:\/page\/(\d+))?/);
+    const poMatch = path.match(/\/Forum\/po\/id\/(\d{6,8})(?:\/page\/(\d+)\.html)?/);
+    const match = normalMatch || poMatch;
+    if (!match) return null;
+    const pathPage = parseInt(match[2] || '', 10);
+    const queryPage = parseInt(url.searchParams.get('page') || '', 10);
+    return {
+      mode: poMatch ? 'po' : 'normal',
+      threadId: String(match[1]).slice(0, 8),
+      page: pathPage > 0 ? pathPage : (queryPage > 0 ? queryPage : 1),
+      url: url.toString()
+    };
+  }
+  function buildThreadHistoryPageUrl(mode, threadId, page) {
+    const tid = String(threadId || '').trim();
+    const pageNum = Math.max(1, Number(page) || 1);
+    if (!tid) return location.href;
+    if (mode === 'po') return `${location.origin}/Forum/po/id/${tid}/page/${pageNum}.html`;
+    // 普通串页码路径：/t/{id}/page/{n}（第 1 页保留 /t/{id}）
+    if (pageNum <= 1) return `${location.origin}/t/${tid}`;
+    return `${location.origin}/t/${tid}/page/${pageNum}`;
+  }
+  function parseThreadHistoryPageNumberFromElement(el) {
+    if (!el) return 0;
+    const text = String(el.textContent || '').trim();
+    const lastTextMatch = text.match(/末页\s*\((\d+)\)/);
+    if (lastTextMatch) return Number(lastTextMatch[1]) || 0;
+    const href = el.getAttribute && el.getAttribute('href');
+    const parsed = href ? parseThreadHistoryUrl(href) : null;
+    if (parsed && parsed.page) return Number(parsed.page) || 0;
+    const numericText = text.match(/^\d+$/);
+    return numericText ? Number(numericText[0]) || 0 : 0;
+  }
+  function getThreadHistoryPaginationBounds(root = document) {
+    const paginations = Array.from((root || document).querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
+    const pagination = paginations.length ? paginations[paginations.length - 1] : null;
+    if (!pagination) return null;
+    const items = Array.from(pagination.querySelectorAll('li'));
+    const elements = Array.from(pagination.querySelectorAll('a, span'));
+    const parsedLinks = elements
+      .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
+      .filter(Boolean);
+    const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
+    const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
+    const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
+    const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
+    const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
+    const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
+    const numericPages = elements
+      .map(parseThreadHistoryPageNumberFromElement)
+      .filter(num => num > 0);
+    let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
+    if (!lastPage && nextItem && !nextHasLink) {
+      lastPage = activePage || Math.max(0, ...numericPages);
+    }
+    if (!lastPage) return null;
+    return {
+      lastPage,
+      activePage,
+      threadId: parsedIdentity && parsedIdentity.threadId || '',
+      mode: parsedIdentity && parsedIdentity.mode || '',
+      source: lastPageLink ? 'last-link' : 'disabled-next'
+    };
+  }
+  function applyThreadHistoryPageBounds(record, root = document) {
+    if (!record || !record.threadId) return record;
+    const bounds = getThreadHistoryPaginationBounds(root);
+    if (!bounds || !bounds.lastPage) return record;
+    if (bounds.threadId && bounds.threadId !== String(record.threadId)) return record;
+    if (bounds.mode && record.mode && bounds.mode !== record.mode) return record;
+    const parsedUrl = record.url ? parseThreadHistoryUrl(record.url) : null;
+    const page = Math.max(1, Number(record.page || (parsedUrl && parsedUrl.page)) || 1);
+    const boundedPage = Math.min(page, bounds.lastPage);
+    const existingUrlPage = parsedUrl && parsedUrl.page || 0;
+    const next = Object.assign({}, record, {
+      page: boundedPage,
+      maxVisitedPage: Math.min(Math.max(Number(record.maxVisitedPage) || boundedPage, boundedPage), bounds.lastPage),
+      lastKnownPage: bounds.lastPage
+    });
+    if (page > bounds.lastPage || existingUrlPage > bounds.lastPage) {
+      next.url = buildThreadHistoryPageUrl(next.mode, next.threadId, boundedPage);
+    }
+    return next;
+  }
+  function getElementTextPreserveZeroWidth(el) {
+    return el ? String(el.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
+  }
+  function getVisibleTextForHistory(text) {
+    return String(text || '').replace(ZERO_WIDTH_RE, '').replace(/[\s\u00a0]+/g, '');
+  }
+  function trimThreadHistoryContentText(text) {
+    return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
+    // 只去除ASCII空白（空格/Tab/换行），保留全角空格/零宽空格等用户输入的Unicode空白
+  }
+  function sanitizeThreadHistoryInlineStyle(styleValue) {
+    const safeRules = [];
+    String(styleValue || '').split(';').forEach(rule => {
+      const separator = rule.indexOf(':');
+      if (separator === -1) return;
+      const name = rule.slice(0, separator).trim().toLowerCase();
+      const value = rule.slice(separator + 1).trim();
+      if (!/^(color|background-color|text-decoration|font-weight)$/.test(name) && !/^--darkreader-inline-(?:color|bgcolor)$/.test(name)) return;
+      if (/url\s*\(|expression\s*\(|javascript:/i.test(value)) return;
+      safeRules.push(`${name}: ${value}`);
+    });
+    return safeRules.join('; ');
+  }
+  function sanitizeThreadHistoryContentUrl(urlValue) {
+    try {
+      const url = new URL(urlValue, location.origin);
+      if (!/^https?:$/.test(url.protocol)) return '';
+      return url.href;
+    } catch (e) {
+      return '';
+    }
+  }
+  function escapeThreadHistoryHtml(text) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function cleanThreadHistoryContentWhitespace(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    if (!nodes.length) return;
+    // 首尾文本节点去空白 — 只清理ASCII空白（空格/Tab/换行），保留用户输入的全角空格/零宽空格等Unicode空白
+    nodes[0].nodeValue = String(nodes[0].nodeValue || '').replace(/^[ \t\r\n]+/, '');
+    const last = nodes[nodes.length - 1];
+    last.nodeValue = String(last.nodeValue || '').replace(/[ \t\r\n]+$/, '');
+  }
+  function normalizeThreadHistoryContentWhitespace(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(node => {
+      const prev = node.previousSibling;
+      const next = node.nextSibling;
+      let value = String(node.nodeValue || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      // value = value.replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n'); // 连续空行压缩 — 已禁用，保留原始空行
+      if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR') value = value.replace(/^[ \t\r\n]+/, ''); // BR后空白清理 — 只清理ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
+      if (next && next.nodeType === Node.ELEMENT_NODE && next.tagName === 'BR') value = value.replace(/[ \t]+$/, ''); // BR前空白清理 — 保留：清理HTML源码格式化产生的空格
+      node.nodeValue = value;
+    });
+    cleanThreadHistoryContentWhitespace(root);
+  }
+  function removeThreadHistoryTrailingBreaks(root) {
+    while (root && root.lastChild) {
+      const node = root.lastChild;
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        removeThreadHistoryTrailingBreaks(node);
+      }
+      if (node.nodeType === Node.TEXT_NODE && !String(node.nodeValue || '').trim()) {
+        node.remove();
+        continue;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+        node.remove();
+        continue;
+      }
+      if (isEmptyThreadHistoryInlineElement(node)) {
+        node.remove();
+        continue;
+      }
+      break;
+    }
+  }
+  function isEmptyThreadHistoryInlineElement(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    if (!/^(A|SPAN|FONT|B|STRONG|I|EM|U|S|DEL|CODE|SUB|SUP)$/.test(node.tagName)) return false;
+    return !String(node.textContent || '').trim() && !node.querySelector('img, video, audio, canvas, svg');
+  }
+  function limitThreadHistoryContentText(root, limit) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    let remaining = Math.max(0, Number(limit) || 0);
+    let truncated = false;
+    for (const node of nodes) {
+      if (truncated || remaining <= 0) {
+        node.nodeValue = '';
+        continue;
+      }
+      const value = String(node.nodeValue || '');
+      if (value.length > remaining) {
+        node.nodeValue = value.slice(0, remaining).replace(/\s+$/, '');
+        pruneAfterThreadHistoryTextNode(root, node);
+        truncated = true;
+        remaining = 0;
+      } else {
+        remaining -= value.length;
+      }
+    }
+    cleanThreadHistoryContentWhitespace(root);
+    removeThreadHistoryTrailingBreaks(root);
+  }
+  function pruneAfterThreadHistoryTextNode(root, textNode) {
+    let current = textNode;
+    while (current && current.parentNode && current !== root) {
+      while (current.nextSibling) current.nextSibling.remove();
+      current = current.parentNode;
+    }
+    if (current === root) removeThreadHistoryTrailingBreaks(root);
+  }
+  function isThreadHistoryContentTruncated(text) {
+    return String(text || '').length > THREAD_HISTORY_EXCERPT_LIMIT;
+  }
+  function appendThreadHistoryTruncationMarker(contentEl) {
+    if (!contentEl) return;
+    removeThreadHistoryTrailingBreaks(contentEl);
+    contentEl.appendChild(document.createTextNode('……'));
+  }
+  function sanitizeThreadHistoryInlineHtml(sourceEl) {
+    if (!sourceEl) return '';
+    const clone = sourceEl.cloneNode(true);
+    clone.querySelectorAll('script, style, template, iframe, object, embed, svg, math').forEach(el => el.remove());
+    const allowedTags = new Set(['SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'SUB', 'SUP']);
+    Array.from(clone.querySelectorAll('*')).forEach(el => {
+      if (!allowedTags.has(el.tagName)) {
+        el.replaceWith(...Array.from(el.childNodes));
+        return;
+      }
+      Array.from(el.attributes).forEach(attr => {
+        const name = attr.name.toLowerCase();
+        const value = attr.value || '';
+        if (name === 'style') {
+          const safeStyle = sanitizeThreadHistoryInlineStyle(value);
+          if (safeStyle) el.setAttribute('style', safeStyle);
+          else el.removeAttribute(attr.name);
+          return;
+        }
+        if (el.tagName === 'FONT' && name === 'color') return;
+        if (name === 'class') return;
+        if (name === 'data-darkreader-inline-color' || name === 'data-darkreader-inline-bgcolor') return;
+        el.removeAttribute(attr.name);
+      });
+    });
+    cleanThreadHistoryContentWhitespace(clone);
+    return clone.innerHTML.replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
+    // 只去除ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
+  }
+  function extractThreadHistoryCookieId(cookieEl, fallbackText) {
+    if (cookieEl) {
+      const font = cookieEl.querySelector('font');
+      if (font) {
+        for (const node of font.childNodes) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const value = String(node.nodeValue || '').trim();
+            if (value) return value;
+          }
+        }
+      }
+    }
+    const value = (String(fallbackText || '').split(':')[1] || fallbackText || '').trim();
+    const match = String(value).match(/[A-Za-z0-9]{3,8}/);
+    return match ? match[0] : value;
+  }
+  function buildThreadHistoryLegacyCookieHtml(cookieId) {
+    const value = String(cookieId || '').trim();
+    const match = value.match(/^([A-Za-z0-9]{3,8})(.+)$/);
+    if (!match || !match[2].trim()) return '';
+    const id = escapeThreadHistoryHtml(match[1]);
+    const badge = escapeThreadHistoryHtml(match[2].trim());
+    return `ID:<font color="red">${id}<sub style="color: darkorange; font-weight: bold;">${badge}</sub></font>`;
+  }
+  function getThreadHistoryCookieMarkId(item) {
+    const value = String(item && item.cookieId || '').trim();
+    const match = value.match(/^([A-Za-z0-9]{3,8})/);
+    return match ? match[1] : value;
+  }
+  function sanitizeThreadHistoryContentHtml(contentEl) {
+    if (!contentEl) return '';
+    const clone = contentEl.cloneNode(true);
+    clone.querySelectorAll('script, style, template, iframe, object, embed, svg, math').forEach(el => el.remove());
+    const allowedTags = new Set(['A', 'BR', 'SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'CODE', 'PRE', 'SUB', 'SUP']);
+    Array.from(clone.querySelectorAll('*')).forEach(el => {
+      if (!allowedTags.has(el.tagName)) {
+        el.replaceWith(...Array.from(el.childNodes));
+        return;
+      }
+      Array.from(el.attributes).forEach(attr => {
+        const name = attr.name.toLowerCase();
+        const value = attr.value || '';
+        if (name.startsWith('on') || name === 'id' || (name.startsWith('data-') && name !== 'data-darkreader-inline-color' && name !== 'data-darkreader-inline-bgcolor')) {
+          el.removeAttribute(attr.name);
+          return;
+        }
+        if (name === 'style') {
+          const safeStyle = sanitizeThreadHistoryInlineStyle(value);
+          if (safeStyle) el.setAttribute('style', safeStyle);
+          else el.removeAttribute(attr.name);
+          return;
+        }
+        if (el.tagName === 'A' && name === 'href') {
+          const safeHref = sanitizeThreadHistoryContentUrl(value);
+          if (safeHref) {
+            el.setAttribute('href', safeHref);
+            el.setAttribute('target', '_blank');
+            el.setAttribute('rel', 'noopener');
+          } else {
+            el.removeAttribute(attr.name);
+          }
+          return;
+        }
+        if (el.tagName === 'FONT' && name === 'color') return;
+        if (name !== 'class' && name !== 'title' && name !== 'target' && name !== 'rel') el.removeAttribute(attr.name);
+      });
+    });
+    normalizeThreadHistoryContentWhitespace(clone);
+    return clone.innerHTML.replace(/^[ \t\r\n]+/, '').replace(/[ \t\r\n]+$/, '');
+    // 只去除ASCII空白，保留全角空格/零宽空格等用户输入的Unicode空白
+  }
+  function normalizeThreadHistoryImageFile(urlValue) {
+    if (!urlValue) return '';
+    try {
+      const url = new URL(urlValue, location.origin);
+      const match = url.pathname.match(/\/(?:image|thumb)\/([^?#]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    } catch (e) {
+      const match = String(urlValue).match(/\/(?:image|thumb)\/([^?#]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+  }
+  const THREAD_HISTORY_IMAGE_FILE_CONTRACT_EXAMPLE = '2024-12-10/6757ea866e1aa.png';
+  function extractThreadHistoryImageFile(mainEl) {
+    if (!mainEl) return '';
+    const anchor = mainEl.querySelector('.h-threads-img-a[href]');
+    const img = mainEl.querySelector('.h-threads-img-a img, img.h-threads-img');
+    const sources = [
+      anchor && anchor.getAttribute('href'),
+      img && img.dataset && img.dataset.xdexHdSrc,
+      img && img.dataset && img.dataset.xdexThumbSrc,
+      img && img.dataset && img.dataset.src,
+      img && img.getAttribute && img.getAttribute('src')
+    ];
+    for (const source of sources) {
+      const imageFile = normalizeThreadHistoryImageFile(source);
+      if (imageFile) return imageFile;
+    }
+    return '';
+  }
+  function isThreadHistoryMainCandidate(el) {
+    return !!el && !el.closest('.h-preview-box') && !!el.querySelector('.h-threads-content');
+  }
+  function findThreadHistoryMainElement(root, parsed) {
+    const scope = root || document;
+    const primary = scope.querySelector('.h-threads-list .h-threads-item-main');
+    if (isThreadHistoryMainCandidate(primary)) return primary;
+    const mains = Array.from(scope.querySelectorAll('.h-threads-item-main'));
+    return mains.find(isThreadHistoryMainCandidate) || null;
+  }
+  function extractThreadHistoryRecord(root) {
+    const parsed = parseThreadHistoryUrl(location.href);
+    if (!parsed) {
+      logThreadHistory('skip record: unsupported url', { url: location.href });
+      return null;
+    }
+    const mainEl = findThreadHistoryMainElement(root, parsed);
+    if (!mainEl) {
+      logThreadHistory('skip record: missing h-threads-item-main', { url: location.href, parsed });
+      return null;
+    }
+    const contentEl = mainEl.querySelector('.h-threads-content');
+    const rawContent = getElementTextPreserveZeroWidth(contentEl);
+    const contentText = trimThreadHistoryContentText(rawContent);
+    const contentTruncated = isThreadHistoryContentTruncated(contentText);
+    const contentHtml = sanitizeThreadHistoryContentHtml(contentEl);
+    const hasZeroWidth = ZERO_WIDTH_RE.test(rawContent);
+    const hasVisibleText = !!getVisibleTextForHistory(rawContent);
+    const hasWhitespaceOnly = !hasVisibleText && /^[\s\u00a0]*$/.test(rawContent.replace(ZERO_WIDTH_RE, '')) && rawContent.length > 0;
+    const imageFile = extractThreadHistoryImageFile(mainEl);
+    const title = getElementTextPreserveZeroWidth(mainEl.querySelector('.h-threads-info-title')).trim();
+    const author = getElementTextPreserveZeroWidth(mainEl.querySelector('.h-threads-info-email')).trim();
+    const cookieEl = mainEl.querySelector('.h-threads-info-uid');
+    const cookieText = getElementTextPreserveZeroWidth(cookieEl).trim();
+    const cookieId = extractThreadHistoryCookieId(cookieEl, cookieText);
+    const cookieHtml = sanitizeThreadHistoryInlineHtml(cookieEl);
+    const createdAtEl = mainEl.querySelector('.h-threads-info-createdat, .h-threads-info time');
+    const createdAt = String(createdAtEl && (createdAtEl.getAttribute('title') || createdAtEl.getAttribute('datetime')) || getElementTextPreserveZeroWidth(createdAtEl)).trim();
+    const tipsEl = mainEl.querySelector('.h-threads-tips');
+    const sageHtml = (tipsEl && /SAGE/i.test(tipsEl.textContent || ''))
+      ? '<i class="uk-icon-thumbs-down"></i>&nbsp;本串已经被SAGE'
+      : '';
+    return {
+      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
+      mode: parsed.mode,
+      threadId: parsed.threadId,
+      page: parsed.page,
+      url: parsed.url,
+      title,
+      author,
+      cookieId,
+      cookieHtml,
+      createdAt,
+      contentText,
+      contentHtml,
+      contentTruncated,
+      excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
+      imageFile,
+      contentFlags: { hasVisibleText, hasWhitespaceOnly, hasZeroWidth },
+      sageHtml,
+            lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
+    };
+  }
+  function buildThreadHistoryIndexEntry(item) {
+    const contentFlags = item && item.contentFlags ? item.contentFlags : {};
+    const imageFile = String(item && item.imageFile || '');
+    const titleText = String(item && item.title || '').toLowerCase();
+    const authorText = String(item && item.author || '').toLowerCase();
+    const cookieIdText = String(item && item.cookieId || '').toLowerCase();
+    const excerptText = String(item && (item.contentText || item.excerpt) || '').toLowerCase();
+    const threadIdText = String(item && item.threadId || '');
+    return {
+      searchText: [threadIdText, titleText, authorText, cookieIdText, excerptText].join(' ').toLowerCase(),
+      threadIdText,
+      titleText,
+      authorText,
+      cookieIdText,
+      excerptText,
+      mode: item && item.mode === 'po' ? 'po' : 'normal',
+      hasImage: !!imageFile,
+      isGif: /\.gif(?:$|[?#])/i.test(imageFile),
+      hasZeroWidth: !!contentFlags.hasZeroWidth,
+      hasVisibleText: !!contentFlags.hasVisibleText,
+      hasWhitespaceOnly: !!contentFlags.hasWhitespaceOnly,
+      isSage: !!(item && item.sageHtml),
+      lastVisitedAt: Number(item && item.lastVisitedAt) || 0
+    };
+  }
+  function upsertThreadHistoryRecord(nextRecord, options = {}) {
+    if (!nextRecord || !nextRecord.threadId || !nextRecord.mode) return getThreadHistoryStore();
+    const now = Date.now();
+    const countVisit = options.countVisit !== false;
+    const touchVisitedAt = countVisit || options.touchVisitedAt === true;
+    const store = getThreadHistoryStore();
+    nextRecord = applyThreadHistoryPageBounds(nextRecord);
+    const key = nextRecord.key || getThreadHistoryKey(nextRecord.mode, nextRecord.threadId);
+    const old = store.items[key] || {};
+    const maxVisitedPage = Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1);
+    const boundedMaxVisitedPage = nextRecord.lastKnownPage ? Math.min(maxVisitedPage, Number(nextRecord.lastKnownPage) || maxVisitedPage) : maxVisitedPage;
+    const mergedBase = Object.assign({}, old, nextRecord);
+    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase), {
+      key,
+      firstVisitedAt: old.firstVisitedAt || now,
+      lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
+      visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
+      maxVisitedPage: boundedMaxVisitedPage,
+      cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
+    });
+    store.items[key] = merged;
+    store.index[key] = buildThreadHistoryIndexEntry(merged);
+    store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
+    const saved = setThreadHistoryStore(store);
+    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: merged });
+    // 同步常用串菜单中对应串的链接
+    try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
+    return saved;
+  }
+  function touchThreadHistoryCurrentLocation(options = {}) {
+    const parsed = parseThreadHistoryUrl(options.url || location.href);
+    if (!parsed) return getThreadHistoryStore();
+    const key = getThreadHistoryKey(parsed.mode, parsed.threadId);
+    const store = getThreadHistoryStore();
+    const item = store.items[key];
+    if (!item) return store;
+    const now = Date.now();
+    const bounded = applyThreadHistoryPageBounds(Object.assign({}, item, {
+      page: Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1),
+      url: options.url || parsed.url
+    }));
+    item.page = bounded.page;
+    item.url = bounded.url;
+    item.maxVisitedPage = bounded.lastKnownPage
+      ? Math.min(Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1), Number(bounded.lastKnownPage) || Number(item.page) || 1)
+      : Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
+    if (bounded.lastKnownPage) item.lastKnownPage = bounded.lastKnownPage;
+    item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    if (options.touchVisitedAt) item.lastVisitedAt = now;
+    store.index[key] = buildThreadHistoryIndexEntry(item);
+    store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
+    const saved = setThreadHistoryStore(store);
+    logThreadHistory('location touched', { key, reason: options.reason || '', page: item.page, url: item.url, maxVisitedPage: item.maxVisitedPage, touchVisitedAt: !!options.touchVisitedAt });
+    // 同步常用串菜单中对应串的链接
+    try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
+    return saved;
+  }
+  function recordThreadHistoryProgress(options = {}) {
+    const parsed = parseThreadHistoryUrl(options.url || location.href);
+    if (!parsed) return getThreadHistoryStore();
+    const record = extractThreadHistoryRecord(document) || {
+      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
+      mode: parsed.mode,
+      threadId: parsed.threadId
+    };
+    record.key = getThreadHistoryKey(parsed.mode, parsed.threadId);
+    record.mode = parsed.mode;
+    record.threadId = parsed.threadId;
+    record.page = Math.max(Number(record.page) || 1, Number(options.page || parsed.page) || 1);
+    record.url = options.url || parsed.url;
+    record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
+  }
+  function updateThreadHistoryScrollPosition() {
+    touchThreadHistoryCurrentLocation({ reason: 'scroll-position' });
+  }
+  function deleteThreadHistoryItem(key) {
+    const store = getThreadHistoryStore();
+    delete store.items[key];
+    delete store.index[key];
+    store.order = (store.order || []).filter(itemKey => itemKey !== key);
+    return setThreadHistoryStore(store);
+  }
+  function clearThreadHistory() {
+    return setThreadHistoryStore(createDefaultThreadHistoryStore());
+  }
+  function parseThreadHistorySearchQuery(query) {
+    const filters = { mode: '', hasImage: false, isGif: false, hasZeroWidth: false, isSage: false };
+    const tokens = [];
+    String(query || '').toLowerCase().split(/\s+/).filter(Boolean).forEach(token => {
+      if (token === 'mode:po') filters.mode = 'po';
+      else if (token === 'mode:normal') filters.mode = 'normal';
+      else if (token === 'has:image') filters.hasImage = true;
+      else if (token === 'has:gif') filters.isGif = true;
+      else if (token === 'has:zwsp' || token === 'has:zerowidth') filters.hasZeroWidth = true;
+      else if (token === 'has:sage') filters.isSage = true;
+      else tokens.push(token);
+    });
+    return { filters, tokens };
+  }
+  function scoreThreadHistoryIndexEntry(entry, tokens) {
+    let score = Number(entry.lastVisitedAt) || 0;
+    tokens.forEach(token => {
+      if (/^\d{1,8}$/.test(token)) {
+        if (entry.threadIdText === token) score += 1000000000000000;
+        else if (entry.threadIdText.includes(token)) score += 500000000000000;
+      }
+    });
+    return score;
+  }
+  function getThreadHistorySortValue(item, field) {
+    if (!item) return 0;
+    if (field === 'visitCount') return Number(item.visitCount) || 0;
+    if (field === 'maxVisitedPage') return Number(item.maxVisitedPage || item.page) || 0;
+    return Number(item.lastVisitedAt) || 0;
+  }
+  function compareThreadHistoryResults(a, b, sortMode, tokens) {
+    const itemA = a.item || {};
+    const itemB = b.item || {};
+    if (sortMode === 'last-asc') return getThreadHistorySortValue(itemA, 'lastVisitedAt') - getThreadHistorySortValue(itemB, 'lastVisitedAt');
+    if (sortMode === 'visits-desc') return getThreadHistorySortValue(itemB, 'visitCount') - getThreadHistorySortValue(itemA, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
+    if (sortMode === 'visits-asc') return getThreadHistorySortValue(itemA, 'visitCount') - getThreadHistorySortValue(itemB, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
+    if (sortMode === 'page-desc') return getThreadHistorySortValue(itemB, 'maxVisitedPage') - getThreadHistorySortValue(itemA, 'maxVisitedPage') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
+    return scoreThreadHistoryIndexEntry(b.index, tokens) - scoreThreadHistoryIndexEntry(a.index, tokens);
+  }
+  function searchThreadHistory(query, storeInput, sortMode) {
+    const store = normalizeThreadHistoryStore(storeInput || getThreadHistoryStore());
+    const { filters, tokens } = parseThreadHistorySearchQuery(query);
+    return (store.order || [])
+      .filter(key => {
+        const entry = store.index[key];
+        if (!entry || !store.items[key]) return false;
+        if (filters.mode && entry.mode !== filters.mode) return false;
+        if (filters.hasImage && !entry.hasImage) return false;
+        if (filters.isGif && !entry.isGif) return false;
+        if (filters.hasZeroWidth && !entry.hasZeroWidth) return false;
+        if (filters.isSage && !entry.isSage) return false;
+        return tokens.every(token => entry.searchText.includes(token));
+      })
+      .map(key => ({ key, item: store.items[key], index: store.index[key] }))
+      .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', tokens));
+  }
+  let threadHistoryScrollTrackingInstalled = false;
+  function installThreadHistoryScrollTracking() {
+    if (threadHistoryScrollTrackingInstalled) return;
+    threadHistoryScrollTrackingInstalled = true;
+    let scrollTimer = 0;
+    window.addEventListener('scroll', () => {
+      if (scrollTimer) return;
+      scrollTimer = setTimeout(() => {
+        scrollTimer = 0;
+        updateThreadHistoryScrollPosition();
+      }, 1200);
+    }, { passive: true });
+    window.addEventListener('pagehide', updateThreadHistoryScrollPosition, { passive: true });
+  }
+  function isThreadHistoryPageActive() {
+    return document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
+  }
+  function cancelThreadHistoryDwellTimer(resetSession) {
+    if (threadHistoryDwellTimer) clearTimeout(threadHistoryDwellTimer);
+    threadHistoryDwellTimer = 0;
+    threadHistoryVisibleSince = 0;
+    if (resetSession) threadHistoryVisibleSessionCounted = false;
+  }
+  function scheduleThreadHistoryReactivationVisit(source) {
+    if (!parseThreadHistoryUrl(location.href)) return;
+    if (!isThreadHistoryPageActive()) {
+      cancelThreadHistoryDwellTimer(document.visibilityState !== 'visible');
+      return;
+    }
+    if (threadHistoryVisibleSessionCounted || threadHistoryDwellTimer) return;
+    threadHistoryVisibleSince = Date.now();
+    updateThreadHistoryDebugState({ lastDwell: { source, status: 'scheduled', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
+    threadHistoryDwellTimer = setTimeout(() => {
+      threadHistoryDwellTimer = 0;
+      if (!threadHistoryVisibleSince || !isThreadHistoryPageActive()) return;
+      if (Date.now() - threadHistoryVisibleSince < THREAD_HISTORY_REVISIT_DWELL_MS) return;
+      threadHistoryVisibleSessionCounted = true;
+      updateThreadHistoryDebugState({ lastDwell: { source, status: 'counted', threshold: THREAD_HISTORY_REVISIT_DWELL_MS, at: new Date().toISOString() } });
+      recordCurrentThreadHistory(0, { reason: 'reactivation-dwell', countVisit: true });
+    }, THREAD_HISTORY_REVISIT_DWELL_MS);
+  }
+  function installThreadHistoryReactivationTracking(initialCounted) {
+    if (threadHistoryReactivationTrackingInstalled) return;
+    threadHistoryReactivationTrackingInstalled = true;
+    threadHistoryVisibleSessionCounted = !!initialCounted && document.visibilityState === 'visible';
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') scheduleThreadHistoryReactivationVisit('visibilitychange');
+      else cancelThreadHistoryDwellTimer(true);
+    }, { passive: true });
+    window.addEventListener('focus', () => scheduleThreadHistoryReactivationVisit('focus'), { passive: true });
+    window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
+    window.addEventListener('pagehide', () => cancelThreadHistoryDwellTimer(true), { passive: true });
+  }
+  function recordCurrentThreadHistory(attempt = 0, options = {}) {
+    const record = extractThreadHistoryRecord(document);
+    if (!record) {
+      const parsed = parseThreadHistoryUrl(location.href);
+      const missingMain = !!parsed && !findThreadHistoryMainElement(document, parsed);
+      updateThreadHistoryDebugState({
+        lastRecord: {
+          status: parsed ? (missingMain ? 'missing-main' : 'extract-failed') : 'unsupported-url',
+          attempt,
+          parsed,
+          at: new Date().toISOString(),
+          readyState: document.readyState,
+          mainCount: document.querySelectorAll('.h-threads-item-main').length,
+          listCount: document.querySelectorAll('.h-threads-list').length
+        }
+      });
+      if (missingMain && attempt < THREAD_HISTORY_RECORD_RETRY_LIMIT) {
+        logThreadHistory('retry record: waiting for h-threads-item-main', {
+          attempt: attempt + 1,
+          limit: THREAD_HISTORY_RECORD_RETRY_LIMIT,
+          delay: THREAD_HISTORY_RECORD_RETRY_DELAY,
+          readyState: document.readyState
+        });
+        setTimeout(() => recordCurrentThreadHistory(attempt + 1), THREAD_HISTORY_RECORD_RETRY_DELAY);
+      }
+      return;
+    }
+    upsertThreadHistoryRecord(record, Object.assign({ reason: 'initial-load', countVisit: true }, options));
+    updateThreadHistoryDebugState({ lastRecord: { status: 'saved', attempt, reason: options.reason || 'initial-load', record, at: new Date().toISOString() } });
+    installThreadHistoryScrollTracking();
+  }
+  function formatThreadHistoryTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${day} ${hh}:${mm}`;
+  }
+  function formatRelativeTimeMachineTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const weekday = '日一二三四五六'[d.getDay()];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${y}-${m}-${day}(${weekday})${hh}:${mm}:${ss}`;
+  }
+  function buildThreadHistoryImageUrl(imageFile, full) {
+    if (!imageFile) return '';
+    const path = /\.gif$/i.test(imageFile) || full ? 'image' : 'thumb';
+    const encodedFile = String(imageFile).split('/').map(encodeURIComponent).join('/');
+    return `https://image.nmb.best/${path}/${encodedFile}`;
+  }
+  function buildThreadHistoryItemUrl(item) {
+    if (item && item.url) return item.url;
+    const threadId = item && item.threadId ? item.threadId : '';
+    const page = item && item.page ? item.page : 1;
+    return buildThreadHistoryPageUrl(item && item.mode, threadId, page);
+  }
+  function buildHistorySearchHelpMark(title) {
+    const mark = document.createElement('span');
+    mark.className = 'xdex-history-search-help';
+    mark.textContent = '?';
+    mark.title = title || '';
+    mark.style.textDecoration = 'underline';
+    mark.style.cursor = 'help';
+    mark.style.whiteSpace = 'nowrap';
+    mark.setAttribute('aria-label', title || '高级检索说明');
+    return mark;
+  }
+  function getLatestThreadHistoryUrl(threadId) {
+    const tid = String(threadId || '').trim();
+    if (!isValidThreadId(tid)) return '';
+    const store = getThreadHistoryStore();
+    // 常用串/浏览历史联动：优先普通模式，没有再回退只看 PO；都没有返回空（调用方回退普通第 1 页）
+    const normal = store.items[getThreadHistoryKey('normal', tid)];
+    if (normal) return buildThreadHistoryItemUrl(normal);
+    const po = store.items[getThreadHistoryKey('po', tid)];
+    return po ? buildThreadHistoryItemUrl(po) : '';
+  }
+  function appendThreadHistoryText(parent, tagName, className, text) {
+    const el = document.createElement(tagName);
+    if (className) el.className = className;
+    el.textContent = text || '';
+    parent.appendChild(el);
+    return el;
+  }
+  function appendThreadHistoryInfoText(parent, className, text) {
+    const value = String(text || '').trim();
+    if (!value) return null;
+    return appendThreadHistoryText(parent, 'span', className, value);
+  }
+  function shouldRenderThreadHistoryTitle(title) {
+    const value = String(title || '').trim();
+    return !!value && value !== '无标题';
+  }
+  function shouldRenderThreadHistoryAuthor(author) {
+    const value = String(author || '').trim();
+    return !!value && value !== '无名氏';
+  }
+  function buildThreadHistoryItemElement(result) {
+    const item = result.item || {};
+    const wrapper = document.createElement('div');
+    wrapper.className = 'xdex-history-item';
+    wrapper.dataset.historyKey = result.key;
+    const main = document.createElement('div');
+    main.className = 'h-threads-item-main';
+    wrapper.appendChild(main);
+    const info = document.createElement('div');
+    info.className = 'h-threads-info xdex-history-info';
+    main.appendChild(info);
+    const infoMain = document.createElement('span');
+    infoMain.className = 'xdex-history-info-main';
+    info.appendChild(infoMain);
+    if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
+    if (shouldRenderThreadHistoryAuthor(item.author)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.author);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', item.createdAt);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = item.createdAt;
+      createdAtNode.title = item.createdAt;
+    }
+    const cookieHtml = item.cookieHtml || buildThreadHistoryLegacyCookieHtml(item.cookieId);
+    const cookieMarkId = getThreadHistoryCookieMarkId(item);
+    if (cookieHtml) {
+      const cookieSpan = appendThreadHistoryText(infoMain, 'span', 'h-threads-info-uid', '');
+      if (cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
+      cookieSpan.innerHTML = cookieHtml;
+    } else if (item.cookieId) {
+      const cookieSpan = appendThreadHistoryInfoText(infoMain, 'h-threads-info-uid', `ID:${item.cookieId}`);
+      if (cookieSpan && cookieMarkId) cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId);
+    }
+    const historyReplyUrl = buildCanonicalReplyUrl(item.threadId, item.threadId);
+    const historyReplyActionUrl = buildThreadHistoryItemUrl(item);
+    const replyLink = document.createElement('a');
+    replyLink.className = 'h-threads-info-id xdex-history-thread-id';
+    replyLink.href = historyReplyUrl;
+    replyLink.textContent = `No.${item.threadId || ''}`;
+    infoMain.appendChild(replyLink);
+    const replyAction = document.createElement('span');
+    replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
+    const replyActionLink = document.createElement('a');
+    replyActionLink.className = 'xdex-history-reply-action';
+    replyActionLink.href = historyReplyActionUrl;
+    replyActionLink.target = '_blank';
+    replyActionLink.rel = 'noopener';
+    replyActionLink.textContent = '回应';
+    replyAction.appendChild(document.createTextNode('['));
+    replyAction.appendChild(replyActionLink);
+    replyAction.appendChild(document.createTextNode(']'));
+    infoMain.appendChild(replyAction);
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'xdex-history-delete';
+    deleteButton.dataset.historyKey = result.key;
+    deleteButton.title = '删除';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
+    if (item.imageFile) {
+      const imageLink = document.createElement('a');
+      imageLink.className = 'h-threads-img-a xdex-history-image';
+      imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
+      imageLink.dataset.historyQuoteId = item.threadId || '';
+      imageLink.target = '_blank';
+      imageLink.rel = 'noopener';
+      const img = document.createElement('img');
+      img.className = 'h-threads-img';
+      img.src = buildThreadHistoryImageUrl(item.imageFile, false);
+      img.alt = item.imageFile;
+      imageLink.appendChild(img);
+      main.appendChild(imageLink);
+    }
+    if (item.sageHtml) {
+      const sageDiv = document.createElement('div');
+      sageDiv.className = 'h-threads-tips uk-text-danger uk-text-bold';
+      sageDiv.innerHTML = item.sageHtml;
+      main.appendChild(sageDiv);
+    }
+        const content = document.createElement('div');
+    content.className = 'h-threads-content';
+    if (item.contentHtml) content.innerHTML = item.contentHtml;
+    else content.textContent = item.contentText || item.excerpt || '';
+    if (item.contentTruncated) {
+      limitThreadHistoryContentText(content, THREAD_HISTORY_EXCERPT_LIMIT);
+      appendThreadHistoryTruncationMarker(content);
+    }
+    main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
+    const footer = document.createElement('div');
+    footer.className = 'xdex-history-footer';
+    appendThreadHistoryText(footer, 'span', 'xdex-history-time', formatThreadHistoryTime(item.lastVisitedAt));
+    appendThreadHistoryText(footer, 'span', 'xdex-history-visit-count', `共访问 ${item.visitCount || 1} 次`);
+    appendThreadHistoryText(footer, 'span', 'xdex-history-page', `串内最远：P${item.maxVisitedPage || item.page || 1}`);
+    appendThreadHistoryText(footer, 'span', 'xdex-history-current-page', `最近查看：P${item.page || 1}`);
+    if (item.mode === 'po') appendThreadHistoryText(footer, 'span', 'xdex-history-po-label', 'Po');
+    main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
+    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    return wrapper;
+  }
+  const HISTORY_RENDER_INITIAL_COUNT = 50;
+  const HISTORY_RENDER_BATCH_SIZE = 20;
+  const HISTORY_RENDER_BATCH_THRESHOLD = 400;
+  const historyRenderQueues = new Map();
+  function findHistoryScrollContainer(element) {
+    let el = element;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const style = window.getComputedStyle(el);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflow === 'auto' || style.overflow === 'scroll') {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return element;
+  }
+  function batchRenderHistoryItems(root, results, buildFn, queueId) {
+    const prev = historyRenderQueues.get(queueId);
+    if (prev) {
+      prev.cancelled = true;
+      if (prev.scrollHandler && prev.scrollContainer) {
+        prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
+      }
+    }
+    if (!root) return;
+    const total = results.length;
+    if (total <= 0) return;
+    let cursor = 0;
+    const state = { cancelled: false };
+    const scrollContainer = findHistoryScrollContainer(root);
+    historyRenderQueues.set(queueId, state);
+    function appendBatch(count) {
+      if (state.cancelled) return;
+      const slice = results.slice(cursor, cursor + count);
+      const fragment = document.createDocumentFragment();
+      slice.forEach(r => fragment.appendChild(buildFn(r)));
+      root.appendChild(fragment);
+      cursor += slice.length;
+    }
+    function maybeLoadMore() {
+      if (state.cancelled || cursor >= total) return;
+      const nearBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - HISTORY_RENDER_BATCH_THRESHOLD;
+      if (nearBottom) {
+        appendBatch(HISTORY_RENDER_BATCH_SIZE);
+        requestAnimationFrame(() => {
+          if (!state.cancelled) maybeLoadMore();
+        });
+      }
+    }
+    const scrollHandler = () => {
+      if (state.cancelled) return;
+      if (cursor >= total) return;
+      requestAnimationFrame(() => {
+        if (state.cancelled) return;
+        maybeLoadMore();
+      });
+    };
+    state.scrollHandler = scrollHandler;
+    state.scrollContainer = scrollContainer;
+    scrollContainer.addEventListener('scroll', scrollHandler, { passive: true });
+    appendBatch(HISTORY_RENDER_INITIAL_COUNT);
+    if (cursor < total) {
+      requestAnimationFrame(() => {
+        if (state.cancelled) return;
+        maybeLoadMore();
+      });
+    }
+  }
+  function renderThreadHistoryModule(query) {
+    const root = document.getElementById('sp_history_results');
+    if (!root) {
+      logThreadHistory('render skipped: missing #sp_history_results');
+      return;
+    }
+    const input = document.getElementById('sp_history_search');
+    const sortSelect = document.getElementById('sp_history_sort');
+    const effectiveQuery = query == null && input ? input.value : query;
+    const sortMode = sortSelect ? sortSelect.value : 'last-desc';
+    const results = searchThreadHistory(effectiveQuery || '', null, sortMode);
+    updateThreadHistoryDebugState({ lastRender: { query: effectiveQuery || '', sortMode, count: results.length, at: new Date().toISOString() } });
+    logThreadHistory('render module', { query: effectiveQuery || '', sortMode, count: results.length });
+    const count = document.getElementById('sp_history_count');
+    if (count) {
+      count.textContent = `${results.length} 条 `;
+      count.appendChild(buildHistorySearchHelpMark(THREAD_HISTORY_SEARCH_HELP_TEXT));
+    }
+    root.textContent = '';
+    if (!results.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-history-empty';
+      empty.textContent = effectiveQuery ? '没有匹配的浏览历史' : '暂无浏览历史';
+      root.appendChild(empty);
+      return;
+    }
+    batchRenderHistoryItems(root, results, buildThreadHistoryItemElement, 'threadHistory');
+    const reportThreadHistoryRenderDom = () => {
+      const cover = document.getElementById('sp_cover');
+      const panel = document.getElementById('sp_panel');
+      const views = document.getElementById('sp_panel_views');
+      const module = document.getElementById('sp_module_history');
+      const panelContent = document.querySelector('#sp_module_history .sp_panel_content');
+      const historyContent = document.getElementById('sp_history_content');
+      const firstItem = root.querySelector('.xdex-history-item');
+      updateThreadHistoryDebugState({
+        lastRenderDom: {
+          activeModule: module?.classList.contains('active') || false,
+          contentDisplay: getComputedStyle(historyContent || root).display,
+          resultsDisplay: getComputedStyle(root).display,
+          coverDisplay: getComputedStyle(cover || document.body).display,
+          panelDisplay: getComputedStyle(panel || document.body).display,
+          viewsDisplay: getComputedStyle(views || document.body).display,
+          moduleDisplay: getComputedStyle(module || document.body).display,
+          panelContentDisplay: getComputedStyle(panelContent || document.body).display,
+          childCount: root.children.length,
+          itemCount: root.querySelectorAll('.xdex-history-item').length,
+          coverHeight: cover?.offsetHeight || 0,
+          panelHeight: panel?.offsetHeight || 0,
+          viewsHeight: views?.offsetHeight || 0,
+          moduleHeight: module?.offsetHeight || 0,
+          panelContentHeight: panelContent?.offsetHeight || 0,
+          historyContentHeight: historyContent?.offsetHeight || 0,
+          offsetHeight: root.offsetHeight,
+          scrollHeight: root.scrollHeight,
+          firstItemHeight: firstItem?.offsetHeight || 0,
+          firstItemText: firstItem?.textContent?.slice(0, 80) || '',
+          at: new Date().toISOString()
+        }
+      });
+      logThreadHistory('render dom', threadHistoryDebugState.lastRenderDom);
+      logThreadHistoryFlat('render dom flat', threadHistoryDebugState.lastRenderDom);
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reportThreadHistoryRenderDom);
+    else setTimeout(reportThreadHistoryRenderDom, 0);
+  }
+  function renderThreadHistoryModuleSoon(query) {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => renderThreadHistoryModule(query));
+      return;
+    }
+    setTimeout(() => renderThreadHistoryModule(query), 0);
+  }
+  function openHistoryImageQuotePreview(tid) {
+    const quoteId = String(tid || '').trim();
+    if (!/^\d+$/.test(quoteId) || quoteId === '9999999') return false;
+    try {
+      if (typeof window.__xdexOpenQuoteByTid !== 'function' && typeof enableQuotePreview === 'function') {
+        enableQuotePreview();
+      }
+      if (typeof window.__xdexOpenQuoteByTid !== 'function') return false;
+      const ret = window.__xdexOpenQuoteByTid(quoteId, { fromPOImage: true });
+      if (ret && typeof ret.then === 'function') ret.catch(() => {});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function enhanceHistoryRenderedContent(root) {
+    if (!root) return;
+    try { renderHiddenTextContent(root); } catch (e) {}
+    try { if (typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
+    try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
+    try {
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      if (cfg && cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', root);
+      if (cfg && cfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root);
+    } catch (e) {}
+  }
+  // 清空历史二次确认：首层自定义弹窗（可高亮「清空」「无法恢复」），确认后再走 window.confirm
+  function showClearHistoryWarningDialog(onConfirm, onCancel) {
+    const existing = document.getElementById('xdex-clear-history-warning-modal');
+    if (existing) existing.remove();
+    const $m = $(
+      '<div id="xdex-clear-history-warning-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10003;display:flex;align-items:center;justify-content:center;outline:none;">' +
+        '<div class="xdex-clear-history-warning-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>' +
+        '<div class="xdex-clear-history-warning-dialog" role="dialog" aria-modal="true" aria-labelledby="xdex-clear-history-warning-title" style="position:relative;width:min(380px,92vw);background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px 18px 14px;color:var(--foreground, #333);">' +
+          '<h3 id="xdex-clear-history-warning-title" style="margin:0 0 10px;font-size:16px;font-weight:700;color:#c62828;">操作警告</h3>' +
+          '<p style="margin:0 0 8px;font-size:14px;line-height:1.65;">请注意此按钮为' +
+            '<span style="color:#c62828;font-weight:800;font-size:16px;padding:0 2px;">「清空」</span>' +
+            '按钮而非「搜索」</p>' +
+          '<p style="margin:0 0 12px;font-size:14px;line-height:1.65;">操作后将' +
+            '<span style="color:#c62828;font-weight:800;font-size:16px;padding:0 2px;">无法恢复</span></p>' +
+          '<p style="margin:0 0 14px;font-size:13px;color:var(--muted-foreground, #666);">是否确认继续？</p>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button type="button" id="xdex-clear-history-warning-cancel" style="padding:6px 14px;">取消</button>' +
+            '<button type="button" id="xdex-clear-history-warning-ok" style="padding:6px 14px;background:#c62828;color:#fff;border:1px solid #b71c1c;border-radius:4px;font-weight:700;">确认清空</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+    function close() {
+      $m.remove();
+      $(document).off('keydown.xdex-clear-history-warning');
+    }
+    function cancel() {
+      close();
+      if (typeof onCancel === 'function') onCancel();
+    }
+    function confirm() {
+      close();
+      if (typeof onConfirm === 'function') onConfirm();
+    }
+    $m.find('.xdex-clear-history-warning-backdrop').on('click', cancel);
+    $m.find('#xdex-clear-history-warning-cancel').on('click', cancel);
+    $m.find('#xdex-clear-history-warning-ok').on('click', confirm);
+    $(document).on('keydown.xdex-clear-history-warning', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+      // 危险操作：不响应 Enter 确认，必须点红色「确认清空」
+    });
+    $('body').append($m);
+    try { $m.find('#xdex-clear-history-warning-cancel')[0].focus(); } catch (e) {}
+  }
+  function bindThreadHistoryModuleEvents() {
+    $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
+      renderThreadHistoryModule(this.value || '');
+    });
+    $('#sp_history_sort').off('change.xdex-history').on('change.xdex-history', function () {
+      renderThreadHistoryModule();
+    });
+    $('#sp_history_results').off('click.xdex-history-reply', '.xdex-history-reply-action').on('click.xdex-history-reply', '.xdex-history-reply-action', function (e) {
+      if (e.button !== 0) return;
+      const url = this.href || '';
+      if (!url) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        window.location.href = url;
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    });
+    $('#sp_history_results').off('click.xdex-history-image-quote', '.xdex-history-image').on('click.xdex-history-image-quote', '.xdex-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
+    $('#sp_history_results').off('click.xdex-history-delete', '.xdex-history-delete').on('click.xdex-history-delete', '.xdex-history-delete', function (e) {
+      e.preventDefault();
+      const key = this.dataset.historyKey || '';
+      if (!key) return;
+      deleteThreadHistoryItem(key);
+      renderThreadHistoryModule();
+      toast('已删除浏览历史');
+    });
+    $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
+      e.preventDefault();
+      showClearHistoryWarningDialog(function () {
+        if (!window.confirm('确定要清空全部浏览历史吗？')) return;
+        clearThreadHistory();
+        renderThreadHistoryModule();
+        toast('已清空浏览历史');
+      });
+    });
+  }
+  function buildPostHistoryItemElement(result) {
+    const item = result.item || {};
+    const wrapper = document.createElement('div');
+    wrapper.className = 'xdex-history-item xdex-post-history-item';
+    wrapper.dataset.postHistoryKey = result.key;
+    const main = document.createElement('div');
+    main.className = 'h-threads-item-main';
+    wrapper.appendChild(main);
+    const info = document.createElement('div');
+    info.className = 'h-threads-info xdex-history-info xdex-post-history-info';
+    main.appendChild(info);
+    const infoMain = document.createElement('span');
+    infoMain.className = 'xdex-history-info-main';
+    info.appendChild(infoMain);
+    if (shouldRenderThreadHistoryTitle(item.title)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', item.title);
+    if (shouldRenderThreadHistoryAuthor(item.name)) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.name);
+    if (item.email) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', item.email);
+    const submittedAtText = formatRelativeTimeMachineTime(item.submittedAt);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', submittedAtText);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = submittedAtText;
+      createdAtNode.title = submittedAtText;
+    }
+    if (item.userHash) appendThreadHistoryInfoText(infoMain, 'h-threads-info-uid', `ID:${item.userHash}`);
+    const displayPostId = item.postId || item.id || (item.type === 'reply' ? '' : item.threadId);
+    const postUrl = buildPostHistoryUrl(item.type, displayPostId, item.resto || item.threadId);
+    const postReplyActionUrl = buildPostHistoryReplyActionUrl(item.type, displayPostId, item.resto || item.threadId, item.page);
+    if (postUrl) {
+      const postLink = document.createElement('a');
+      postLink.className = 'h-threads-info-id xdex-post-history-thread-id';
+      postLink.href = postUrl;
+      postLink.textContent = `No.${displayPostId}`;
+      infoMain.appendChild(postLink);
+      const replyAction = document.createElement('span');
+      replyAction.className = 'h-threads-info-reply-btn xdex-post-history-reply-label';
+      const replyActionLink = document.createElement('a');
+      replyActionLink.className = 'xdex-post-history-reply-action';
+      replyActionLink.href = postReplyActionUrl;
+      replyActionLink.target = '_blank';
+      replyActionLink.rel = 'noopener';
+      replyActionLink.textContent = '回应';
+      replyAction.appendChild(document.createTextNode('['));
+      replyAction.appendChild(replyActionLink);
+      replyAction.appendChild(document.createTextNode(']'));
+      infoMain.appendChild(replyAction);
+    } else {
+      appendThreadHistoryInfoText(infoMain, 'h-threads-info-id xdex-post-history-thread-id', '未确认');
+    }
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'xdex-post-history-delete';
+    deleteButton.dataset.postHistoryKey = result.key;
+    deleteButton.title = '删除';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
+    if (item.imageFile) {
+      const imageLink = document.createElement('a');
+      imageLink.className = 'h-threads-img-a xdex-post-history-image';
+      imageLink.href = buildThreadHistoryImageUrl(item.imageFile, true);
+      imageLink.dataset.postHistoryQuoteId = displayPostId || item.threadId || '';
+      imageLink.target = '_blank';
+      imageLink.rel = 'noopener';
+      const image = document.createElement('img');
+      image.className = 'h-threads-img';
+      image.src = buildThreadHistoryImageUrl(item.imageFile, false);
+      image.alt = item.imageFile;
+      imageLink.appendChild(image);
+      main.appendChild(imageLink);
+    }
+    const content = document.createElement('div');
+    content.className = 'h-threads-content';
+    if (item.contentHtml) content.innerHTML = item.contentHtml;
+    else content.textContent = item.contentText || item.contentRaw || '';
+    main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
+    const footer = document.createElement('div');
+    footer.className = 'xdex-history-footer xdex-post-history-footer';
+    if (item.status !== 'confirmed') appendThreadHistoryText(footer, 'span', 'xdex-post-history-status', item.status === 'pending' ? '确认中' : item.status === 'failed' ? '失败' : '未确认');
+    const forumName = item.forumName || getPostHistoryForumNameByFid(item.fid);
+    if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', `${forumName}`);
+    appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', item.type === 'reply' ? '回复' : '主题');
+    if (item.threadId) appendThreadHistoryText(footer, 'span', 'xdex-post-history-thread', `串号：${item.threadId}`);
+    // 优先从浏览历史获取最近浏览页（仅 thread 类型），否则回退到记录中的 page
+    // const displayPage = item.page;
+    let displayPage = item.page;
+    if (item.type === 'thread' && item.threadId) {
+      const historyUrl = getLatestThreadHistoryUrl(item.threadId);
+      if (historyUrl) {
+        const parsed = parseThreadHistoryUrl(historyUrl);
+        if (parsed && parsed.page) displayPage = parsed.page;
+      }
+    }
+    if (displayPage) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${displayPage}`);
+    main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
+    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    return wrapper;
+  }
+  function renderPostHistoryModule(query) {
+    const root = document.getElementById('sp_posts_results');
+    if (!root) return;
+    postHistoryLiveRenderDirty = false;
+    const input = document.getElementById('sp_posts_search');
+    const effectiveQuery = query == null && input ? input.value : query;
+    const results = searchPostHistory(effectiveQuery || '', postHistoryActiveType);
+    const count = document.getElementById('sp_posts_count');
+    if (count) {
+      count.textContent = `${results.length} 条 `;
+      count.appendChild(buildHistorySearchHelpMark(POST_HISTORY_SEARCH_HELP_TEXT));
+    }
+    root.textContent = '';
+    if (!results.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-history-empty xdex-post-history-empty';
+      empty.textContent = effectiveQuery ? '没有匹配的我的发言' : (postHistoryActiveType === 'reply' ? '暂无我的回复' : '暂无我的主题');
+      root.appendChild(empty);
+      return;
+    }
+    batchRenderHistoryItems(root, results, buildPostHistoryItemElement, 'postHistory');
+  }
+  function renderPostHistoryModuleSoon(query) {
+    postHistoryLiveRenderDirty = false;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => renderPostHistoryModule(query));
+      return;
+    }
+    setTimeout(() => renderPostHistoryModule(query), 0);
+  }
+  // ─── 订阅 Feed 渲染 ──────────────────────────────────────────────────────
+  const SUBSCRIPTION_FEED_API_BASE = 'https://api.nmb.best/api';
+  const SUBSCRIPTION_FEED_SESSION_STORE_KEY = 'xdex_subscription_feed_sessions_v3';
+  const SUBSCRIPTION_FEED_SESSION_VERSION = 3;
+  const SUBSCRIPTION_FEED_SESSION_TTL_MS = 2 * 60 * 1000;
+  const SUBSCRIPTION_FEED_SESSION_MAX_COUNT = 5;
+  let subscriptionFeedCurrentPage = 1;
+  let subscriptionFeedCurrentUuid = '';
+  let subscriptionFeedLoading = false;
+  let subscriptionFeedAllItems = [];
+  let subscriptionFeedHasMore = true;
+  let subscriptionFeedRequestSeq = 0;
+  const subscriptionFeedInflightPages = Object.create(null);
+  let subscriptionFeedRenderedPages = Object.create(null);
+  let subscriptionFeedHighestRenderedPage = 0;
+  let subscriptionFeedCurrentDisplayPage = 1;
+  let subscriptionFeedCacheExpired = false;
+  const ACTIVE_FEED_STORAGE_KEY = 'xdex_active_subscription_feed_uuid';
+  function getActiveSubscriptionFeedUuid() {
+    try { return GM_getValue(ACTIVE_FEED_STORAGE_KEY, ''); } catch (e) { return ''; }
+  }
+  function setActiveSubscriptionFeedUuid(uuid) {
+    try { GM_setValue(ACTIVE_FEED_STORAGE_KEY, uuid || ''); } catch (e) {}
+  }
+  function createDefaultSubscriptionFeedSessionStore() {
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      sessions: {}
+    };
+  }
+  function normalizeSubscriptionFeedSessionStore(rawStore) {
+    const store = Object.assign(createDefaultSubscriptionFeedSessionStore(), rawStore || {});
+    store.version = SUBSCRIPTION_FEED_SESSION_VERSION;
+    store.sessions = store.sessions && typeof store.sessions === 'object' ? store.sessions : {};
+    return store;
+  }
+  function getSubscriptionFeedSessionStore() {
+    try {
+      return normalizeSubscriptionFeedSessionStore(GM_getValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, null));
+    } catch (e) {
+      return createDefaultSubscriptionFeedSessionStore();
+    }
+  }
+  function setSubscriptionFeedSessionStore(store) {
+    const normalized = normalizeSubscriptionFeedSessionStore(store);
+    GM_setValue(SUBSCRIPTION_FEED_SESSION_STORE_KEY, normalized);
+    return normalized;
+  }
+  function getSubscriptionFeedItemId(item) {
+    return String(Number(item && item.id) || 0);
+  }
+  function normalizeSubscriptionFeedPageItems(items) {
+    const list = Array.isArray(items) ? items : [];
+    const seen = new Set();
+    return list.filter((item) => {
+      const id = getSubscriptionFeedItemId(item);
+      if (!id || id === '0' || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+  function buildSubscriptionFeedPageEntry(page, items) {
+    const normalizedPage = Math.max(1, Number(page) || 1);
+    const normalizedItems = normalizeSubscriptionFeedPageItems(items);
+    return {
+      page: normalizedPage,
+      fetchedAt: Date.now(),
+      itemIds: normalizedItems.map(getSubscriptionFeedItemId),
+      items: normalizedItems
+    };
+  }
+  function computeHighestContiguousSubscriptionFeedPage(pages) {
+    let page = 1;
+    while (pages && pages[String(page)] && Number(pages[String(page)].page) === page) page++;
+    return page - 1;
+  }
+  function normalizeSubscriptionFeedSession(session) {
+    if (!session || typeof session !== 'object') return null;
+    const uuid = String(session.uuid || '').trim();
+    if (!uuid) return null;
+    const cachedPages = session.cachedPages && typeof session.cachedPages === 'object' ? session.cachedPages : {};
+    const normalizedPages = {};
+    Object.keys(cachedPages).forEach((key) => {
+      const entry = cachedPages[key] || {};
+      const page = Math.max(1, Number(entry.page || key) || 1);
+      const normalizedItems = normalizeSubscriptionFeedPageItems(entry.items);
+      normalizedPages[String(page)] = {
+        page,
+        fetchedAt: Number(entry.fetchedAt) || 0,
+        itemIds: normalizedItems.map(getSubscriptionFeedItemId),
+        items: normalizedItems
+      };
+    });
+    const highestCachedPage = computeHighestContiguousSubscriptionFeedPage(normalizedPages);
+    const createdAt = Number(session.createdAt) || 0;
+    const expiresAt = Number(session.expiresAt) || 0;
+    const lastAccessAt = Number(session.lastAccessAt) || createdAt || Date.now();
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      uuid,
+      createdAt,
+      expiresAt,
+      lastAccessAt,
+      highestCachedPage,
+      cachedPages: normalizedPages
+    };
+  }
+  function isSubscriptionFeedSessionExpired(session) {
+    return !session || !session.expiresAt || Date.now() > Number(session.expiresAt);
+  }
+  function isSubscriptionFeedSessionStructurallyValid(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return false;
+    if (!normalized.createdAt || !normalized.expiresAt) return false;
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry || Number(entry.page) !== page || !Array.isArray(entry.items)) return false;
+    }
+    return true;
+  }
+  function getSubscriptionFeedSession(uuid) {
+    const key = String(uuid || '').trim();
+    if (!key) return null;
+    const store = getSubscriptionFeedSessionStore();
+    return normalizeSubscriptionFeedSession(store.sessions[key]);
+  }
+  function saveSubscriptionFeedSession(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return null;
+    const store = getSubscriptionFeedSessionStore();
+    store.sessions[normalized.uuid] = normalized;
+    const ordered = Object.values(store.sessions)
+      .map(normalizeSubscriptionFeedSession)
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.lastAccessAt) || 0) - (Number(a.lastAccessAt) || 0));
+    const limited = ordered.slice(0, SUBSCRIPTION_FEED_SESSION_MAX_COUNT);
+    store.sessions = {};
+    limited.forEach((item) => {
+      store.sessions[item.uuid] = item;
+    });
+    setSubscriptionFeedSessionStore(store);
+    return normalized;
+  }
+  function deleteSubscriptionFeedSession(uuid) {
+    const key = String(uuid || '').trim();
+    if (!key) return;
+    const store = getSubscriptionFeedSessionStore();
+    if (!store.sessions[key]) return;
+    delete store.sessions[key];
+    setSubscriptionFeedSessionStore(store);
+  }
+  function pruneExpiredSubscriptionFeedSessions() {
+    const store = getSubscriptionFeedSessionStore();
+    let changed = false;
+    Object.keys(store.sessions).forEach((uuid) => {
+      const session = normalizeSubscriptionFeedSession(store.sessions[uuid]);
+      if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
+        delete store.sessions[uuid];
+        changed = true;
+        return;
+      }
+      store.sessions[uuid] = session;
+    });
+    if (changed) setSubscriptionFeedSessionStore(store);
+  }
+  function createSubscriptionFeedSession(uuid, firstPageEntry) {
+    const now = Date.now();
+    const normalizedUuid = String(uuid || '').trim();
+    const cachedPages = {};
+    let highestCachedPage = 0;
+    if (firstPageEntry && Array.isArray(firstPageEntry.items) && firstPageEntry.items.length) {
+      cachedPages[String(firstPageEntry.page)] = firstPageEntry;
+      highestCachedPage = firstPageEntry.page === 1 ? 1 : 0;
+    }
+    return {
+      version: SUBSCRIPTION_FEED_SESSION_VERSION,
+      uuid: normalizedUuid,
+      createdAt: now,
+      expiresAt: now + SUBSCRIPTION_FEED_SESSION_TTL_MS,
+      lastAccessAt: now,
+      highestCachedPage,
+      cachedPages
+    };
+  }
+  function flattenSubscriptionFeedSessionItems(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized || normalized.highestCachedPage <= 0) return [];
+    const items = [];
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry || !Array.isArray(entry.items)) break;
+      items.push(...entry.items);
+    }
+    return items;
+  }
+  function resetSubscriptionFeedRuntimeState(uuid) {
+    subscriptionFeedCurrentUuid = String(uuid || '').trim();
+    subscriptionFeedCurrentPage = 0;
+    subscriptionFeedAllItems = [];
+    subscriptionFeedHasMore = true;
+    subscriptionFeedRenderedPages = Object.create(null);
+    subscriptionFeedHighestRenderedPage = 0;
+    subscriptionFeedCurrentDisplayPage = 1;
+    subscriptionFeedCacheExpired = false;
+  }
+  function rebuildSubscriptionFeedRuntimeList() {
+    const items = [];
+    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
+      const entry = subscriptionFeedRenderedPages[String(page)];
+      if (!entry || !Array.isArray(entry.items)) break;
+      items.push(...entry.items);
+    }
+    subscriptionFeedAllItems = items;
+    subscriptionFeedCurrentPage = subscriptionFeedHighestRenderedPage;
+  }
+  function applySubscriptionFeedSessionToRuntime(session) {
+    const normalized = normalizeSubscriptionFeedSession(session);
+    if (!normalized) return false;
+    subscriptionFeedCurrentUuid = normalized.uuid;
+    subscriptionFeedRenderedPages = Object.create(null);
+    for (let page = 1; page <= normalized.highestCachedPage; page++) {
+      const entry = normalized.cachedPages[String(page)];
+      if (!entry) break;
+      subscriptionFeedRenderedPages[String(page)] = entry;
+    }
+    subscriptionFeedHighestRenderedPage = normalized.highestCachedPage;
+    subscriptionFeedCurrentDisplayPage = normalized.highestCachedPage > 0 ? 1 : 0;
+    rebuildSubscriptionFeedRuntimeList();
+    subscriptionFeedHasMore = true;
+    subscriptionFeedCacheExpired = false;
+    return true;
+  }
+  function appendSubscriptionFeedRenderedPage(pageEntry) {
+    if (!pageEntry || !pageEntry.page || !Array.isArray(pageEntry.items)) return false;
+    const page = Math.max(1, Number(pageEntry.page) || 1);
+    if (page !== subscriptionFeedHighestRenderedPage + 1) return false;
+    subscriptionFeedRenderedPages[String(page)] = pageEntry;
+    subscriptionFeedHighestRenderedPage = page;
+    subscriptionFeedCurrentDisplayPage = page;
+    rebuildSubscriptionFeedRuntimeList();
+    return true;
+  }
+  function getSubscriptionFeedNextRenderPage() {
+    return Math.max(0, Number(subscriptionFeedHighestRenderedPage) || 0) + 1;
+  }
+  function appendSubscriptionFeedPageSeparator(root, page) {
+    if (!root || !page || page <= 1) return;
+    const sep = document.createElement('div');
+    sep.className = 'xdex-feed-page-separator';
+    sep.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px 0;border-top:1px dashed #ddd;margin-top:8px;';
+    sep.textContent = `——第${page}页——`;
+    root.appendChild(sep);
+  }
+  function updateSubscriptionFeedDisplayPageFromScroll() {
+    const container = document.querySelector('#sp_module_feeds .sp_panel_content');
+    const results = document.getElementById('sp_feeds_results');
+    if (!container || !results || subscriptionFeedHighestRenderedPage <= 0) return;
+    const separators = Array.from(results.querySelectorAll('.xdex-feed-page-separator'));
+    let displayPage = 1;
+    const threshold = container.scrollTop + container.clientHeight / 2;
+    separators.forEach((sep) => {
+      const page = Number((sep.textContent || '').match(/第(\d+)页/)?.[1] || 0);
+      if (!page) return;
+      const top = sep.offsetTop;
+      if (threshold >= top) displayPage = page;
+    });
+    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
+    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
+  }
+  function renderSubscriptionFeedRenderedPages(options = {}) {
+    const $results = $('#sp_feeds_results').empty();
+    const displayPage = Math.max(0, Number(options.displayPage) || 0) || subscriptionFeedCurrentDisplayPage || subscriptionFeedHighestRenderedPage || 0;
+    if (subscriptionFeedHighestRenderedPage <= 0) {
+      $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
+      $('#sp_feeds_page_label').text('第0页');
+      return;
+    }
+    for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
+      const entry = subscriptionFeedRenderedPages[String(page)];
+      if (!entry || !Array.isArray(entry.items)) break;
+      appendSubscriptionFeedPageSeparator($results[0], page);
+      entry.items.forEach((item) => {
+        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
+      });
+    }
+    subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
+    $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(updateSubscriptionFeedDisplayPageFromScroll);
+    else setTimeout(updateSubscriptionFeedDisplayPageFromScroll, 0);
+  }
+  function restoreSubscriptionFeedSession(uuid) {
+    const session = getSubscriptionFeedSession(uuid);
+    if (!session || isSubscriptionFeedSessionExpired(session) || !isSubscriptionFeedSessionStructurallyValid(session)) {
+      if (session) deleteSubscriptionFeedSession(uuid);
+      return false;
+    }
+    const restored = Object.assign({}, session, { lastAccessAt: Date.now() });
+    saveSubscriptionFeedSession(restored);
+    applySubscriptionFeedSessionToRuntime(restored);
+    renderSubscriptionFeedRenderedPages({ displayPage: 1 });
+    return true;
+  }
+  function invalidateSubscriptionFeedSession(uuid, reason) {
+    const key = String(uuid || '').trim();
+    if (!key) return;
+    console.info('[subscription-feed] invalidate session', { uuid: key, reason: reason || '' });
+    deleteSubscriptionFeedSession(key);
+  }
+  function populateSubscriptionFeedSelector() {
+    const $sel = $('#sp_feeds_selector').empty();
+    const $display = $('#sp_feeds_selector_display');
+    const $dropdown = $('#sp_feeds_selector_dropdown').empty().hide();
+    const $desc = $display.find('.xdex-feed-display-desc');
+    const $uuid = $display.find('.xdex-feed-display-uuid');
+    const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+    if (!feeds.length) {
+      $sel.append('<option value="">(请先添加订阅号)</option>');
+      $desc.text('请先在设置中添加订阅号');
+      $uuid.text('');
+      return '';
+    }
+    feeds.forEach((f, i) => {
+      const label = f.desc ? `${f.desc}：${f.uuid}` : f.uuid;
+      $sel.append(`<option value="${Utils.escapeHTML ? Utils.escapeHTML(f.uuid) : f.uuid}">${Utils.escapeHTML ? Utils.escapeHTML(label) : label}</option>`);
+      const $opt = $('<div class="xdex-feed-option" role="option"></div>')
+        .attr('data-uuid', f.uuid)
+        .text(label);
+      $dropdown.append($opt);
+    });
+    const saved = getActiveSubscriptionFeedUuid();
+    const match = feeds.find(f => f.uuid === saved);
+    const selected = match ? match.uuid : feeds[0].uuid;
+    $sel.val(selected);
+    const activeFeed = feeds.find(f => f.uuid === selected);
+    $desc.text(activeFeed && activeFeed.desc ? activeFeed.desc : '');
+    // 无备注时也要显示订阅号（打码），避免选择框看起来是空的
+    $uuid.text(activeFeed && activeFeed.uuid ? activeFeed.uuid : '');
+    $uuid.toggleClass('xdex-feed-uuid-light-blur', !!(activeFeed && activeFeed.uuid && !activeFeed.desc));
+    $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
+    return selected;
+  }
+  function buildSubscriptionFeedItemElement(item) {
+    const threadId = Number(item.id) || 0;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'xdex-history-item';
+    wrapper.dataset.feedThreadId = String(threadId);
+    const main = document.createElement('div');
+    main.className = 'h-threads-item-main';
+    wrapper.appendChild(main);
+    const info = document.createElement('div');
+    info.className = 'h-threads-info xdex-history-info';
+    main.appendChild(info);
+    const infoMain = document.createElement('span');
+    infoMain.className = 'xdex-history-info-main';
+    info.appendChild(infoMain);
+    const title = String(item.title || '');
+    const email = String(item.email || '');
+    const now = String(item.now || '');
+    const userHash = String(item.user_hash || '');
+    if (title && title !== '无标题') appendThreadHistoryInfoText(infoMain, 'h-threads-info-title', title);
+    if (email) appendThreadHistoryInfoText(infoMain, 'h-threads-info-email', email);
+    const createdAtNode = appendThreadHistoryInfoText(infoMain, 'h-threads-info-createdat', now);
+    if (createdAtNode) {
+      createdAtNode.dataset.xdexOriginalTime = now;
+      createdAtNode.title = now;
+    }
+    if (userHash) {
+      const cookieSpan = appendThreadHistoryText(infoMain, 'span', 'h-threads-info-uid', `ID:${userHash}`);
+      if (cookieSpan) cookieSpan.setAttribute('data-xdex-cookie-id', userHash);
+    }
+    const replyLink = document.createElement('a');
+    replyLink.className = 'h-threads-info-id xdex-history-thread-id';
+    replyLink.href = `${location.origin}/t/${threadId}`;
+    replyLink.textContent = `No.${threadId}`;
+    infoMain.appendChild(replyLink);
+    const replyCount = Number(item.reply_count) || 0;
+    if (replyCount > 0) {
+      appendThreadHistoryText(infoMain, 'span', 'xdex-history-visit-count', `${replyCount} 回`);
+    }
+    // 从浏览历史查找最近查看页
+    const tid = String(threadId || '').trim();
+    const histStore = getThreadHistoryStore();
+    const histCandidates = ['normal', 'po']
+      .map((mode) => histStore.items[getThreadHistoryKey(mode, tid)])
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.lastVisitedAt) || 0) - (Number(a.lastVisitedAt) || 0));
+    const histItem = histCandidates[0] || null;
+    const histPage = histItem ? (Number(histItem.page) || 1) : 1;
+    // [回应] 链接
+    const replyAction = document.createElement('span');
+    replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
+    const replyActionLink = document.createElement('a');
+    replyActionLink.className = 'xdex-history-reply-action';
+    replyActionLink.href = `${location.origin}/t/${tid}?page=${histPage}`;
+    replyActionLink.target = '_blank';
+    replyActionLink.rel = 'noopener';
+    replyActionLink.textContent = '回应';
+    replyAction.appendChild(document.createTextNode('['));
+    replyAction.appendChild(replyActionLink);
+    replyAction.appendChild(document.createTextNode(']'));
+    infoMain.appendChild(replyAction);
+    // 取消订阅按钮
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'xdex-post-history-delete';
+    deleteButton.dataset.feedThreadId = String(threadId);
+    deleteButton.title = '取消订阅';
+    deleteButton.textContent = '×';
+    main.appendChild(deleteButton);
+    // 图片
+    const imgRaw = String(item.img || '');
+    const extRaw = String(item.ext || '');
+    if (imgRaw) {
+      const suffix = extRaw ? (extRaw[0] === '.' ? extRaw : `.${extRaw}`) : '';
+      const imageFile = suffix && imgRaw.toLowerCase().endsWith(suffix.toLowerCase()) ? imgRaw : imgRaw + suffix;
+      const imageLink = document.createElement('a');
+      imageLink.className = 'h-threads-img-a xdex-history-image';
+      imageLink.dataset.historyQuoteId = threadId;
+      imageLink.href = buildThreadHistoryImageUrl(imageFile, true);
+      imageLink.target = '_blank';
+      imageLink.rel = 'noopener';
+      const img = document.createElement('img');
+      img.className = 'h-threads-img';
+      img.src = buildThreadHistoryImageUrl(imageFile, false);
+      img.alt = imageFile;
+      imageLink.appendChild(img);
+      main.appendChild(imageLink);
+    }
+    // 正文
+    const content = document.createElement('div');
+    content.className = 'h-threads-content';
+    const contentHtml = String(item.content || '');
+    if (contentHtml) content.innerHTML = contentHtml;
+    else content.textContent = '';
+    main.appendChild(content);
+    enhanceHistoryRenderedContent(content);
+    // 脚注
+    const footer = document.createElement('div');
+    footer.className = 'xdex-history-footer';
+    const fid = String(item.fid || '');
+    const forumName = fid ? (POST_HISTORY_FORUM_FID_MAP[fid] || '') : '';
+    if (forumName) appendThreadHistoryText(footer, 'span', 'xdex-post-history-forum', forumName);
+    appendThreadHistoryText(footer, 'span', 'xdex-post-history-type', '订阅');
+    appendThreadHistoryText(footer, 'span', 'xdex-history-time', now);
+    main.appendChild(footer);
+    enhanceHistoryRenderedContent(footer);
+    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    return wrapper;
+  }
+  async function fetchSubscriptionFeedPage(uuid, page) {
+    const url = `${SUBSCRIPTION_FEED_API_BASE}/feed?uuid=${encodeURIComponent(uuid)}&page=${encodeURIComponent(page)}`;
+    const resp = await gmRequest(url, 'json');
+    const data = resp.response || resp.responseText;
+    if (Array.isArray(data)) return data;
+    try { return JSON.parse(typeof data === 'string' ? data : '[]'); } catch (e) { return []; }
+  }
+  function renderSubscriptionFeedModule() {
+    const $results = $('#sp_feeds_results').empty();
+    pruneExpiredSubscriptionFeedSessions();
+    const uuid = populateSubscriptionFeedSelector();
+    if (!uuid) {
+      $results.html('<div style="text-align:center;color:#999;padding:40px 0;">请先在设置中添加订阅号</div>');
+      subscriptionFeedCurrentUuid = '';
+      subscriptionFeedHasMore = false;
+      return;
+    }
+    subscriptionFeedCurrentUuid = uuid;
+    if (restoreSubscriptionFeedSession(uuid)) return;
+    resetSubscriptionFeedRuntimeState(uuid);
+    $results.html('<div style="text-align:center;color:#999;padding:40px 0;">正在获取订阅……</div>');
+    loadSubscriptionFeedPage(uuid, 1, { replace: true, source: 'init' });
+  }
+  async function loadSubscriptionFeedPage(uuid, page, options = {}) {
+    const replace = !!options.replace;
+    if (!uuid || subscriptionFeedLoading) return;
+    const requestPage = Math.max(1, Number(page) || 1);
+    const $results = $('#sp_feeds_results');
+    if (replace && subscriptionFeedHighestRenderedPage <= 0) {
+      resetSubscriptionFeedRuntimeState(uuid);
+      if ($results.length) $results.empty();
+    }
+    const expectedPage = getSubscriptionFeedNextRenderPage();
+    if (requestPage !== expectedPage) {
+      console.warn('[subscription-feed] reject non-contiguous page', {
+        uuid,
+        page: requestPage,
+        expectedPage,
+        source: options.source || '',
+        currentPage: subscriptionFeedCurrentPage,
+        highestRenderedPage: subscriptionFeedHighestRenderedPage,
+        allItems: subscriptionFeedAllItems.length,
+        cacheExpired: subscriptionFeedCacheExpired
+      });
+      return;
+    }
+    const session = getSubscriptionFeedSession(uuid);
+    if (session && isSubscriptionFeedSessionExpired(session)) subscriptionFeedCacheExpired = true;
+    subscriptionFeedLoading = true;
+    const seq = ++subscriptionFeedRequestSeq;
+    subscriptionFeedInflightPages[requestPage] = seq;
+    try {
+      const items = normalizeSubscriptionFeedPageItems(await fetchSubscriptionFeedPage(uuid, requestPage));
+      if (subscriptionFeedInflightPages[requestPage] !== seq) return;
+      if (uuid !== subscriptionFeedCurrentUuid) return;
+      if (!items.length) {
+        subscriptionFeedHasMore = false;
+        renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
+        return;
+      }
+      const pageEntry = buildSubscriptionFeedPageEntry(requestPage, items);
+      if (!appendSubscriptionFeedRenderedPage(pageEntry)) return;
+      subscriptionFeedHasMore = true;
+      renderSubscriptionFeedRenderedPages({ displayPage: subscriptionFeedCurrentDisplayPage });
+      if (!subscriptionFeedCacheExpired) {
+        let nextSession = getSubscriptionFeedSession(uuid);
+        if (!nextSession || isSubscriptionFeedSessionExpired(nextSession) || !isSubscriptionFeedSessionStructurallyValid(nextSession)) {
+          nextSession = createSubscriptionFeedSession(uuid, pageEntry);
+        } else {
+          nextSession.cachedPages[String(requestPage)] = pageEntry;
+          nextSession.highestCachedPage = computeHighestContiguousSubscriptionFeedPage(nextSession.cachedPages);
+          nextSession.lastAccessAt = Date.now();
+        }
+        saveSubscriptionFeedSession(nextSession);
+      }
+    } catch (err) {
+      console.error('[subscription-feed] load error', err);
+      if (replace) {
+        $results.html(`<div style="text-align:center;color:#c00;padding:40px 0;">加载失败：${Utils.escapeHTML ? Utils.escapeHTML(err.message) : err.message}</div>`);
+      }
+    } finally {
+      if (subscriptionFeedInflightPages[requestPage] === seq) delete subscriptionFeedInflightPages[requestPage];
+      subscriptionFeedLoading = false;
+    }
+  }
+  function bindSubscriptionFeedModuleEvents() {
+    // 订阅号切换
+    // 自定义下拉菜单交互
+    const $wrap = $('.xdex-feed-selector-wrap');
+    const $display = $('#sp_feeds_selector_display');
+    const $dropdown = $('#sp_feeds_selector_dropdown');
+    // 鼠标悬停时临时显示 UUID，移出后恢复模糊（比 CSS :hover 更可靠）
+    const $uuid = $display.find('.xdex-feed-display-uuid');
+    $wrap.off('mouseenter.feedBlur mouseleave.feedBlur')
+      .on('mouseenter.feedBlur', () => $uuid.css('filter', 'none'))
+      .on('mouseleave.feedBlur', () => $uuid.css('filter', ''));
+    $display.off('click.feedDropdown').on('click.feedDropdown', (e) => {
+      e.stopPropagation();
+      const isOpen = $dropdown.is(':visible');
+      $dropdown.toggle(!isOpen);
+      $display.attr('aria-expanded', String(!isOpen));
+    });
+    $dropdown.off('click.feedOption', '.xdex-feed-option').on('click.feedOption', '.xdex-feed-option', function (e) {
+      e.stopPropagation();
+      const uuid = $(this).data('uuid') || '';
+      if (!uuid) return;
+      $('#sp_feeds_selector').val(uuid).trigger('change.subscriptionFeed');
+      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+      const feed = feeds.find(f => f.uuid === uuid);
+      const $uuidEl = $display.find('.xdex-feed-display-uuid');
+      $display.find('.xdex-feed-display-desc').text(feed && feed.desc ? feed.desc : '');
+      // 无备注时也显示打码订阅号
+      $uuidEl.text(feed && feed.uuid ? feed.uuid : '');
+      $uuidEl.toggleClass('xdex-feed-uuid-light-blur', !!(feed && feed.uuid && !feed.desc));
+      $dropdown.find('.xdex-feed-option').removeClass('active').filter('[data-uuid="' + uuid + '"]').addClass('active');
+      $dropdown.hide();
+      $display.attr('aria-expanded', 'false');
+    });
+    $(document).off('click.feedDropdownClose').on('click.feedDropdownClose', () => {
+      $dropdown.hide();
+      $display.attr('aria-expanded', 'false');
+    });
+    $('#sp_feeds_selector').off('change.subscriptionFeed').on('change.subscriptionFeed', function () {
+      subscriptionFeedCurrentUuid = $(this).val() || '';
+      if (subscriptionFeedCurrentUuid) {
+        setActiveSubscriptionFeedUuid(subscriptionFeedCurrentUuid);
+        renderSubscriptionFeedModule();
+      }
+    });
+    // 跨页面同步：其他标签页切换订阅号时自动刷新
+    if (typeof GM_addValueChangeListener === 'function') {
+      GM_addValueChangeListener(ACTIVE_FEED_STORAGE_KEY, (_key, _oldVal, newVal, remote) => {
+        if (!remote) return;
+        const uuid = String(newVal || '');
+        if (uuid && uuid !== subscriptionFeedCurrentUuid) {
+          subscriptionFeedCurrentUuid = uuid;
+          $('#sp_feeds_selector').val(uuid);
+          renderSubscriptionFeedModule();
+        }
+      });
+    }
+    // 跳转
+    $('#sp_feeds_page_jump').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
+      e.preventDefault();
+      const page = parseInt($('#sp_feeds_page_input').val(), 10);
+      if (!page || page < 1 || !subscriptionFeedCurrentUuid) return;
+      const expectedPage = getSubscriptionFeedNextRenderPage();
+      if (page !== expectedPage) {
+        toast(`当前缓存会话仅支持连续翻页，请先加载第${expectedPage}页`);
+        return;
+      }
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, page, { replace: false, source: 'jump' });
+    });
+    // 滚动加载下一页
+    const $scrollContainer = $('#sp_module_feeds .sp_panel_content');
+    $scrollContainer.off('scroll.subscriptionFeed').on('scroll.subscriptionFeed', function () {
+      updateSubscriptionFeedDisplayPageFromScroll();
+      if (subscriptionFeedLoading || !subscriptionFeedHasMore || !subscriptionFeedCurrentUuid) return;
+      const el = this;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
+        const nextPage = getSubscriptionFeedNextRenderPage();
+        loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'scroll' });
+      }
+    });
+    // 上一页
+    $('#sp_feeds_prev').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
+      e.preventDefault();
+      toast('当前缓存会话仅支持向后连续翻页');
+    });
+    // 下一页
+    $('#sp_feeds_next').off('click.subscriptionFeed').on('click.subscriptionFeed', (e) => {
+      e.preventDefault();
+      if (!subscriptionFeedCurrentUuid) return;
+      const nextPage = getSubscriptionFeedNextRenderPage();
+      loadSubscriptionFeedPage(subscriptionFeedCurrentUuid, nextPage, { replace: false, source: 'next-button' });
+    });
+    // 订阅面板图片点击 → 打开引用弹窗（图片激活态）
+    $('#sp_feeds_results').off('click.xdex-feed-image-quote', '.xdex-history-image').on('click.xdex-feed-image-quote', '.xdex-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
+    // 取消订阅
+    $('#sp_feeds_results').off('click.xdex-feed-delete', '.xdex-post-history-delete').on('click.xdex-feed-delete', '.xdex-post-history-delete', function (e) {
+      e.preventDefault();
+      const tid = this.dataset.feedThreadId || '';
+      if (!tid || !subscriptionFeedCurrentUuid) return;
+      if (!window.confirm('确定要取消订阅这个串吗？')) return;
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: `${SUBSCRIPTION_FEED_API_BASE}/delFeed`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        data: `uuid=${encodeURIComponent(subscriptionFeedCurrentUuid)}&tid=${encodeURIComponent(tid)}`,
+        onload: () => {
+          invalidateSubscriptionFeedSession(subscriptionFeedCurrentUuid, 'delete-feed');
+          resetSubscriptionFeedRuntimeState(subscriptionFeedCurrentUuid);
+          toast('已取消订阅');
+          renderSubscriptionFeedModule();
+        },
+          onerror: () => toast('取消订阅失败')
+      });
+    });
+    // ── 批量添加订阅 ──
+    $('#sp_feeds_bulk_add_input').attr('autocomplete', 'off');
+    $('#sp_feeds_bulk_add_btn').off('click.subscriptionFeedBulkAdd').on('click.subscriptionFeedBulkAdd', (e) => {
+      e.preventDefault();
+      const uuid = subscriptionFeedCurrentUuid || resolveSubscriptionFeedUuid();
+      if (!uuid) { toast('请先在设置中添加一个订阅号'); return; }
+      const raw = ($('#sp_feeds_bulk_add_input').val() || '').trim();
+      if (!raw) { toast('请输入串号'); return; }
+      const tids = raw.split(/[,，\s]+/).map(s => s.replace(/^(?:No\.)/i, '').trim()).filter(s => /^\d{6,8}$/.test(s));
+      if (!tids.length) { toast('未识别到有效串号'); return; }
+      const $btn = $(e.currentTarget);
+      $btn.prop('disabled', true).text('添加中…');
+      let success = 0, fail = 0, idx = 0;
+      const failedTids = [];
+      const BATCH_DELAY = 300;
+      function next() {
+        if (idx >= tids.length) {
+           $btn.prop('disabled', false).text('批量添加');
+           invalidateSubscriptionFeedSession(uuid, 'bulk-add');
+           renderSubscriptionFeedModule();
+           toast(`批量添加完成：成功 ${success}，失败 ${fail}，共 ${tids.length} 条`);
+           if (failedTids.length) {
+             $('#sp_feeds_bulk_add_input').val(failedTids.join(','));
+           } else {
+             $('#sp_feeds_bulk_add_input').val('');
+           }
+          return;
+        }
+        const tid = tids[idx++];
+        GM_xmlhttpRequest({
+          method: 'POST',
+          url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
+             onload: (resp) => {
+                try {
+                  const raw = String(resp.responseText || resp.response || '');
+                  const msg = JSON.parse(raw);
+                  if (typeof msg === 'string' && /不存在|失败|错误/.test(msg)) { fail++; failedTids.push(tid); }
+                  else success++;
+                } catch (_) {
+                  success++;
+                }
+               setTimeout(next, BATCH_DELAY);
+             },
+           onerror: () => { fail++; failedTids.push(tid); setTimeout(next, BATCH_DELAY); }
+        });
+      }
+      next();
+    });
+    // ── 导出串号到剪贴板 ──
+    $('#sp_feeds_export_clipboard').off('click.subscriptionFeedExport').on('click.subscriptionFeedExport', (e) => {
+      e.preventDefault();
+      const uuid = subscriptionFeedCurrentUuid || resolveSubscriptionFeedUuid();
+      if (!uuid) { toast('请先在设置中添加一个订阅号'); return; }
+      const $btn = $(e.currentTarget);
+      $btn.prop('disabled', true).text('导出中…');
+      const allTids = [];
+      let page = 1;
+      const PAGE_DELAY = 500;
+      function fetchNext() {
+        fetchSubscriptionFeedPage(uuid, page).then(items => {
+          if (!items || !items.length) {
+            // 全部拉完
+            $btn.prop('disabled', false).text('导出串号');
+            if (!allTids.length) { toast('该订阅号下无订阅内容'); return; }
+            const text = allTids.join(',');
+            navigator.clipboard.writeText(text).then(() => {
+              toast(`已导出 ${allTids.length} 个串号到剪贴板`);
+            }).catch(() => {
+              toast('导出失败，无法写入剪贴板');
+            });
+            return;
+          }
+          items.forEach(item => {
+            const id = String(item.id || '').trim();
+            if (id && id !== '0' && !allTids.includes(id)) allTids.push(id);
+          });
+          page++;
+          setTimeout(fetchNext, PAGE_DELAY);
+        }).catch(() => {
+          $btn.prop('disabled', false).text('导出串号');
+          toast('导出失败，网络错误');
+        });
+      }
+      fetchNext();
+    });
+  }
+  function setPostHistoryType(type) {
+    postHistoryActiveType = normalizePostHistoryType(type);
+    $('#sp_posts_type_buttons [data-post-history-type]').removeClass('active')
+      .filter(`[data-post-history-type="${postHistoryActiveType}"]`).addClass('active');
+    renderPostHistoryModule();
+  }
+  function bindPostHistoryModuleEvents() {
+    $('#sp_posts_search').off('input.xdex-post-history').on('input.xdex-post-history', function () {
+      renderPostHistoryModule(this.value || '');
+    });
+    $('#sp_posts_type_buttons').off('click.xdex-post-history', '[data-post-history-type]').on('click.xdex-post-history', '[data-post-history-type]', function (e) {
+      e.preventDefault();
+      setPostHistoryType(this.dataset.postHistoryType || 'thread');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-reply', '.xdex-post-history-reply-action').on('click.xdex-post-history-reply', '.xdex-post-history-reply-action', function (e) {
+      if (e.button !== 0) return;
+      const url = this.href || '';
+      if (!url) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        window.location.href = url;
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-image-quote', '.xdex-post-history-image').on('click.xdex-post-history-image-quote', '.xdex-post-history-image', function (e) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const opened = openHistoryImageQuotePreview(this.dataset.postHistoryQuoteId || '');
+      if (!opened) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-delete', '.xdex-post-history-delete').on('click.xdex-post-history-delete', '.xdex-post-history-delete', function (e) {
+      e.preventDefault();
+      const key = this.dataset.postHistoryKey || '';
+      if (!key) return;
+      if (!window.confirm('确定要删除这条发言记录吗？')) return;
+      deletePostHistoryItem(key);
+      renderPostHistoryModule();
+      toast('已删除发言记录');
+    });
+    $('#sp_posts_clear').off('click.xdex-post-history').on('click.xdex-post-history', function (e) {
+      e.preventDefault();
+      showClearHistoryWarningDialog(function () {
+        if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
+        clearPostHistory();
+        renderPostHistoryModule();
+        toast('已清空我的发言');
+      });
+    });
+    // 手动添加发言历史
+    // 禁用浏览器自动填充
+    $('#sp_posts_manual_add_input').attr('autocomplete', 'off');
+    $('#sp_posts_manual_add_btn').off('click.xdex-post-history-manual').on('click.xdex-post-history-manual', function (e) {
+      e.preventDefault();
+      const raw = ($('#sp_posts_manual_add_input').val() || '').trim();
+      // 支持格式：No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23
+      let postId = '';
+      let replyId = '';
+      let inputPage = 0;
+      // 解析 URL 中的主题号、回复号、页码
+      const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{6,8})(?:\?([^#]*))?(?:#.*)?$/i);
+      const simpleMatch = raw.match(/^(?:No\.)?(\d{6,8})$/);
+      if (urlMatch) {
+        postId = urlMatch[1];
+        const qs = urlMatch[2] || '';
+        const rMatch = qs.match(/(?:^|&)r=(\d{6,8})(?:&|$)/);
+        const pMatch = qs.match(/(?:^|&)page=(\d+)(?:&|$)/);
+        replyId = rMatch ? rMatch[1] : '';
+        inputPage = pMatch ? parseInt(pMatch[1], 10) : 0;
+      } else if (simpleMatch) {
+        postId = simpleMatch[1];
+      } else {
+        toast('格式错误，支持:No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23');
+        return;
+      }
+      // 前后号相同 → 直接当主题处理
+      if (replyId && replyId === postId) replyId = '';
+      const existingStore = getPostHistoryStore();
+      // 查找是否已存在匹配记录：有 replyId 时只匹配回复号，无 replyId 时匹配主题号
+      const existingMatch = replyId
+        ? Object.values(existingStore.items).find(item =>
+            String(item.id) === replyId || String(item.postId) === replyId
+          )
+        : Object.values(existingStore.items).find(item =>
+            String(item.id) === postId || String(item.postId) === postId
+          );
+      // 已存在且有完整信息 → 检查是否需要补充页码
+      if (existingMatch && existingMatch.resto && existingMatch.resto !== '0') {
+        if (inputPage && inputPage !== Number(existingMatch.page || 0)) {
+          // 有新页码且与已有记录不同 → 更新页码
+          updatePostHistoryRecord(existingMatch.localId, { page: inputPage });
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          toast('已更新 No.' + (replyId || postId) + ' 的页码为 ' + inputPage);
+        } else {
+          toast(replyId ? '回复 No.' + replyId + ' 已存在' : '主题 No.' + postId + ' 已存在');
+        }
+        return;
+      }
+      const $btn = $(this);
+      $btn.prop('disabled', true).text('获取中…');
+      // 有 replyId → 直接用 ref API 获取回复内容
+      // 无 replyId → 用 ref API 获取帖子内容，再用 thread API 判定类型
+      const refTarget = replyId || postId;
+      const refUrl = 'https://api.nmb.best/api/ref?id=' + encodeURIComponent(refTarget);
+      const refHeaders = getPostHistoryApiCookieHeaders();
+      const refDetail = { id: refTarget, source: 'manual-add', api: true };
+      gmRequest(refUrl, 'text', refHeaders).then(async (resp) => {
+        const post = parsePostHistoryRefResponse(resp, refDetail);
+        if (!post || !post.id) { toast('未找到该串/回复'); return; }
+        let type = 'thread';
+        let resto = '0';
+        let fid = getPostHistoryPostFid(post);
+        if (replyId) {
+          // 有 replyId → 明确是回复，resto = 主题号
+          type = 'reply';
+          resto = postId;
+          try {
+            const pageData = await fetchPostHistoryThreadPage(postId, 1, { source: 'manual-add-fid' });
+            if (!fid) fid = getPostHistoryPostFid(pageData && pageData.thread) || '';
+          } catch (e) {}
+        } else {
+          // 无 replyId → 用 thread API 判定类型
+          try {
+            const pageData = await fetchPostHistoryThreadPage(post.id, 1, { source: 'manual-add-type' });
+            const thread = pageData && pageData.thread;
+            if (thread && thread.id && String(thread.id) === String(post.id)) {
+              if (!fid) fid = getPostHistoryPostFid(thread) || '';
+            } else {
+              type = 'reply';
+              toast('该串号为回复，无法确定所属主题');
+            }
+          } catch (e) {
+            type = 'reply';
+            toast('该串号为回复，无法确定所属主题');
+          }
+        }
+        // 饼干校验
+        const userHash = String(post.user_hash || post.userHash || '').trim();
+        const cookieList = getCookiesList();
+        const matchedCookie = userHash
+          ? Object.values(cookieList).find(c => abbreviateName(c.name || '') === userHash)
+          : null;
+        if (userHash && !matchedCookie) {
+          if (!window.confirm('No.' + (replyId || postId) + ' 对应的饼干 ' + userHash + ' 不在当前列表之中，是否确认添加？')) {
+            $btn.prop('disabled', false).text('手动添加');
+            return;
+          }
+        }
+        const serverContentRaw = post.content || '';
+        const serverContentText = normalizePostHistoryText(serverContentRaw);
+        const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+        // 无主题号的回复 → url 留空，不构建跳转链接
+        const url = (type === 'reply' && resto === '0') ? '' : buildPostHistoryUrl(type, replyId || post.id, resto);
+        if (existingMatch) {
+          // 已存在但 resto=0 → 补充真实串号和相关信息
+          const patch = {};
+          if (type === 'reply' && resto !== '0') {
+            patch.resto = resto;
+            patch.threadId = resto;
+            patch.url = url;
+          }
+          if (inputPage && !existingMatch.page) {
+            patch.page = inputPage;
+          }
+          if (fid && !existingMatch.fid) {
+            patch.fid = fid;
+            patch.forumName = getPostHistoryForumNameByFid(fid);
+          }
+          if (imageFile && !existingMatch.imageFile) {
+            Object.assign(patch, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+          }
+          updatePostHistoryRecord(existingMatch.localId, patch);
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          const updated = [];
+          if (patch.resto) updated.push('串号');
+          if (patch.page) updated.push('页码');
+          if (patch.fid) updated.push('板块');
+          if (patch.imageFile) updated.push('图片');
+          toast('已更新 No.' + (replyId || postId) + '：' + (updated.join('、') || '无变化'));
+        } else {
+          // 新记录
+          const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+          const record = {
+            status: 'confirmed',
+            type,
+            localId,
+            id: post.id,
+            resto,
+            threadId: type === 'reply' ? resto : post.id,
+            postId: post.id,
+            page: inputPage || Number(post.page) || (type === 'thread' ? 1 : 0),
+            fid,
+            forumName: getPostHistoryForumNameByFid(fid),
+            title: post.title || '',
+            name: post.name || '',
+            email: post.email || '',
+            contentRaw: serverContentRaw,
+            contentText: serverContentText,
+            contentHash: hashPostHistoryText(serverContentText),
+            contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
+            userHash,
+            submittedAt: Date.parse(post.now) || Date.now(),
+            confirmedAt: Date.now(),
+            sourceUrl: location.href,
+            url
+          };
+          if (imageFile) Object.assign(record, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+          upsertPostHistoryRecord(record);
+          renderPostHistoryModule();
+          $('#sp_posts_manual_add_input').val('');
+          toast(type === 'thread' ? '已添加主题 No.' + postId : '已添加回复 No.' + (replyId || postId));
+        }
+      }).catch(() => {
+        toast('获取失败，请检查串号或网络');
+      }).finally(() => {
+        $btn.prop('disabled', false).text('手动添加');
+      });
+    });
+    $('#sp_posts_manual_add_input').off('keydown.xdex-post-history-manual').on('keydown.xdex-post-history-manual', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); $('#sp_posts_manual_add_btn').trigger('click.xdex-post-history-manual'); }
+    });
+  }
+
   function getFavoriteThreadsConfig() {
     try {
       const cfg = Object.assign({}, SettingPanel.defaults, SettingPanel.state || {}, GM_getValue(SettingPanel.key, {}));
@@ -24612,6 +24640,68 @@ function 注册自动保存编辑() {
   /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
+  // 注册设置面板依赖到 XDex
+  Object.assign(XDex.ui, {
+    buildFavoriteThreadRowHtml,
+    buildSubscriptionFeedRowHtml,
+    buildThreadCookieWhitelistRowHtml,
+    buildBlockedKeywordGroupRowHtml,
+    buildCookieGroupTwoFieldRowHtml,
+    getBlockedKeywordPlaceholder,
+    collectFavoriteThreadsFromPanel,
+    collectSubscriptionFeedsFromPanel
+  });
+  Object.assign(XDex.data, {
+    markColors,
+    parseDescAndListByLastColon,
+    isValidDesc,
+    isValidHexColor,
+    normalizeHexColor,
+    clampColorChannel,
+    rgbToHex,
+    hexToRgb,
+    hsvToRgb,
+    rgbToHsv,
+    hexToHsv,
+    hsvToHex,
+    parseRgbColorString,
+    formatRgbColor,
+    getMarkedGroupEffectiveColor,
+    isValidThreadId,
+    normalizeFavoriteThreadInput,
+    normalizeFavoriteThreads,
+    normalizeThreadCookieWhitelistGroups,
+    mergeThreadCookieWhitelistGroups,
+    normalizeBlockedGroups,
+    normalizeBlockedKeywordGroupValue,
+    isBlockedKeywordRegexGroup,
+    normalizeBlockedKeywordGroups,
+    flattenBlockedKeywords,
+    compileBlockedKeywordRegex,
+    normalizeMarkedGroups,
+    escapeBlockedKeywordInputToken,
+    joinBlockedKeywordInputTokens,
+    isThreadIdKeyword,
+    isEightDigitKeyword
+  });
+  Object.assign(XDex.update, {
+    getUpdateCheckState,
+    setUpdateCheckState,
+    getDefaultUpdateCheckState,
+    updateSettingsButtonBadge,
+    clearFooterUpdateHighlight,
+    flashFooterUpdateHighlight,
+    renderUpdateLogDialog,
+    openUpdateLogDialog,
+    closeUpdateLogDialog,
+    maybeShowPendingUpdateDialogOnPanelOpen,
+    checkForDailyScriptUpdate,
+    shouldShowPendingUpdateReminder,
+    formatLocalDateKey,
+    getNextNaturalCheckAt,
+    compareVersionStrings
+  });
+
   window.addEventListener('load', () => {
     startupPerfDebug.mark('window.load.start', startupPerfDebug.summarizeRoot(document));
     startupPerfDebug.measure('window.load.enableHDImageAndLayoutFix', () => enableHDImageAndLayoutFix(document), () => startupPerfDebug.summarizeRoot(document));
