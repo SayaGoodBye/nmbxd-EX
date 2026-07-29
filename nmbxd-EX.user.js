@@ -6060,9 +6060,9 @@ ${markedSwatchHtml}
                   <span class="h-threads-info-email"></span>
                   <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
                   <span class="h-threads-info-uid">ID:${cookieText}</span>
-                  <span class="h-threads-info-report-btn">
+                  <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
-                  </span>
+                  </span> -->
                   <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
                 </div>
                 <div class="h-threads-content"></div>
@@ -11219,9 +11219,9 @@ ${markedSwatchHtml}
                     <span class="h-threads-info-email"></span>
                     <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
                     <span class="h-threads-info-uid">ID:${cookieText}</span>
-                    <span class="h-threads-info-report-btn">
+                    <!-- <span class="h-threads-info-report-btn">
                       [<a href="/f/值班室" target="_blank">举报</a>]
-                    </span>
+                    </span> -->
                     <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
                   </div>
                   <div class="h-threads-content"></div>
@@ -16373,9 +16373,9 @@ function 注册自动保存编辑() {
                             <span class="h-threads-info-email"></span>
                             <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
                             <span class="h-threads-info-uid">ID:${cookieText}</span>
-                            <span class="h-threads-info-report-btn">
+                            <!-- <span class="h-threads-info-report-btn">
                               [<a href="/f/值班室" target="_blank">举报</a>]
-                            </span>
+                            </span> -->
                             <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
                           </div>
                           <div class="h-threads-content">
