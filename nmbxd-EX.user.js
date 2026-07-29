@@ -1409,8 +1409,7 @@
       bindPostHistoryModuleEvents();
       bindPostHistoryLiveSync();
       bindSubscriptionFeedModuleEvents();
-      renderThreadHistoryModule();
-      renderPostHistoryModule();
+      // 浏览/发言历史改为首次进入对应 tab 时再渲染，避免 init 阶段双模块预构建卡顿
       // 折叠头：统一控制
       $('.sp_fold_head').off('click').on('click', function(){
         const $head = $(this);
@@ -21235,10 +21234,10 @@ function 注册自动保存编辑() {
     if (item.mode === 'po') appendThreadHistoryText(footer, 'span', 'xdex-history-po-label', 'Po');
     main.appendChild(footer);
     enhanceHistoryRenderedContent(footer);
-    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    markAllCookies(getHistoryMarkedGroups(), wrapper);
     return wrapper;
   }
-  const HISTORY_RENDER_INITIAL_COUNT = 50;
+  const HISTORY_RENDER_INITIAL_COUNT = 24;
   const HISTORY_RENDER_BATCH_SIZE = 20;
   const HISTORY_RENDER_BATCH_THRESHOLD = 400;
   const historyRenderQueues = new Map();
@@ -21311,6 +21310,7 @@ function 注册自动保存编辑() {
       logThreadHistory('render skipped: missing #sp_history_results');
       return;
     }
+    invalidateHistoryRenderCaches();
     const input = document.getElementById('sp_history_search');
     const sortSelect = document.getElementById('sp_history_sort');
     const effectiveQuery = query == null && input ? input.value : query;
@@ -21393,13 +21393,38 @@ function 注册自动保存编辑() {
       return false;
     }
   }
+  let historyEnhanceCfgCache = null;
+  let historyMarkedGroupsCache = null;
+  function invalidateHistoryRenderCaches() {
+    historyEnhanceCfgCache = null;
+    historyMarkedGroupsCache = null;
+  }
+  function getHistoryEnhanceCfg() {
+    if (historyEnhanceCfgCache) return historyEnhanceCfgCache;
+    try {
+      historyEnhanceCfgCache = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+    } catch (e) {
+      historyEnhanceCfgCache = Object.assign({}, (SettingPanel && SettingPanel.defaults) || {});
+    }
+    return historyEnhanceCfgCache;
+  }
+  function getHistoryMarkedGroups() {
+    if (historyMarkedGroupsCache) return historyMarkedGroupsCache;
+    try {
+      const cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : getHistoryEnhanceCfg();
+      historyMarkedGroupsCache = (cfg && cfg.markedGroups) || [];
+    } catch (e) {
+      historyMarkedGroupsCache = [];
+    }
+    return historyMarkedGroupsCache;
+  }
   function enhanceHistoryRenderedContent(root) {
     if (!root) return;
     try { renderHiddenTextContent(root); } catch (e) {}
     try { if (typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
     try { if (typeof initExtendedContent === 'function') initExtendedContent(root); } catch (e) {}
     try {
-      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const cfg = getHistoryEnhanceCfg();
       if (cfg && cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', root);
       if (cfg && cfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root);
     } catch (e) {}
@@ -21590,13 +21615,14 @@ function 注册自动保存编辑() {
     if (displayPage) appendThreadHistoryText(footer, 'span', 'xdex-post-history-page', `所在页：P${displayPage}`);
     main.appendChild(footer);
     enhanceHistoryRenderedContent(footer);
-    markAllCookies(getFilterConfig().markedGroups || [], wrapper);
+    markAllCookies(getHistoryMarkedGroups(), wrapper);
     return wrapper;
   }
   function renderPostHistoryModule(query) {
     const root = document.getElementById('sp_posts_results');
     if (!root) return;
     postHistoryLiveRenderDirty = false;
+    invalidateHistoryRenderCaches();
     const input = document.getElementById('sp_posts_search');
     const effectiveQuery = query == null && input ? input.value : query;
     const results = searchPostHistory(effectiveQuery || '', postHistoryActiveType);
@@ -22647,35 +22673,45 @@ function 注册自动保存编辑() {
       console.warn('[favoriteThreads] open settings failed:', e);
     }
   }
+  function ensureSettingsPanelOpen() {
+    if (!$('#sp_btn').length) SettingPanel.init();
+    if (typeof window.__xdexSyncDarkReaderTheme === 'function') {
+      try { window.__xdexSyncDarkReaderTheme(); } catch (e) {}
+    }
+    const $cover = $('#sp_cover');
+    if ($cover.length && !$cover.is(':visible')) $cover.fadeIn();
+    if (typeof spUpdate === 'function') {
+      try { spUpdate('maybeShowPendingUpdateDialogOnPanelOpen'); } catch (e) {}
+    } else if (typeof maybeShowPendingUpdateDialogOnPanelOpen === 'function') {
+      try { maybeShowPendingUpdateDialogOnPanelOpen(); } catch (e) {}
+    }
+  }
+  function openSettingsPanelModuleTab(moduleName) {
+    ensureSettingsPanelOpen();
+    // 委托在 #sp_panel_tab_slot 上，需 bubble 的 trigger('click')；init 已不再预渲染历史，故只会构建一次
+    const $tab = $('#sp_panel_tab_slot [data-sp-module="' + moduleName + '"]');
+    if ($tab.length) $tab.trigger('click');
+    return $tab.length > 0;
+  }
   function openThreadHistorySettingsPanel() {
     try {
-      if (!$('#sp_btn').length) SettingPanel.init();
-      $('#sp_btn').trigger('click');
-      window.setTimeout(() => {
-        $('#sp_panel_tab_slot [data-sp-module="history"]').trigger('click');
-      }, 0);
+      if (!openSettingsPanelModuleTab('history')) renderThreadHistoryModuleSoon();
     } catch (e) {
       console.warn('[thread-history] open settings failed:', e);
     }
   }
   function openPostHistorySettingsPanel() {
     try {
-      if (!$('#sp_btn').length) SettingPanel.init();
-      $('#sp_btn').trigger('click');
-      window.setTimeout(() => {
-        $('#sp_panel_tab_slot [data-sp-module="posts"]').trigger('click');
-      }, 0);
+      if (!openSettingsPanelModuleTab('posts')) renderPostHistoryModuleSoon();
     } catch (e) {
       console.warn('[post-history] open settings failed:', e);
     }
   }
   function openSubscriptionFeedSettingsPanel() {
     try {
-      if (!$('#sp_btn').length) SettingPanel.init();
-      $('#sp_btn').trigger('click');
-      window.setTimeout(() => {
-        $('#sp_panel_tab_slot [data-sp-module="feeds"]').trigger('click');
-      }, 0);
+      if (!openSettingsPanelModuleTab('feeds') && typeof renderSubscriptionFeedModule === 'function') {
+        renderSubscriptionFeedModule();
+      }
     } catch (e) {
       console.warn('[subscription-feed] open settings failed:', e);
     }
