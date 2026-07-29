@@ -7799,17 +7799,31 @@ ${markedSwatchHtml}
   };
   // 新逻辑，启用高清图片链接和布局修正
   const hdImageLazyLoader = (() => {
-    const ROOT_MARGIN = '600px 0px';
+    // 基础/动态预热距离（px）：随滚动速度拉长，慢速浏览时尽量在进视窗前完成原图
+    const MIN_ROOT_MARGIN_Y = 600;
+    const BASE_ROOT_MARGIN_Y = 600;
+    const MAX_ROOT_MARGIN_Y = 2400;
+    const LOOKAHEAD_SEC = 1.25;
+    const MARGIN_HYSTERESIS_PX = 100;
+    // 非 GIF 原图并发上限；至少预留 1 槽给滚动方向前方，避免视口内大图占满导致下方不预热
     const MAX_CONCURRENT = 3;
+    const RESERVE_AHEAD_SLOTS = 1;
     const BEHIND_PENALTY_DISTANCE = 2500;
     let observer = null;
     let scrollListenerBound = false;
     let lastScrollY = window.scrollY || window.pageYOffset || 0;
+    let lastScrollTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     let scrollDirection = 1;
+    let scrollSpeed = 0; // px/s，EMA
+    let currentRootMarginY = BASE_ROOT_MARGIN_Y;
     let activeLoads = 0;
+    let activeVisibleLoads = 0;
+    let activeAheadLoads = 0;
+    let activeBehindLoads = 0;
     let peakActiveLoads = 0;
     const queue = [];
     const queued = new Set();
+    const loadingKindMap = new WeakMap();
     function getHdUrl(url) {
       const raw = String(url || '');
       return raw.includes('/thumb/') ? raw.replace('/thumb/', '/image/') : raw;
@@ -7817,29 +7831,114 @@ ${markedSwatchHtml}
     function isGifUrl(url) {
       return /\.gif(?:$|[?#])/i.test(String(url || ''));
     }
+    function nowTs() {
+      return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    }
+    function getDesiredRootMarginY() {
+      const fromSpeed = Math.round(scrollSpeed * LOOKAHEAD_SEC);
+      return Math.min(MAX_ROOT_MARGIN_Y, Math.max(MIN_ROOT_MARGIN_Y, BASE_ROOT_MARGIN_Y + fromSpeed));
+    }
+    function updateScrollMetrics(currentY) {
+      const ts = nowTs();
+      const dt = Math.max(1, ts - lastScrollTs);
+      const dy = currentY - lastScrollY;
+      if (dy > 0) scrollDirection = 1;
+      else if (dy < 0) scrollDirection = -1;
+      const instSpeed = Math.abs(dy) / dt * 1000;
+      // 指数滑动：兼顾瞬时加速与稳定巡航
+      scrollSpeed = scrollSpeed * 0.7 + instSpeed * 0.3;
+      lastScrollY = currentY;
+      lastScrollTs = ts;
+    }
+    function classifyImage(img) {
+      const rect = img.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
+      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
+      const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
+      if (isVisible) return 'visible';
+      if (aheadDistance >= 0) return 'ahead';
+      if (behindDistance > 0) return 'behind';
+      return 'visible';
+    }
+    function queueHasKind(kind) {
+      for (let i = 0; i < queue.length; i++) {
+        const img = queue[i];
+        if (!img || !img.isConnected) continue;
+        if (classifyImage(img) === kind) return true;
+      }
+      return false;
+    }
+    function canStartNonGif(kind) {
+      const free = MAX_CONCURRENT - activeLoads;
+      if (free <= 0) return false;
+      const aheadWaiting = kind === 'ahead' || queueHasKind('ahead');
+      if (kind === 'visible') {
+        // 前方仍有待加载时，不为视口内请求吃光最后 RESERVE 个槽
+        if (!aheadWaiting) return true;
+        return (free - 1) >= RESERVE_AHEAD_SLOTS || activeAheadLoads > 0;
+      }
+      if (kind === 'ahead') return true;
+      // behind：仅当没有 visible/ahead 候选时才填空
+      if (queueHasKind('visible') || queueHasKind('ahead')) return false;
+      return true;
+    }
+    function noteLoadStart(kind) {
+      activeLoads++;
+      peakActiveLoads = Math.max(peakActiveLoads, activeLoads);
+      if (kind === 'visible') activeVisibleLoads++;
+      else if (kind === 'ahead') activeAheadLoads++;
+      else activeBehindLoads++;
+    }
+    function noteLoadEnd(kind) {
+      activeLoads = Math.max(0, activeLoads - 1);
+      if (kind === 'visible') activeVisibleLoads = Math.max(0, activeVisibleLoads - 1);
+      else if (kind === 'ahead') activeAheadLoads = Math.max(0, activeAheadLoads - 1);
+      else activeBehindLoads = Math.max(0, activeBehindLoads - 1);
+    }
+    function reobservePendingImages() {
+      const io = ensureObserver();
+      if (!io) return;
+      document.querySelectorAll('img[data-xdex-hd-src]').forEach((img) => {
+        if (!img || !img.isConnected) return;
+        if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
+        try { io.observe(img); } catch (e) {}
+      });
+    }
+    function syncObserverMargin(force) {
+      const desired = getDesiredRootMarginY();
+      if (!force && Math.abs(desired - currentRootMarginY) < MARGIN_HYSTERESIS_PX) return;
+      if (!force && desired === currentRootMarginY) return;
+      currentRootMarginY = desired;
+      if (observer) {
+        try { observer.disconnect(); } catch (e) {}
+        observer = null;
+      }
+      reobservePendingImages();
+    }
     function bindScrollListener() {
       if (scrollListenerBound) return;
       window.addEventListener('scroll', () => {
         const currentY = window.scrollY || window.pageYOffset || 0;
-        if (currentY > lastScrollY) scrollDirection = 1;
-        else if (currentY < lastScrollY) scrollDirection = -1;
-        lastScrollY = currentY;
+        updateScrollMetrics(currentY);
+        syncObserverMargin(false);
         processQueue();
       }, { passive: true });
       scrollListenerBound = true;
     }
     function ensureObserver() {
-      if (observer || typeof IntersectionObserver !== 'function') return observer;
+      if (observer) return observer;
+      if (typeof IntersectionObserver !== 'function') return null;
       observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
           const img = entry.target;
           enqueue(img);
-          observer.unobserve(img);
+          try { observer.unobserve(img); } catch (e) {}
         });
       }, {
         root: null,
-        rootMargin: ROOT_MARGIN,
+        rootMargin: `${currentRootMarginY}px 0px`,
         threshold: 0.01
       });
       return observer;
@@ -7874,6 +7973,7 @@ ${markedSwatchHtml}
       const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
       const isAhead = aheadDistance >= 0;
       const isBehind = behindDistance > 0;
+      // 分数越小越优先：视口内 > 滚动前方（近到远）> 后方
       if (isVisible) return Math.abs(imgCenter - viewportCenter);
       if (isAhead) return 10000 + aheadDistance;
       if (isBehind) {
@@ -7883,33 +7983,86 @@ ${markedSwatchHtml}
       return 200000 + Math.abs(imgCenter - viewportCenter);
     }
     function processQueue() {
-      if (activeLoads >= MAX_CONCURRENT || queue.length === 0) return;
+      if (queue.length === 0) return;
+      // GIF：不占非 GIF 并发槽，直接开载
+      for (let i = queue.length - 1; i >= 0; i--) {
+        const img = queue[i];
+        const hdSrc = img && img.dataset ? img.dataset.xdexHdSrc : '';
+        if (hdSrc && isGifUrl(hdSrc)) {
+          queue.splice(i, 1);
+          queued.delete(img);
+          if (img && img.isConnected && img.dataset.xdexHdLoaded !== '1' && img.dataset.xdexHdLoading !== '1') {
+            load(img, hdSrc);
+          }
+        }
+      }
+      if (queue.length === 0) return;
       queue.sort((a, b) => getImagePriority(a) - getImagePriority(b));
-      while (activeLoads < MAX_CONCURRENT && queue.length > 0) {
-        const img = queue.shift();
-        queued.delete(img);
-        if (!img || !img.isConnected) continue;
-        if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') continue;
-        const hdSrc = img.dataset.xdexHdSrc;
-        if (!hdSrc) continue;
-        activeLoads++;
-        peakActiveLoads = Math.max(peakActiveLoads, activeLoads);
-        let finished = false;
-        const finish = () => {
-          if (finished) return;
-          finished = true;
-          activeLoads = Math.max(0, activeLoads - 1);
-          processQueue();
-        };
-        img.addEventListener('load', finish, { once: true });
-        img.addEventListener('error', finish, { once: true });
-        load(img, hdSrc);
-        if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading !== '1') finish();
+      // 多轮挑选：跳过暂时因 reserve 不能启动的项，继续尝试后方合适项
+      let guard = queue.length + 2;
+      while (activeLoads < MAX_CONCURRENT && queue.length > 0 && guard-- > 0) {
+        let started = false;
+        for (let i = 0; i < queue.length; i++) {
+          const img = queue[i];
+          if (!img || !img.isConnected) {
+            queue.splice(i, 1);
+            queued.delete(img);
+            started = true;
+            break;
+          }
+          if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') {
+            queue.splice(i, 1);
+            queued.delete(img);
+            started = true;
+            break;
+          }
+          const hdSrc = img.dataset.xdexHdSrc;
+          if (!hdSrc) {
+            queue.splice(i, 1);
+            queued.delete(img);
+            started = true;
+            break;
+          }
+          if (isGifUrl(hdSrc)) {
+            queue.splice(i, 1);
+            queued.delete(img);
+            load(img, hdSrc);
+            started = true;
+            break;
+          }
+          const kind = classifyImage(img);
+          if (!canStartNonGif(kind)) continue;
+          queue.splice(i, 1);
+          queued.delete(img);
+          noteLoadStart(kind);
+          loadingKindMap.set(img, kind);
+          let finished = false;
+          const finish = () => {
+            if (finished) return;
+            finished = true;
+            const k = loadingKindMap.get(img) || kind;
+            loadingKindMap.delete(img);
+            noteLoadEnd(k);
+            processQueue();
+          };
+          img.addEventListener('load', finish, { once: true });
+          img.addEventListener('error', finish, { once: true });
+          load(img, hdSrc);
+          if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading !== '1') finish();
+          started = true;
+          break;
+        }
+        if (!started) break;
       }
     }
     function enqueue(img) {
       if (!img || img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
       if (!img.dataset.xdexHdSrc) return;
+      // GIF 直接加载，不进限速队列
+      if (isGifUrl(img.dataset.xdexHdSrc)) {
+        load(img, img.dataset.xdexHdSrc);
+        return;
+      }
       if (!queued.has(img)) {
         queued.add(img);
         queue.push(img);
@@ -7917,11 +8070,17 @@ ${markedSwatchHtml}
       processQueue();
     }
     function observe(root) {
+      bindScrollListener();
+      syncObserverMargin(false);
       const io = ensureObserver();
       if (!io) return;
-      bindScrollListener();
       collect(root).forEach(img => {
         if (img.dataset.xdexHdLoaded === '1') return;
+        // GIF：观察前即可直接开载
+        if (img.dataset.xdexHdSrc && isGifUrl(img.dataset.xdexHdSrc)) {
+          load(img, img.dataset.xdexHdSrc);
+          return;
+        }
         io.observe(img);
       });
     }
@@ -7952,10 +8111,16 @@ ${markedSwatchHtml}
     function getStats() {
       return {
         activeLoads,
+        activeVisibleLoads,
+        activeAheadLoads,
+        activeBehindLoads,
         peakActiveLoads,
         queued: queue.length,
         maxConcurrent: MAX_CONCURRENT,
-        scrollDirection
+        reserveAheadSlots: RESERVE_AHEAD_SLOTS,
+        scrollDirection,
+        scrollSpeed: Math.round(scrollSpeed),
+        rootMarginY: currentRootMarginY
       };
     }
     return { getHdUrl, isGifUrl, prepare, observe, load, getStats };
