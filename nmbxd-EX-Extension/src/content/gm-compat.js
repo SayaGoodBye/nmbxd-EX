@@ -223,7 +223,7 @@
     if (!extensionContextReminderShown) {
       extensionContextReminderShown = true;
       console.warn('[X岛-EX Extension] extension context invalidated; refresh this page to reconnect', error);
-      showExtensionToast('扩展已更新，刷新页面可恢复完整同步');
+      showExtensionToast('扩展已更新，刷新页面可恢复完整同步', 7112);
     }
     return true;
   }
@@ -546,13 +546,14 @@
     showExtensionToast(text);
   }
 
-  function showExtensionToast(text) {
+  function showExtensionToast(text, duration = 1800) {
     const toast = document.createElement('div');
     toast.className = 'ae-toast';
     toast.textContent = text;
     toast.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483647;background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:5px;font-size:14px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.25);';
     document.documentElement.appendChild(toast);
-    setTimeout(() => toast.remove(), 1800);
+    const ms = Number(duration);
+    setTimeout(() => toast.remove(), Number.isFinite(ms) && ms > 0 ? ms : 1800);
   }
 
   function getImageMenuSuccessToast(detail) {

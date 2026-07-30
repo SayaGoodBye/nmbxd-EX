@@ -10082,6 +10082,8 @@ ${markedSwatchHtml}
   function tryReplaceRightSidebarEarly() {
     if (!document.body) return false;
     ensureRightSidebarShellStyle();
+    // 尽早同步 Dark Reader class：设置面板暗色依赖它，不能等 qp-style / batch2
+    try { ensureDarkReaderThemeSync(); } catch (e) {}
     const nativeTool = document.querySelector('#h-tool');
     if (nativeTool) nativeTool.remove();
     let docker = document.querySelector('.hld__docker');
@@ -10180,6 +10182,13 @@ ${markedSwatchHtml}
     });
     window.__xdexDarkReaderThemeObserver = observer;
     return observer;
+  }
+  // 设置面板/登录框/历史等共用 :root.xdex-darkreader-active。
+  // 主题同步必须独立于 qp-style：batch2 可延后浮窗大 CSS，但不能延后这个 class。
+  function ensureDarkReaderThemeSync() {
+    window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
+    ensureDarkReaderThemeObserver();
+    syncQuotePopupTheme();
   }
   // early open 也必须立刻注入浮窗样式；不能等 batch2 的 replaceRightSidebar。
   // 否则早期点 REPLY 会出现：表单先裸奔到左上角 → 浮窗壳后到 → 再被样式/暗色主题二次重绘。
@@ -10423,9 +10432,7 @@ ${markedSwatchHtml}
         (document.head || document.documentElement).appendChild(style);
       }
     }
-    window.__xdexSyncDarkReaderTheme = syncQuotePopupTheme;
-    ensureDarkReaderThemeObserver();
-    syncQuotePopupTheme();
+    ensureDarkReaderThemeSync();
     return !!document.getElementById('qp-style');
   }
   function ensureRightSidebarReplyController() {
@@ -11239,15 +11246,15 @@ ${markedSwatchHtml}
     // 悬停展开只依赖 shell CSS；qp-style 仅服务 REPLY 浮窗。
     // batch2 若坞已在且样式未装：改为空闲预热，避免与首次悬停抢主线程。
     // 首次点 REPLY 时 open() 仍会 ensureReplyOverlayStyle 兜底。
+    // 但 Dark Reader class 必须立刻同步：设置面板等 UI 依赖 :root.xdex-darkreader-active。
+    try { ensureDarkReaderThemeSync(); } catch (e) {}
     if (!earlyReady && !styleExisted) {
       ensureReplyOverlayStyle();
-      ensureDarkReaderThemeObserver();
       logRightSidebar('style-injected-sync', { 样式ID: 'qp-style', reason: 'docker-not-early' });
     } else if (!styleExisted) {
       scheduleReplyOverlayStylePrefetch();
       logRightSidebar('style-deferred-idle', { 样式ID: 'qp-style', reason: 'hover-path-priority' });
     } else {
-      ensureDarkReaderThemeObserver();
       logRightSidebar('style-reused', { 样式ID: 'qp-style' });
     }
     replaceRightSidebar.__darkReaderObserver = window.__xdexDarkReaderThemeObserver || null;
@@ -16672,11 +16679,11 @@ function 注册自动保存编辑() {
         const toastKey = 'xdex_' + _boardName + '_post_mode_toast_date';
         const lastShown = typeof GM_getValue === 'function' ? GM_getValue(toastKey, '') : '';
         if (lastShown !== today) {
-          toast(_boardName + '版块默认为"发串"模式，请注意');
+          toast(_boardName + '版块默认为"发串"模式，请注意', 7112, { queue: false, key: 'board-post-mode-notice' });
           if (typeof GM_setValue === 'function') GM_setValue(toastKey, today);
         }
       } catch (e) {
-        toast(_boardName + '版块默认为"发串"模式，请注意');
+        toast(_boardName + '版块默认为"发串"模式，请注意', 7112, { queue: false, key: 'board-post-mode-notice' });
       }
       if (SettingPanel.state.replyExtraDefault === '连续') {
         window.replyModeState.extra = '连续';

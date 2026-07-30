@@ -52,7 +52,9 @@
     {
       "resources": [
         "offscreen/offscreen.html",
-        "vendor/gifsicle/gifsicle.min.js"
+        "vendor/gifsicle/gifsicle.min.js",
+        "vendor/heic2any/heic2any.min.js",
+        "vendor/heic2any/heic2any-loader.js"
       ],
       "matches": [
         "https://*.nmbxd1.com/*",
