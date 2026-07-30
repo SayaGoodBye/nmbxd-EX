@@ -9973,25 +9973,47 @@ ${markedSwatchHtml}
     `;
   }
   function ensureRightSidebarShellStyle() {
-    if (document.getElementById('xdex-right-sidebar-shell-style')) return;
-    const style = document.createElement('style');
-    style.id = 'xdex-right-sidebar-shell-style';
+    // 可重复刷新文本：热更新后避免旧 transition:all 残留
+    let style = document.getElementById('xdex-right-sidebar-shell-style');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'xdex-right-sidebar-shell-style';
+      (document.head || document.documentElement).appendChild(style);
+    }
     style.textContent = `
       #h-tool { display: none !important; }
-      .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
+      /* 只过渡几何属性，缩短时长，减轻首屏卡顿体感 */
+      .hld__docker {
+        position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0;
+        transition: width .12s ease, height .12s ease, bottom .12s ease;
+        z-index: 9998;
+      }
       .hld__docker:hover,
       .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
       .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
+      /* 进页约 1.5s 内关闭尺寸过渡，悬停几乎即时展开，躲开 ready/batch 长任务掉帧 */
+      .hld__docker.xdex-docker-boot,
+      .hld__docker.xdex-docker-boot:hover,
+      .hld__docker.xdex-docker-boot.is-hover,
+      .hld__docker.xdex-docker-boot:has(.hld__docker-sidebar:hover) {
+        transition: none;
+      }
       .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
       .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
-      .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
+      /* 三钮更快显隐，与坞尺寸解耦 */
+      .hld__docker .hld__docker-btns>div {
+        opacity: 0; flex-shrink: 0; pointer-events: none;
+        transition: opacity .06s ease;
+      }
       .hld__docker:hover .hld__docker-btns>div,
-      .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
-      .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
-      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
+      .hld__docker.is-hover .hld__docker-btns>div,
+      .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div {
+        opacity: 1; pointer-events: auto;
+      }
+      .hld__docker.xdex-docker-boot .hld__docker-btns>div { transition: none; }
+      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
       .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
     `;
-    (document.head || document.documentElement).appendChild(style);
   }
   function openRightSidebarReplyWhenReady(retry = 0) {
     const hasForm = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
@@ -10028,6 +10050,35 @@ ${markedSwatchHtml}
     }
     bindRightSidebarReplyButton(docker);
   }
+  function markRightSidebarDockerBootMotion(docker) {
+    if (!docker || docker.dataset.xdexBootMotionDone === '1') return;
+    docker.classList.add('xdex-docker-boot');
+    const clear = () => {
+      docker.classList.remove('xdex-docker-boot');
+      docker.dataset.xdexBootMotionDone = '1';
+    };
+    // 覆盖 ready 同步 + batch1/2 高峰；之后恢复短过渡
+    const timer = window.setTimeout(clear, 1500);
+    docker.dataset.xdexBootMotionTimer = String(timer);
+  }
+  function scheduleReplyOverlayStylePrefetch() {
+    if (scheduleReplyOverlayStylePrefetch.__scheduled) return;
+    scheduleReplyOverlayStylePrefetch.__scheduled = true;
+    const run = () => {
+      try {
+        if (!document.getElementById('qp-style') && typeof ensureReplyOverlayStyle === 'function') {
+          ensureReplyOverlayStyle();
+        }
+        if (typeof ensureDarkReaderThemeObserver === 'function') ensureDarkReaderThemeObserver();
+      } catch (e) {}
+    };
+    // 空闲时预热浮窗样式，避免 batch2 与首次悬停抢主线程；首次点 REPLY 仍有 open() 兜底
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => run(), { timeout: 2500 });
+    } else {
+      window.setTimeout(run, 1800);
+    }
+  }
   function tryReplaceRightSidebarEarly() {
     if (!document.body) return false;
     ensureRightSidebarShellStyle();
@@ -10039,6 +10090,7 @@ ${markedSwatchHtml}
       docker = document.querySelector('.hld__docker');
       if (docker) docker.dataset.xdexEarlyDocker = '1';
     }
+    if (docker) markRightSidebarDockerBootMotion(docker);
     bindRightSidebarShellButtons(docker);
     return !!docker;
   }
@@ -10878,7 +10930,9 @@ ${markedSwatchHtml}
           return;
       }
       // early open 也必须先注入浮窗样式/主题，避免表单先以无样式状态闪一下
+      // batch2 可能已把 qp-style 延后到 idle；此处是悬停优化后的同步兜底
       ensureReplyOverlayStyle();
+      try { ensureDarkReaderThemeObserver(); } catch (e) {}
       const ov = ensureOverlay();
       const body = ov.querySelector('.qp-body');
       body.innerHTML = '';
@@ -11167,31 +11221,45 @@ ${markedSwatchHtml}
       href: location.href,
     });
     // 移除原始工具栏；early shell 可能已经处理过，这里兜底
+    const hadDockerBefore = __omp_shell("!document.querySelector('.hld__docker');")
     tryReplaceRightSidebarEarly();
     logRightSidebar('original-toolbar-removed', {
       remainingToolbarCount: $('#h-tool').length,
     });
-      // 样式/主题：统一走 ensureReplyOverlayStyle，early open 与 batch2 共用同一入口
-    const styleExisted = !!document.getElementById('qp-style');
-    ensureReplyOverlayStyle();
-    logRightSidebar(styleExisted ? 'style-reused' : 'style-injected', { 样式ID: 'qp-style' });
-    // Dark Reader 监听已抽到 ensureDarkReaderThemeObserver（early open 也会装）
-    ensureDarkReaderThemeObserver();
-    replaceRightSidebar.__darkReaderObserver = window.__xdexDarkReaderThemeObserver || null;
     // 扩展坞 DOM：复用 early shell，避免加载时重复插入和重复重绘
     let dockerDom = $('.hld__docker').first();
     if (!dockerDom.length) {
       dockerDom = $(buildRightSidebarDockerHtml()).appendTo('body');
+      if (dockerDom[0]) markRightSidebarDockerBootMotion(dockerDom[0]);
       bindRightSidebarShellButtons(dockerDom[0]);
     }
+    const dockerEl = dockerDom[0];
+    const earlyReady = __omp_shell("!(dockerEl && (dockerEl.dataset.xdexEarlyDocker === '1' || hadDockerBefore));")
+    const styleExisted = __omp_shell("!document.getElementById('qp-style');")
+    // 悬停展开只依赖 shell CSS；qp-style 仅服务 REPLY 浮窗。
+    // batch2 若坞已在且样式未装：改为空闲预热，避免与首次悬停抢主线程。
+    // 首次点 REPLY 时 open() 仍会 ensureReplyOverlayStyle 兜底。
+    if (!earlyReady && !styleExisted) {
+      ensureReplyOverlayStyle();
+      ensureDarkReaderThemeObserver();
+      logRightSidebar('style-injected-sync', { 样式ID: 'qp-style', reason: 'docker-not-early' });
+    } else if (!styleExisted) {
+      scheduleReplyOverlayStylePrefetch();
+      logRightSidebar('style-deferred-idle', { 样式ID: 'qp-style', reason: 'hover-path-priority' });
+    } else {
+      ensureDarkReaderThemeObserver();
+      logRightSidebar('style-reused', { 样式ID: 'qp-style' });
+    }
+    replaceRightSidebar.__darkReaderObserver = window.__xdexDarkReaderThemeObserver || null;
     logRightSidebar('docker-ready', {
       拓展坞数: $('.hld__docker').length,
       按钮数: dockerDom.find('.hld__docker-btns>div').length,
-      早期插入: dockerDom[0]?.dataset.xdexEarlyDocker === '1',
+      早期插入: dockerEl?.dataset.xdexEarlyDocker === '1',
       支持Has选择器: !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))')),
+      样式策略: styleExisted ? 'reused' : (earlyReady ? 'idle-prefetch' : 'sync'),
     });
     // REPLY 按钮：early shell 已绑定；这里兜底补绑，完整浮窗控制器仍延迟到首次点击再初始化
-    bindRightSidebarReplyButton(dockerDom[0]);
+    bindRightSidebarReplyButton(dockerEl);
     // TOP/BOTTOM 在 early shell 阶段已绑定轻量滚动；这里不重复绑定，避免一次点击触发两套滚动。
   }
 
