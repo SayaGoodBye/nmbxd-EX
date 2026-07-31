@@ -93,7 +93,8 @@ function testThreadHistoryMenuEntry() {
   assert(script.includes("li.id = 'xdex-thread-history-menu'"), 'sidebar browsing history entry must have a stable id');
   assert(script.includes("setXDexSidebarExLabel(link, '浏览历史')"), 'sidebar browsing history entry must use 浏览历史 label with native EX sub badge');
   assert(script.includes("setXDexSidebarExLabel(header, '常用串')"), 'favorite threads sidebar entry must use 常用串 label with native EX sub badge');
-  assert(script.includes("$('#sp_panel_tab_slot [data-sp-module=\"history\"]').trigger('click')"), 'sidebar browsing history entry must open the history settings module');
+  assert(script.includes("function openSettingsPanelModuleTab(moduleName)"), 'sidebar modules must open via shared settings tab helper');
+  assert(script.includes("openSettingsPanelModuleTab('history')"), 'sidebar browsing history entry must open the history settings module');
   assert(script.includes("const oldThreadHistory = document.getElementById('xdex-thread-history-menu')"), 'rendering sidebar menu must remove the previous browsing history entry before inserting a new one');
   assert(script.includes("const oldPostHistory = document.getElementById('xdex-post-history-menu')"), 'rendering sidebar menu must remove the previous post history entry before inserting a new one');
   assert(script.indexOf('const node = createFavoriteThreadsMenuNode(items, wasOpen);') < script.indexOf('const threadHistoryNode = createThreadHistoryMenuNode();'), 'browsing history sidebar entry must be created after favorite threads');

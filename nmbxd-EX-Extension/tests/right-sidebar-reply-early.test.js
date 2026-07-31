@@ -40,7 +40,13 @@ assert(script.includes('function openRightSidebarReplyWhenReady'), 'reply should
 assert(script.includes('function bindRightSidebarReplyButton'), 'reply binding should be extracted for reuse by early and full sidebar setup');
 assert(shellBind.includes('bindRightSidebarReplyButton(docker)'), 'early shell binding must attach REPLY click immediately');
 assert(earlyReplace.includes('bindRightSidebarShellButtons(docker)'), 'early sidebar setup must still bind shell buttons');
-assert(fullReplace.includes('bindRightSidebarReplyButton(dockerDom[0])'), 'full replaceRightSidebar must keep a fallback REPLY binding');
+// 当前实现先取 dockerEl = dockerDom[0]，再 bindRightSidebarReplyButton(dockerEl)
+assert(
+  fullReplace.includes('bindRightSidebarReplyButton(dockerEl)') ||
+  fullReplace.includes('bindRightSidebarReplyButton(dockerDom[0])'),
+  'full replaceRightSidebar must keep a fallback REPLY binding'
+);
+assert(fullReplace.includes('const dockerEl = dockerDom[0]') || fullReplace.includes('bindRightSidebarReplyButton(dockerDom[0])'), 'full replace must resolve docker element before REPLY bind');
 assert(!fullReplace.includes('ensureRightSidebarReplyController().open();'), 'full replaceRightSidebar should not own the only direct REPLY open binding');
 assert(script.includes('openRightSidebarReplyWhenReady(retry + 1)'), 'safe opener should retry briefly when form is not yet in DOM');
 

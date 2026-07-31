@@ -84,10 +84,14 @@ function testContentScriptReceivesImageMenuDiagnostics() {
 }
 
 function testUserscriptAnimatedRichCopyToastWording() {
-  assert(userscript.includes("toast('GIF 已按富文本图片复制到剪贴板');"), 'userscript GIF rich copy toast must use explicit GIF wording');
-  assert(userscript.includes("toast('APNG 已按富文本图片复制到剪贴板');"), 'userscript APNG rich copy toast must use explicit APNG wording');
-  assert(!userscript.includes("toast('GIF 已复制到剪贴板');"), 'userscript GIF web rich copy toast must not use generic wording');
-  assert(!userscript.includes("toast('APNG 已复制到剪贴板');"), 'userscript APNG web rich copy toast must not use generic wording');
+  // 当前文案：区分原样复制 / 富文本图片格式复制
+  assert(userscript.includes("toast('GIF 已原样复制到剪贴板');"), 'userscript GIF binary copy toast must use explicit GIF wording');
+  assert(userscript.includes("toast('GIF 已使用富文本图片格式复制到剪贴板');"), 'userscript GIF rich copy toast must use explicit GIF wording');
+  assert(userscript.includes("toast('APNG 已使用富文本图片格式复制到剪贴板');"), 'userscript APNG rich copy toast must use explicit APNG wording');
+  assert(!userscript.includes("toast('GIF 已复制到剪贴板');"), 'userscript GIF toast must not use generic wording');
+  assert(!userscript.includes("toast('APNG 已复制到剪贴板');"), 'userscript APNG toast must not use generic wording');
+  assert(!userscript.includes("toast('GIF 已按富文本图片复制到剪贴板');"), 'legacy GIF rich-copy wording must stay retired');
+  assert(!userscript.includes("toast('APNG 已按富文本图片复制到剪贴板');"), 'legacy APNG rich-copy wording must stay retired');
 }
 
 testUserscriptSkipsCustomMenuInExtension();

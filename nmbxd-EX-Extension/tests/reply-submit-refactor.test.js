@@ -234,7 +234,7 @@ function testImageAndFormDataHelpers() {
 }
 
 async function testImageFormatDetectionContracts() {
-  const declarations = ['getImageExtension', 'normalizeDetectedImageFormat', 'readBlobAsArrayBuffer', 'detectImageFormat']
+  const declarations = ['getImageExtension', 'normalizeDetectedImageFormat', 'isHeifBrand', 'detectHeifFromHeader', 'readBlobAsArrayBuffer', 'detectImageFormat']
     .map((name) => {
       const declaration = extractFunctionDeclarations(script, name)[0];
       return name === 'detectImageFormat' ? `async ${declaration}` : declaration;
@@ -647,9 +647,17 @@ function testSubmitLockLifecycleContracts() {
   assert(intercept.includes('beginSubmitImageProcessing(form);\n                try {\n                  console.log(\'[interceptReplyForm] 检测到非法GIF'), 'illegal GIF re-encoding must use the same image-processing lifecycle');
   assert((intercept.match(/finishSubmitImageProcessing\(form\);/g) || []).length >= 3, 'success/failure exits and recursive submit handoff must clear image-processing state');
 
-  for (const format of ["actualFormat === 'gif'", "actualFormat === 'apng'", "actualFormat === 'animated-webp'", 'compressImageToSize(file, 2048)']) {
+  for (const format of ["actualFormat === 'gif'", "actualFormat === 'apng'", "actualFormat === 'animated-webp'", "actualFormat === 'heic'"]) {
     assert(compressRetry.includes(format), `compressImageForRetry must retain covered image path: ${format}`);
   }
+  // 静态/HEIC 回退压缩现为 compressImageToSize(file|convertedFile, 2048, 0.6, ...)
+  assert(
+    compressRetry.includes('compressImageToSize(file, 2048, 0.6, actualFormat)') ||
+    compressRetry.includes('compressImageToSize(convertedFile, 2048, 0.6, \'png\')') ||
+    compressRetry.includes('compressImageToSize(convertedFile, 2048, 0.6, "png")'),
+    'compressImageForRetry must retain static/HEIC compressImageToSize fallback with quality arg'
+  );
+  assert(compressRetry.includes('compressGifToSize') && compressRetry.includes('compressApngToSize'), 'compressImageForRetry must keep GIF/APNG specialized compressors');
   const timeoutToast = '提交可能失败，请检查网络，或者刷新后重试';
   assert(script.split(timeoutToast).length - 1 === 1, 'submit timeout toast text must remain unchanged and exist only in the ordinary timeout path');
 }

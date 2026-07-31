@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.11.0
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片隐藏模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
+// @version      3.12.0
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -35,7 +35,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增：\n1.新增release/dev渠道脚本、浏览器拓展镜像下载直链。\n2.关键词屏蔽支持正则模式。\n\n优化：\n1.设置面板“串内”优先跳转到浏览历史中本串的最远界面。\n2.添加正文字数等效字数逻辑，用以正确预估服务器端记录字数。\n3.对浏览历史与发言历史的“清空”添加二次确认弹窗，避免误操作。\n\n修复：\n1.修复引用内容为空的原生引用浮窗可能继承之前引用浮窗宽度的问腿。\n2.修复/page/N.html与/page/N网址下回复后未能鸡昂最新回复增量更新的问题。\n3.修复野生搜索酱界面链接无法在新标签页打开以及未能将手机端网页重定向到桌面端网页地址的问题。\n4.图片隐藏模式排除用户页与首页图片。\n
+// @changelog    新增：\n1.新增WebP、HEIF等格式自动转化为PNG以及压缩链路。请注意HEIF图片无法预览。\n2.添加基于获取版块页首页信息拉起发串信息的回退机制，用于“测试”版块发串信息的获取；同时，“测试”版块默认发串模式。\n\n优化：\n1.优化“浏览历史/发言历史/我的订阅”以及拓展坞启动的速度。\n2.优化了图片懒加载并发队列与动态预加载机制，现在可以更快加载滚动方向上的图像原图。\n3.阅图模式按钮与图片显示模式状态同步。\n\n修复：\n1.修复了部分图片错误进入压缩循环且无法提交的问题。\n2.修复在发送前二次确认窗口中使用鼠标点击的饼干没有被选择并作用，而实际使用列表最后一个饼干发送的问题。\n3.修复修复拓展引用弹窗在打开多层后，较早的层级无法拖拽移动的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -1071,7 +1071,7 @@
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><select id="sp_postExpandAllMode" style="height:24px;"><option value="collapse">全部收起</option><option value="expand">全部展开</option></select><input type="hidden" name="sp_enablePostExpand" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
                 <div style="${checkboxRowStyle}">
-                  <input type="checkbox" id="sp_enableImageHideMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageHideMode"> 模糊/无图/Tips模式</label>
+                  <input type="checkbox" id="sp_enableImageHideMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageHideMode"> 图片显示模式</label>
                   <select id="sp_applyImageHideMode" style="height:24px;">
                     <option value="default">默认</option>
                     <option value="blur">模糊</option>
@@ -1083,7 +1083,7 @@
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><button type="button" id="sp_openImageViewer" style="height:24px;padding:0 8px;margin-left:4px;cursor:pointer;">打开</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
             </div>
               <div style="margin-top:12px;">
@@ -1473,6 +1473,16 @@
       };
       $('#sp_enableImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       $('#sp_applyImageHideMode').off('change').on('change', applyImageHideModeImmediately);
+      // 设置面板内打开阅图：串内页可用；无图模式下右上角按钮隐藏时的备选入口
+      $('#sp_openImageViewer').off('click').on('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof openImageViewerFromSettingsPanel === 'function') {
+          openImageViewerFromSettingsPanel();
+        } else if (typeof toast === 'function') {
+          toast('当前页面不支持阅图模式');
+        }
+      });
       // 屏蔽显示模式：即时切换并即时生效（折叠/隐藏）
       const applyBlockDisplayModeImmediately = () => {
         const mode = $('#sp_blockDisplayMode').val() || 'fold';
@@ -2905,7 +2915,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
-        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）',
+        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧“打开”可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选。',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
         sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，保留高亮的同时控制其是否在输入框中自动添加引用号，值班室版块默认不生效',
@@ -9435,64 +9445,64 @@ ${markedSwatchHtml}
       });
     };
     function enableDragForTop($quote, $handles) {
-      // 不要清除所有 qpdrag 事件，只清除当前 $quote 的
-      $quote.off('.qpdrag');
+      // 与四角缩放一致：仅在本次 mousedown 手势内挂 window 监听，mouseup 卸掉。
+      // 避免「后开层 off 掉全局 qpdrag → 关层后下层只剩 mousedown、拖不动」。
+      $handles.off('mousedown.qpdrag');
+      const top0 = parseInt($quote.css('top'), 10) || 0;
+      const left0 = parseInt($quote.css('left'), 10) || 0;
       $quote.css({
-        top: parseInt($quote.css('top')) || 0 + 'px',
-        left: parseInt($quote.css('left')) || 0 + 'px',
-        position: 'absolute' // 确保是绝对定位
+        top: top0 + 'px',
+        left: left0 + 'px',
+        position: 'absolute'
       });
-      //let dragging = false, dx = 0, dy = 0;
-      let dx = 0, dy = 0;
-      // 仅在"手柄"元素上启动拖拽：标题栏 + 四边窄条
       $handles.on('mousedown.qpdrag', function(e){
+        if (e.button != null && e.button !== 0) return;
         // 避免点击标题栏中的交互控件（返回按钮等）触发拖拽
         if ($(e.target).closest('a,button,input,textarea,select,label').length) return;
-        //dragging = true;
-        $quote.data('dragging', true);  // ← 使用 data 存储
-        $overlay.data('isDragging', true); // 标记正在拖拽
+        e.preventDefault();
+        e.stopPropagation();
+        let dx = 0;
+        let dy = 0;
+        $quote.data('dragging', true);
+        $overlay.data('isDragging', true);
         $quote.addClass('is-dragging');
-        // 获取当前的 top 和 left 值
-        const currentTop = parseInt($quote.css('top')) || 0;
-        const currentLeft = parseInt($quote.css('left')) || 0;
-        const stackOff = $stack.offset();
+        const currentTop = parseInt($quote.css('top'), 10) || 0;
+        const currentLeft = parseInt($quote.css('left'), 10) || 0;
+        const stackOff = $stack.offset() || { left: 0, top: 0 };
         dx = e.pageX - currentLeft - stackOff.left;
         dy = e.pageY - currentTop - stackOff.top;
-        e.preventDefault();
-      });
-      //$(document).on('mousemove.qpdrag', function(e){
-      $(window).off('mousemove.qpdrag mouseup.qpdrag');
-      $(window).on('mousemove.qpdrag', function(e){
-        //if (!dragging) return;
-        if (!$quote.data('dragging')) return;
-        e.preventDefault();  // ← 在这里添加
-        e.stopPropagation(); // ← 在这里添加
-        const stackOff = $stack.offset();
-        const stackWidth = $stack.width();
-        const stackHeight = $stack.height();
-        const quoteWidth = $quote.outerWidth();
-        const quoteHeight = $quote.outerHeight();
-        let top = e.pageY - dy - stackOff.top;
-        let left = e.pageX - dx - stackOff.left;
-        // 限制拖拽范围，允许向左和向上拖出一部分（至少保留 50px 可见）
-        top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
-        left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
-        $quote.css({ top: top + 'px', left: left + 'px' });
-      });
-      //$(document).on('mouseup.qpdrag', function(e){
-      $(window).on('mouseup.qpdrag', function(e){
-        //if (!dragging) return;
-        e.preventDefault();    // ← 添加（但注意这里没有 e 参数）
-        //dragging = false;
-        if (!$quote.data('dragging')) return;
-        $quote.data('dragging', false);
-        $quote.removeClass('is-dragging');
-        // 延迟清除拖拽状态，避免释放瞬间的点击事件触发关闭
-        setTimeout(() => {
-          $overlay.data('isDragging', false);
-        }, 100);
-        // 不要解绑 document 的事件，因为可能有多个引用框
-        // $(document).off('mousemove.qpdrag mouseup.qpdrag');
+        const onMove = function(ev){
+          if (!$quote.data('dragging')) return;
+          if (!$quote[0] || !$quote[0].isConnected) {
+            onUp(ev);
+            return;
+          }
+          ev.preventDefault();
+          const off = $stack.offset() || { left: 0, top: 0 };
+          const stackWidth = $stack.width();
+          const stackHeight = $stack.height();
+          const quoteWidth = $quote.outerWidth();
+          const quoteHeight = $quote.outerHeight();
+          let top = ev.pageY - dy - off.top;
+          let left = ev.pageX - dx - off.left;
+          // 限制拖拽范围，允许向左和向上拖出一部分（至少保留 50px 可见）
+          top = Math.max(-quoteHeight + 50, Math.min(stackHeight - 50, top));
+          left = Math.max(-quoteWidth + 50, Math.min(stackWidth - 50, left));
+          $quote.css({ top: top + 'px', left: left + 'px' });
+        };
+        const onUp = function(){
+          window.removeEventListener('mousemove', onMove, true);
+          window.removeEventListener('mouseup', onUp, true);
+          if (!$quote.data('dragging')) return;
+          $quote.data('dragging', false);
+          $quote.removeClass('is-dragging');
+          // 延迟清除，避免释放瞬间点到遮罩误关
+          setTimeout(() => {
+            $overlay.data('isDragging', false);
+          }, 100);
+        };
+        window.addEventListener('mousemove', onMove, true);
+        window.addEventListener('mouseup', onUp, true);
       });
     }
     // 引用浮窗四角拉伸：对角锚定，与回复浮窗交互一致
@@ -17587,7 +17597,7 @@ function 注册自动保存编辑() {
 
   }
   /* --------------------------------------------------
-   * tag 20. 默认/模糊/无图/Tips模式
+   * tag 20. 图片显示模式：默认/模糊/无图/Tips
    * -------------------------------------------------- */
   function applyImageHideMode(mode = 'default', root = document) {
     const isImageHideExcludedPage = location.hostname === 'www.nmbxd1.com'
@@ -17687,6 +17697,7 @@ function 注册自动保存编辑() {
           '#h-preview-box',
           '.h-preview-box',
           '#sp_btn',
+          '.xdex-image-viewer-btn',
           '.h-threads-item-reply[data-threads-id="9999999"]'
         ].join(', '));
       } catch (e) {
@@ -17912,6 +17923,11 @@ function 注册自动保存编辑() {
       clearNoImageMarks(document);
       document.querySelectorAll('img[data-xdex-hide-replace-applied="1"]').forEach(restoreReplacedImage);
       window.__xdexImageHideMode = 'default';
+      try {
+        if (typeof syncImageViewerButtonForHideMode === 'function') {
+          syncImageViewerButtonForHideMode('default');
+        }
+      } catch (e) {}
       return;
     }
     const imgs = getAllImgs(scope);
@@ -17941,6 +17957,12 @@ function 注册自动保存编辑() {
       else if (finalMode === 'tips') applyReplace(img, idx);
     });
     window.__xdexImageHideMode = finalMode;
+    // 阅图入口与隐藏模式联动（无图隐藏可恢复 / 模糊遮罩 / Tips 换皮）
+    try {
+      if (typeof syncImageViewerButtonForHideMode === 'function') {
+        syncImageViewerButtonForHideMode(finalMode);
+      }
+    } catch (e) {}
     }, () => Object.assign({ mode }, startupPerfDebug.summarizeRoot(root || document)));
   }
   // 暴露给外部：window.applyImageHideMode('default'|'blur'|'noimage'|'tips'|'none', root)
@@ -23968,26 +23990,136 @@ function 注册自动保存编辑() {
     return appended;
   }
   // ── 入口：串内页添加"阅图"按钮 ──
-  function injectImageViewerButton() {
-    const isThreadPage = /\/t\/\d{6,8}/.test(location.pathname) || /\/Forum\/po\/id\/\d+/.test(location.pathname);
-    if (!isThreadPage) return;
-    if (document.querySelector('.xdex-image-viewer-btn')) return;
+  const IMAGE_VIEWER_TIPS_BTN_URL = 'https://file.moetu.org/images/2023/08/29/e1db89f8b15b0002b1ebdf574d5a7f30c6f2590891da1a8422eba303bf8b589c.gif';
+  function ensureImageViewerButtonStyle() {
+    if (document.getElementById('xdex-image-viewer-btn-style')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-image-viewer-btn-style';
+    style.textContent = `
+      .xdex-image-viewer-btn {
+        position: fixed; top: 10px; right: 52px; z-index: 10000;
+        width: 28px; height: 28px; padding: 0; margin: 0;
+        border: none; border-radius: 50%;
+        background: #99ffff; color: #000;
+        font-size: 13px; font-weight: bold; cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,.18);
+        transition: transform .15s, box-shadow .15s, background .15s, filter .15s ease, opacity .15s ease;
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden; line-height: 1;
+      }
+      .xdex-image-viewer-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,.22); }
+      .xdex-image-viewer-btn.xdex-iv-btn-hidden {
+        display: none !important;
+      }
+      /* 与帖内模糊一致：默认模糊，悬停看清「图」字，点击不受影响 */
+      .xdex-image-viewer-btn.xdex-iv-btn-blur {
+        filter: blur(14px) brightness(0.5);
+      }
+      .xdex-image-viewer-btn.xdex-iv-btn-blur:hover {
+        filter: none;
+      }
+      .xdex-image-viewer-btn.xdex-iv-btn-tips {
+        background: #99ffff;
+        color: transparent;
+        font-size: 0;
+      }
+      .xdex-image-viewer-btn .xdex-iv-btn-tips-img {
+        width: 100%; height: 100%;
+        object-fit: cover; border-radius: 50%;
+        pointer-events: none; display: block;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+  function getCurrentImageHideModeForViewerBtn() {
+    const live = window.__xdexImageHideMode;
+    if (live && live !== 'none') return live;
+    try {
+      const cfg = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
+        ? SettingPanel.state
+        : (typeof SettingPanel !== 'undefined' && SettingPanel
+          ? Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}))
+          : null);
+      const mode = cfg && cfg.applyImageHideMode;
+      if (mode === 'blur' || mode === 'noimage' || mode === 'tips' || mode === 'default') return mode;
+    } catch (e) {}
+    return 'default';
+  }
+  function getCurrentThreadIdForImageViewer() {
     const threadMatch = location.pathname.match(/\/t\/(\d{6,8})/) || location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
-    if (!threadMatch) return;
-    const threadId = threadMatch[1];
-    const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">图</button>');
-    $btn.css({
-      position: 'fixed', top: '10px', right: '52px', zIndex: '10000',
-      width: '28px', height: '28px', padding: '0',
-      border: 'none', borderRadius: '50%',
-      background: '#99ffff', color: '#000',
-      fontSize: '13px', fontWeight: 'bold', cursor: 'pointer',
-      boxShadow: '0 1px 4px rgba(0,0,0,.18)',
-      transition: 'transform .15s, box-shadow .15s, background .15s',
-      display: 'flex', alignItems: 'center', justifyContent: 'center'
-    });
-    $btn.on('click', () => openImageViewer(threadId));
-    $('body').append($btn);
+    return threadMatch ? threadMatch[1] : '';
+  }
+  function isImageViewerThreadPage() {
+    return /\/t\/\d{6,8}/.test(location.pathname) || /\/Forum\/po\/id\/\d+/.test(location.pathname);
+  }
+  function syncImageViewerButtonForHideMode(mode) {
+    ensureImageViewerButtonStyle();
+    const btn = document.querySelector('.xdex-image-viewer-btn');
+    if (!btn) return;
+    const finalMode = (mode === 'blur' || mode === 'noimage' || mode === 'tips') ? mode : 'default';
+    btn.classList.remove('xdex-iv-btn-hidden', 'xdex-iv-btn-blur', 'xdex-iv-btn-tips');
+    const tipsImg = btn.querySelector('.xdex-iv-btn-tips-img');
+    if (tipsImg) tipsImg.remove();
+    // 恢复默认文字入口
+    btn.textContent = '图';
+    btn.setAttribute('title', '阅图模式');
+    btn.setAttribute('aria-label', '阅图模式');
+    btn.style.display = '';
+    if (finalMode === 'noimage') {
+      // 隐藏但可恢复：仅加 class，不删节点
+      btn.classList.add('xdex-iv-btn-hidden');
+      btn.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    btn.removeAttribute('aria-hidden');
+    if (finalMode === 'blur') {
+      btn.classList.add('xdex-iv-btn-blur');
+      return;
+    }
+    if (finalMode === 'tips') {
+      btn.classList.add('xdex-iv-btn-tips');
+      btn.textContent = '';
+      const img = document.createElement('img');
+      img.className = 'xdex-iv-btn-tips-img';
+      img.src = IMAGE_VIEWER_TIPS_BTN_URL;
+      img.alt = '阅图模式';
+      img.draggable = false;
+      btn.appendChild(img);
+      btn.setAttribute('title', '阅图模式（Tips）');
+      btn.setAttribute('aria-label', '阅图模式');
+    }
+  }
+  function openImageViewerFromSettingsPanel() {
+    if (!isImageViewerThreadPage()) {
+      if (typeof toast === 'function') toast('请在串内页面使用阅图模式');
+      return;
+    }
+    const threadId = getCurrentThreadIdForImageViewer();
+    if (!threadId) {
+      if (typeof toast === 'function') toast('未识别到当前串号');
+      return;
+    }
+    // 无图模式下右上角入口隐藏，设置面板“打开”作为备选
+    try {
+      const $cover = $('#sp_cover');
+      if ($cover.length && $cover.is(':visible')) $cover.fadeOut(120);
+    } catch (e) {}
+    openImageViewer(threadId);
+  }
+  function injectImageViewerButton() {
+    if (!isImageViewerThreadPage()) return;
+    ensureImageViewerButtonStyle();
+    const threadId = getCurrentThreadIdForImageViewer();
+    if (!threadId) return;
+    let btn = document.querySelector('.xdex-image-viewer-btn');
+    if (!btn) {
+      const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">图</button>');
+      $btn.on('click', () => openImageViewer(threadId));
+      $('body').append($btn);
+      btn = $btn[0];
+    }
+    // 按当前隐藏模式同步外观（含无图隐藏可恢复）
+    syncImageViewerButtonForHideMode(getCurrentImageHideModeForViewerBtn());
   }
   // ── 打开阅览器 ──
   function getImageViewerStartPage() {
