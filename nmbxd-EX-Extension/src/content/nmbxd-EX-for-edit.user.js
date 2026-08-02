@@ -5976,7 +5976,7 @@ ${markedSwatchHtml}
       imgEl.style.left = '0px';
       imgEl.style.width = 'auto';
       imgEl.style.height = 'auto';
-      const isInOverlay = __omp_shell("!$liveBox.closest('.qp-body').length;")
+      const isInOverlay = !!$liveBox.closest('.qp-body').length;
       if (isInOverlay) {
         const wrapEl = $liveBox.closest('.qp-content-wrap')[0];
         if (wrapEl) {
@@ -6072,7 +6072,7 @@ ${markedSwatchHtml}
                   <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
                   </span> -->
-                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
                 </div>
                 <div class="h-threads-content"></div>
               </div>
@@ -11238,7 +11238,7 @@ ${markedSwatchHtml}
       href: location.href,
     });
     // 移除原始工具栏；early shell 可能已经处理过，这里兜底
-    const hadDockerBefore = __omp_shell("!document.querySelector('.hld__docker');")
+    const hadDockerBefore = !!document.querySelector('.hld__docker');
     tryReplaceRightSidebarEarly();
     logRightSidebar('original-toolbar-removed', {
       remainingToolbarCount: $('#h-tool').length,
@@ -11251,8 +11251,8 @@ ${markedSwatchHtml}
       bindRightSidebarShellButtons(dockerDom[0]);
     }
     const dockerEl = dockerDom[0];
-    const earlyReady = __omp_shell("!(dockerEl && (dockerEl.dataset.xdexEarlyDocker === '1' || hadDockerBefore));")
-    const styleExisted = __omp_shell("!document.getElementById('qp-style');")
+    const earlyReady = !!(dockerEl && (dockerEl.dataset.xdexEarlyDocker === '1' || hadDockerBefore));
+    const styleExisted = !!document.getElementById('qp-style');
     // 悬停展开只依赖 shell CSS；qp-style 仅服务 REPLY 浮窗。
     // batch2 若坞已在且样式未装：改为空闲预热，避免与首次悬停抢主线程。
     // 首次点 REPLY 时 open() 仍会 ensureReplyOverlayStyle 兜底。
@@ -11471,7 +11471,7 @@ ${markedSwatchHtml}
                     <!-- <span class="h-threads-info-report-btn">
                       [<a href="/f/值班室" target="_blank">举报</a>]
                     </span> -->
-                    <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                    <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
                   </div>
                   <div class="h-threads-content"></div>
                 </div>
@@ -13416,7 +13416,7 @@ ${markedSwatchHtml}
                 try {
                   const actualFormat = await detectImageFormat(file);
                   console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
-                  toast('图片大小>2048KB，正在尝试自动压缩', 3000);
+                  toast(`图片大小 ${(file.size / 1024).toFixed(1)}KB（>2048KB），正在尝试自动压缩`, 3000);
                   console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩……`);
                   const compressedFile = await compressImageForRetry(file, actualFormat);
                   resetIllegalRetryState({ clearOriginalContent: false });
@@ -15107,7 +15107,7 @@ ${markedSwatchHtml}
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)",
+              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
@@ -16625,7 +16625,7 @@ function 注册自动保存编辑() {
                             <!-- <span class="h-threads-info-report-btn">
                               [<a href="/f/值班室" target="_blank">举报</a>]
                             </span> -->
-                            <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                            <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
                           </div>
                           <div class="h-threads-content">
                           </div>
