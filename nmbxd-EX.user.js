@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.12.0
+// @version      3.12.1
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -10025,38 +10025,211 @@ ${markedSwatchHtml}
       .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
     `;
   }
-  function openRightSidebarReplyWhenReady(retry = 0) {
-    const hasForm = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
+  function logRightSidebarDocker(stage, detail) {
+    try {
+      console.log('[rightSidebarDocker]', stage, detail || {});
+    } catch (e) {}
+  }
+  function getRightSidebarReplyForm() {
+    return document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
       || document.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]');
+  }
+  // 旧核可能不认 scrollTo({ top, behavior })；先对象写法，失败再回退坐标写法。
+  function scrollPageByDockerButton(kind) {
+    const beforeY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    const maxY = Math.max(
+      document.documentElement.scrollHeight || 0,
+      document.body.scrollHeight || 0
+    );
+    const targetY = kind === 'TOP' ? 0 : maxY;
+    let method = 'none';
+    let errorMessage = '';
+    try {
+      if (typeof window.scrollTo === 'function') {
+        try {
+          window.scrollTo({ top: targetY, left: 0, behavior: 'smooth' });
+          method = 'scrollTo-options-smooth';
+        } catch (optionsErr) {
+          window.scrollTo(0, targetY);
+          method = 'scrollTo-coords-after-options-throw';
+          errorMessage = optionsErr && optionsErr.message ? optionsErr.message : String(optionsErr);
+        }
+      } else if (typeof window.scroll === 'function') {
+        window.scroll(0, targetY);
+        method = 'scroll-coords';
+      } else {
+        document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+        method = 'scrollTop-assign';
+      }
+    } catch (err) {
+      errorMessage = err && err.message ? err.message : String(err);
+      try {
+        document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+        method = method === 'none' ? 'scrollTop-assign-fallback' : (method + '+scrollTop-fallback');
+      } catch (err2) {
+        errorMessage = (errorMessage ? errorMessage + ' | ' : '') + (err2 && err2.message ? err2.message : String(err2));
+        method = 'failed';
+      }
+    }
+    // 下一帧核对是否真的动了；旧核常“吃掉 options 且不抛错”，需再回退坐标写法
+    setTimeout(() => {
+      let afterY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      let moved = Math.abs(afterY - beforeY) > 1 || (kind === 'TOP' && afterY <= 1);
+      // TOP 时 before 已接近 0 也算到位；BOTTOM 需明显靠近 target
+      if (kind === 'BOTTOM') {
+        moved = Math.abs(afterY - beforeY) > 1 || afterY >= Math.max(0, targetY - 50);
+      }
+      if (!moved && method.indexOf('scrollTo-options') === 0) {
+        try {
+          window.scrollTo(0, targetY);
+          method = 'scrollTo-coords-after-options-noop';
+          afterY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+          moved = Math.abs(afterY - beforeY) > 1 || (kind === 'TOP' ? afterY <= 1 : afterY >= Math.max(0, targetY - 50));
+        } catch (coordErr) {
+          errorMessage = (errorMessage ? errorMessage + ' | ' : '') + (coordErr && coordErr.message ? coordErr.message : String(coordErr));
+          try {
+            document.documentElement.scrollTop = targetY;
+            if (document.body) document.body.scrollTop = targetY;
+            method = 'scrollTop-assign-after-options-noop';
+            afterY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            moved = Math.abs(afterY - beforeY) > 1 || (kind === 'TOP' ? afterY <= 1 : afterY >= Math.max(0, targetY - 50));
+          } catch (err3) {
+            method = 'failed';
+            errorMessage = (errorMessage ? errorMessage + ' | ' : '') + (err3 && err3.message ? err3.message : String(err3));
+          }
+        }
+      }
+      logRightSidebarDocker('scroll-result', {
+        kind,
+        method,
+        beforeY,
+        targetY,
+        afterY,
+        moved,
+        errorMessage: errorMessage || undefined,
+        supportsScrollTo: typeof window.scrollTo === 'function',
+      });
+    }, 50);
+    logRightSidebarDocker('scroll-attempt', {
+      kind,
+      method,
+      beforeY,
+      targetY,
+      errorMessage: errorMessage || undefined,
+    });
+  }
+  function openRightSidebarReplyWhenReady(retry = 0) {
+    const hasForm = getRightSidebarReplyForm();
+    logRightSidebarDocker('reply-click', {
+      retry,
+      hasForm: !!hasForm,
+      formAction: hasForm ? (hasForm.getAttribute('action') || '') : '',
+      readyState: document.readyState,
+    });
     if (hasForm) {
-      ensureRightSidebarReplyController().open();
+      try {
+        logRightSidebarDocker('reply-open-start', {
+          retry,
+          hasController: typeof ensureRightSidebarReplyController === 'function',
+        });
+        ensureRightSidebarReplyController().open();
+        logRightSidebarDocker('reply-open-called', { retry, ok: true });
+      } catch (err) {
+        logRightSidebarDocker('reply-open-called', {
+          retry,
+          ok: false,
+          errorMessage: err && err.message ? err.message : String(err),
+          errorStack: err && err.stack ? String(err.stack).slice(0, 500) : undefined,
+        });
+        if (typeof toast === 'function') toast('打开回复浮窗失败，请查看控制台日志');
+      }
       return;
     }
     if (retry < 12) {
+      logRightSidebarDocker('reply-wait-form', { retry, nextRetryInMs: 80 });
       setTimeout(() => openRightSidebarReplyWhenReady(retry + 1), 80);
       return;
     }
+    logRightSidebarDocker('reply-form-missing', {
+      retry,
+      replyFormCount: document.querySelectorAll('form[action="/Home/Forum/doReplyThread.html"]').length,
+      postFormCount: document.querySelectorAll('#h-post-form form[action="/Home/Forum/doPostThread.html"]').length,
+    });
     if (typeof toast === 'function') toast('未找到回复/发串表单');
   }
   function bindRightSidebarReplyButton(docker) {
-    const replyBtn = docker?.querySelector('[data-type="REPLY"]');
-    if (!replyBtn || replyBtn.dataset.xdexReplyDockBound === '1') return;
+    if (!docker || !docker.querySelector) {
+      logRightSidebarDocker('reply-bind-skip', { reason: 'no-docker' });
+      return;
+    }
+    const replyBtn = docker.querySelector('[data-type="REPLY"]');
+    if (!replyBtn) {
+      logRightSidebarDocker('reply-bind-skip', { reason: 'no-reply-btn' });
+      return;
+    }
+    if (replyBtn.dataset.xdexReplyDockBound === '1') {
+      logRightSidebarDocker('reply-bind-skip', { reason: 'already-bound' });
+      return;
+    }
     replyBtn.dataset.xdexReplyDockBound = '1';
-    replyBtn.addEventListener('click', () => openRightSidebarReplyWhenReady());
+    replyBtn.addEventListener('click', function onDockerReplyClick(e) {
+      logRightSidebarDocker('reply-btn-event', {
+        type: e && e.type,
+        readyState: document.readyState,
+      });
+      openRightSidebarReplyWhenReady();
+    });
+    logRightSidebarDocker('reply-bind-ok', {
+      bound: true,
+      hasClickListenerMarker: replyBtn.dataset.xdexReplyDockBound === '1',
+    });
   }
   function bindRightSidebarShellButtons(docker) {
-    if (!docker) return;
+    if (!docker) {
+      logRightSidebarDocker('shell-bind-skip', { reason: 'no-docker' });
+      return;
+    }
     const supportsHasSelector = !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))'));
-    if (docker.dataset.xdexSidebarShellBound !== '1') {
+    const alreadyBound = docker.dataset.xdexSidebarShellBound === '1';
+    if (!alreadyBound) {
       docker.dataset.xdexSidebarShellBound = '1';
       if (!supportsHasSelector) {
-        docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
-        docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+        docker.addEventListener('mouseenter', function onDockerEnter() {
+          docker.classList.add('is-hover');
+        });
+        docker.addEventListener('mouseleave', function onDockerLeave() {
+          docker.classList.remove('is-hover');
+        });
       }
       const topBtn = docker.querySelector('[data-type="TOP"]');
       const bottomBtn = docker.querySelector('[data-type="BOTTOM"]');
-      topBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-      bottomBtn?.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
+      if (topBtn) {
+        topBtn.addEventListener('click', function onDockerTopClick(e) {
+          logRightSidebarDocker('top-btn-event', { type: e && e.type });
+          scrollPageByDockerButton('TOP');
+        });
+      }
+      if (bottomBtn) {
+        bottomBtn.addEventListener('click', function onDockerBottomClick(e) {
+          logRightSidebarDocker('bottom-btn-event', { type: e && e.type });
+          scrollPageByDockerButton('BOTTOM');
+        });
+      }
+      logRightSidebarDocker('shell-bind-ok', {
+        supportsHasSelector,
+        hoverFallbackBound: !supportsHasSelector,
+        topBound: !!topBtn,
+        bottomBound: !!bottomBtn,
+        topTag: topBtn ? topBtn.tagName : '',
+        bottomTag: bottomBtn ? bottomBtn.tagName : '',
+      });
+    } else {
+      logRightSidebarDocker('shell-bind-skip', {
+        reason: 'already-bound',
+        supportsHasSelector,
+      });
     }
     bindRightSidebarReplyButton(docker);
   }
