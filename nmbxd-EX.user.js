@@ -10016,7 +10016,9 @@ ${markedSwatchHtml}
         transition: opacity .06s ease;
       }
       .hld__docker:hover .hld__docker-btns>div,
-      .hld__docker.is-hover .hld__docker-btns>div,
+      .hld__docker.is-hover .hld__docker-btns>div {
+        opacity: 1; pointer-events: auto;
+      }
       .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div {
         opacity: 1; pointer-events: auto;
       }
