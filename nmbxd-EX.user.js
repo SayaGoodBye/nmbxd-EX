@@ -136,6 +136,17 @@
   }
   const toastQueue = [];
   let isShowing = false;
+  let refreshStatusGeneration = 0;
+  function beginRefreshStatus() {
+    refreshStatusGeneration += 1;
+    return refreshStatusGeneration;
+  }
+  function isCurrentRefreshStatus(generation) {
+    return generation === refreshStatusGeneration;
+  }
+  function showRefreshStatus(msg, duration = 900) {
+    return toast(msg, duration, { queue: false, key: 'refresh-status' });
+  }
 
   function toast(msg, duration = 1800, options = {}) {
     if (options.queue === false) {
@@ -175,6 +186,13 @@
         background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
         border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
       $('body').append($t);
+    }
+    if (safeKey === 'refresh-status') {
+      $t.css({
+        background: '#242424',
+        boxShadow: '0 4px 16px rgba(0,0,0,.55)',
+        fontWeight: 'bold',
+      });
     }
     const el = $t[0];
     const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
@@ -7125,9 +7143,11 @@ ${markedSwatchHtml}
       // 刷新目标回复区（主页面回复区 或 data-cloned-page = 最大的克隆页）并检查是否有下一页
       // done(result) 回调会收到 { status: 'last'|'hasNext'|'error', nextPage?: number }
       // Phase2：定区/增量/分页走共享核；末页判定与 toast 仍在本包装
-      function refreshRepliesAndCheckNext(done, options = {}) {
+      function refreshRepliesAndCheckNext(done, options = {}, refreshGeneration) {
         const showResultToast = options.showResultToast !== false;
         const suppressResultToastOnHasNext = options.suppressResultToastOnHasNext !== false;
+        const activeGeneration = refreshGeneration == null ? beginRefreshStatus() : refreshGeneration;
+        if (!isCurrentRefreshStatus(activeGeneration)) return;
         try {
           const domMaxPage = getDomLastPageNum();
           const maxCloned = getMaxClonedPageInDOM();
@@ -7138,7 +7158,7 @@ ${markedSwatchHtml}
           const list = getRealThreadsList(document);
           if (!list) {
             console.warn('[refreshReplies] 未找到 .h-threads-list');
-            toast('刷新回复失败，该串可能已被删除');
+            showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
             return done && done({ status: "error" });
           }
           const pageAttr = maxCloned > 0 ? maxCloned : 0;
@@ -7169,7 +7189,7 @@ ${markedSwatchHtml}
               const newList = getRealThreadsList(doc);
               if (!newList) {
                 console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-list');
-                toast('刷新回复失败，该串可能已被删除');
+                showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
                 return done && done({ status: "error" });
               }
               const newReplies = newList.querySelector('.h-threads-item-replies');
@@ -7205,7 +7225,7 @@ ${markedSwatchHtml}
               })();
               if (userCount < 19) {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
@@ -7217,7 +7237,7 @@ ${markedSwatchHtml}
                 return;
               } else {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
@@ -7225,8 +7245,8 @@ ${markedSwatchHtml}
             })
             .catch(err => {
               console.error('refreshRepliesAndCheckNext error:', err);
-              toast('刷新回复区失败');
-              if (typeof done === 'function') done({ status: 'error' });
+          if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新回复区失败', 1800);
+          if (typeof done === 'function') done({ status: 'error' });
             });
         } catch (err) {
           console.error('refreshRepliesAndCheckNext pre error:', err);
@@ -7245,19 +7265,20 @@ ${markedSwatchHtml}
       // }
       // Phase3-3：刷新检查结果共用处理（刷新按钮 click / loadNext 末页旁路）
       // 语义：error 静默；hasNext → toast + prepareForceLoadNext + 延迟 loadNext；last → 已更新/无更新
-      function handleSeamlessRefreshCheckResult(result) {
+      function handleSeamlessRefreshCheckResult(result, refreshGeneration) {
         if (!result || result.status === 'error') return;
+        if (!isCurrentRefreshStatus(refreshGeneration)) return;
         if (result.status === 'hasNext' && result.nextPage) {
-          toast(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700, { queue: false, key: 'refresh-status' });
+          showRefreshStatus(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700);
           // 旧：内联状态回退（已统一到 prepareForceLoadNext）
           // loadedPages.delete(result.nextPage);
           // loading = false;
           // lastLoadedPage = result.nextPage - 1;
           // lastCheckAt = 0;
           prepareForceLoadNext(result.nextPage);
-          setTimeout(() => loadNext(), 50);
+          setTimeout(() => loadNext(refreshGeneration), 50);
         } else if (result.status === 'last') {
-          toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' });
+          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新');
         }
       }
       // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）
@@ -7323,9 +7344,14 @@ ${markedSwatchHtml}
         // 点击触发“局部刷新 → 若有下一页则无缝翻页”
         btn.addEventListener('click', () => {
           try {
-            toast("正在刷新……", 1500, { queue: false, key: 'refresh-status' });
+            const refreshGeneration = beginRefreshStatus();
+            showRefreshStatus("正在刷新……", 1500);
             // 旧：内联 hasNext/last 分支（已抽到 handleSeamlessRefreshCheckResult）
-            refreshRepliesAndCheckNext(handleSeamlessRefreshCheckResult, { showResultToast: false });
+            refreshRepliesAndCheckNext(
+              (result) => handleSeamlessRefreshCheckResult(result, refreshGeneration),
+              { showResultToast: false },
+              refreshGeneration
+            );
           } catch (e) {
             console.warn('刷新按钮触发失败:', e);
           }
@@ -7365,7 +7391,9 @@ ${markedSwatchHtml}
         globalObserver.observe(document.body, { childList: true, subtree: true });
       }
       // 串内页加载
-      async function loadNext() {
+      async function loadNext(refreshGeneration) {
+        const activeGeneration = refreshGeneration == null ? beginRefreshStatus() : refreshGeneration;
+        if (!isCurrentRefreshStatus(activeGeneration)) return;
         const loadNextStarted = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
         startupPerfDebug.mark('seamless.loadNext.start', { lastLoadedPage, loading, done });
         seamlessDebugLog('[loadNext] 函数被调用');
@@ -7419,7 +7447,12 @@ ${markedSwatchHtml}
           }
           // 👉 每次末页判定时，都刷新最新回复区和分页
           // 旧：内联 hasNext/last 分支（Phase3-3 已抽到 handleSeamlessRefreshCheckResult）
-          refreshRepliesAndCheckNext(handleSeamlessRefreshCheckResult, { showResultToast: false });
+          const refreshGeneration = beginRefreshStatus();
+          refreshRepliesAndCheckNext(
+            (result) => handleSeamlessRefreshCheckResult(result, refreshGeneration),
+            { showResultToast: false },
+            refreshGeneration
+          );
           return;
         }
         // if (loading) return;
@@ -7440,12 +7473,12 @@ ${markedSwatchHtml}
         seamlessDebugLog('[loadNext] 准备加载页码:', nextPageNum);
         const nextUrl = computeNextUrl();
         if (!nextUrl) { return; }
-        toast(`正在加载第 ${nextPageNum} 页……`);
+        showRefreshStatus(`正在加载第 ${nextPageNum} 页……`, 900);
         loading = true;
         try {
           const res = await startupPerfDebug.measureAsync('seamless.loadNext.fetch', () => fetch(nextUrl, { credentials: 'same-origin' }), { nextPageNum, nextUrl });
           if (!res.ok) {
-              toast('刷新失败，网络错误');
+              if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新失败，网络错误', 1800);
               return;
           }
           const html = await startupPerfDebug.measureAsync('seamless.loadNext.responseText', () => res.text(), { nextPageNum });
@@ -14030,7 +14063,7 @@ ${markedSwatchHtml}
                 ? parsePaginationPageNum(nextLink.getAttribute('href') || nextLink.href || '')
                 : null;
               if (nextPageNum) {
-                toast('发现' + nextPageNum + '页，正在加载……');
+                if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('发现' + nextPageNum + '页，正在加载……', 700);
                 if (window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
                   setTimeout(() => {
                     window.SeamlessPaging.loadNext();

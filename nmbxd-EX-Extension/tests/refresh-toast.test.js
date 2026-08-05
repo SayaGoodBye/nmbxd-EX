@@ -34,14 +34,70 @@ function testImmediateToastUsesGenerationGuard() {
 }
 
 function testRefreshStatusUsesImmediateToastKey() {
+
   const refreshStatusCalls = (source.match(/key:\s*['"]refresh-status['"]/g) || []).length;
-  assert(refreshStatusCalls >= 4, 'refresh status toasts should consistently use the immediate refresh-status key');
-  assert(source.includes("toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' })"), 'manual/auto refresh result should use immediate refresh-status toast');
+
+  assert(refreshStatusCalls >= 1, 'refresh status channel should define the immediate refresh-status key');
+
+  assert(source.includes("showRefreshStatus(result.hasUpdate ? '已更新' : '无更新')"), 'manual/auto refresh result should use the dedicated refresh-status toast');
+
 }
 
-const tests = [
-  testImmediateToastUsesGenerationGuard,
-  testRefreshStatusUsesImmediateToastKey,
+
+
+function testRefreshStatusHasDedicatedChannel() {
+
+  assert(source.includes('function showRefreshStatus('), 'refresh status should use a dedicated toast channel');
+
+  assert(source.includes("key: 'refresh-status'"), 'refresh status channel should keep its dedicated key');
+
+  assert(source.includes('function beginRefreshStatus('), 'refresh status should create a generation token');
+
+  assert(source.includes('function isCurrentRefreshStatus('), 'refresh status should validate generation tokens');
+
+}
+
+
+
+function testRefreshChainPassesGenerationToken() {
+
+  const refreshBody = extractFunction('refreshRepliesAndCheckNext');
+
+  const resultBody = extractFunction('handleSeamlessRefreshCheckResult');
+
+  assert(source.includes('function refreshRepliesAndCheckNext(done, options = {}, refreshGeneration)'), 'refresh check should carry a refresh generation');
+
+  assert(resultBody.includes('refreshGeneration'), 'refresh result handler should validate the refresh generation');
+
+  assert(resultBody.includes('isCurrentRefreshStatus(refreshGeneration)'), 'stale refresh results must be ignored');
+
+}
+
+
+
+function testRefreshPathDoesNotUseQueuedToast() {
+
+  const refreshBody = extractFunction('refreshRepliesAndCheckNext');
+
+  const resultBody = extractFunction('handleSeamlessRefreshCheckResult');
+
+  const buttonBody = extractFunction('ensureSeamlessRefreshButtonNode');
+
+  assert(!/toast\((?![^\n]*queue:\s*false)/.test(refreshBody), 'refresh check must not enqueue ordinary toasts');
+
+  assert(!/toast\((?![^\n]*queue:\s*false)/.test(resultBody), 'refresh result must not enqueue ordinary toasts');
+
+  assert(!/toast\((?![^\n]*queue:\s*false)/.test(buttonBody), 'refresh button must not enqueue ordinary toasts');
+
+}
+
+
+const tests = [
+  testImmediateToastUsesGenerationGuard,
+  testRefreshStatusUsesImmediateToastKey,
+  testRefreshStatusHasDedicatedChannel,
+  testRefreshChainPassesGenerationToken,
+  testRefreshPathDoesNotUseQueuedToast,
 ];
 
 for (const test of tests) test();
