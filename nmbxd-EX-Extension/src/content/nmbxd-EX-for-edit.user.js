@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.12.1
+// @version      3.12.2
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -13365,11 +13365,19 @@ ${markedSwatchHtml}
           const _isBoardOrTimeline = /^\/f\//.test(location.pathname) || /\/Forum\/timeline\/id\/\d+/i.test(location.pathname);
           if (!_isBoardOrTimeline) {
             try {
-              refreshRepliesWithSeamlessPaging(() => {
-                // 刷新完成（翻页逻辑已在内部处理）
-                recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
-                console.log('回复区刷新完成');
-              }, { getConfig: safeGetConfig });
+              // 错峰 150ms 发起：避开发送后发言历史回查（getLastPost/ref/thread api）的并发峰值
+              setTimeout(() => {
+                refreshRepliesWithSeamlessPaging((result) => {
+                  const ok = !(result && result.ok === false);
+                  // 刷新完成（翻页逻辑已在内部处理）
+                  recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
+                  if (ok) {
+                    console.log('回复区刷新完成');
+                  } else {
+                    console.warn('回复区刷新失败', result && result.reason);
+                  }
+                }, { getConfig: safeGetConfig });
+              }, 150);
             } catch (err) {
               console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
             }
@@ -13975,8 +13983,26 @@ ${markedSwatchHtml}
         fetchUrl = location.href;
       }
       try { console.log('[refreshRepliesWithSeamlessPaging] fetchUrl', fetchUrl); } catch (e) {}
-      fetch(fetchUrl, { credentials: 'include' })
-        .then(res => res.text())
+      // 网络层失败重试：最多 2 次退避（300ms/800ms），连续失败才走外层 catch
+      const fetchTextWithRetry = (url, attempt = 0) => {
+        return fetch(url, { credentials: 'include' })
+          .then((res) => res.text())
+          .catch((err) => {
+            console.error('[refreshRepliesWithSeamlessPaging] fetch failed', {
+              url,
+              attempt,
+              name: err && err.name,
+              message: err && err.message,
+              at: Date.now()
+            });
+            if (attempt < 2) {
+              return new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 300 : 800))
+                .then(() => fetchTextWithRetry(url, attempt + 1));
+            }
+            throw err;
+          });
+      };
+      fetchTextWithRetry(fetchUrl)
         .then(html => {
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const newList = getRealThreadsList(doc);
@@ -14063,7 +14089,8 @@ ${markedSwatchHtml}
                 ? parsePaginationPageNum(nextLink.getAttribute('href') || nextLink.href || '')
                 : null;
               if (nextPageNum) {
-                if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('发现' + nextPageNum + '页，正在加载……', 700);
+                // 发送成功后的单次刷新无代际并发，不引用其他函数的 activeGeneration（跨作用域 ReferenceError）
+                showRefreshStatus('发现' + nextPageNum + '页，正在加载……', 700);
                 if (window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
                   setTimeout(() => {
                     window.SeamlessPaging.loadNext();
@@ -14079,9 +14106,15 @@ ${markedSwatchHtml}
           } catch (e) {}
           if (typeof done === 'function') done();
         })
-        .catch(() => {
-          toast('刷新回复区失败');
-          if (typeof done === 'function') done();
+        .catch((err) => {
+          console.error('[refreshRepliesWithSeamlessPaging] refresh failed', {
+            url: fetchUrl,
+            name: err && err.name,
+            message: err && err.message,
+            at: Date.now()
+          });
+          toast('刷新回复区失败，可能已有新回复，请手动刷新');
+          if (typeof done === 'function') done({ ok: false, reason: 'fetch-failed' });
         });
     }
   function isCookieDropdownShortcut(e) {
@@ -14946,6 +14979,28 @@ ${markedSwatchHtml}
             const panel = document.createElement('div');
             panel.className = 'kaomoji-panel';
             //panel.tabIndex = -1; // 👈 添加：使 panel 可以接收焦点
+            // 复制颜文字：右键菜单与键盘 C 共用；成功/失败反馈一致，焦点回到对应文本框
+            function copyKaomojiValue(value) {
+              const textarea = (select && select.closest && select.closest('form'))
+                ? select.closest('form').querySelector('textarea.h-post-form-textarea[name="content"]')
+                : null;
+              const restoreFocus = () => {
+                try {
+                  if (textarea && typeof textarea.focus === 'function') textarea.focus();
+                } catch (e) {}
+              };
+              return writeClipboardText(value, null)
+                .then(() => {
+                  toast('颜文字已复制', 900, { queue: false, key: 'kaomoji-copy' });
+                  hidePanel();
+                  restoreFocus();
+                })
+                .catch((err) => {
+                  console.warn('[kaomoji] copy failed:', err);
+                  toast('颜文字复制失败', 900, { queue: false, key: 'kaomoji-copy' });
+                  restoreFocus();
+                });
+            }
             function renderPanelItems() {
               while (panel.firstChild) panel.removeChild(panel.firstChild);
               const options = getSortedKaomojiOptions(select);
@@ -14962,17 +15017,10 @@ ${markedSwatchHtml}
                   trigger.textContent = opt.textContent || '选择颜文字';
                   hidePanel();
                 });
-                item.addEventListener('contextmenu', async (e) => {
+                item.addEventListener('contextmenu', (e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  try {
-                    await writeClipboardText(opt.value, null);
-                    toast('颜文字已复制', 900, { queue: false, key: 'kaomoji-copy' });
-                    hidePanel();
-                  } catch (err) {
-                    console.warn('[kaomoji] copy failed:', err);
-                    toast('颜文字复制失败', 900, { queue: false, key: 'kaomoji-copy' });
-                  }
+                  copyKaomojiValue(opt.value);
                 });
                 panel.appendChild(item);
               });
@@ -15276,6 +15324,14 @@ ${markedSwatchHtml}
                 } else if (e.key === 'Enter' || key === ' ') {
                     e.preventDefault();
                     items[currentIndex].click();
+                    return;
+                } else if (key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    // 焦点在面板内时，按 C 复制当前高亮颜文字（与右键复制一致）
+                    const activeEl = document.activeElement;
+                    if (panel.contains(activeEl) && items[currentIndex] && items[currentIndex].dataset && items[currentIndex].dataset.value) {
+                        e.preventDefault();
+                        copyKaomojiValue(items[currentIndex].dataset.value);
+                    }
                     return;
                 }
                 if (newIndex !== currentIndex) {
