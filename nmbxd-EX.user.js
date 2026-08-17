@@ -29,6 +29,8 @@
 // @connect      scriptcat.org
 // @connect      code.jquery.com
 // @connect      unpkg.com
+// @connect      *
+// 说明：* 通配允许 GM_xmlhttpRequest 访问任意域名，用于用户自定义 WebDAV 地址（无需手动逐域授权）
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
 // @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
@@ -564,6 +566,8 @@
           if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
           this.syncInputs();
           this.syncAuxiliaryControls();
+          // 面板渲染后回填 WebDAV 已保存配置（tag29），避免需先点击输入框才显示
+          try { if (typeof ensureWebdavConfigInPanel === 'function') ensureWebdavConfigInPanel(); } catch (e) {}
           try { renderFavoriteThreadsMenu(); } catch (e) {}
           try { refreshFilterDisplay(this.state); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
@@ -1264,8 +1268,27 @@
                         <input type="checkbox" id="sp_fullExport_cookiePrefs" class="xdex-switch" role="switch" checked>
                         <label for="sp_fullExport_cookiePrefs">串内饼干偏好</label>
                       </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_webdav" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_webdav">WebDAV 配置</label>
+                      </div>
                     </div>
                     <div id="sp_fullExport_import_preview" style="display:none;margin-top:8px;padding:6px 8px;border:1px dashed #aaa;border-radius:6px;background:#FFFFEE;"></div>
+                    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ccc;">
+                      <div style="font-weight:bold;margin-bottom:6px;">WebDAV 备份/同步</div>
+                      <div style="display:flex;flex-direction:column;gap:6px;">
+                        <input id="sp_webdavUrl" type="text" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <input id="sp_webdavUsername" type="text" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <input id="sp_webdavPassword" type="password" placeholder="密码" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input id="sp_webdavAutoSync" type="checkbox"> 进入页面后自动同步</label>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                          <button id="btn_webdavCheck" type="button" style="padding:4px 10px;">检查连接</button>
+                          <button id="btn_webdavSync" type="button" style="padding:4px 10px;">手动同步</button>
+                          <button id="btn_sp_webdavSave" type="button" style="padding:4px 10px;">保存</button>
+                        </div>
+                        <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;"></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 </div>
@@ -2467,6 +2490,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (selection.cookiePrefs) {
           payload.cookiePrefs = GM_getValue('xdex_thread_cookie_prefs', {});
         }
+        if (selection.webdav) {
+          try { payload.webdavConfig = GM_getValue(WEBDAV_CONFIG_KEY, null); } catch (e) { payload.webdavConfig = null; }
+        }
         return payload;
       }
       function buildFullExportFile(selection) {
@@ -2479,13 +2505,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           file: {
             meta: { format: 'xdex-full-export', schemaVersion: FULL_EXPORT_SCHEMA_VERSION, exportedAt: now.toISOString(), source: 'nmbxd-EX', scriptVersion, platform },
             selection,
-            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate', cookiePrefs: 'merge' },
+            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate', cookiePrefs: 'merge', webdav: 'override' },
             summary: {
               threadHistoryCount: selection.threadHistory ? Object.keys((payload.threadHistory || {}).items || {}).length : 0,
               postHistoryCount: selection.postHistory ? Object.keys((payload.postHistory || {}).items || {}).length : 0,
               draftCount: selection.drafts ? (payload.drafts.registry || []).length : 0,
               kaomojiStatsEntries: selection.kaomojiStats ? Object.keys(payload.kaomojiStats || {}).length : 0,
               cookiePrefsCount: selection.cookiePrefs ? Object.keys(payload.cookiePrefs || {}).length : 0,
+              webdavConfig: selection.webdav && payload.webdavConfig ? 1 : 0,
             },
             payload
           },
@@ -2548,9 +2575,19 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           GM_setValue('xdex_thread_cookie_prefs', merged);
           report.cookiePrefs = { mode: 'merge', count: Object.keys(merged).length };
         }
+        if (payload.webdavConfig && typeof payload.webdavConfig === 'object') {
+          try { GM_setValue(WEBDAV_CONFIG_KEY, payload.webdavConfig); } catch (e) {}
+          report.webdavConfig = { mode: 'override', changed: true };
+        }
 
         return report;
       }
+      // 暴露给 tag29 WebDAV 使用：本组工具位于 render 嵌套作用域，顶层不可见
+      window.__xdexWebdavUtils = {
+        buildFullExportFile,
+        parseFullExportFile,
+        applyFullImportPayload
+      };
       // === 使用数据导入导出 end ===
       function buildJSONC(state) {
         const filtered = {};
@@ -2563,7 +2600,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             exportedAt: new Date().toISOString(),
             source: 'nmbxd-EX'
           },
-          settings: filtered
+          settings: filtered,
+          webdavConfig: (function () {
+            try { return GM_getValue(WEBDAV_CONFIG_KEY, null); } catch (e) { return null; }
+          })()
         };
         const lines = JSON.stringify(meta, null, 2).split('\n');
         // 在 _meta 前加注释，在 settings 闭合括号前加尾随逗号
@@ -2610,6 +2650,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const incoming = parsed.settings || parsed;
         const merged = validateImport(incoming);
         if (!merged) return;
+        // WebDAV 配置随设置文件一并导入（独立 GM key，不进 settings 白名单）
+        if (parsed && parsed.webdavConfig && typeof parsed.webdavConfig === 'object') {
+          try { GM_setValue(WEBDAV_CONFIG_KEY, parsed.webdavConfig); } catch (e) {}
+        }
         SettingPanel.__pendingImport = merged;
         // 显示保存按钮
         $('#btn_sp_importExport').removeClass('xdex-inv');
@@ -2691,7 +2735,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
           cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
-          cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
+          webdav: $('#sp_fullExport_webdav').is(':checked')
         };
         if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
         const parts = [];
@@ -2701,6 +2745,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (selection.drafts) parts.push('草稿');
         if (selection.kaomojiStats) parts.push('颜文字统计');
         if (selection.cookiePrefs) parts.push('串内饼干偏好');
+        if (selection.webdav) parts.push('WebDAV 配置');
         if (!window.confirm(`确定要清除以下项目的全部内容吗？\n\n${parts.join('、')}\n\n清除后页面将自动刷新。`)) return;
         try {
           if (selection.settings) GM_setValue(SettingPanel.key, {});
@@ -2712,6 +2757,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           }
           if (selection.kaomojiStats) GM_setValue('kaomojiUsageStats', {});
           if (selection.cookiePrefs) GM_setValue('xdex_thread_cookie_prefs', {});
+          if (selection.webdav) GM_setValue(WEBDAV_CONFIG_KEY, {});
           toast('已清除所选项目，即将刷新');
           setTimeout(() => location.reload(), 800);
         } catch (err) {
@@ -2726,6 +2772,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           postHistory: $('#sp_fullExport_postHistory').is(':checked'),
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+          cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
+          webdav: $('#sp_fullExport_webdav').is(':checked')
         };
         if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
         const fileData = buildFullExportFile(selection);
@@ -2763,6 +2811,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (summary.draftCount) html += `<li>草稿: ${summary.draftCount} 条</li>`;
         if (summary.kaomojiStatsEntries) html += `<li>颜文字统计: ${summary.kaomojiStatsEntries} 项</li>`;
         if (summary.cookiePrefsCount) html += `<li>串内饼干偏好: ${summary.cookiePrefsCount} 条</li>`;
+        if (summary.webdavConfig) html += '<li>WebDAV 配置（覆盖导入）</li>';
         if (data.selection && data.selection.settings) html += '<li>设置配置（合并导入）</li>';
         html += '</ul>';
         html += '<div style="color:#666;margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
@@ -25350,6 +25399,336 @@ function 注册自动保存编辑() {
       observer.observe(document.body, { childList: true, subtree: true });
     }
   }
+
+  /* --------------------------------------------------
+   * tag 29. WebDAV 备份/同步
+   * -------------------------------------------------- */
+  const WEBDAV_CONFIG_KEY = 'xdex_webdav_config';
+  const WEBDAV_SYNC_FILE = 'xdex-webdav-sync.json';
+  function getWebdavConfig() {
+    try {
+      const saved = typeof GM_getValue === 'function' ? GM_getValue(WEBDAV_CONFIG_KEY, {}) : {};
+      return Object.assign({ url: '', username: '', password: '', autoSync: false, lastSyncAt: 0 }, saved);
+    } catch (e) {
+      return { url: '', username: '', password: '', autoSync: false, lastSyncAt: 0 };
+    }
+  }
+  function storeWebdavConfig(cfg) {
+    try { if (typeof GM_setValue === 'function') GM_setValue(WEBDAV_CONFIG_KEY, cfg); } catch (e) {}
+    return cfg;
+  }
+  function ensureWebdavConfigInPanel() {
+    const cfg = getWebdavConfig();
+    const $url = $('#sp_webdavUrl');
+    if (!$url.length) return;
+    if (!$url.val()) $url.val(cfg.url);
+    if (!$('#sp_webdavUsername').val()) $('#sp_webdavUsername').val(cfg.username);
+    if (!$('#sp_webdavPassword').val()) $('#sp_webdavPassword').val(cfg.password);
+    $('#sp_webdavAutoSync').prop('checked', cfg.autoSync);
+  }
+  function saveWebdavConfigFromPanel(showToast) {
+    const cfg = {
+      url: String($('#sp_webdavUrl').val() || '').trim(),
+      username: String($('#sp_webdavUsername').val() || '').trim(),
+      password: String($('#sp_webdavPassword').val() || ''),
+      autoSync: !!$('#sp_webdavAutoSync').is(':checked'),
+      lastSyncAt: getWebdavConfig().lastSyncAt || 0
+    };
+    storeWebdavConfig(cfg);
+    if (showToast && typeof toast === 'function') toast('WebDAV 配置已保存');
+  }
+  function webdavRequest(details) {
+    return new Promise((resolve) => {
+      if (typeof GM_xmlhttpRequest !== 'function') {
+        resolve({ ok: false, status: 0, unavailable: true });
+        return;
+      }
+      let settled = false;
+      const settle = (result) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      const req = {
+        method: details.method || 'GET',
+        url: details.url,
+        headers: details.headers || {},
+        data: details.body || null,
+        responseType: details.responseType || 'text',
+        timeout: details.timeout || 10000,
+        onload: (resp) => settle({
+          ok: resp.status >= 200 && resp.status < 300,
+          status: resp.status,
+          statusText: resp.statusText || '',
+          responseText: resp.responseText || ''
+        }),
+        onerror: (err) => {
+          console.error('[webdav] 请求 onerror', {
+            url: details.url,
+            method: details.method || 'GET',
+            name: err && err.name,
+            message: err && err.message ? String(err.message) : '(空)',
+            rawError: err
+          });
+          settle({
+            ok: false,
+            status: 0,
+            networkError: true,
+            errorMessage: err && err.message ? String(err.message) : ''
+          });
+        },
+        ontimeout: () => settle({ ok: false, status: 0, timeout: true })
+      };
+      try {
+        GM_xmlhttpRequest(req);
+      } catch (err) {
+        console.error('[webdav] GM_xmlhttpRequest 调用异常', err);
+        settle({ ok: false, status: 0, callError: err && err.message ? String(err.message) : String(err) });
+      }
+      // 兜底：即使管理器的 onload/onerror/ontimeout 全部未触发，也避免 Promise 永久挂起
+      setTimeout(() => settle({ ok: false, status: 0, timeout: true, hanging: true }), (details.timeout || 10000) + 3000);
+    });
+  }
+  function buildWebdavAuthHeader(cfg) {
+    const raw = cfg.username + ':' + cfg.password;
+    return 'Basic ' + btoa(unescape(encodeURIComponent(raw)));
+  }
+  function webdavBaseUrl(cfg) {
+    return String(cfg.url || '').replace(/\/+$/, '') + '/';
+  }
+  async function checkWebdavConnection(cfg) {
+    const headers = { Authorization: buildWebdavAuthHeader(cfg) };
+    const url = webdavBaseUrl(cfg);
+    const isPlainHttp = /^http:\/\//i.test(url);
+    if (isPlainHttp) {
+      // Firefox 扩展环境默认 CSP 带 upgrade-insecure-requests，http:// 可能被升级为 https:// 导致失败
+      console.warn('[webdav] HTTP 明文地址提示', { url, note: 'Firefox/Tampermonkey 可能拦截或升级明文 HTTP 请求，建议启用 HTTPS' });
+    }
+    // 用 GET 探测：GET 是浏览器/脚本环境都支持的基础方法，PROPFIND 在部分脚本管理器不可用
+    console.log('[webdav] 检查连接请求', { method: 'GET', url });
+    const r = await webdavRequest({ url, method: 'GET', headers });
+    if (r.unavailable) return { ok: false, message: 'GM_xmlhttpRequest 不可用' };
+    if (r.callError) return { ok: false, message: 'GM_xmlhttpRequest 异常：' + r.callError };
+    if (r.hanging) return { ok: false, message: '请求无响应（脚本管理器未触发回调），请重试或检查脚本版本' };
+      if (r.networkError) {
+      const msg = r.errorMessage || '';
+      // Tampermonkey 未授权域名时 onerror 会带 denied/connect 提示
+      if (/denied|not allowed|connect/i.test(msg)) {
+        return { ok: false, message: '请求被脚本管理器拦截：请在 Tampermonkey/脚本管理器中授权该 WebDAV 域名（或将其加入脚本 @connect）' };
+      }
+      const plainHttp = /^http:\/\//i.test(url);
+      return {
+        ok: false,
+        message: '网络错误：无法连接到服务器'
+          + (plainHttp ? '（注意：当前为 HTTP 明文地址，请确认服务器可达，若可建议改用 HTTPS）' : '')
+          + (msg ? '（' + msg.slice(0, 160) + '）' : '')
+      };
+      }
+    if (r.timeout) return { ok: false, message: '连接超时' };
+    if (r.status === 401 || r.status === 403) return { ok: false, message: '认证失败（HTTP ' + r.status + '），请检查账户与密码' };
+    if (r.status === 0) return { ok: false, message: '请求失败' };
+    // 404/405/207 等均说明服务器可达且认证通过（目录无 index / 不支持 GET 均属正常）
+    if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(r.status) >= 0) {
+      return { ok: true, message: '连接成功（HTTP ' + r.status + '）' };
+    }
+    return { ok: false, message: '异常响应 HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : '') };
+  }
+  function setWebdavStatus(text) {
+    const $el = $('#sp_webdavStatus');
+    if ($el && $el.length) $el.text(text);
+  }
+  function webdavFullSelection() {
+    return { settings: true, threadHistory: true, postHistory: true, drafts: true, kaomojiStats: true, cookiePrefs: true, webdav: true };
+  }
+  function getWebdavUtils() {
+    // full-export 工具定义在 SettingPanel.render 嵌套作用域，需先打开过一次设置面板（按钮本身在面板内）
+    return window.__xdexWebdavUtils || null;
+  }
+  async function webdavUploadLocal(cfg, headers) {
+    const utils = getWebdavUtils();
+    if (!utils || typeof utils.buildFullExportFile !== 'function') {
+      return { ok: false, status: 0, missingUtils: true };
+    }
+    const built = utils.buildFullExportFile(webdavFullSelection());
+    const put = await webdavRequest({
+      url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE,
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(built.file)
+    });
+    return { ok: put.status >= 200 && put.status < 300, status: put.status };
+  }
+  async function webdavSyncCore(cfg, silent) {
+    const notify = (t) => { if (!silent && typeof toast === 'function') toast(t); };
+    setWebdavStatus('同步中……');
+    const conn = await checkWebdavConnection(cfg);
+    if (!conn.ok) {
+      setWebdavStatus(conn.message);
+      if (!silent) notify('WebDAV 同步失败：' + conn.message);
+      return { ok: false, reason: 'connection' };
+    }
+    const headers = { Authorization: buildWebdavAuthHeader(cfg) };
+    const remoteUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
+    const remote = await webdavRequest({ url: remoteUrl, method: 'GET', headers });
+    if (remote.status === 404) {
+      // 远端无数据：上传本地
+      const up = await webdavUploadLocal(cfg, headers);
+      if (up.ok) {
+        const now = Date.now();
+        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
+        setWebdavStatus('远端无数据，本地数据已上传（' + new Date(now).toLocaleString() + '）');
+        notify('WebDAV：本地数据已上传');
+        return { ok: true, direction: 'upload' };
+      }
+      setWebdavStatus('上传失败（HTTP ' + up.status + '）');
+      notify('WebDAV 上传失败：HTTP ' + up.status);
+      return { ok: false, reason: 'upload-failed' };
+    }
+    if (remote.status !== 200) {
+      setWebdavStatus('读取远端失败（HTTP ' + remote.status + '）');
+      notify('WebDAV 读取远端失败：HTTP ' + remote.status);
+      return { ok: false, reason: 'remote-read' };
+    }
+    // 远端存在：按导出时间 last-write-wins
+    let remoteExportedAt = 0;
+    try {
+      const head = JSON.parse(remote.responseText);
+      remoteExportedAt = head && head.meta && head.meta.exportedAt ? Date.parse(head.meta.exportedAt) : 0;
+    } catch (e) {}
+    if (remoteExportedAt > (cfg.lastSyncAt || 0)) {
+      // 远端较新：恢复远端
+      const utils = getWebdavUtils();
+      if (!utils || typeof utils.parseFullExportFile !== 'function' || typeof utils.applyFullImportPayload !== 'function') {
+        setWebdavStatus('恢复功能未就绪：请先打开一次设置面板后重试');
+        if (!silent) notify('WebDAV：恢复功能未就绪，请先打开设置面板');
+        return { ok: false, reason: 'utils-missing' };
+      }
+      const parsed = utils.parseFullExportFile(remote.responseText);
+      if (!parsed || !parsed.valid) {
+        setWebdavStatus('远端同步文件不合法，跳过恢复');
+        if (!silent) notify('WebDAV：远端同步文件不合法');
+        return { ok: false, reason: 'invalid-remote' };
+      }
+      const report = utils.applyFullImportPayload(parsed.data);
+      storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
+      const parts = [];
+      if (report.settings) parts.push('设置');
+      if (report.threadHistory) parts.push('浏览历史');
+      if (report.postHistory) parts.push('发言历史');
+      if (report.drafts) parts.push('草稿');
+      if (report.kaomojiStats) parts.push('颜文字统计');
+      if (report.cookiePrefs) parts.push('饼干偏好');
+      setWebdavStatus('已从远端恢复（' + new Date(remoteExportedAt).toLocaleString() + '）');
+      notify('WebDAV：已恢复远端数据（' + (parts.join('、') || '空') + '），刷新页面可彻底生效');
+      return { ok: true, direction: 'download' };
+    }
+    // 本地不早于远端：上传本地
+    const up = await webdavUploadLocal(cfg, headers);
+    if (up.ok) {
+      const now = Date.now();
+      storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
+      setWebdavStatus('本地数据已上传（' + new Date(now).toLocaleString() + '）');
+      notify('WebDAV：本地数据已上传');
+      return { ok: true, direction: 'upload' };
+    }
+    setWebdavStatus('上传失败（HTTP ' + (up.status == null ? (up.missingUtils ? '工具未就绪' : '未知') : up.status) + '）');
+    notify('WebDAV 上传失败：' + (up.missingUtils ? '请先打开一次设置面板后重试' : 'HTTP ' + up.status));
+    return { ok: false, reason: 'upload-failed' };
+  }
+  async function webdavSyncNow() {
+    saveWebdavConfigFromPanel(false);
+    const cfg = getWebdavConfig();
+    if (!cfg.url) {
+      if (typeof toast === 'function') toast('请先填写 WebDAV 链接');
+      return;
+    }
+    await webdavSyncCore(cfg, false);
+  }
+  function webdavAutoSyncIfEnabled() {
+    const cfg = getWebdavConfig();
+    if (!cfg.url || !cfg.autoSync) return;
+    try { webdavSyncCore(cfg, true); } catch (e) { console.warn('[webdav] auto sync failed', e); }
+  }
+  function bindWebdavPanelEvents() {
+    // 原生 DOM 委托（capture 阶段），不依赖 jQuery / 面板重建时机 / 脚本管理器注入顺序
+    try {
+      document.addEventListener('click', function onWebdavDelegateClick(e) {
+        const t = e && e.target;
+        if (!t || typeof t.closest !== 'function') return;
+        const btn = t.closest('#btn_webdavCheck, #btn_webdavSync, #btn_sp_webdavSave');
+        if (!btn || !btn.id) return;
+        console.log('[webdav] 点击', { id: btn.id, at: Date.now() });
+        if (btn.id === 'btn_sp_webdavSave') {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            ensureWebdavConfigInPanel();
+            saveWebdavConfigFromPanel(true);
+          } catch (err) {
+            console.error('[webdav] 保存处理异常', err);
+            setWebdavStatus('保存异常：' + (err && err.message ? err.message : err));
+          }
+          return;
+        }
+        if (btn.id === 'btn_webdavCheck') {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            ensureWebdavConfigInPanel();
+            saveWebdavConfigFromPanel(false);
+            const cfg = getWebdavConfig();
+            if (!cfg.url) {
+              console.warn('[webdav] 检查连接：未填写链接');
+              setWebdavStatus('请先填写 WebDAV 链接');
+              return;
+            }
+            console.log('[webdav] 检查连接开始', { url: cfg.url, username: cfg.username ? '已填' : '未填', password: cfg.password ? '已填' : '未填' });
+            setWebdavStatus('正在检查连接……');
+            checkWebdavConnection(cfg).then((conn) => {
+              console.log('[webdav] 检查连接结果', conn);
+              setWebdavStatus(conn.message);
+              if (typeof toast === 'function') toast(conn.ok ? 'WebDAV ' + conn.message : 'WebDAV 连接失败：' + conn.message);
+            }).catch((err) => {
+              console.error('[webdav] 检查连接异常', err);
+              setWebdavStatus('检查连接异常：' + (err && err.message ? err.message : err));
+              if (typeof toast === 'function') toast('WebDAV 检查连接异常');
+            });
+          } catch (err) {
+            console.error('[webdav] 检查连接处理异常', err);
+            setWebdavStatus('检查连接异常：' + (err && err.message ? err.message : err));
+          }
+          return;
+        }
+        if (btn.id === 'btn_webdavSync') {
+          e.preventDefault();
+          e.stopPropagation();
+          webdavSyncNow().catch((err) => {
+            console.error('[webdav] 手动同步异常', err);
+            setWebdavStatus('同步异常：' + (err && err.message ? err.message : err));
+          });
+        }
+      }, true);
+      // 面板重建后回填已保存配置：聚焦输入框时空值则回填
+      document.addEventListener('focusin', function onWebdavFocusin(e) {
+        const t = e && e.target;
+        if (!t || !t.id) return;
+        if (t.id === 'sp_webdavUrl' || t.id === 'sp_webdavUsername' || t.id === 'sp_webdavPassword') {
+          try { ensureWebdavConfigInPanel(); } catch (err) { console.warn('[webdav] 回填异常', err); }
+        }
+      }, true);
+      console.log('[webdav] 面板事件绑定完成（原生委托）');
+      return true;
+    } catch (e) {
+      console.error('[webdav] 绑定失败', e);
+      return false;
+    }
+  }
+  // 立即绑定一次即可：原生 document 监听不依赖 jQuery 就绪
+  bindWebdavPanelEvents();
+  // 自动同步：页面 load 后延迟执行，避开启动编排与发言历史回查高峰期
+  window.addEventListener('load', () => {
+    setTimeout(() => { webdavAutoSyncIfEnabled(); }, 4000);
+  });
 
   /* --------------------------------------------------
    * tag -1. 入口初始化
