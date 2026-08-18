@@ -10071,7 +10071,89 @@ ${markedSwatchHtml}
   /* --------------------------------------------------
    * tag 10. 创建拓展坞+reply按钮呼出回复悬浮窗
    * -------------------------------------------------- */
+  function isBoardThreadListPage() {
+    // 版块页/时间线页：顶层串列表（串内页无串列表，保持三按钮）
+    return /^\/f\//.test(location.pathname) || /\/Forum\/timeline\//i.test(location.pathname);
+  }
+  function scrollPageToY(targetY) {
+    try {
+      window.scrollTo({ top: targetY, left: 0, behavior: 'smooth' });
+    } catch (e) {
+      try { window.scrollTo(0, targetY); } catch (e2) {
+        document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+      }
+    }
+  }
+  function getBoardThreadItems() {
+    return Array.from(document.querySelectorAll('.h-threads-list > .h-threads-item[data-threads-id]'));
+  }
+  function isSeamlessPagingEnabled() {
+    try {
+      if (SettingPanel && SettingPanel.state) return !!SettingPanel.state.enableSeamlessPaging;
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      return !!cfg.enableSeamlessPaging;
+    } catch (e) { return false; }
+  }
+  function triggerNextPageLoad() {
+    logRightSidebarDocker('thread-nav-nextpage', { seamlessEnabled: isSeamlessPagingEnabled() });
+    // 无缝翻页启用：与触底/手动翻页一致，调用 loadNext（自动/手动模式共用）
+    if (isSeamlessPagingEnabled() && window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
+      try {
+        window.SeamlessPaging.loadNext();
+        return true;
+      } catch (e) {
+        console.warn('[rightSidebarDocker] loadNext 调用失败', e);
+      }
+    }
+    // 非无缝：跳转站点分页「下一页」链接
+    try {
+      const pager = document.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination');
+      const nextLi = pager && Array.from(pager.querySelectorAll('li')).find((li) => {
+        const t = (li.textContent || '').trim();
+        return /下一页|下页|Next|›|»|→/i.test(t) && !li.classList.contains('uk-disabled');
+      });
+      const link = nextLi && nextLi.querySelector('a[href]');
+      if (link && link.href) {
+        logRightSidebarDocker('thread-nav-nextpage-native', { href: link.href });
+        location.href = link.href;
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function scrollToAdjacentThread(direction) {
+    const items = getBoardThreadItems();
+    if (!items.length) {
+      logRightSidebarDocker('thread-nav-skip', { reason: 'no-thread-items' });
+      if (typeof toast === 'function') toast('当前页面没有串');
+      return;
+    }
+    const viewY = window.pageYOffset || document.documentElement.scrollTop || 0;
+    // 基准：第一个顶部位于视口顶部或以下的串
+    let base = -1;
+    for (let i = 0; i < items.length; i++) {
+      const top = items[i].getBoundingClientRect().top + viewY;
+      if (top >= viewY - 1) { base = i; break; }
+    }
+    if (base < 0) base = items.length - 1;
+    const target = base + direction;
+    if (target < 0 || target >= items.length) {
+      logRightSidebarDocker('thread-nav-boundary', { direction, base, target, total: items.length });
+      // 向下到末尾：主动加载下一页（无缝/手动按设置，类似触底翻页）；向上则提示
+      if (direction > 0 && triggerNextPageLoad()) {
+        return;
+      }
+      if (typeof toast === 'function') toast(direction > 0 ? '已经是最后一个串' : '已经是第一个串');
+      return;
+    }
+    const el = items[target];
+    const y = el.getBoundingClientRect().top + viewY;
+    logRightSidebarDocker('thread-nav', { direction, base, target, tid: el.getAttribute('data-threads-id'), y });
+    scrollPageToY(y);
+  }
   function buildRightSidebarDockerHtml() {
+    const withThreadNav = isBoardThreadListPage();
     return `
         <div class="hld__docker">
             <div class="hld__docker-sidebar">
@@ -10081,9 +10163,11 @@ ${markedSwatchHtml}
                 </svg>
             </div>
             <div class="hld__docker-btns">
-                <div data-type="TOP">↑</div>
+                <div data-type="TOP" title="回到顶部"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8 L18 15 H6 Z"/><path d="M12 3 L16 7 H8 Z"/></svg></div>
+                ${withThreadNav ? '<div data-type="PREV-THREAD" title="上一个串"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 6 L19 17 H5 Z"/></svg></div>' : ''}
                 <div data-type="REPLY">↩</div>
-                <div data-type="BOTTOM">↓</div>
+                ${withThreadNav ? '<div data-type="NEXT-THREAD" title="下一个串"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 18 L5 7 H19 Z"/></svg></div>' : ''}
+                <div data-type="BOTTOM" title="到底部"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 16 L6 9 H18 Z"/><path d="M12 21 L8 17 H16 Z"/></svg></div>
             </div>
         </div>
     `;
@@ -10129,8 +10213,15 @@ ${markedSwatchHtml}
         opacity: 1; pointer-events: auto;
       }
       .hld__docker.xdex-docker-boot .hld__docker-btns>div { transition: none; }
-      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
+      /* 上一串/下一串/TOP/BOTTOM：面积缩小为原本的 2/3（直径 50px → 约 41px）；REPLY 保持 50px；间隙 10px → 7px（缩 1/3） */
+      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 7px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
       .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+      .hld__docker-btns>div svg { display: block; }
+      .hld__docker-btns>div svg path { fill: currentColor; }
+      .hld__docker-btns>div[data-type="PREV-THREAD"],
+      .hld__docker-btns>div[data-type="NEXT-THREAD"],
+      .hld__docker-btns>div[data-type="TOP"],
+      .hld__docker-btns>div[data-type="BOTTOM"] { width: 41px; height: 41px; font-size: 16px; }
       /* 固定模式：dock 收窄贴右、三按钮常显、隐藏左侧把手（不依赖 hover/:has，回退机制不受影响）
          提高特异性压过 qp-style 后注入的 :hover/is-hover/:has 展开规则，固定下悬浮不抖动 */
       .hld__docker.xdex-dock-fixed { width: 60px; height: 300px; bottom: 75px; }
@@ -10229,6 +10320,19 @@ ${markedSwatchHtml}
         errorMessage: errorMessage || undefined,
         supportsScrollTo: typeof window.scrollTo === 'function',
       });
+      // BOTTOM：图片/无缝内容可能使页面在滚动中继续增高，延迟后再校正一次
+      if (kind === 'BOTTOM') {
+        setTimeout(() => {
+          try {
+            const maxY2 = Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0);
+            const y2 = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            if (y2 < maxY2 - 30) {
+              window.scrollTo(0, maxY2);
+              logRightSidebarDocker('bottom-realign', { from: y2, to: maxY2 });
+            }
+          } catch (e) {}
+        }, 500);
+      }
     }, 50);
     logRightSidebarDocker('scroll-attempt', {
       kind,
@@ -10335,11 +10439,28 @@ ${markedSwatchHtml}
           scrollPageByDockerButton('BOTTOM');
         });
       }
+      // 版块页/时间线页：上一串/下一串（REPLY 居中）
+      const prevBtn = docker.querySelector('[data-type="PREV-THREAD"]');
+      const nextBtn = docker.querySelector('[data-type="NEXT-THREAD"]');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', function onDockerPrevThreadClick(e) {
+          logRightSidebarDocker('prev-thread-btn-event', { type: e && e.type });
+          scrollToAdjacentThread(-1);
+        });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function onDockerNextThreadClick(e) {
+          logRightSidebarDocker('next-thread-btn-event', { type: e && e.type });
+          scrollToAdjacentThread(1);
+        });
+      }
       logRightSidebarDocker('shell-bind-ok', {
         supportsHasSelector,
         hoverFallbackBound: !supportsHasSelector,
         topBound: !!topBtn,
         bottomBound: !!bottomBtn,
+        prevThreadBound: !!prevBtn,
+        nextThreadBound: !!nextBtn,
         topTag: topBtn ? topBtn.tagName : '',
         bottomTag: bottomBtn ? bottomBtn.tagName : '',
       });
