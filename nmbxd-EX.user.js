@@ -17479,7 +17479,8 @@ function 注册自动保存编辑() {
                 }
               }
             } else {
-              newReplies = tailReplies;
+              // 无回复区串：页面从未展示过回复；排除 PO 主帖（Replies[0].id === tid）后即为新增回复
+              newReplies = tailReplies.filter(r => r && Number(r.id) !== Number(tid));
             }
             if (!newReplies.length) return;
             // Step 5: 保存滚动位置（插入前）
@@ -17497,8 +17498,13 @@ function 注册自动保存编辑() {
             });
             // Step 6: 遍历所有匹配节点，每个节点独立增量追加
             for (const node of allOldNodes) {
-              const rc = node.querySelector('.h-threads-item-replies');
-              if (!rc) continue;
+              let rc = node.querySelector('.h-threads-item-replies');
+              // 无回复区（新串未展开过回复）→ 创建容器，否则增量刷新会被静默跳过
+              if (!rc) {
+                rc = document.createElement('div');
+                rc.className = 'h-threads-item-replies';
+                node.appendChild(rc);
+              }
               // 收集该节点已有的回复 ID
               const existingIds = new Set(
                 Array.from(rc.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
