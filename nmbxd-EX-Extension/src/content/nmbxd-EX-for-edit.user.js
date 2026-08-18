@@ -25739,12 +25739,13 @@ function 注册自动保存编辑() {
     const remote = await webdavRequest({ url: remoteUrl, method: 'GET', headers });
     if (remote.status === 404) {
       // 远端无数据：上传本地
-      const up = await webdavUploadLocal(cfg, headers);
+        const up = await webdavUploadLocal(cfg, headers);
       if (up.ok) {
         const now = Date.now();
         storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
         webdavUpdateLastSyncLabel();
-        setWebdavStatus('远端无数据，本地数据已上传（' + webdavFormatTime(now) + '）');
+        console.log('[webdav] 同步成功（远端无数据上传）', { direction: 'upload', lastSyncAt: now });
+        setWebdavStatus('远端无数据，本地数据已上传');
         notify('WebDAV：本地数据已上传');
         return { ok: true, direction: 'upload' };
       }
@@ -25804,8 +25805,9 @@ function 注册自动保存编辑() {
         if (up.ok) {
           const now = Date.now();
           storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
-        webdavUpdateLastSyncLabel();
-          setWebdavStatus('检测到设置差异，已保留本地设置并上传（' + webdavFormatTime(now) + '）');
+          webdavUpdateLastSyncLabel();
+          console.log('[webdav] 同步成功（设置差异保留本地上传）', { direction: 'upload-settings-local', lastSyncAt: now });
+          setWebdavStatus('检测到设置差异，已保留本地设置并上传');
           notify('WebDAV：检测到设置差异，已保留本地设置并上传');
           return { ok: true, direction: 'upload-settings-local' };
         }
@@ -25816,6 +25818,7 @@ function 注册自动保存编辑() {
       const report = utils.applyFullImportPayload(parsed.data);
       storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
       webdavUpdateLastSyncLabel();
+      console.log('[webdav] 同步成功（远端恢复）', { direction: 'download', lastSyncAt: remoteExportedAt });
       const parts = [];
       if (report.settings) parts.push('设置');
       if (report.threadHistory) parts.push('浏览历史');
@@ -25823,7 +25826,7 @@ function 注册自动保存编辑() {
       if (report.drafts) parts.push('草稿');
       if (report.kaomojiStats) parts.push('颜文字统计');
       if (report.cookiePrefs) parts.push('饼干偏好');
-      setWebdavStatus('已从远端恢复（' + webdavFormatTime(remoteExportedAt) + '）');
+      setWebdavStatus('已从远端恢复');
       notify('WebDAV：已恢复远端数据（' + (parts.join('、') || '空') + '），刷新页面可彻底生效');
       return { ok: true, direction: 'download' };
     }
@@ -25832,7 +25835,9 @@ function 注册自动保存编辑() {
     if (up.ok) {
       const now = Date.now();
       storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
-      setWebdavStatus('本地数据已上传（' + webdavFormatTime(now) + '）');
+      webdavUpdateLastSyncLabel();
+      console.log('[webdav] 同步成功（本地上传）', { direction: 'upload', lastSyncAt: now });
+      setWebdavStatus('本地数据已上传');
       notify('WebDAV：本地数据已上传');
       return { ok: true, direction: 'upload' };
     }
@@ -26018,6 +26023,10 @@ function 注册自动保存编辑() {
           try { ensureWebdavConfigInPanel(); } catch (err) { console.warn('[webdav] 回填异常', err); }
         }
       }, true);
+      // 切回标签页时刷新灰字：其他页面完成同步后，此页面打开状态也能同步显示
+      window.addEventListener('focus', function onWebdavWindowFocus() {
+        try { webdavUpdateLastSyncLabel(); } catch (e) {}
+      });
       console.log('[webdav] 面板事件绑定完成（原生委托）');
       return true;
     } catch (e) {
