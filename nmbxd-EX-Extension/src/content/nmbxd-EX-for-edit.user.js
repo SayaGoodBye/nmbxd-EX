@@ -365,7 +365,7 @@
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
-  dockDisplayMode: 'hover', // 扩展坞增强：hover=隐藏（悬浮显示，默认）| fixed=固定显示
+  dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
@@ -3174,7 +3174,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       $('#sp_threadCookieWhitelistDisplayMode').val(this.state.threadCookieWhitelistDisplayMode || 'fold');
       $('#sp_poAnnotationSideDisplayMode').val(this.state.poAnnotationSideDisplayMode || 'collapse');
       $('#sp_kaomojiSort').val(this.state.kaomojiSort || 'default');
-      $('#sp_dockDisplayMode').val(this.state.dockDisplayMode || 'hover');
+      $('#sp_dockDisplayMode').val(this.state.dockDisplayMode || 'fixed');
       $('#sp_timeDisplayMode').val(this.state.timeDisplayMode === 'exact' ? 'exact' : 'relative');
       // 标记分组
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
@@ -10545,7 +10545,7 @@ ${markedSwatchHtml}
       const m = cfg.dockDisplayMode;
       if (m === 'fixed' || m === 'hover') return m;
     } catch (e) {}
-    return 'hover';
+    return 'fixed';
   }
   function applyDockDisplayMode(mode) {
     const docker = document.querySelector('.hld__docker');
