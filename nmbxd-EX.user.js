@@ -10086,8 +10086,19 @@ ${markedSwatchHtml}
       }
     }
   }
+  function isThreadItemVisible(el) {
+    if (!el || !el.isConnected) return false;
+    try {
+      const cs = window.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    } catch (e) { return true; }
+  }
   function getBoardThreadItems() {
-    return Array.from(document.querySelectorAll('.h-threads-list > .h-threads-item[data-threads-id]'));
+    // 只收集可见顶层串：过滤 display:none 的屏蔽/隐藏项，避免其 rect.top=0 干扰基准判定
+    return Array.from(document.querySelectorAll('.h-threads-list > .h-threads-item[data-threads-id]'))
+      .filter(isThreadItemVisible);
   }
   function isSeamlessPagingEnabled() {
     try {
@@ -10116,12 +10127,20 @@ ${markedSwatchHtml}
       });
       const link = nextLi && nextLi.querySelector('a[href]');
       if (link && link.href) {
-        logRightSidebarDocker('thread-nav-nextpage-native', { href: link.href });
-        location.href = link.href;
-        return true;
+        let url = null;
+        try { url = new URL(link.href, location.href); } catch (e) {}
+        // 仅当解析出的地址与当前页不同才跳转，避免异常 href（如首页/空链）造成误跳
+        if (url && url.href !== location.href) {
+          logRightSidebarDocker('thread-nav-nextpage-native', { href: url.href });
+          location.href = url.href;
+          return true;
+        }
       }
     } catch (e) {}
     return false;
+  }
+  function getWebdavPageScrollY() {
+    return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
   }
   function scrollToAdjacentThread(direction) {
     const items = getBoardThreadItems();
@@ -10130,14 +10149,11 @@ ${markedSwatchHtml}
       if (typeof toast === 'function') toast('当前页面没有串');
       return;
     }
-    const viewY = window.pageYOffset || document.documentElement.scrollTop || 0;
-    // 基准：第一个顶部位于视口顶部或以下的串
-    let base = -1;
+    // 基准：视口内第一个顶部 >= 0 的串（纯视口坐标，不依赖 window 滚动容器假设，兼容第一页/无页码等 URL 格式）
+    let base = items.length - 1;
     for (let i = 0; i < items.length; i++) {
-      const top = items[i].getBoundingClientRect().top + viewY;
-      if (top >= viewY - 1) { base = i; break; }
+      if (items[i].getBoundingClientRect().top >= 0) { base = i; break; }
     }
-    if (base < 0) base = items.length - 1;
     const target = base + direction;
     if (target < 0 || target >= items.length) {
       logRightSidebarDocker('thread-nav-boundary', { direction, base, target, total: items.length });
@@ -10149,8 +10165,8 @@ ${markedSwatchHtml}
       return;
     }
     const el = items[target];
-    const y = el.getBoundingClientRect().top + viewY;
-    logRightSidebarDocker('thread-nav', { direction, base, target, tid: el.getAttribute('data-threads-id'), y });
+    const y = el.getBoundingClientRect().top + getWebdavPageScrollY();
+    logRightSidebarDocker('thread-nav', { direction, base, target, tid: el.getAttribute('data-threads-id'), y, scrollTop: getWebdavPageScrollY() });
     scrollPageToY(y);
   }
   function buildRightSidebarDockerHtml() {
@@ -25610,6 +25626,8 @@ function 注册自动保存编辑() {
   const WEBDAV_AUTO_RUNNING_KEY = 'xdex_webdav_auto_running_ts';
   const WEBDAV_AUTO_LAST_FP_KEY = 'xdex_webdav_last_fp';
   const WEBDAV_AUTO_LAST_IMMEDIATE_KEY = 'xdex_webdav_last_immediate_ts';
+  // 设置冲突挂起：手动同步选择「取消本次同步」后置位；自动同步遇到差异时跳过设置部分，直到手动处理
+  const WEBDAV_SETTINGS_PENDING_KEY = 'xdex_webdav_settings_pending';
   // 开启开关触发的立即同步：60s 冷却 + 内容指纹防重
   const WEBDAV_IMMEDIATE_COOLDOWN_MS = 60 * 1000;
   function webdavAutoGet(key) {
@@ -25878,16 +25896,17 @@ function 注册自动保存编辑() {
       const backdrop = document.createElement('div');
       backdrop.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
       const panel = document.createElement('div');
-      panel.style.cssText = 'background:#FFFFEE;color:#333;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);padding:16px 18px;max-width:min(460px,92vw);font-size:13px;line-height:1.6;';
+      // 使用设置面板的 dark reader 兼容变量
+      panel.style.cssText = 'background:var(--xdex-sp-panel-bg, #FFFFEE);color:var(--foreground, #333);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 8px 24px var(--xdex-sp-shadow, rgba(0,0,0,.3));padding:16px 18px;max-width:min(460px,92vw);font-size:13px;line-height:1.6;';
       const sample = diffInfo.diff.slice(0, 6).join('、') + (diffInfo.diff.length > 6 ? '…' : '');
       panel.innerHTML = ''
         + '<div style="font-size:15px;font-weight:700;margin-bottom:8px;">检测到设置与远端不同</div>'
         + '<div style="margin-bottom:4px;">共 ' + diffInfo.diff.length + ' 项：' + sample + (diffInfo.localIsDefault ? '（本地当前为默认设置）' : '') + '</div>'
-        + '<div style="color:#666;margin-bottom:12px;">请选择保留哪个版本的设置：</div>'
+        + '<div style="color:var(--muted-foreground, #666);margin-bottom:12px;">请选择保留哪个版本的设置：</div>'
         + '<div style="display:flex;flex-direction:column;gap:8px;">'
-        + '<button data-act="remote" style="padding:6px 10px;cursor:pointer;">采用远端设置（覆盖本地）</button>'
-        + '<button data-act="local" style="padding:6px 10px;cursor:pointer;">保留本地设置（上传覆盖远端）</button>'
-        + '<button data-act="cancel" style="padding:6px 10px;cursor:pointer;">取消本次同步</button>'
+        + '<button data-act="remote" style="padding:6px 10px;cursor:pointer;background:var(--xdex-sp-fold-bg, #F0E0D6);border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;color:var(--foreground, #333);">采用远端设置（覆盖本地）</button>'
+        + '<button data-act="local" style="padding:6px 10px;cursor:pointer;background:var(--xdex-sp-fold-bg, #F0E0D6);border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;color:var(--foreground, #333);">保留本地设置（上传覆盖远端）</button>'
+        + '<button data-act="cancel" style="padding:6px 10px;cursor:pointer;background:var(--xdex-sp-fold-bg, #F0E0D6);border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;color:var(--foreground, #333);">取消本次同步</button>'
         + '</div>';
       backdrop.appendChild(panel);
       document.body.appendChild(backdrop);
@@ -26008,20 +26027,39 @@ function 注册自动保存编辑() {
         const diffInfo = findWebdavSettingsDiff(parsed.data.payload.myScriptSettings);
         if (diffInfo.diff.length > 0) {
           if (silent) {
-            // 自动同步：本地仍是默认设置（如新端）→ 采用远端，避免默认值覆盖个性化设置；
-            // 本地已个性化 → 保留本地并上传，避免远端覆盖本地选择
-            settingsDecision = diffInfo.localIsDefault ? 'download' : 'upload';
+            // 自动同步：若此前手动取消过设置冲突（挂起标记），跳过设置部分，其余数据照常合并；
+            // 否则按「本地是否默认」自动决策：默认→采用远端，已个性化→保留本地上传
+            if (webdavAutoGet(WEBDAV_SETTINGS_PENDING_KEY) === '1') {
+              settingsDecision = 'skip-settings';
+            } else {
+              settingsDecision = diffInfo.localIsDefault ? 'download' : 'upload';
+            }
           } else {
             // 三选对话框：采用远端 / 保留本地上传 / 取消本次同步
             const userChoice = await webdavShowSettingsConflictDialog(diffInfo);
             if (userChoice === 'cancel') {
-              setWebdavStatus('已取消本次同步（设置存在差异）');
+              webdavAutoWrite(WEBDAV_SETTINGS_PENDING_KEY, '1');
+              setWebdavStatus('已取消本次同步（设置存在差异，自动同步将跳过设置直到手动处理）');
               if (!silent) notify('WebDAV：已取消本次同步');
               return { ok: false, reason: 'canceled' };
             }
+            webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
             settingsDecision = userChoice === 'remote' ? 'download' : 'upload';
           }
+        } else {
+          // 两端设置已一致：清除挂起标记
+          webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
         }
+      }
+      if (settingsDecision === 'skip-settings') {
+        // 保留本地设置：仅跳过设置字段，其余数据照常下载合并（历史/草稿/统计等）
+        if (parsed.data.payload && parsed.data.payload.myScriptSettings) delete parsed.data.payload.myScriptSettings;
+        const report = utils.applyFullImportPayload(parsed.data);
+        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
+        webdavUpdateLastSyncLabel();
+        setWebdavStatus('设置存在差异，已保留本地（等待手动处理）；其余数据已同步');
+        if (!silent) notify('WebDAV：设置差异已保留本地，其余数据已从远端合并');
+        return { ok: true, direction: 'download-skip-settings' };
       }
       if (settingsDecision === 'upload') {
         // 本地设置优先：上传本地全量覆盖远端
