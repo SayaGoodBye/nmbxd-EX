@@ -25872,6 +25872,39 @@ function 注册自动保存编辑() {
     }
     return false;
   }
+  function webdavShowSettingsConflictDialog(diffInfo) {
+    // 三选：采用远端 / 保留本地上传 / 取消本次同步（Promise 化）
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+      const panel = document.createElement('div');
+      panel.style.cssText = 'background:#FFFFEE;color:#333;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);padding:16px 18px;max-width:min(460px,92vw);font-size:13px;line-height:1.6;';
+      const sample = diffInfo.diff.slice(0, 6).join('、') + (diffInfo.diff.length > 6 ? '…' : '');
+      panel.innerHTML = ''
+        + '<div style="font-size:15px;font-weight:700;margin-bottom:8px;">检测到设置与远端不同</div>'
+        + '<div style="margin-bottom:4px;">共 ' + diffInfo.diff.length + ' 项：' + sample + (diffInfo.localIsDefault ? '（本地当前为默认设置）' : '') + '</div>'
+        + '<div style="color:#666;margin-bottom:12px;">请选择保留哪个版本的设置：</div>'
+        + '<div style="display:flex;flex-direction:column;gap:8px;">'
+        + '<button data-act="remote" style="padding:6px 10px;cursor:pointer;">采用远端设置（覆盖本地）</button>'
+        + '<button data-act="local" style="padding:6px 10px;cursor:pointer;">保留本地设置（上传覆盖远端）</button>'
+        + '<button data-act="cancel" style="padding:6px 10px;cursor:pointer;">取消本次同步</button>'
+        + '</div>';
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      const done = (act) => {
+        try { document.body.removeChild(backdrop); } catch (e) {}
+        document.removeEventListener('keydown', onKey, true);
+        resolve(act);
+      };
+      const onKey = (ev) => { if (ev.key === 'Escape') done('cancel'); };
+      panel.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
+        if (btn) { e.stopPropagation(); done(btn.getAttribute('data-act')); }
+      });
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) done('cancel'); });
+      document.addEventListener('keydown', onKey, true);
+    });
+  }
   function findWebdavSettingsDiff(remoteSettings) {
     // 返回 { diff: 两端不同的设置键, localIsDefault: 本地是否仍是默认值 }
     const result = { diff: [], localIsDefault: true };
@@ -25979,11 +26012,14 @@ function 注册自动保存编辑() {
             // 本地已个性化 → 保留本地并上传，避免远端覆盖本地选择
             settingsDecision = diffInfo.localIsDefault ? 'download' : 'upload';
           } else {
-            const sample = diffInfo.diff.slice(0, 5).join('、') + (diffInfo.diff.length > 5 ? '…' : '');
-            settingsDecision = window.confirm(
-              '检测到设置与远端不同（' + diffInfo.diff.length + ' 项：' + sample + '）' + (diffInfo.localIsDefault ? '，本地当前为默认设置' : '') + '。\n\n' +
-              '确定：采用远端设置（覆盖本地）\n取消：保留本地设置并上传覆盖远端'
-            ) ? 'download' : 'upload';
+            // 三选对话框：采用远端 / 保留本地上传 / 取消本次同步
+            const userChoice = await webdavShowSettingsConflictDialog(diffInfo);
+            if (userChoice === 'cancel') {
+              setWebdavStatus('已取消本次同步（设置存在差异）');
+              if (!silent) notify('WebDAV：已取消本次同步');
+              return { ok: false, reason: 'canceled' };
+            }
+            settingsDecision = userChoice === 'remote' ? 'download' : 'upload';
           }
         }
       }
@@ -26006,6 +26042,20 @@ function 注册自动保存编辑() {
       const report = utils.applyFullImportPayload(parsed.data);
       storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
       webdavUpdateLastSyncLabel();
+      // 远端设置覆盖后：立即同步内存 state、回显面板，并即时应用可即时生效的设置
+      if (report.settings && typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+        try {
+          SettingPanel.state = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+          if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs();
+          if (typeof SettingPanel.syncAuxiliaryControls === 'function') SettingPanel.syncAuxiliaryControls();
+          try { if (typeof renderFavoriteThreadsMenu === 'function') renderFavoriteThreadsMenu(); } catch (e) {}
+          try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state); } catch (e) {}
+          try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
+          try { if (typeof applyImageHideMode === 'function') applyImageHideMode(SettingPanel.state.applyImageHideMode || 'default', document); } catch (e) {}
+        } catch (e) {
+          console.warn('[webdav] 远端设置即时应用失败', e);
+        }
+      }
       console.log('[webdav] 同步成功（远端恢复）', { direction: 'download', lastSyncAt: remoteExportedAt });
       const parts = [];
       if (report.settings) parts.push('设置');
@@ -26015,7 +26065,7 @@ function 注册自动保存编辑() {
       if (report.kaomojiStats) parts.push('颜文字统计');
       if (report.cookiePrefs) parts.push('饼干偏好');
       setWebdavStatus('已从远端恢复');
-      notify('WebDAV：已恢复远端数据（' + (parts.join('、') || '空') + '），刷新页面可彻底生效');
+      notify('WebDAV：已恢复远端数据（' + (parts.join('、') || '空') + '），可即时生效的设置已应用；部分功能刷新页面后彻底生效');
       return { ok: true, direction: 'download' };
     }
     // 本地不早于远端：上传本地
