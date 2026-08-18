@@ -365,6 +365,7 @@
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
+  dockDisplayMode: 'hover', // 扩展坞增强：hover=隐藏（悬浮显示，默认）| fixed=固定显示
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
@@ -1083,7 +1084,7 @@
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyFormUnvcode" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_updateReplyNumbers" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><select id="sp_dockDisplayMode" style="height:24px;"><option value="hover">隐藏</option><option value="fixed">固定</option></select><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_kaomojiEnhancer" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_highlightPO" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><select id="sp_blockDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option></select><input type="hidden" name="sp_applyFilters" value="1"></div>
@@ -1523,6 +1524,16 @@
           applyImageHideMode(mode, document);
         }
       };
+      // 扩展坞显示模式：即时切换并即时应用（固定/隐藏）
+      const applyDockDisplayModeImmediately = () => {
+        const mode = $('#sp_dockDisplayMode').val() || 'hover';
+        this.state.dockDisplayMode = mode;
+        try { GM_setValue(this.key, this.state); } catch (e) {}
+        if (typeof applyDockDisplayMode === 'function') {
+          applyDockDisplayMode(mode);
+        }
+      };
+      $('#sp_dockDisplayMode').off('change').on('change', applyDockDisplayModeImmediately);
       $('#sp_enableImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       $('#sp_applyImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       // 设置面板内打开阅图：串内页可用；无图模式下右上角按钮隐藏时的备选入口
@@ -2857,6 +2868,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
+        this.state.dockDisplayMode = $('#sp_dockDisplayMode').val() || 'hover';
         this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
@@ -3162,6 +3174,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       $('#sp_threadCookieWhitelistDisplayMode').val(this.state.threadCookieWhitelistDisplayMode || 'fold');
       $('#sp_poAnnotationSideDisplayMode').val(this.state.poAnnotationSideDisplayMode || 'collapse');
       $('#sp_kaomojiSort').val(this.state.kaomojiSort || 'default');
+      $('#sp_dockDisplayMode').val(this.state.dockDisplayMode || 'hover');
       $('#sp_timeDisplayMode').val(this.state.timeDisplayMode === 'exact' ? 'exact' : 'relative');
       // 标记分组
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
@@ -10118,6 +10131,16 @@ ${markedSwatchHtml}
       .hld__docker.xdex-docker-boot .hld__docker-btns>div { transition: none; }
       .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
       .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+      /* 固定模式：dock 收窄贴右、三按钮常显、隐藏左侧把手（不依赖 hover/:has，回退机制不受影响）
+         提高特异性压过 qp-style 后注入的 :hover/is-hover/:has 展开规则，固定下悬浮不抖动 */
+      .hld__docker.xdex-dock-fixed { width: 60px; height: 300px; bottom: 75px; }
+      .hld__docker.xdex-dock-fixed:hover,
+      .hld__docker.xdex-dock-fixed.is-hover,
+      .hld__docker.xdex-dock-fixed:has(.hld__docker-sidebar:hover) { width: 60px; height: 300px; bottom: 75px; }
+      .hld__docker.xdex-dock-fixed .hld__docker-sidebar { display: none; }
+      .hld__docker.xdex-dock-fixed .hld__docker-btns { left: 0; right: 0; }
+      .hld__docker.xdex-dock-fixed .hld__docker-btns>div { opacity: 1; pointer-events: auto; }
+      .hld__docker.xdex-dock-boot.xdex-dock-fixed { transition: none; }
     `;
   }
   function logRightSidebarDocker(stage, detail) {
@@ -10371,8 +10394,27 @@ ${markedSwatchHtml}
       if (docker) docker.dataset.xdexEarlyDocker = '1';
     }
     if (docker) markRightSidebarDockerBootMotion(docker);
+    // 按设置应用「固定/隐藏」模式（不触碰 :has 回退逻辑）
+    if (docker) applyDockDisplayMode(getDockDisplayMode());
     bindRightSidebarShellButtons(docker);
     return !!docker;
+  }
+  function getDockDisplayMode() {
+    try {
+      const stateMode = SettingPanel && SettingPanel.state && SettingPanel.state.dockDisplayMode;
+      if (stateMode === 'fixed' || stateMode === 'hover') return stateMode;
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const m = cfg.dockDisplayMode;
+      if (m === 'fixed' || m === 'hover') return m;
+    } catch (e) {}
+    return 'hover';
+  }
+  function applyDockDisplayMode(mode) {
+    const docker = document.querySelector('.hld__docker');
+    if (!docker) return;
+    const fixed = mode === 'fixed';
+    docker.classList.toggle('xdex-dock-fixed', fixed);
+    console.log('[rightSidebarDocker] 显示模式应用', { mode: fixed ? 'fixed' : 'hover' });
   }
   function isDarkReaderActive() {
     const root = document.documentElement;
@@ -11545,6 +11587,8 @@ ${markedSwatchHtml}
     });
     // REPLY 按钮：early shell 已绑定；这里兜底补绑，完整浮窗控制器仍延迟到首次点击再初始化
     bindRightSidebarReplyButton(dockerEl);
+    // 按设置应用「固定/隐藏」模式（early 已应用则幂等）
+    try { applyDockDisplayMode(getDockDisplayMode()); } catch (e) {}
     // TOP/BOTTOM 在 early shell 阶段已绑定轻量滚动；这里不重复绑定，避免一次点击触发两套滚动。
   }
 
