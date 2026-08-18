@@ -143,6 +143,46 @@
     refreshStatusGeneration += 1;
     return refreshStatusGeneration;
   }
+  // ============ 页面类型 / 页码通用工具（PageType） ============
+  const PageType = {
+    getPathname() { return location.pathname || ''; },
+    isThreadPage(loose) {
+      if (/^\/Forum\/po\/id\/\d+/.test(this.getPathname())) return true;
+      const re = loose === false ? /^\/t\/\d{6,8}(?:\/|$)/ : /^\/t\/\d{4,}(?:\/|$)/;
+      return re.test(this.getPathname());
+    },
+    isPOThreadPage() { return /^\/Forum\/po\/id\/\d+/.test(this.getPathname()); },
+    isBoardPage() { return /^\/f\//.test(this.getPathname()); },
+    isTimelinePage() { return /^\/Forum\/timeline\/id\/\d+/.test(this.getPathname()); },
+    isTimelineAnyPage() { return /\/Forum\/timeline\//i.test(this.getPathname()); },
+    isTimelineLikePage() { return /\/Forum\/timeline\/id\/\d+/.test(this.getPathname()) || /\/timeline|\/feed/.test(this.getPathname()); },
+    isBoardOrTimelinePage() { return this.isBoardPage() || this.isTimelinePage(); },
+    isSpecialBoard() { return /^\/f\/(?:值班室|测试)(?:\/|$)/.test(decodeURIComponent(this.getPathname())); },
+    getThreadId(loose) {
+      const p = this.getPathname();
+      const re = loose === false ? /^\/t\/(\d{6,8})(?:\/|$)/ : /^\/t\/(\d{4,})(?:\/|$)/;
+      const m = p.match(re) || p.match(/^\/Forum\/po\/id\/(\d+)/);
+      return m ? m[1] : '';
+    },
+    getPageNum() {
+      // ?page= 优先，再回退路径 /page/N（与多数调用点语义一致）
+      const q = parseInt(new URL(location.href, location.origin).searchParams.get('page') || '', 10);
+      if (q > 0) return q;
+      const m = this.getPathname().match(/\/page\/(\d+)(?:\.html)?$/);
+      return m ? Math.max(1, parseInt(m[1], 10)) : 1;
+    },
+    getPathPageNum() {
+      // 路径 /page/N 优先，再回退 ?page=（阅图模式语义）
+      const m = this.getPathname().match(/\/page\/(\d+)(?:\.html)?$/);
+      if (m) return Math.max(1, parseInt(m[1], 10));
+      const q = parseInt(new URL(location.href, location.origin).searchParams.get('page') || '', 10);
+      return q > 0 ? q : 1;
+    },
+    getTimelineInfo() {
+      const m = this.getPathname().match(/^\/Forum\/timeline\/id\/(\d+)(?:\/page\/(\d+)(?:\.html)?)?/i);
+      return m ? { id: m[1], page: m[2] ? parseInt(m[2], 10) : 1 } : null;
+    }
+  };
   function isCurrentRefreshStatus(generation) {
     return generation === refreshStatusGeneration;
   }
@@ -3851,8 +3891,8 @@ ${markedSwatchHtml}
     const $index = $el.closest('.h-threads-item-index[data-threads-id]');
     const indexTid = ($index.attr('data-threads-id') || '').trim();
     if (isValidThreadId(indexTid)) return indexTid;
-    const pathMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-    if (pathMatch) return pathMatch[1].slice(0, 8);
+    const pathTid = PageType.getThreadId(false);
+    if (pathTid) return pathTid.slice(0, 8);
     const href = $el.closest('.h-threads-item-index, .h-threads-item, .h-threads-item-reply, .h-threads-item-reply-main')
       .find('.h-threads-info-id[href*="/t/"]').first().attr('href') || '';
     const hrefMatch = href.match(/\/t\/(\d{6,8})/);
@@ -5673,7 +5713,7 @@ ${markedSwatchHtml}
     const href = String(sampleHref || '');
     if (/[?&]page=\d+/.test(href)) return href.replace(/page=\d+/, `page=${pageNum}`);
     if (/\/page\/\d+\.html/.test(href)) return href.replace(/\/page\/\d+\.html/, `/page/${pageNum}.html`);
-    if (isBoardPaginationContext() || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
+    if (isBoardPaginationContext() || PageType.isTimelinePage()) {
       const base = location.pathname.replace(/\/page\/\d+\.html$/, '').replace(/\.html$/, '');
       return `${base}/page/${pageNum}.html`;
     }
@@ -6804,7 +6844,7 @@ ${markedSwatchHtml}
     }, 50);
   }
   function isEnhanceIslandAutoTitlePage() {
-    return /^\/t\/\d{4,}/.test(location.pathname) || /^\/Forum\/po\/id\/\d+/.test(location.pathname);
+    return PageType.isThreadPage();
   }
   function refreshEnhanceIslandAutoTitle() {
     if (!isEnhanceIslandAutoTitlePage()) return;
@@ -6867,7 +6907,7 @@ ${markedSwatchHtml}
   }
   function buildThreadPageUrl(threadId, pageNum) {
     // 如果当前是 /Forum/po/id/{threadId}/page/N.html 形式
-    if (/^\/Forum\/po\/id\/\d+/.test(location.pathname)) {
+    if (PageType.isPOThreadPage()) {
       return `${location.origin}/Forum/po/id/${threadId}/page/${pageNum}.html`;
     }
     // 默认 /t/{threadId}?page=N
@@ -6999,18 +7039,14 @@ ${markedSwatchHtml}
       // const loadedPages = new Set();
       // let reachedLastPageAt = -1;     // 记录“最后一页已加载”的页码（例如 20）
       // let lastFinalToastTs = 0;       // 防抖：末页提示的时间戳，避免重复弹
-      const isThreadPage = /\/t\/\d{4,}/.test(location.pathname) || /^\/Forum\/po\/id\/\d+/.test(location.pathname);
-      const isBoardPage = /^\/f\//.test(location.pathname) || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname);
+      const isThreadPage = PageType.isThreadPage();
+      const isBoardPage = PageType.isBoardOrTimelinePage();
       const originInfo = (function () {
-        const cur = new URL(location.href, location.origin);
-        const threadMatch =
-          location.pathname.match(/\/t\/(\d{4,})/) ||
-          location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
+        const threadMatch = PageType.getThreadId();
         return {
           origin: location.origin,
-          threadId: threadMatch
-           ? threadMatch[1] : (document.querySelector('[data-threads-id]')?.getAttribute('data-threads-id') || null),
-          page: Number(cur.searchParams.get('page') || (location.pathname.match(/\/page\/(\d+)(?:\.html)?$/)?.[1] || 1))
+          threadId: threadMatch || (document.querySelector('[data-threads-id]')?.getAttribute('data-threads-id') || null),
+          page: PageType.getPageNum()
         };
       })();
       // let lastLoadedPage = originInfo.page || 1;
@@ -7633,7 +7669,7 @@ ${markedSwatchHtml}
         const nextPageNum = lastLoadedPage + 1;
         if (loadedPages.has(nextPageNum)) return;
         let nextUrl;
-        if (/^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
+        if (PageType.isTimelinePage()) {
           // 时间线模式
           const base = location.pathname.replace(/\/page\/\d+\.html$/, ''); // 去掉已有的 /page/N.html
           nextUrl = `${location.origin}${base}/page/${nextPageNum}.html`;
@@ -10074,7 +10110,7 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   function isBoardThreadListPage() {
     // 版块页/时间线页：顶层串列表（串内页无串列表，保持三按钮）
-    return /^\/f\//.test(location.pathname) || /\/Forum\/timeline\//i.test(location.pathname);
+    return PageType.isBoardPage() || PageType.isTimelineAnyPage();
   }
   function scrollPageToY(targetY) {
     try {
@@ -13626,7 +13662,7 @@ ${markedSwatchHtml}
         if (isReply) {
           // 板块页/时间线页：跳过全量刷新，由 handleBoardQuickReplyRefresh 做增量更新
           // 串内页：正常全量刷新
-          const _isBoardOrTimeline = /^\/f\//.test(location.pathname) || /\/Forum\/timeline\/id\/\d+/i.test(location.pathname);
+          const _isBoardOrTimeline = PageType.isBoardOrTimelinePage();
           if (!_isBoardOrTimeline) {
             try {
               // 错峰 150ms 发起：避开发送后发言历史回查（getLastPost/ref/thread api）的并发峰值
@@ -14073,8 +14109,8 @@ ${markedSwatchHtml}
       const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
       if (_cookieConfirmEnabled) {
         const _resto = (formData.get("resto") || "").toString().trim();
-        const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-        const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
+        const _tid = PageType.getThreadId(false);
+        const _threadId = _resto || (_tid ? _tid.slice(0, 8) : "");
         if (_threadId && _threadId !== '20011114' && /^\d{6,8}$/.test(_threadId)) {
           const _pref = getThreadCookiePref(_threadId);
           const _doSend = () => {
@@ -14143,12 +14179,7 @@ ${markedSwatchHtml}
     // }
   function getCurrentPage() {
       // 对齐 originInfo / getImageViewerStartPage：?page= 优先，再 fallback path /page/N
-      const sp = new URL(location.href, location.origin).searchParams;
-      const q = parseInt(sp.get('page') || '', 10);
-      if (q > 0) return q;
-      const m = location.pathname.match(/\/page\/(\d+)(?:\.html)?$/);
-      if (m) return Math.max(1, parseInt(m[1], 10));
-      return 1;
+      return PageType.getPageNum();
     }
   function getMaxPageFromPagination() {
       const paginations = Array.from(document.querySelectorAll('.uk-pagination.uk-pagination-left.h-pagination'));
@@ -14229,12 +14260,10 @@ ${markedSwatchHtml}
       let fetchUrl;
       if (targetPage) {
         // cloned 目标页用 buildThreadPageUrl，避免 /t/.../page/N?page=M 混拼
-        const tidMatch =
-          location.pathname.match(/\/t\/(\d{4,})/) ||
-          location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
+        const tidMatch = PageType.getThreadId();
         const tidEl = document.querySelector('[data-threads-id]');
         const tid = (tidEl && tidEl.getAttribute('data-threads-id'))
-          || (tidMatch && tidMatch[1])
+          || tidMatch
           || null;
         if (tid && typeof buildThreadPageUrl === 'function') {
           fetchUrl = buildThreadPageUrl(tid, targetPage);
@@ -16740,12 +16769,12 @@ function 注册自动保存编辑() {
    * -------------------------------------------------- */
   function replyQuicklyOnBoardPage() {
     // 同时识别 /f/ 板块 和 /Forum/timeline/id/{id} 时间线
-    const isBoardPage = /^\/f\//.test(location.pathname);
-    const timelineMatch = location.pathname.match(/\/Forum\/timeline\/id\/(\d+)(?:\/page\/\d+(\.html)?)?/i);
-    const isTimeline = !!timelineMatch;
+    const isBoardPage = PageType.isBoardPage();
+    const timelineInfo = PageType.getTimelineInfo();
+    const isTimeline = !!timelineInfo;
     if (!isBoardPage && !isTimeline) return;
     // 时间线 id 与名称映射（1-7）
-    const timelineId = timelineMatch ? timelineMatch[1] : null;
+    const timelineId = timelineInfo ? timelineInfo.id : null;
     const timelineNameMap = {
       '1': '综合线',
       '2': '创作线',
@@ -16977,7 +17006,7 @@ function 注册自动保存编辑() {
         // 当前是板块页，直接使用发串表单
     } else if ($formReply.length) {
         // 当前是串内页，直接使用回串表单
-    } else if (/\/timeline|\/feed/.test(location.pathname)) {
+    } else if (PageType.isTimelineLikePage()) {
         // 当前是时间线页，无表单 → 插入一个回串表单
         $formReply = $(`
             <form action="/Home/Forum/doReplyThread.html" method="post" id="timeline-reply-form">
@@ -17208,7 +17237,7 @@ function 注册自动保存编辑() {
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').text('连续');
       }
-    } else if (/^\/f\/(?:值班室|测试)(?:\/|$)/.test(decodeURIComponent(location.pathname))) {
+    } else if (PageType.isSpecialBoard()) {
       // 值班室/测试版块强制发串模式，方便快速举报/测试（不修改设置项，用户仍可手动切换回复模式)
       const _boardName = (/^\/f\/(值班室|测试)(?:\/|$)/.exec(decodeURIComponent(location.pathname)) || [])[1] || '特殊';
       setMode('发串', {silent: true});
@@ -17367,7 +17396,7 @@ function 注册自动保存编辑() {
       // === v3: API 拉取末页+倒数第二页，位置感知增量合并，滚动位置保持 ===
       function handleBoardQuickReplyRefresh(e) {
         // 只在 板块页 或 时间线 页生效
-        if (!/^\/f\//.test(location.pathname) && !/\/Forum\/timeline\/id\/\d+/i.test(location.pathname)) return;
+        if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
         const tid = e.detail?.tid || currentReplyTid;
         if (!tid) {
           toast('订阅失败：未识别到当前串号');
@@ -24574,11 +24603,10 @@ function 注册自动保存编辑() {
     return 'default';
   }
   function getCurrentThreadIdForImageViewer() {
-    const threadMatch = location.pathname.match(/\/t\/(\d{6,8})/) || location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
-    return threadMatch ? threadMatch[1] : '';
+    return PageType.getThreadId(false);
   }
   function isImageViewerThreadPage() {
-    return /\/t\/\d{6,8}/.test(location.pathname) || /\/Forum\/po\/id\/\d+/.test(location.pathname);
+    return PageType.isThreadPage(false);
   }
   function syncImageViewerButtonForHideMode(mode) {
     ensureImageViewerButtonStyle();
@@ -24651,11 +24679,8 @@ function 注册自动保存编辑() {
   }
   // ── 打开阅览器 ──
   function getImageViewerStartPage() {
-    const m1 = location.pathname.match(/\/page\/(\d+)(?:\.html)?$/);
-    if (m1) return Math.max(1, parseInt(m1[1], 10));
-    const m2 = location.search.match(/[?&]page=(\d+)/);
-    if (m2) return Math.max(1, parseInt(m2[1], 10));
-    return 1;
+    // 路径 /page/N 优先，再回退 ?page=（阅图语义）
+    return PageType.getPathPageNum();
   }
   function renderGridImages() {
     const overlay = document.getElementById('xdex-image-viewer');
@@ -26406,8 +26431,8 @@ function 注册自动保存编辑() {
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     // 串内饼干偏好初始化
     if (cfg.enableCookieSwitch && cfg.enableCookieConfirm) {
-      const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-      const _initThreadId = _tidMatch ? _tidMatch[1].slice(0, 8) : '';
+      const _tid = PageType.getThreadId(false);
+      const _initThreadId = _tid ? _tid.slice(0, 8) : '';
       if (_initThreadId) {
         initThreadCookiePref(_initThreadId);
         injectCookieCheckSwitch(_initThreadId);
