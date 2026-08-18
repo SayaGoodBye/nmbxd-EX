@@ -10857,18 +10857,40 @@ ${markedSwatchHtml}
             max-width: 50% !important;
             height: auto !important;
           }
-          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
+          /* 扩展坞（与 ensureRightSidebarShellStyle 保持一致的最新版本，兜底双份冗余） */
+          #h-tool { display: none !important; }
+          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: width .12s ease, height .12s ease, bottom .12s ease; z-index: 9998; }
           .hld__docker:hover,
           .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
           .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker.xdex-docker-boot,
+          .hld__docker.xdex-docker-boot:hover,
+          .hld__docker.xdex-docker-boot.is-hover,
+          .hld__docker.xdex-docker-boot:has(.hld__docker-sidebar:hover) { transition: none; }
           .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
           .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
-          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
+          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; pointer-events: none; transition: opacity .06s ease; }
           .hld__docker:hover .hld__docker-btns>div,
-          .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
-          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
-          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
+          .hld__docker.is-hover .hld__docker-btns>div,
+          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; pointer-events: auto; }
+          .hld__docker.xdex-docker-boot .hld__docker-btns>div { transition: none; }
+          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 7px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
           .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+          .hld__docker-btns>div svg { display: block; }
+          .hld__docker-btns>div svg path { fill: currentColor; }
+          .hld__docker-btns>div[data-type="PREV-THREAD"],
+          .hld__docker-btns>div[data-type="NEXT-THREAD"],
+          .hld__docker-btns>div[data-type="TOP"],
+          .hld__docker-btns>div[data-type="BOTTOM"] { width: 41px; height: 41px; font-size: 16px; }
+          /* 固定模式：dock 收窄贴右、三按钮常显、隐藏左侧把手（不依赖 hover/:has，回退机制不受影响） */
+          .hld__docker.xdex-dock-fixed { width: 60px; height: 300px; bottom: 75px; }
+          .hld__docker.xdex-dock-fixed:hover,
+          .hld__docker.xdex-dock-fixed.is-hover,
+          .hld__docker.xdex-dock-fixed:has(.hld__docker-sidebar:hover) { width: 60px; height: 300px; bottom: 75px; }
+          .hld__docker.xdex-dock-fixed .hld__docker-sidebar { display: none; }
+          .hld__docker.xdex-dock-fixed .hld__docker-btns { left: 0; right: 0; }
+          .hld__docker.xdex-dock-fixed .hld__docker-btns>div { opacity: 1; pointer-events: auto; }
+          .hld__docker.xdex-dock-boot.xdex-dock-fixed { transition: none; }
         `;
       if (!style.parentNode) {
         (document.head || document.documentElement).appendChild(style);
