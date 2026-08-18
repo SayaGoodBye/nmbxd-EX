@@ -10185,10 +10185,23 @@ ${markedSwatchHtml}
       if (typeof toast === 'function') toast('当前页面没有串');
       return;
     }
-    // 基准：视口内第一个顶部 >= 0 的串（纯视口坐标，不依赖 window 滚动容器假设，兼容第一页/无页码等 URL 格式）
-    let base = items.length - 1;
+    // 即时判定（每次点击实时计算，无缓存、不依赖上次点击状态）：
+    // 当前串 = 视口顶部线正压着的串（top<=0 && bottom>0 的第一个）；
+    // 页面顶部未滚动 → 第一个 top>=0 的串；全部滚出视口上方 → 最后一个
+    let base = -1;
     for (let i = 0; i < items.length; i++) {
-      if (items[i].getBoundingClientRect().top >= 0) { base = i; break; }
+      const r = items[i].getBoundingClientRect();
+      if (r.top <= 0 && r.bottom > 0) { base = i; break; }
+      if (r.top >= 0) { base = i; break; }
+    }
+    if (base < 0) base = items.length - 1;
+    const curTop = items[base].getBoundingClientRect().top;
+    // 上一串：当前串顶部已被滚出视口上方（顶部线压在其中间）→ 先滚回当前串顶部
+    if (direction < 0 && curTop < 0) {
+      const y = curTop + getWebdavPageScrollY();
+      logRightSidebarDocker('thread-nav-align-current', { base, tid: items[base].getAttribute('data-threads-id'), y });
+      scrollPageToY(y);
+      return;
     }
     const target = base + direction;
     if (target < 0 || target >= items.length) {
