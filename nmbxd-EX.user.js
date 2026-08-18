@@ -1275,16 +1275,27 @@
                     </div>
                     <div id="sp_fullExport_import_preview" style="display:none;margin-top:8px;padding:6px 8px;border:1px dashed #aaa;border-radius:6px;background:#FFFFEE;"></div>
                     <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ccc;">
-                      <div style="font-weight:bold;margin-bottom:6px;">WebDAV 备份/同步</div>
+                      <div style="display:flex;align-items:center;margin-bottom:6px;">
+                        <div style="font-weight:bold;">WebDAV 备份/同步</div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+                          <span id="sp_webdavLastSyncLabel" style="color:#999;font-size:12px;">${webdavPanelField('lastSync')}</span>
+                          <div style="display:flex;align-items:center;gap:4px;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
+                            <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
+                            <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
+                          </div>
+                          <button id="btn_sp_webdavSave" type="button" style="padding:2px 8px;">保存</button>
+                        </div>
+                      </div>
                       <div style="display:flex;flex-direction:column;gap:6px;">
-                        <input id="sp_webdavUrl" type="text" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
-                        <input id="sp_webdavUsername" type="text" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
-                        <input id="sp_webdavPassword" type="password" placeholder="密码" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
-                        <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input id="sp_webdavAutoSync" type="checkbox"> 进入页面后自动同步</label>
+                        <input id="sp_webdavUrl" type="text" value="${webdavPanelField('url')}" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                          <input id="sp_webdavPassword" type="password" value="${webdavPanelField('password')}" placeholder="密码" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                          <button id="btn_webdavTogglePassword" type="button" style="padding:4px 8px;flex:0 0 auto;">显示</button>
+                        </div>
                         <div style="display:flex;gap:8px;align-items:center;">
                           <button id="btn_webdavCheck" type="button" style="padding:4px 10px;">检查连接</button>
                           <button id="btn_webdavSync" type="button" style="padding:4px 10px;">手动同步</button>
-                          <button id="btn_sp_webdavSave" type="button" style="padding:4px 10px;">保存</button>
                         </div>
                         <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;"></div>
                       </div>
@@ -25405,6 +25416,54 @@ function 注册自动保存编辑() {
    * -------------------------------------------------- */
   const WEBDAV_CONFIG_KEY = 'xdex_webdav_config';
   const WEBDAV_SYNC_FILE = 'xdex-webdav-sync.json';
+  // 自动同步：跨页面共享计时器（localStorage），间隔 1 小时；到点未同步则新页面立即补一次；手动同步会重置计时器
+  const WEBDAV_AUTO_INTERVAL_MS = 60 * 60 * 1000;
+  const WEBDAV_AUTO_NEXT_KEY = 'xdex_webdav_auto_next_ts';
+  const WEBDAV_AUTO_RUNNING_KEY = 'xdex_webdav_auto_running_ts';
+  const WEBDAV_AUTO_LAST_FP_KEY = 'xdex_webdav_last_fp';
+  const WEBDAV_AUTO_LAST_IMMEDIATE_KEY = 'xdex_webdav_last_immediate_ts';
+  // 开启开关触发的立即同步：60s 冷却 + 内容指纹防重
+  const WEBDAV_IMMEDIATE_COOLDOWN_MS = 60 * 1000;
+  function webdavAutoGet(key) {
+    try { const v = localStorage.getItem(key); return v == null ? '' : String(v); } catch (e) { return ''; }
+  }
+  function webdavFnv1a(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+    return h;
+  }
+  // 内容指纹：剔除自变机制字段（lastSyncAt / lastUpdatedAt），保留反映真实活动的数据
+  function webdavFingerprint(payload) {
+    try {
+      const copy = JSON.parse(JSON.stringify(payload || {}));
+      const strip = (v) => {
+        if (v === null || typeof v !== 'object') return;
+        Object.keys(v).forEach((k) => {
+          if (k === 'lastSyncAt' || k === 'lastUpdatedAt') {
+            delete v[k];
+          } else if (v[k] !== null && typeof v[k] === 'object') {
+            strip(v[k]);
+          }
+        });
+      };
+      strip(copy);
+      return String(webdavFnv1a(JSON.stringify(copy)));
+    } catch (e) {
+      return '';
+    }
+  }
+  function webdavAutoNow() {
+    return Date.now();
+  }
+  function webdavAutoRead(key) {
+    try { return Number(localStorage.getItem(key)) || 0; } catch (e) { return 0; }
+  }
+  function webdavAutoWrite(key, ts) {
+    try { localStorage.setItem(key, String(ts)); } catch (e) {}
+  }
+  function webdavAutoRemove(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
   function getWebdavConfig() {
     try {
       const saved = typeof GM_getValue === 'function' ? GM_getValue(WEBDAV_CONFIG_KEY, {}) : {};
@@ -25427,15 +25486,63 @@ function 注册自动保存编辑() {
     $('#sp_webdavAutoSync').prop('checked', cfg.autoSync);
   }
   function saveWebdavConfigFromPanel(showToast) {
+    const prev = getWebdavConfig();
     const cfg = {
       url: String($('#sp_webdavUrl').val() || '').trim(),
       username: String($('#sp_webdavUsername').val() || '').trim(),
       password: String($('#sp_webdavPassword').val() || ''),
       autoSync: !!$('#sp_webdavAutoSync').is(':checked'),
-      lastSyncAt: getWebdavConfig().lastSyncAt || 0
+      lastSyncAt: prev.lastSyncAt || 0
     };
     storeWebdavConfig(cfg);
     if (showToast && typeof toast === 'function') toast('WebDAV 配置已保存');
+    // 刚打开自动同步开关（false→true）：立即同步一次，并让计时器从此刻起算
+    // 防重：60s 冷却 + 内容指纹（无变化不写服务器）
+    if (showToast && cfg.autoSync && !prev.autoSync && cfg.url) {
+      // 开启自动同步（保存路径）：立即同步一次（防重逻辑在 webdavTriggerImmediateSync 内）
+      webdavTriggerImmediateSync(cfg);
+    }
+  }
+  // 开启自动同步触发的立即同步：60s 冷却 + 内容指纹防重 + 互斥锁
+  function webdavTriggerImmediateSync(cfg) {
+    const now = webdavAutoNow();
+    webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, now + WEBDAV_AUTO_INTERVAL_MS);
+    // 冷却层：短时间连续开关不再每次触发
+    const lastImmediate = webdavAutoRead(WEBDAV_AUTO_LAST_IMMEDIATE_KEY);
+    if (now - lastImmediate < WEBDAV_IMMEDIATE_COOLDOWN_MS) {
+      webdavAutoWrite(WEBDAV_AUTO_LAST_IMMEDIATE_KEY, now);
+      if (typeof toast === 'function') toast('WebDAV：刚同步过，已跳过本次立即同步');
+      return;
+    }
+    // 指纹层：本次要上传的内容与上次成功同步时一致则跳过
+    const utils = getWebdavUtils();
+    if (utils && typeof utils.buildFullExportFile === 'function') {
+      const fp = webdavFingerprint(utils.buildFullExportFile(webdavFullSelection()).file.payload);
+      if (fp && webdavAutoGet(WEBDAV_AUTO_LAST_FP_KEY) === fp) {
+        webdavAutoWrite(WEBDAV_AUTO_LAST_IMMEDIATE_KEY, now);
+        if (typeof toast === 'function') toast('WebDAV：内容无变化，跳过同步');
+        return;
+      }
+    }
+    // 走互斥锁立即同步；成功后重算指纹（下载/上传后本地内容都可能变化）
+    const running = webdavAutoRead(WEBDAV_AUTO_RUNNING_KEY);
+    if (now - running < 30000) {
+      if (typeof toast === 'function') toast('WebDAV：有同步正在进行，请稍后重试');
+      return;
+    }
+    webdavAutoWrite(WEBDAV_AUTO_RUNNING_KEY, now);
+    webdavAutoWrite(WEBDAV_AUTO_LAST_IMMEDIATE_KEY, now);
+    // 延迟 300ms，让「配置已保存/已开启」toast 先展示，再显示同步结果
+    setTimeout(() => {
+      webdavSyncCore(cfg, false).then(() => {
+        try {
+          const u2 = getWebdavUtils();
+          if (u2 && typeof u2.buildFullExportFile === 'function') {
+            webdavAutoWrite(WEBDAV_AUTO_LAST_FP_KEY, webdavFingerprint(u2.buildFullExportFile(webdavFullSelection()).file.payload));
+          }
+        } catch (e) {}
+      }).finally(() => webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY));
+    }, 300);
   }
   function webdavRequest(details) {
     return new Promise((resolve) => {
@@ -25537,8 +25644,68 @@ function 注册自动保存编辑() {
     const $el = $('#sp_webdavStatus');
     if ($el && $el.length) $el.text(text);
   }
+  function webdavPanelField(name) {
+    // 模板渲染时读取已保存配置，让输入框默认显示（无需先点击）
+    try {
+      const cfg = getWebdavConfig();
+      if (name === 'url') return cfg.url || '';
+      if (name === 'username') return cfg.username || '';
+      if (name === 'password') return cfg.password || '';
+      if (name === 'autoSync') return cfg.autoSync ? 'checked' : '';
+      if (name === 'lastSync') return webdavFormatLastSync(cfg.lastSyncAt || 0);
+    } catch (e) {}
+    return '';
+  }
+  function webdavFormatLastSync(ts) {
+    if (!ts) return '尚未同步';
+    return '上次同步 ' + webdavFormatTime(ts);
+  }
+  function webdavFormatTime(ts) {
+    try {
+      const d = new Date(ts);
+      const pad = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    } catch (e) { return '?'; }
+  }
+  function webdavUpdateLastSyncLabel() {
+    const $el = $('#sp_webdavLastSyncLabel');
+    if ($el && $el.length) $el.text(webdavFormatLastSync((getWebdavConfig().lastSyncAt) || 0));
+  }
+  // 与 tag1 FIXED_KEYS 中的固定启用项对齐：这些键不参与「本地是否默认」与差异提示，避免噪声
+  const WEBDAV_SETTINGS_SKIP_KEYS = new Set([
+    'enableImageHideMode', 'interceptReplyForm', 'updateReplyNumbers', 'replaceRightSidebar',
+    'enablePostExpandAll', 'kaomojiEnhancer', 'enableImageViewerMode', 'autoSelectReportReason',
+    'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory', 'enableSubscriptionFeed'
+  ]);
+  function sameSettingValue(a, b) {
+    if (a === b) return true;
+    if (a != null && b != null && typeof a === 'object' && typeof b === 'object') {
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+    return false;
+  }
+  function findWebdavSettingsDiff(remoteSettings) {
+    // 返回 { diff: 两端不同的设置键, localIsDefault: 本地是否仍是默认值 }
+    const result = { diff: [], localIsDefault: true };
+    try {
+      const defaults = SettingPanel && SettingPanel.defaults ? SettingPanel.defaults : {};
+      const local = Object.assign({}, defaults, GM_getValue(SettingPanel.key, {}));
+      if (!remoteSettings || typeof remoteSettings !== 'object') return result;
+      Object.keys(defaults).forEach((k) => {
+        if (WEBDAV_SETTINGS_SKIP_KEYS.has(k)) return;
+        if (!sameSettingValue(local[k], defaults[k])) result.localIsDefault = false;
+        if (!(k in remoteSettings) || !sameSettingValue(local[k], remoteSettings[k])) result.diff.push(k);
+      });
+      // 远端比 defaults 多的键（未来版本新增）也视为差异
+      Object.keys(remoteSettings).forEach((k) => {
+        if (!(k in defaults) && !WEBDAV_SETTINGS_SKIP_KEYS.has(k)) result.diff.push(k);
+      });
+    } catch (e) {}
+    return result;
+  }
   function webdavFullSelection() {
-    return { settings: true, threadHistory: true, postHistory: true, drafts: true, kaomojiStats: true, cookiePrefs: true, webdav: true };
+    // 同步文件不含 WebDAV 配置（用户自行选择同步源更合理）；手动导入导出才迁移配置
+    return { settings: true, threadHistory: true, postHistory: true, drafts: true, kaomojiStats: true, cookiePrefs: true };
   }
   function getWebdavUtils() {
     // full-export 工具定义在 SettingPanel.render 嵌套作用域，需先打开过一次设置面板（按钮本身在面板内）
@@ -25576,7 +25743,8 @@ function 注册自动保存编辑() {
       if (up.ok) {
         const now = Date.now();
         storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
-        setWebdavStatus('远端无数据，本地数据已上传（' + new Date(now).toLocaleString() + '）');
+        webdavUpdateLastSyncLabel();
+        setWebdavStatus('远端无数据，本地数据已上传（' + webdavFormatTime(now) + '）');
         notify('WebDAV：本地数据已上传');
         return { ok: true, direction: 'upload' };
       }
@@ -25609,8 +25777,45 @@ function 注册自动保存编辑() {
         if (!silent) notify('WebDAV：远端同步文件不合法');
         return { ok: false, reason: 'invalid-remote' };
       }
+      // WebDAV 配置不随同步覆盖：同步上传端已排除；
+      // 若用户手动导出的含 webdav 配置文件被放到远端，下载时过滤掉，避免远端反向改写本地同步源
+      if (parsed.data.payload && parsed.data.payload.webdavConfig) delete parsed.data.payload.webdavConfig;
+      // 设置差异检测：手动同步弹窗让用户选择；自动同步按「本地是否默认」决定
+      let settingsDecision = 'download';
+      if (parsed.data.payload && parsed.data.payload.myScriptSettings) {
+        const diffInfo = findWebdavSettingsDiff(parsed.data.payload.myScriptSettings);
+        if (diffInfo.diff.length > 0) {
+          if (silent) {
+            // 自动同步：本地仍是默认设置（如新端）→ 采用远端，避免默认值覆盖个性化设置；
+            // 本地已个性化 → 保留本地并上传，避免远端覆盖本地选择
+            settingsDecision = diffInfo.localIsDefault ? 'download' : 'upload';
+          } else {
+            const sample = diffInfo.diff.slice(0, 5).join('、') + (diffInfo.diff.length > 5 ? '…' : '');
+            settingsDecision = window.confirm(
+              '检测到设置与远端不同（' + diffInfo.diff.length + ' 项：' + sample + '）' + (diffInfo.localIsDefault ? '，本地当前为默认设置' : '') + '。\n\n' +
+              '确定：采用远端设置（覆盖本地）\n取消：保留本地设置并上传覆盖远端'
+            ) ? 'download' : 'upload';
+          }
+        }
+      }
+      if (settingsDecision === 'upload') {
+        // 本地设置优先：上传本地全量覆盖远端
+        const up = await webdavUploadLocal(cfg, headers);
+        if (up.ok) {
+          const now = Date.now();
+          storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
+        webdavUpdateLastSyncLabel();
+          setWebdavStatus('检测到设置差异，已保留本地设置并上传（' + webdavFormatTime(now) + '）');
+          notify('WebDAV：检测到设置差异，已保留本地设置并上传');
+          return { ok: true, direction: 'upload-settings-local' };
+        }
+        setWebdavStatus('上传失败（HTTP ' + (up.status == null ? '未知' : up.status) + '）');
+        notify('WebDAV 上传失败：HTTP ' + up.status);
+        return { ok: false, reason: 'upload-failed' };
+      }
       const report = utils.applyFullImportPayload(parsed.data);
       storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
+      webdavUpdateLastSyncLabel();
       const parts = [];
       if (report.settings) parts.push('设置');
       if (report.threadHistory) parts.push('浏览历史');
@@ -25618,7 +25823,7 @@ function 注册自动保存编辑() {
       if (report.drafts) parts.push('草稿');
       if (report.kaomojiStats) parts.push('颜文字统计');
       if (report.cookiePrefs) parts.push('饼干偏好');
-      setWebdavStatus('已从远端恢复（' + new Date(remoteExportedAt).toLocaleString() + '）');
+      setWebdavStatus('已从远端恢复（' + webdavFormatTime(remoteExportedAt) + '）');
       notify('WebDAV：已恢复远端数据（' + (parts.join('、') || '空') + '），刷新页面可彻底生效');
       return { ok: true, direction: 'download' };
     }
@@ -25627,7 +25832,7 @@ function 注册自动保存编辑() {
     if (up.ok) {
       const now = Date.now();
       storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
-      setWebdavStatus('本地数据已上传（' + new Date(now).toLocaleString() + '）');
+      setWebdavStatus('本地数据已上传（' + webdavFormatTime(now) + '）');
       notify('WebDAV：本地数据已上传');
       return { ok: true, direction: 'upload' };
     }
@@ -25642,20 +25847,105 @@ function 注册自动保存编辑() {
       if (typeof toast === 'function') toast('请先填写 WebDAV 链接');
       return;
     }
-    await webdavSyncCore(cfg, false);
+    // 与自动同步共用互斥锁：避免手动/自动或多标签并发双写（30s 窗口）
+    const now = webdavAutoNow();
+    const running = webdavAutoRead(WEBDAV_AUTO_RUNNING_KEY);
+    if (now - running < 30000) {
+      console.warn('[webdav] 手动同步跳过：其他同步正在进行');
+      if (typeof toast === 'function') toast('WebDAV：有同步正在进行，请稍后重试');
+      return;
+    }
+    webdavAutoWrite(WEBDAV_AUTO_RUNNING_KEY, now);
+    // 手动同步后重置自动同步计时器：避免紧随的空转
+    webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, now + WEBDAV_AUTO_INTERVAL_MS);
+    try {
+      await webdavSyncCore(cfg, false);
+    } finally {
+      webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY);
+    }
   }
   function webdavAutoSyncIfEnabled() {
     const cfg = getWebdavConfig();
     if (!cfg.url || !cfg.autoSync) return;
-    try { webdavSyncCore(cfg, true); } catch (e) { console.warn('[webdav] auto sync failed', e); }
+    const now = webdavAutoNow();
+    const next = webdavAutoRead(WEBDAV_AUTO_NEXT_KEY);
+    const trySync = () => {
+      // 到点执行时重新取当前时间（排程等待期间可能已过去很久）
+      const tryNow = webdavAutoNow();
+      // 复检开关：关闭自动同步后，本页已排程的定时器不再执行
+      if (!getWebdavConfig().autoSync) {
+        console.log('[webdav] 自动同步跳过：开关已关闭');
+        return;
+      }
+      // 抢锁：避免多标签页同时同步；30s 窗口内其他页面跳过本次
+      const running = webdavAutoRead(WEBDAV_AUTO_RUNNING_KEY);
+      if (tryNow - running < 30000) {
+        console.log('[webdav] 自动同步跳过：其他页面正在同步');
+        return;
+      }
+      webdavAutoWrite(WEBDAV_AUTO_RUNNING_KEY, tryNow);
+      // 无论成败都推进下次时间，避免失败后每个页面都重试
+      webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, tryNow + WEBDAV_AUTO_INTERVAL_MS);
+      console.log('[webdav] 自动同步开始', { at: new Date(tryNow).toLocaleString(), intervalMs: WEBDAV_AUTO_INTERVAL_MS });
+      const done = () => webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY);
+      try {
+        webdavSyncCore(cfg, true).then(done, done);
+      } catch (e) {
+        done();
+        console.warn('[webdav] auto sync failed', e);
+      }
+    };
+    if (!next || now >= next) {
+      // 首次或已到点（含上次页面关闭未同步）：立即补一次
+      console.log('[webdav] 自动同步到点，立即执行', { next: next ? new Date(next).toLocaleString() : '首次' });
+      trySync();
+      return;
+    }
+    // 未到点：本页面挂一个定时器等到点执行；若页面提前关闭，新页面 load 时会发现已到点而补同步
+    const delay = Math.min(next - now, WEBDAV_AUTO_INTERVAL_MS);
+    console.log('[webdav] 自动同步已排程', { at: new Date(next).toLocaleString(), delayMs: delay });
+    setTimeout(trySync, delay);
   }
   function bindWebdavPanelEvents() {
     // 原生 DOM 委托（capture 阶段），不依赖 jQuery / 面板重建时机 / 脚本管理器注入顺序
     try {
+      // 划词抑制：面板内 mousedown 后位移超过 5px 视为拖选，阻止 click 默认行为与面板外误关
+      let webdavDragStart = null;
+      document.addEventListener('mousedown', function onWebdavDragStart(e) {
+        if (e.button !== 0) { webdavDragStart = null; return; }
+        const t = e.target;
+        webdavDragStart = (t && t.closest && t.closest('#sp_panel, #sp_cover'))
+          ? { x: e.clientX, y: e.clientY }
+          : null;
+      }, true);
+      document.addEventListener('click', function onWebdavDragSuppress(e) {
+        if (!webdavDragStart) return;
+        const dx = e.clientX - webdavDragStart.x;
+        const dy = e.clientY - webdavDragStart.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+        webdavDragStart = null;
+      }, true);
+      // 自动同步开关：变化即保存并提示；开启时立即同步一次（无需再点保存）
+      document.addEventListener('change', function onWebdavAutoSyncChange(e) {
+        const t = e && e.target;
+        if (!t || t.id !== 'sp_webdavAutoSync') return;
+        console.log('[webdav] 自动同步开关变化', { checked: t.checked });
+        saveWebdavConfigFromPanel(false);
+        const cfg = getWebdavConfig();
+        if (t.checked) {
+          if (typeof toast === 'function') toast('已开启自动同步');
+          if (cfg.url) webdavTriggerImmediateSync(cfg);
+        } else {
+          if (typeof toast === 'function') toast('已关闭自动同步');
+        }
+      }, true);
       document.addEventListener('click', function onWebdavDelegateClick(e) {
         const t = e && e.target;
         if (!t || typeof t.closest !== 'function') return;
-        const btn = t.closest('#btn_webdavCheck, #btn_webdavSync, #btn_sp_webdavSave');
+        const btn = t.closest('#btn_webdavCheck, #btn_webdavSync, #btn_sp_webdavSave, #btn_webdavTogglePassword');
         if (!btn || !btn.id) return;
         console.log('[webdav] 点击', { id: btn.id, at: Date.now() });
         if (btn.id === 'btn_sp_webdavSave') {
@@ -25696,6 +25986,18 @@ function 注册自动保存编辑() {
           } catch (err) {
             console.error('[webdav] 检查连接处理异常', err);
             setWebdavStatus('检查连接异常：' + (err && err.message ? err.message : err));
+          }
+          return;
+        }
+        if (btn.id === 'btn_webdavTogglePassword') {
+          e.preventDefault();
+          e.stopPropagation();
+          const input = document.getElementById('sp_webdavPassword');
+          if (input) {
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            btn.textContent = showing ? '显示' : '隐藏';
+            console.log('[webdav] 密码可见性切换', { showing: !showing });
           }
           return;
         }
