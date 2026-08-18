@@ -6776,7 +6776,8 @@ ${markedSwatchHtml}
     setTimeout(() => {
       liveCfg = getLatestCfg();
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
-      try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
+      // 只处理本次新增内容（root=新克隆/目标回复区），避免无缝翻页后对全页既有内容重复编号与重标 Po
+      try { if (typeof highlightPO === 'function') highlightPO(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
       try {
@@ -14279,7 +14280,7 @@ ${markedSwatchHtml}
                 applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === 'function' ? getConfig() : null));
               } else {
                 try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
-                try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
+                try { if (typeof highlightPO === 'function') highlightPO(targetReplies); } catch (e) {}
                 try { if (typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(document); } catch (e) {}
                 try { if (typeof enableHDImage === 'function') enableHDImage(document); } catch (e) {}
                 try { if (typeof initContent === 'function') initContent(targetReplies); } catch (e) {}
