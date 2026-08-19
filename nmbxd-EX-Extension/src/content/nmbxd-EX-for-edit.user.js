@@ -7435,7 +7435,7 @@ ${markedSwatchHtml}
         btn.id = 'seamless-refresh-btn';
         btn.className = 'qp-reset-btn seamless-refresh-btn';
         btn.title = '手动检查回复更新';
-        btn.textContent = '🗘';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
         // --- 固定位置样式 ---
         btn.style.position = 'fixed';
         btn.style.right = '12px';
@@ -9455,7 +9455,7 @@ ${markedSwatchHtml}
     });
     const $overlay = $('<div class="qp-overlay-quote"></div>').appendTo('body');
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
-    const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗">❌</div>').appendTo($overlay);
+    const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="red" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path style="fill:none" d="M6 6l12 12"/><path style="fill:none" d="M18 6L6 18"/></svg></div>').appendTo($overlay);
     $closeAll.on('click', () => {
       $stack.empty();
       $overlay.fadeOut(160);
@@ -10232,7 +10232,7 @@ ${markedSwatchHtml}
             <div class="hld__docker-btns">
                 <div data-type="TOP" title="回到顶部"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8 L18 15 H6 Z"/><path d="M12 3 L16 7 H8 Z"/></svg></div>
                 ${withThreadNav ? '<div data-type="PREV-THREAD" title="上一个串"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 6 L19 17 H5 Z"/></svg></div>' : ''}
-                <div data-type="REPLY">↩</div>
+                <div data-type="REPLY"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M19.9 4.8V14.2a1.5 1.5 0 0 1-1.5 1.5H4.1"/><path style="fill:none" d="M8.8 19.2L4.1 15.7l4.7-3.5"/></svg></div>
                 ${withThreadNav ? '<div data-type="NEXT-THREAD" title="下一个串"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 18 L5 7 H19 Z"/></svg></div>' : ''}
                 <div data-type="BOTTOM" title="到底部"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 16 L6 9 H18 Z"/><path d="M12 21 L8 17 H16 Z"/></svg></div>
             </div>
@@ -10987,7 +10987,7 @@ ${markedSwatchHtml}
                       <div class="qp-body"></div>
                   </div>
               </div>
-              <div class="qp-reset-btn">🗘</div>
+              <div class="qp-reset-btn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
           `;
           document.body.appendChild(overlay);
           // 点击遮罩关闭（点内容不关闭，且允许事件冒泡到 document 以触发引用弹窗）

@@ -811,20 +811,39 @@ function testBrowsingHistoryUrlParsingContract() {
 
 function testKaomojiContextCopyContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  // 复制动作抽到 copyKaomojiValue：右键菜单与键盘 C 共用
+  const copyFnIndex = upstream.indexOf('function copyKaomojiValue(value)');
+  assert(copyFnIndex !== -1, 'kaomoji panel must share one copy helper for right-click and keyboard C');
+  const copyFnEnd = upstream.indexOf('function renderPanelItems()', copyFnIndex);
+  assert(copyFnEnd > copyFnIndex, 'kaomoji copy helper must be defined before item rendering');
+  const copyFn = upstream.slice(copyFnIndex, copyFnEnd);
+  assert(copyFn.includes('writeClipboardText(value, null)'), 'kaomoji copy helper must write the option value, not display text');
+  assert(/toast\('颜文字已复制', 900, \{ queue: false, key: 'kaomoji-copy' \}\);[\s\S]*?hidePanel\(\);/.test(copyFn), 'kaomoji copy helper must close the expanded panel after successful copy feedback');
+  assert(copyFn.includes("toast('颜文字复制失败'"), 'kaomoji copy helper must surface failures');
+  assert(copyFn.includes('textarea.h-post-form-textarea[name="content"]'), 'kaomoji copy helper must locate the reply textarea for focus restore');
+  assert((copyFn.match(/restoreFocus\(\)/g) || []).length >= 2, 'kaomoji copy helper must restore textarea focus on both success and failure');
+
   const contextMenuIndex = upstream.indexOf("item.addEventListener('contextmenu'");
   assert(contextMenuIndex !== -1, 'kaomoji panel items must support right-click copy');
-
   const contextMenuEnd = upstream.indexOf('panel.appendChild(item)', contextMenuIndex);
   assert(contextMenuEnd > contextMenuIndex, 'kaomoji right-click handler must be attached before item insertion');
   const handler = upstream.slice(contextMenuIndex, contextMenuEnd);
-
   assert(handler.includes('e.preventDefault();'), 'kaomoji right-click copy must suppress the browser context menu');
   assert(handler.includes('e.stopPropagation();'), 'kaomoji right-click copy must not bubble into global handlers');
-  assert(handler.includes('writeClipboardText(opt.value, null)'), 'kaomoji right-click copy must copy the actual option value, not display text');
+  assert(handler.includes('copyKaomojiValue(opt.value)'), 'kaomoji right-click copy must copy the actual option value via the shared helper');
   assert(!handler.includes('item.textContent'), 'kaomoji right-click copy must not copy the rendered label for rich kaomoji');
   assert(!handler.includes('select.dispatchEvent'), 'kaomoji right-click copy must not trigger the insertion change handler');
   assert(!handler.includes('recordKaomojiUsage'), 'kaomoji right-click copy must not affect recent/frequent sorting stats');
-  assert(/toast\('颜文字已复制', 900, \{ queue: false, key: 'kaomoji-copy' \}\);\s*hidePanel\(\);/.test(handler), 'kaomoji right-click copy must close the expanded panel after successful copy feedback');
+
+  // 键盘 C：焦点在面板内时复制当前高亮项
+  const keydownIndex = upstream.indexOf("} else if (key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {");
+  assert(keydownIndex !== -1, 'kaomoji panel must bind keyboard C copy');
+  const keydownEnd = upstream.indexOf('if (newIndex !== currentIndex) {', keydownIndex);
+  assert(keydownEnd > keydownIndex, 'keyboard C branch must stay inside the navigation handler');
+  const keydownHandler = upstream.slice(keydownIndex, keydownEnd);
+  assert(keydownHandler.includes('panel.contains(activeEl)'), 'keyboard C copy must only fire while focus stays inside the panel');
+  assert(keydownHandler.includes('copyKaomojiValue(items[currentIndex].dataset.value)'), 'keyboard C copy must copy the currently highlighted item value');
+
   assert(upstream.includes('const val = NEED_LF.has(key) ? ("\\n" + EXTRA_RICH[key] + "\\n") : EXTRA_RICH[key];'), 'rich kaomoji option values must retain required leading/trailing newlines');
 }
 
