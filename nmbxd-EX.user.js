@@ -10112,9 +10112,9 @@ ${markedSwatchHtml}
     // 版块页/时间线页：顶层串列表（串内页无串列表，保持三按钮）
     return PageType.isBoardPage() || PageType.isTimelineAnyPage();
   }
-  function scrollPageToY(targetY) {
+  function scrollPageToY(targetY, behavior) {
     try {
-      window.scrollTo({ top: targetY, left: 0, behavior: 'smooth' });
+      window.scrollTo({ top: targetY, left: 0, behavior: behavior || 'smooth' });
     } catch (e) {
       try { window.scrollTo(0, targetY); } catch (e2) {
         document.documentElement.scrollTop = targetY;
@@ -10197,10 +10197,11 @@ ${markedSwatchHtml}
     if (base < 0) base = items.length - 1;
     const curTop = items[base].getBoundingClientRect().top;
     // 上一串：当前串顶部已被滚出视口上方（顶部线压在其中间）→ 先滚回当前串顶部
+    // 对齐必须瞬时完成（instant）：平滑滚动在途时再点“上一个”会永远命中本分支而无法前进
     if (direction < 0 && curTop < 0) {
       const y = curTop + getWebdavPageScrollY();
       logRightSidebarDocker('thread-nav-align-current', { base, tid: items[base].getAttribute('data-threads-id'), y });
-      scrollPageToY(y);
+      scrollPageToY(y, 'auto');
       return;
     }
     const target = base + direction;
