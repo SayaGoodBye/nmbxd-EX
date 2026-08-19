@@ -20776,12 +20776,14 @@ function 注册自动保存编辑() {
     const postId = String(id || '').trim();
     if (!postId) return Promise.resolve(null);
     const detail = Object.assign({}, context || {}, { id: postId });
-    return fetchPostHistoryRefApiPost(postId, detail)
-      .then(refPost => {
-        if (postHistoryRefPostHasImage(refPost)) return refPost;
-        return fetchPostHistorySameOriginRefPost(postId, detail);
-      })
-      .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
+    // [停用-注释保留] 同源降级链（/Api/ref → /Home/Forum/ref）经实证（2026-08-18）对浏览器 UA 稳定返回 503/空，仅走主 API api.nmb.best/api/ref
+    return fetchPostHistoryRefApiPost(postId, detail);
+    // return fetchPostHistoryRefApiPost(postId, detail)
+    //   .then(refPost => {
+    //     if (postHistoryRefPostHasImage(refPost)) return refPost;
+    //     return fetchPostHistorySameOriginRefPost(postId, detail);
+    //   })
+    //   .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
   }
   function fetchPostHistoryRefApiPost(id, context) {
     const postId = String(id || '').trim();
@@ -20802,27 +20804,29 @@ function 注册自动保存编辑() {
       throw e;
     });
   }
-  function fetchPostHistorySameOriginRefPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
-    const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
-    return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
-      .then(resp => {
-        const refPost = parsePostHistoryRefResponse(resp, detail);
-        if (postHistoryRefPostHasImage(refPost)) return refPost;
-        return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
-      })
-      .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
-  }
-  function fetchPostHistoryRefHtmlFallbackPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
-    const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
-    return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
-      .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
-  }
+  // [停用-注释保留] 同源降级（/Api/ref）：经实证（2026-08-18）该端点对浏览器 UA 稳定返回 503，恢复时取消注释并恢复 fetchPostHistoryRefPost 内调用即可
+  // function fetchPostHistorySameOriginRefPost(id, context) {
+  //   const postId = String(id || '').trim();
+  //   if (!postId) return Promise.resolve(null);
+  //   const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
+  //   const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
+  //   return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
+  //     .then(resp => {
+  //       const refPost = parsePostHistoryRefResponse(resp, detail);
+  //       if (postHistoryRefPostHasImage(refPost)) return refPost;
+  //       return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
+  //     })
+  //     .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
+  // }
+  // [停用-注释保留] HTML 降级（/Home/Forum/ref）：实证返回空页，随 /Api/ref 降级一并停用
+  // function fetchPostHistoryRefHtmlFallbackPost(id, context) {
+  //   const postId = String(id || '').trim();
+  //   if (!postId) return Promise.resolve(null);
+  //   const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
+  //   const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
+  //   return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
+  //     .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
+  // }
   function enrichPostHistoryRefImage(localId, postId) {
     return fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
       const imageFile = refPost ? buildPostHistoryImageFile(refPost.img, refPost.ext) : '';
@@ -20854,8 +20858,10 @@ function 注册自动保存编辑() {
   }
   function fetchPostHistoryThreadPage(threadId, page, context) {
     const detail = Object.assign({}, context || {}, { threadId, page });
-    return fetchPostHistoryThreadApiPage(threadId, page, detail)
-      .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
+    // [停用-注释保留] 同源降级（/Api/thread）经实证（2026-08-18）对浏览器 UA 稳定返回 503，仅走主 API api.nmb.best/api/thread
+    return fetchPostHistoryThreadApiPage(threadId, page, detail);
+    // return fetchPostHistoryThreadApiPage(threadId, page, detail)
+    //   .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
   }
   function fetchPostHistoryThreadApiPage(threadId, page, context) {
     const url = `${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
@@ -20873,11 +20879,12 @@ function 注册自动保存编辑() {
       throw e;
     });
   }
-  function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
-    const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
-    const detail = Object.assign({}, context || {}, { threadId, page });
-    return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
-  }
+  // [停用-注释保留] 同源降级（/Api/thread）：经实证（2026-08-18）该端点对浏览器 UA 稳定返回 503，恢复时取消注释并恢复 fetchPostHistoryThreadPage 内的 catch 即可
+  // function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
+  //   const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+  //   const detail = Object.assign({}, context || {}, { threadId, page });
+  //   return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
+  // }
   function getPostHistoryThreadFallbackPages(replyCount) {
     const total = Number(replyCount) || 0;
     const tailPage = Math.max(1, Math.ceil(total / POST_HISTORY_REPLIES_PER_PAGE));
