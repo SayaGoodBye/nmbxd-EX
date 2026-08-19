@@ -1319,7 +1319,7 @@
                       <div style="display:flex;align-items:center;margin-bottom:6px;">
                         <div style="font-weight:bold;">WebDAV 备份/同步</div>
                         <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-                          <span id="sp_webdavLastSyncLabel" style="color:#999;font-size:12px;">${webdavPanelField('lastSync')}</span>
+                          <span id="sp_webdavLastSyncLabel" style="color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
                           <div style="display:flex;align-items:center;gap:4px;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
                             <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
                             <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
@@ -7447,6 +7447,8 @@ ${markedSwatchHtml}
         btn.style.padding = '6px 12px';
         btn.style.borderRadius = '6px';
         btn.style.cursor = 'pointer';
+        // 层级置于拓展坞（.hld__docker z-index:9998）之上：串内页两者位置可能重叠
+        btn.style.zIndex = '10000';
         btn.style.zIndex = '9001';
         btn.style.userSelect = 'none';
         btn.style.display = 'none';   // 默认不显示
