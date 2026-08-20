@@ -10307,6 +10307,7 @@ ${markedSwatchHtml}
   function getWebdavPageScrollY() {
     return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
   }
+  let navLastAlign = null; // {tid, y, ts}：最近一次“对齐当前串顶”的目标，用于抗布局漂移判定
   function scrollToAdjacentThread(direction) {
     const items = getBoardThreadItems();
     if (!items.length) {
@@ -10326,13 +10327,25 @@ ${markedSwatchHtml}
     if (base < 0) base = items.length - 1;
     const curTop = items[base].getBoundingClientRect().top;
     // 上一串：当前串顶部已被滚出视口上方（顶部线压在其中间）→ 先滚回当前串顶部
-    // 对齐必须瞬时完成（instant）：平滑滚动在途时再点“上一个”会永远命中本分支而无法前进
+    // 抗漂移判定：若刚对齐过同一个串且页面未被手动滚动（无缝翻页/懒加载造成的布局漂移会让
+    // curTop 持续为负，此时按像素阈值判断会永远“未对齐”），直接视为已对齐并跳前串
     if (direction < 0 && curTop < 0) {
-      const y = curTop + getWebdavPageScrollY();
-      logRightSidebarDocker('thread-nav-align-current', { base, tid: items[base].getAttribute('data-threads-id'), y });
-      scrollPageToY(y, 'auto');
-      return;
+      const now = Date.now();
+      const scrollY = getWebdavPageScrollY();
+      const tid = items[base].getAttribute('data-threads-id');
+      if (navLastAlign && navLastAlign.tid === tid
+          && now - navLastAlign.ts < 10000
+          && Math.abs(scrollY - navLastAlign.y) < 3) {
+        navLastAlign = null; // 已对齐（即使布局漂移后 curTop 仍为负）：走下方跳转分支
+      } else {
+        const y = curTop + scrollY;
+        logRightSidebarDocker('thread-nav-align-current', { base, tid, y });
+        navLastAlign = { tid, y, ts: now };
+        scrollPageToY(y, 'auto');
+        return;
+      }
     }
+    navLastAlign = null;
     const target = base + direction;
     if (target < 0 || target >= items.length) {
       logRightSidebarDocker('thread-nav-boundary', { direction, base, target, total: items.length });
