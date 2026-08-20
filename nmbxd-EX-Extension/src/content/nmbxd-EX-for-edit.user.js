@@ -2300,7 +2300,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'extendQuote', 'kaomojiSort', 'toggleSidebar',
         'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
         'replyModeDefault', 'replyExtraDefault', 'blockDisplayMode',
-        'postAfterAction'
+        'postAfterAction', 'enablePostExpandAll', 'dockDisplayMode', 'disableAutoQuote'
       ];
       function mergeFavoriteThreads(localItems, importedItems) {
         const local = Array.isArray(localItems) ? spData('normalizeFavoriteThreads', localItems) : [];
@@ -2420,31 +2420,127 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
         return result;
       }
+      // WebDAV「保留本地上传」专用：标量项以本地为准（result 以 localSettings 为底），
+      // 复杂项（分组类）无论方向都合并，避免上传全量覆盖时丢失远端分组
+      function mergeSettingsForWebdavUpload(localSettings, remoteSettings) {
+        const result = Object.assign({}, localSettings);
+        if (!remoteSettings || typeof remoteSettings !== 'object') return result;
+        result.favoriteThreads = mergeFavoriteThreads(localSettings.favoriteThreads, remoteSettings.favoriteThreads);
+        result.subscriptionFeeds = mergeSubscriptionFeeds(localSettings.subscriptionFeeds, remoteSettings.subscriptionFeeds);
+        result.blockedKeywords = mergeBlockedKeywords(localSettings.blockedKeywords, remoteSettings.blockedKeywords);
+        result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, remoteSettings.markedGroups);
+        result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, remoteSettings.blockedCookies);
+        result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, remoteSettings.threadCookieWhitelistGroups);
+        return result;
+      }
       function mergeThreadHistoryStore(localStore, importedStore) {
+        // 本地导入/导出合并（非 WebDAV）：浏览次数直接累加；最新浏览时间/串内最远取较大值，首访取较早值
         const local = normalizeThreadHistoryStore(localStore);
         const imported = normalizeThreadHistoryStore(importedStore);
         const result = Object.assign({}, local);
         result.items = Object.assign({}, local.items);
+        result.index = Object.assign({}, local.index);
         Object.keys(imported.items).forEach((key) => {
           const impItem = imported.items[key];
           if (!result.items[key]) {
             result.items[key] = impItem;
+            result.index[key] = imported.index[key] || buildThreadHistoryIndexEntry(impItem);
           } else {
             const localItem = result.items[key];
+            const impNewer = (Number(impItem.lastVisitedAt) || 0) >= (Number(localItem.lastVisitedAt) || 0);
+            const newer = impNewer ? impItem : localItem;
             result.items[key] = {
               ...localItem,
               ...impItem,
+              firstVisitedAt: Math.min(Number(localItem.firstVisitedAt) || Infinity, Number(impItem.firstVisitedAt) || Infinity),
               lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(impItem.lastVisitedAt) || 0),
               page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
-              visitCount: Math.max(Number(localItem.visitCount) || 0, Number(impItem.visitCount) || 0),
-              title: impItem.title || localItem.title,
-              name: impItem.name || localItem.name,
+              maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(impItem.maxVisitedPage) || 0),
+              visitCount: (Number(localItem.visitCount) || 0) + (Number(impItem.visitCount) || 0),
+              lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : impItem.lastScrollY),
+              title: (newer.title || '').trim() ? newer.title : (localItem.title || impItem.title),
+              name: (newer.name || '').trim() ? newer.name : (localItem.name || impItem.name),
             };
+            result.index[key] = local.index[key] || imported.index[key] || buildThreadHistoryIndexEntry(result.items[key]);
           }
         });
         result.order = Object.keys(result.items)
           .sort((a, b) => (Number(result.items[b].lastVisitedAt) || 0) - (Number(result.items[a].lastVisitedAt) || 0));
         return result;
+      }
+      // WebDAV 浏览历史合并：基于“各端上次参与同步时的基线”计算独立贡献，避免直接累加导致多端计数翻倍
+      // baseline.threadHistory[key].count = 该端上次参与 WebDAV 同步后本地 visitCount（从未同步过 → 0 → 全量计入）
+      function mergeThreadHistoryStoreWebdav(localStore, remoteStore, baselines) {
+        const local = normalizeThreadHistoryStore(localStore);
+        const remote = normalizeThreadHistoryStore(remoteStore);
+        const result = Object.assign({}, local);
+        result.items = Object.assign({}, local.items);
+        result.index = Object.assign({}, local.index);
+        const baselineMap = (baselines && baselines.threadHistory) || {};
+        const keys = new Set(Object.keys(local.items).concat(Object.keys(remote.items)));
+        keys.forEach((key) => {
+          const localItem = local.items[key];
+          const remoteItem = remote.items[key];
+          const baseCount = Number((baselineMap[key] && baselineMap[key].count) || 0);
+          const localCount = Number(localItem && localItem.visitCount) || 0;
+          const remoteCount = Number(remoteItem && remoteItem.visitCount) || 0;
+          // 独立贡献 = 本地当前值 - 上次参与同步时的值（未同步过则全量）；远端值 += 独立贡献
+          const delta = Math.max(0, localCount - baseCount);
+          const mergedCount = remoteCount + delta;
+          let mergedItem = null;
+          if (remoteItem && localItem) {
+            const impNewer = (Number(remoteItem.lastVisitedAt) || 0) >= (Number(localItem.lastVisitedAt) || 0);
+            const newer = impNewer ? remoteItem : localItem;
+            mergedItem = {
+              ...localItem,
+              ...remoteItem,
+              firstVisitedAt: Math.min(Number(localItem.firstVisitedAt) || Infinity, Number(remoteItem.firstVisitedAt) || Infinity),
+              lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(remoteItem.lastVisitedAt) || 0),
+              page: Math.max(Number(localItem.page) || 0, Number(remoteItem.page) || 0),
+              maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(remoteItem.maxVisitedPage) || 0),
+              visitCount: mergedCount,
+              lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : remoteItem.lastScrollY),
+              title: (newer.title || '').trim() ? newer.title : (localItem.title || remoteItem.title),
+              name: (newer.name || '').trim() ? newer.name : (localItem.name || remoteItem.name),
+            };
+          } else if (localItem) {
+            mergedItem = Object.assign({}, localItem, { visitCount: mergedCount });
+          } else if (remoteItem) {
+            mergedItem = Object.assign({}, remoteItem, { visitCount: mergedCount });
+          }
+          if (mergedItem) {
+            result.items[key] = mergedItem;
+            result.index[key] = (local.index && local.index[key]) || (remote.index && remote.index[key]) || buildThreadHistoryIndexEntry(mergedItem);
+          }
+        });
+        result.order = Object.keys(result.items)
+          .sort((a, b) => (Number(result.items[b].lastVisitedAt) || 0) - (Number(result.items[a].lastVisitedAt) || 0));
+        return result;
+      }
+      function getWebdavHistoryBaselines() {
+        try {
+          const v = GM_getValue('xdex_webdav_history_baselines', null);
+          return (v && typeof v === 'object') ? v : {};
+        } catch (e) { return {}; }
+      }
+      function saveWebdavHistoryBaselinesFromStore(store, existingBaselines) {
+        const baselines = Object.assign({}, existingBaselines || getWebdavHistoryBaselines());
+        baselines.threadHistory = Object.assign({}, baselines.threadHistory || {});
+        Object.keys(store.items || {}).forEach((key) => {
+          baselines.threadHistory[key] = { count: Number(store.items[key].visitCount) || 0, at: Date.now() };
+        });
+        try { GM_setValue('xdex_webdav_history_baselines', baselines); } catch (e) {}
+        return baselines;
+      }
+      function postHistoryMatchKey(item) {
+        if (!item) return '';
+        // 已确认记录优先用服务端 No.（跨端稳定）；未确认退回 type+resto+内容指纹
+        const postId = String(item.postId || item.id || '').trim();
+        if (postId) return 'id:' + postId;
+        const type = normalizePostHistoryType(item.type);
+        const resto = String(item.resto || (type === 'reply' ? item.threadId : '') || '').trim();
+        const hash = item.contentHash || hashPostHistoryText(item.contentText || item.contentRaw || '');
+        return 'fp:' + type + ':' + resto + ':' + hash;
       }
       function mergePostHistoryStore(localStore, importedStore) {
         const local = normalizePostHistoryStore(localStore);
@@ -2452,24 +2548,37 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const result = Object.assign({}, local);
         result.items = Object.assign({}, local.items);
         const STATUS_PRIORITY = { confirmed: 3, unconfirmed: 2, pending: 1, failed: 0 };
+        // 归一化匹配索引：避免两端 localId 不同导致同一帖子重复
+        const matchIndex = new Map();
+        Object.keys(result.items).forEach((key) => {
+          const mk = postHistoryMatchKey(result.items[key]);
+          if (mk) matchIndex.set(mk, key);
+        });
         Object.keys(imported.items).forEach((key) => {
           const impItem = imported.items[key];
-          if (!result.items[key]) {
+          const mk = postHistoryMatchKey(impItem);
+          const matchKey = mk ? matchIndex.get(mk) : null;
+          if (!matchKey || !result.items[matchKey]) {
             result.items[key] = impItem;
-          } else {
-            const localItem = result.items[key];
-            const localStatus = STATUS_PRIORITY[localItem.status] || 0;
-            const impStatus = STATUS_PRIORITY[impItem.status] || 0;
-            result.items[key] = {
-              ...localItem,
-              ...impItem,
-              status: impStatus >= localStatus ? impItem.status : localItem.status,
-              page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
-              submittedAt: Math.min(Number(localItem.submittedAt) || Infinity, Number(impItem.submittedAt) || Infinity),
-              contentText: impItem.contentText || localItem.contentText,
-              forumName: impItem.forumName || localItem.forumName,
-            };
+            if (mk && key) matchIndex.set(mk, key);
+            return;
           }
+          const localItem = result.items[matchKey];
+          const localStatus = STATUS_PRIORITY[localItem.status] || 0;
+          const impStatus = STATUS_PRIORITY[impItem.status] || 0;
+          result.items[matchKey] = {
+            ...localItem,
+            ...impItem,
+            id: String(impItem.id || localItem.id || ''),
+            postId: String(impItem.postId || localItem.postId || impItem.id || localItem.id || ''),
+            threadId: String(impItem.threadId || localItem.threadId || ''),
+            resto: String(impItem.resto || localItem.resto || ''),
+            status: impStatus >= localStatus ? impItem.status : localItem.status,
+            page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
+            submittedAt: Math.min(Number(localItem.submittedAt) || Infinity, Number(impItem.submittedAt) || Infinity),
+            contentText: impItem.contentText || localItem.contentText,
+            forumName: impItem.forumName || localItem.forumName,
+          };
         });
         result.order = Object.keys(result.items)
           .sort((a, b) => (Number(result.items[b].submittedAt) || 0) - (Number(result.items[a].submittedAt) || 0));
@@ -2599,7 +2708,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (!parsed.payload || typeof parsed.payload !== 'object') return { valid: false, error: '文件缺少 payload 数据' };
         return { valid: true, data: parsed };
       }
-      function applyFullImportPayload(importData) {
+      function applyFullImportPayload(importData, options) {
+        options = options || {};
         const payload = importData.payload;
         const report = {};
         if (payload.myScriptSettings) {
@@ -2610,9 +2720,21 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         if (payload.threadHistory) {
           const local = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
-          const merged = mergeThreadHistoryStore(local, payload.threadHistory);
-          GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
-          report.threadHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
+          let merged;
+          let mode = 'merge';
+          if (options.threadHistoryMode === 'webdav-delta') {
+            // WebDAV：基于基线计算独立贡献，不直接累加
+            const baselines = getWebdavHistoryBaselines();
+            merged = mergeThreadHistoryStoreWebdav(local, normalizeThreadHistoryStore(payload.threadHistory), baselines);
+            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+            saveWebdavHistoryBaselinesFromStore(merged, baselines);
+            mode = 'webdav-delta';
+          } else {
+            // 本地导入导出：浏览次数累加
+            merged = mergeThreadHistoryStore(local, payload.threadHistory);
+            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+          }
+          report.threadHistory = { mode, count: Object.keys(merged.items || {}).length };
         }
         if (payload.postHistory) {
           const local = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
@@ -2648,7 +2770,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       window.__xdexWebdavUtils = {
         buildFullExportFile,
         parseFullExportFile,
-        applyFullImportPayload
+        applyFullImportPayload,
+        mergeThreadHistoryStoreWebdav,
+        mergePostHistoryStore,
+        mergeSettingsForWebdavUpload,
+        getWebdavHistoryBaselines,
+        saveWebdavHistoryBaselinesFromStore
       };
       // === 使用数据导入导出 end ===
       function buildJSONC(state) {
@@ -25939,8 +26066,25 @@ function 注册自动保存编辑() {
   ]);
   function sameSettingValue(a, b) {
     if (a === b) return true;
-    if (a != null && b != null && typeof a === 'object' && typeof b === 'object') {
-      return JSON.stringify(a) === JSON.stringify(b);
+    if (a == null || b == null) return a === b;
+    if (typeof a !== typeof b) return false;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b)) return false;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (!sameSettingValue(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    if (typeof a === 'object') {
+      const ak = Object.keys(a).sort();
+      const bk = Object.keys(b).sort();
+      if (ak.length !== bk.length) return false;
+      for (let i = 0; i < ak.length; i++) {
+        if (ak[i] !== bk[i]) return false;
+        if (!sameSettingValue(a[ak[i]], b[bk[i]])) return false;
+      }
+      return true;
     }
     return false;
   }
@@ -26011,6 +26155,40 @@ function 注册自动保存编辑() {
       return { ok: false, status: 0, missingUtils: true };
     }
     const built = utils.buildFullExportFile(webdavFullSelection());
+    // 上传前先拉取远端（若存在）：浏览历史按“基线增量”合并、发言历史按 postId/指纹归一化合并，
+    // 避免全量覆盖其他端已贡献的独立记录
+    let existing = null;
+    try {
+      existing = await webdavRequest({ url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE, method: 'GET', headers });
+    } catch (e) {}
+    if (existing && existing.status >= 200 && existing.status < 300 && built.file.payload) {
+      try {
+        const existingText = await existing.text();
+        const parsed = utils.parseFullExportFile(existingText);
+        if (parsed.valid && parsed.data.payload) {
+          if (built.file.payload.threadHistory && utils.mergeThreadHistoryStoreWebdav && parsed.data.payload.threadHistory) {
+            const baselines = utils.getWebdavHistoryBaselines ? utils.getWebdavHistoryBaselines() : {};
+            const merged = utils.mergeThreadHistoryStoreWebdav(
+              built.file.payload.threadHistory,
+              parsed.data.payload.threadHistory,
+              baselines
+            );
+            built.file.payload.threadHistory = merged;
+            if (utils.saveWebdavHistoryBaselinesFromStore) utils.saveWebdavHistoryBaselinesFromStore(merged, baselines);
+          }
+          if (built.file.payload.postHistory && utils.mergePostHistoryStore && parsed.data.payload.postHistory) {
+            // local=本端待上传数据，imported=远端数据（归一化合并，保留本端 key 优先）
+            built.file.payload.postHistory = utils.mergePostHistoryStore(built.file.payload.postHistory, parsed.data.payload.postHistory);
+          }
+          if (built.file.payload.myScriptSettings && utils.mergeSettingsForWebdavUpload && parsed.data.payload.myScriptSettings) {
+            // 标量项以本地为准，复杂项（分组类）双向合并后再上传
+            built.file.payload.myScriptSettings = utils.mergeSettingsForWebdavUpload(built.file.payload.myScriptSettings, parsed.data.payload.myScriptSettings);
+          }
+        }
+      } catch (e) {
+        console.warn('[webdav] 上传前合并历史失败，按原样上传', e);
+      }
+    }
     const put = await webdavRequest({
       url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE,
       method: 'PUT',
@@ -26108,7 +26286,7 @@ function 注册自动保存编辑() {
       if (settingsDecision === 'skip-settings') {
         // 保留本地设置：仅跳过设置字段，其余数据照常下载合并（历史/草稿/统计等）
         if (parsed.data.payload && parsed.data.payload.myScriptSettings) delete parsed.data.payload.myScriptSettings;
-        const report = utils.applyFullImportPayload(parsed.data);
+        const report = utils.applyFullImportPayload(parsed.data, { threadHistoryMode: 'webdav-delta' });
         storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
         webdavUpdateLastSyncLabel();
         setWebdavStatus('设置存在差异，已保留本地（等待手动处理）；其余数据已同步');
@@ -26131,7 +26309,7 @@ function 注册自动保存编辑() {
         notify('WebDAV 上传失败：HTTP ' + up.status);
         return { ok: false, reason: 'upload-failed' };
       }
-      const report = utils.applyFullImportPayload(parsed.data);
+      const report = utils.applyFullImportPayload(parsed.data, { threadHistoryMode: 'webdav-delta' });
       storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
       webdavUpdateLastSyncLabel();
       // 远端设置覆盖后：立即同步内存 state、回显面板，并即时应用可即时生效的设置
