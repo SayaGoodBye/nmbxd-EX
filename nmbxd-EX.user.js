@@ -26399,6 +26399,7 @@ function 注册自动保存编辑() {
     if (!cfg.url || !cfg.autoSync) return;
     const now = webdavAutoNow();
     const next = webdavAutoRead(WEBDAV_AUTO_NEXT_KEY);
+    let scheduleHandle = 0;
     const trySync = () => {
       // 到点执行时重新取当前时间（排程等待期间可能已过去很久）
       const tryNow = webdavAutoNow();
@@ -26425,10 +26426,11 @@ function 注册自动保存编辑() {
           }
           return;
         }
-        // 已重试过仍处于竞态：放弃本次并显示原因
+        // 已重试过仍处于竞态：放弃本次并显示原因，续排下一次自动同步
         const runningAgo = Math.round((tryNow - running) / 1000);
         console.log('[webdav] 自动同步失败：其他页面持续占用同步锁（' + runningAgo + 's），放弃本次');
         setWebdavStatus('自动同步失败：其他页面正在同步（' + runningAgo + ' 秒前开始），已重试仍冲突');
+        scheduleNext();
         return;
       }
       // 抢到锁：清理竞态重试状态
@@ -26438,7 +26440,11 @@ function 注册自动保存编辑() {
       // 无论成败都推进下次时间，避免失败后每个页面都重试
       webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, tryNow + WEBDAV_AUTO_INTERVAL_MS);
       console.log('[webdav] 自动同步开始', { at: new Date(tryNow).toLocaleString(), intervalMs: WEBDAV_AUTO_INTERVAL_MS });
-      const done = () => webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY);
+      const done = () => {
+        webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY);
+        // 同步结束（无论成败）续排下一次：页面存活期间不再依赖重载
+        scheduleNext();
+      };
       try {
         webdavSyncCore(cfg, true).then(done, done);
       } catch (e) {
@@ -26446,16 +26452,25 @@ function 注册自动保存编辑() {
         console.warn('[webdav] auto sync failed', e);
       }
     };
+    // 循环排程：每次按共享 next 排一次；到点执行后由 trySync 末尾再次调用本函数续排
+    const scheduleNext = () => {
+      clearTimeout(scheduleHandle);
+      const cfg2 = getWebdavConfig();
+      if (!cfg2.url || !cfg2.autoSync) return;
+      const nextMs = Number(webdavAutoRead(WEBDAV_AUTO_NEXT_KEY)) || 0;
+      const now2 = webdavAutoNow();
+      const delay = nextMs ? Math.max(1000, Math.min(nextMs - now2, WEBDAV_AUTO_INTERVAL_MS)) : WEBDAV_AUTO_INTERVAL_MS;
+      console.log('[webdav] 自动同步已排程', { at: new Date(now2 + delay).toLocaleString(), delayMs: delay });
+      scheduleHandle = setTimeout(trySync, delay);
+    };
     if (!next || now >= next) {
-      // 首次或已到点（含上次页面关闭未同步）：立即补一次
+      // 首次或已到点（含上次页面关闭未同步）：立即补一次（trySync 完成后会续排）
       console.log('[webdav] 自动同步到点，立即执行', { next: next ? new Date(next).toLocaleString() : '首次' });
       trySync();
       return;
     }
-    // 未到点：本页面挂一个定时器等到点执行；若页面提前关闭，新页面 load 时会发现已到点而补同步
-    const delay = Math.min(next - now, WEBDAV_AUTO_INTERVAL_MS);
-    console.log('[webdav] 自动同步已排程', { at: new Date(next).toLocaleString(), delayMs: delay });
-    setTimeout(trySync, delay);
+    // 未到点：排程等待；执行后由 trySync 续排，页面存活也能持续自动同步
+    scheduleNext();
   }
   function bindWebdavPanelEvents() {
     // 原生 DOM 委托（capture 阶段），不依赖 jQuery / 面板重建时机 / 脚本管理器注入顺序
