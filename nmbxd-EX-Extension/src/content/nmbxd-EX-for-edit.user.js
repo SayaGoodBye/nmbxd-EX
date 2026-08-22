@@ -9883,9 +9883,38 @@ ${markedSwatchHtml}
       if (refViewEl) {
         try { markCurrentThreadQuoteRefs(refViewEl, ctxTid); } catch (e) {}
       }
-      fetchData(tid).then(html => showQuote(html, { currentThreadId: ctxTid }));
+      fetchData(tid).then(html => {
+        showQuote(html, { currentThreadId: ctxTid });
+        // 兑底：对最上层拓展浮窗内容再标一次，防 options 链路/后处理导致漏标
+        setTimeout(() => {
+          try {
+            const quotes = document.querySelectorAll('.qp-overlay-quote .qp-quote');
+            const top = quotes[quotes.length - 1];
+            if (top) markCurrentThreadQuoteRefs(top, ctxTid);
+            console.log('[xdex] quote overlay marked', { ctx: ctxTid, ref: tid });
+          } catch (e) {}
+        }, 60);
+      });
     });
-    // 原生引用浮窗：记录触发引用所属串，内容更新（X岛自身 hover 渲染）后标注当前串引用号
+    // 原生引用浮窗标注（多路兑底）：ctx 来自最近一次 hover/click 的引用号所属串；
+    // 每次都重新 getElementById，防止 X岛 重建 #h-ref-view 元素后旧 observer/引用失效
+    let nativeRefMarkLast = 0;
+    let nativeRefViewDirty = true; // 浮窗内容/上下文变化后需重新标注；稳态下跳过全量扫描
+    const markNativeRefViewCurrentThread = (force, ctxOverride) => {
+      try {
+        const refViewEl = document.getElementById('h-ref-view');
+        if (!refViewEl) return;
+        const ctx = String(ctxOverride || window.__xdexNativeRefCtxTid || '');
+        if (!ctx) return;
+        // 稳态短路：上下文未变且浮窗内容未变 → 不做任何查询
+        if (!force && !nativeRefViewDirty && refViewEl.dataset.xdexMarkedCtx === ctx) return;
+        // 非 force 时跳过隐藏态（显示瞬间由 observer/延迟补标接管）；force 用于 hover 后异步填充的补标
+        if (!force && refViewEl.style.display === 'none') return;
+        markCurrentThreadQuoteRefs(refViewEl, ctx);
+        refViewEl.dataset.xdexMarkedCtx = ctx;
+        nativeRefViewDirty = false;
+      } catch (e) {}
+    };
     const ensureNativeRefViewMarkObserver = () => {
       const refViewEl = document.getElementById('h-ref-view');
       if (!refViewEl || refViewEl.__xdexRefViewMarkObserved) return;
@@ -9902,13 +9931,37 @@ ${markedSwatchHtml}
         clearTimeout(timer.id);
         timer.id = setTimeout(mark, 120);
       });
-      observer.observe(refViewEl, { childList: true, subtree: true, characterData: true });
+      // 监听 style：X岛 将浮窗从 display:none 切换为可见的瞬间也需要标注
+      observer.observe(refViewEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] });
       mark();
     };
-    $(document).on('mouseover.qp', 'font[color="#789922"]', function () {
-      window.__xdexNativeRefCtxTid = getRefContextThreadId(this);
+    // 原生 capture 阶段监听：不受 X岛 自身事件 stopPropagation / jQuery 委托时序影响，首次悬浮即能记录上下文
+    document.addEventListener('mouseover', function (e) {
+      // 快速短路：绝大多数元素非引用号，一次属性比较即返回
+      if (!e.target || e.target.tagName !== 'FONT') return;
+      if ((e.target.getAttribute('color') || '') !== '#789922') return;
+      const ctx = getRefContextThreadId(e.target);
+      if (ctx !== window.__xdexNativeRefCtxTid) nativeRefViewDirty = true; // 上下文变了需重标
+      window.__xdexNativeRefCtxTid = ctx;
       ensureNativeRefViewMarkObserver();
-    });
+      markNativeRefViewCurrentThread(true, ctx);
+      // 首次悬停时序兑底：X岛 异步填充内容并显示后才能标注，
+      // 每 300ms 重试直到浮窗内容出现标记（最多 3 次），覆盖任意填充/显示时序
+      let tries = 0;
+      const retryUntilMarked = function () {
+        tries += 1;
+        try {
+          const ctx2 = window.__xdexNativeRefCtxTid || '';
+          const refViewEl = document.getElementById('h-ref-view');
+          if (!ctx2 || !refViewEl) return;
+          markCurrentThreadQuoteRefs(refViewEl, ctx2);
+          if (!refViewEl.querySelector('font[data-xdex-cur-thread-marked-tid]') && tries < 3) {
+            setTimeout(retryUntilMarked, 300);
+          }
+        } catch (e) {}
+      };
+      setTimeout(retryUntilMarked, 300);
+    }, true);
     $(document).on('mouseleave', 'font[color="#789922"]', function () {
       $('#h-ref-view').hide();   // 鼠标移开时关闭原生引用框
     });
@@ -9937,13 +9990,23 @@ ${markedSwatchHtml}
       } catch (_) {
         return;
       }
-      const isOnQuote = elementsUnderMouse.some(el => {
-        return el.tagName === 'FONT' && el.getAttribute('color') === '#789922';
-      });
+      const quoteFont = elementsUnderMouse.find(el => el.tagName === 'FONT' && el.getAttribute('color') === '#789922');
+      const isOnQuote = !!quoteFont;
       // 如果不在引用号上，立即隐藏
       if (!isOnQuote) {
         refView.style.display = 'none';
         refView.style.opacity = '';  // 重置透明度
+        return;
+      }
+      // 即时计算触发上下文：串内页（含只看PO）直接读网址；版块/时间线用鼠标下引用号所属串
+      // 并对原生浮窗内容标注（兑底 mouseover/observer 链路失效的场景）；稳态下内部 dirty 短路零查询
+      const pageTid = (typeof PageType !== 'undefined' && PageType.getThreadId) ? PageType.getThreadId(true) : '';
+      const liveCtxTid = pageTid || getRefContextThreadId(quoteFont);
+      if (liveCtxTid) window.__xdexNativeRefCtxTid = liveCtxTid;
+      const nowMarkTs = Date.now();
+      if (nowMarkTs - nativeRefMarkLast > 250) {
+        nativeRefMarkLast = nowMarkTs;
+        markNativeRefViewCurrentThread(false, liveCtxTid);
       }
     });
     enableQuotePreview.__initialized = true;
@@ -9960,6 +10023,11 @@ ${markedSwatchHtml}
       rafLock = requestAnimationFrame(() => {
         rafLock = 0;
         hideEmptyTitleAndEmail(refView);
+        // 原生引用浮窗显示/内容更新时：按最近触发串上下文标注当前串引用号
+        try {
+          const ctx = window.__xdexNativeRefCtxTid || '';
+          if (ctx && refView.style.display !== 'none') markCurrentThreadQuoteRefs(refView, ctx);
+        } catch (e) {}
       });
     });
     observer.observe(refView, {
@@ -10144,43 +10212,52 @@ ${markedSwatchHtml}
         }
         if (el.dataset) el.dataset.xdexCurThreadMarkedTid = tids;
       });
-      // 兑底：原站未渲染成 <font> 的裸文本引用号（如 ref 内容中的 >>No.xxx），包一层同色 font 并标注
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-          if (!node.nodeValue || !/(>>\s*)?No\.\s*\d{4,}/.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
-          const p = node.parentElement;
-          if (p && p.tagName.toLowerCase() === 'font' && (p.getAttribute('color') || '').toLowerCase() === '#789922') return NodeFilter.FILTER_REJECT;
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      });
-      const bareNodes = [];
-      let bn;
-      while ((bn = walker.nextNode())) bareNodes.push(bn);
-      bareNodes.forEach((textNode) => {
-        const text = textNode.nodeValue;
-        const frag = document.createDocumentFragment();
-        let cursor = 0;
-        const re = /(>>\s*)?No\.\s*(\d{4,})/g;
-        let m;
-        while ((m = re.exec(text))) {
-          const start = m.index, end = re.lastIndex;
-          const refNum = m[2];
-          if (start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, start)));
-          const font = document.createElement('font');
-          font.setAttribute('color', '#789922');
-          font.textContent = text.slice(start, end);
-          if (refNum === tids) {
-            font.style.textDecoration = 'underline';
-            font.style.textDecorationThickness = '2px';
-            if (font.dataset) font.dataset.xdexCurThreadMarkedTid = tids;
-          } else if (font.dataset) {
-            font.dataset.xdexCurThreadMarkedTid = tids;
+      // 兑底：仅处理正文区（.h-threads-content）内未渲染成 <font> 的裸引用号（如 >>No.xxx），
+      // 消息信息区（.h-threads-info / a.h-threads-info-id，如 "No.69299379" 编号链接）一律不改
+      const contentRoots = [];
+      try {
+        if (root.matches && root.matches('.h-threads-content')) contentRoots.push(root);
+        Array.prototype.push.apply(contentRoots, Array.from(root.querySelectorAll('.h-threads-content')));
+      } catch (e) {}
+      contentRoots.forEach((contentRoot) => {
+        const walker = document.createTreeWalker(contentRoot, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            if (!node.nodeValue || !/(>>\s*)?No\.\s*\d{4,}/.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+            const p = node.parentElement;
+            if (p && p.tagName.toLowerCase() === 'font' && (p.getAttribute('color') || '').toLowerCase() === '#789922') return NodeFilter.FILTER_REJECT;
+            if (p && p.closest && p.closest('a.h-threads-info-id, .h-threads-info')) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
           }
-          frag.appendChild(font);
-          cursor = end;
-        }
-        if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
-        textNode.replaceWith(frag);
+        });
+        const bareNodes = [];
+        let bn;
+        while ((bn = walker.nextNode())) bareNodes.push(bn);
+        bareNodes.forEach((textNode) => {
+          const text = textNode.nodeValue;
+          const frag = document.createDocumentFragment();
+          let cursor = 0;
+          const re = /(>>\s*)?No\.\s*(\d{4,})/g;
+          let m;
+          while ((m = re.exec(text))) {
+            const start = m.index, end = re.lastIndex;
+            const refNum = m[2];
+            if (start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, start)));
+            const font = document.createElement('font');
+            font.setAttribute('color', '#789922');
+            font.textContent = text.slice(start, end);
+            if (refNum === tids) {
+              font.style.textDecoration = 'underline';
+              font.style.textDecorationThickness = '2px';
+              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = tids;
+            } else if (font.dataset) {
+              font.dataset.xdexCurThreadMarkedTid = tids;
+            }
+            frag.appendChild(font);
+            cursor = end;
+          }
+          if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
+          textNode.replaceWith(frag);
+        });
       });
     } catch (e) {}
   }
