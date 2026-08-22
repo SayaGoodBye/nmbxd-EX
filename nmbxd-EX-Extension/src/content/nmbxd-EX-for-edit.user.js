@@ -4367,7 +4367,10 @@ ${markedSwatchHtml}
         enableQuotePreview();
       }
       if (typeof window.__xdexOpenQuoteByTid !== 'function') return false;
-      const ret = window.__xdexOpenQuoteByTid(tid, { fromPOImage: true });
+      const ret = window.__xdexOpenQuoteByTid(tid, {
+        fromPOImage: true,
+        currentThreadId: (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(replyEl)) || ''
+      });
       if (ret && typeof ret.then === 'function') {
         ret.catch(() => {});
       }
@@ -9658,6 +9661,10 @@ ${markedSwatchHtml}
       $quote.append($header);
       const $content = stripIds($('<div></div>').html(html));
       simplifyQuoteInfoIdLinks($content);
+      // 引用浮窗内容同样应用“引用号是否当前串”标注：currentThreadId 由打开方传入
+      if (options && options.currentThreadId) {
+        try { markCurrentThreadQuoteRefs($content[0], options.currentThreadId); } catch (e) {}
+      }
       $quote.append($content.contents());
       // 在 $quote 内添加四条边框拖拽手柄 + 四角拉伸手柄
 
@@ -9708,7 +9715,12 @@ ${markedSwatchHtml}
     window.__xdexOpenQuoteByTid = function(tid, options = {}) {
       if (!tid) return Promise.resolve(false);
       return fetchData(String(tid)).then(html => {
-        showQuote(html, options || {});
+        // 引用浮窗“当前串”上下文：显式传入优先，否则用调用方临时写入的上下文
+        if (!options.currentThreadId && window.__xdexPendingQuoteCtxTid) {
+          options.currentThreadId = window.__xdexPendingQuoteCtxTid;
+          window.__xdexPendingQuoteCtxTid = '';
+        }
+        showQuote(html, options);
         return true;
       }).catch(err => {
         console.warn('open quote by tid failed', tid, err);
@@ -9865,7 +9877,37 @@ ${markedSwatchHtml}
       }
       lastQuoteTid = tid;
       lastQuoteAt = now;
-      fetchData(tid).then(showQuote);
+      const ctxTid = getRefContextThreadId(this);
+      window.__xdexNativeRefCtxTid = ctxTid;
+      const refViewEl = document.getElementById('h-ref-view');
+      if (refViewEl) {
+        try { markCurrentThreadQuoteRefs(refViewEl, ctxTid); } catch (e) {}
+      }
+      fetchData(tid).then(html => showQuote(html, { currentThreadId: ctxTid }));
+    });
+    // 原生引用浮窗：记录触发引用所属串，内容更新（X岛自身 hover 渲染）后标注当前串引用号
+    const ensureNativeRefViewMarkObserver = () => {
+      const refViewEl = document.getElementById('h-ref-view');
+      if (!refViewEl || refViewEl.__xdexRefViewMarkObserved) return;
+      refViewEl.__xdexRefViewMarkObserved = true;
+      const timer = { id: 0 };
+      const mark = () => {
+        try {
+          const ctx = window.__xdexNativeRefCtxTid || '';
+          if (!ctx) return;
+          markCurrentThreadQuoteRefs(refViewEl, ctx);
+        } catch (e) {}
+      };
+      const observer = new MutationObserver(() => {
+        clearTimeout(timer.id);
+        timer.id = setTimeout(mark, 120);
+      });
+      observer.observe(refViewEl, { childList: true, subtree: true, characterData: true });
+      mark();
+    };
+    $(document).on('mouseover.qp', 'font[color="#789922"]', function () {
+      window.__xdexNativeRefCtxTid = getRefContextThreadId(this);
+      ensureNativeRefViewMarkObserver();
     });
     $(document).on('mouseleave', 'font[color="#789922"]', function () {
       $('#h-ref-view').hide();   // 鼠标移开时关闭原生引用框
@@ -10072,6 +10114,81 @@ ${markedSwatchHtml}
   //     }, 300); // 每 300ms 检查一次
   // }
 
+  // —— 引用号“是否当前串”标注（tag 9 扩展）：当前串判定 = 引用所在串节点 data-threads-id，串内页（含只看PO）回退 URL ——
+  const QUOTE_REF_COLOR = '#789922'; // 与原生引用号颜色一致
+  function getRefContextThreadId(el) {
+    try {
+      if (el && el.closest) {
+        const node = el.closest('.h-threads-item[data-threads-id]');
+        const tid = node && /^\d{1,}$/.test(node.getAttribute('data-threads-id') || '') ? node.getAttribute('data-threads-id').trim() : '';
+        if (tid && tid !== '9999999') return tid;
+      }
+      return (typeof PageType !== 'undefined' && PageType.getThreadId) ? PageType.getThreadId(true) || '' : '';
+    } catch (e) { return ''; }
+  }
+  function markCurrentThreadQuoteRefs(root, contextThreadId) {
+    if (!root || !contextThreadId) return;
+    const tids = String(contextThreadId).trim();
+    if (!tids) return;
+    try {
+      const els = Array.from(root.querySelectorAll('font[color="#789922"]'));
+      els.forEach((el) => {
+        if (el.dataset && el.dataset.xdexCurThreadMarkedTid === tids) return;
+        const refNum = (String(el.textContent || '').match(/\d+/) || [])[0];
+        if (!refNum) return;
+        // underline 贴近引用号文字；颜色继承 font[color=#789922]（与引用号颜色一致）
+        // 回应模式行（实际容器 .h-post-form-grid / .js-reply-mode-row）内的 No.xxxx 不添加横线
+        if (refNum === tids && !(el.closest && el.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row'))) {
+          el.style.textDecoration = 'underline';
+          el.style.textDecorationThickness = '2px';
+        }
+        if (el.dataset) el.dataset.xdexCurThreadMarkedTid = tids;
+      });
+      // 兑底：原站未渲染成 <font> 的裸文本引用号（如 ref 内容中的 >>No.xxx），包一层同色 font 并标注
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue || !/(>>\s*)?No\.\s*\d{4,}/.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+          const p = node.parentElement;
+          if (p && p.tagName.toLowerCase() === 'font' && (p.getAttribute('color') || '').toLowerCase() === '#789922') return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      const bareNodes = [];
+      let bn;
+      while ((bn = walker.nextNode())) bareNodes.push(bn);
+      bareNodes.forEach((textNode) => {
+        const text = textNode.nodeValue;
+        const frag = document.createDocumentFragment();
+        let cursor = 0;
+        const re = /(>>\s*)?No\.\s*(\d{4,})/g;
+        let m;
+        while ((m = re.exec(text))) {
+          const start = m.index, end = re.lastIndex;
+          const refNum = m[2];
+          if (start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, start)));
+          const font = document.createElement('font');
+          font.setAttribute('color', '#789922');
+          font.textContent = text.slice(start, end);
+          if (refNum === tids) {
+            font.style.textDecoration = 'underline';
+            font.style.textDecorationThickness = '2px';
+            if (font.dataset) font.dataset.xdexCurThreadMarkedTid = tids;
+          } else if (font.dataset) {
+            font.dataset.xdexCurThreadMarkedTid = tids;
+          }
+          frag.appendChild(font);
+          cursor = end;
+        }
+        if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
+        textNode.replaceWith(frag);
+      });
+    } catch (e) {}
+  }
+  window.__xdexQuoteRefMark = {
+    getContextThreadId: getRefContextThreadId,
+    markCurrentThreadQuoteRefs: markCurrentThreadQuoteRefs
+  };
+
   //引用格式拓展
   function extendQuote(root = document) {
     return startupPerfDebug.measure('extendQuote', () => {
@@ -10104,6 +10221,9 @@ ${markedSwatchHtml}
         let n;
         while ((n = walker.nextNode())) textNodes.push(n);
         textNodes.forEach(processTextNode);
+        // 原生标准引用号（>>No.12345678 已由原站渲染为 <font color="#789922">）会被 walker 跳过，
+        // 这里统一补标：引用号 == 当前串号 → 同色下划线
+        try { markCurrentThreadQuoteRefs(root, getRefContextThreadId(root)); } catch (e) {}
     });
     function processTextNode(textNode) {
         const text = textNode.nodeValue;
@@ -10134,6 +10254,15 @@ ${markedSwatchHtml}
             font.setAttribute('color', QUOTE_COLOR);
             // 直接保留原始匹配文本（可能是 "No.12345678" 或 "12345678"）
             font.textContent = text.slice(start, end);
+            // 标识引用号是否为当前串串号：是则在引用号下方添加同色横线（underline 贴近文字）
+            // 回应模式行（实际容器 .h-post-form-grid / .js-reply-mode-row）内的 No.xxxx 不添加横线
+            const refNum = (font.textContent.match(/\d+/) || [])[0];
+            const modeTextEl = textNode.parentElement && textNode.parentElement.closest ? textNode.parentElement.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row') : null;
+            if (refNum && !modeTextEl && refNum === getRefContextThreadId(textNode.parentElement)) {
+              font.style.textDecoration = 'underline';
+              font.style.textDecorationThickness = '2px';
+              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = refNum;
+            }
             frag.appendChild(font);
             cursor = end;
             changed = true;
@@ -22369,6 +22498,9 @@ function 注册自动保存编辑() {
     const quoteId = String(tid || '').trim();
     if (!/^\d+$/.test(quoteId) || quoteId === '9999999') return false;
     try {
+      // 由调用方写入的“当前串”上下文（保持函数签名契约不变）
+      const ctxThreadId = window.__xdexPendingQuoteCtxTid || ((typeof PageType !== 'undefined' && PageType.getThreadId) ? PageType.getThreadId(true) : '');
+      window.__xdexPendingQuoteCtxTid = '';
       if (typeof window.__xdexOpenQuoteByTid !== 'function' && typeof enableQuotePreview === 'function') {
         enableQuotePreview();
       }
@@ -22483,6 +22615,7 @@ function 注册自动保存编辑() {
     });
     $('#sp_history_results').off('click.xdex-history-image-quote', '.xdex-history-image').on('click.xdex-history-image-quote', '.xdex-history-image', function (e) {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      window.__xdexPendingQuoteCtxTid = (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(this)) || '';
       const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
       if (!opened) return;
       e.preventDefault();
@@ -23264,6 +23397,7 @@ function 注册自动保存编辑() {
     // 订阅面板图片点击 → 打开引用弹窗（图片激活态）
     $('#sp_feeds_results').off('click.xdex-feed-image-quote', '.xdex-history-image').on('click.xdex-feed-image-quote', '.xdex-history-image', function (e) {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      window.__xdexPendingQuoteCtxTid = (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(this)) || '';
       const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
       if (!opened) return;
       e.preventDefault();
@@ -23405,6 +23539,7 @@ function 注册自动保存编辑() {
     });
     $('#sp_posts_results').off('click.xdex-post-history-image-quote', '.xdex-post-history-image').on('click.xdex-post-history-image-quote', '.xdex-post-history-image', function (e) {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      window.__xdexPendingQuoteCtxTid = (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(this)) || '';
       const opened = openHistoryImageQuotePreview(this.dataset.postHistoryQuoteId || '');
       if (!opened) return;
       e.preventDefault();
