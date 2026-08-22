@@ -7574,9 +7574,8 @@ ${markedSwatchHtml}
         btn.style.padding = '6px 12px';
         btn.style.borderRadius = '6px';
         btn.style.cursor = 'pointer';
-        // 层级置于拓展坞（.hld__docker z-index:9998）之上：串内页两者位置可能重叠
+        // 层级置于拓展坞（.hld__docker z-index:9998）之上：串内页两者位置可能重叠；下行为 10000，勿再被覆盖
         btn.style.zIndex = '10000';
-        btn.style.zIndex = '9001';
         btn.style.userSelect = 'none';
         btn.style.display = 'none';   // 默认不显示
         document.body.appendChild(btn);
