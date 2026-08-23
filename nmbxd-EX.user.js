@@ -26031,10 +26031,6 @@ function 注册自动保存编辑() {
   const WEBDAV_AUTO_RUNNING_KEY = 'xdex_webdav_auto_running_ts';
   const WEBDAV_AUTO_LAST_FP_KEY = 'xdex_webdav_last_fp';
   const WEBDAV_AUTO_LAST_IMMEDIATE_KEY = 'xdex_webdav_last_immediate_ts';
-  // 竞态重试：其他页面持有同步锁时 5 分钟后重试一次，仍失败则状态栏提示原因
-  const WEBDAV_AUTO_RETRY_AT_KEY = 'xdex_webdav_auto_retry_at_ts';
-  const WEBDAV_AUTO_RETRY_COUNT_KEY = 'xdex_webdav_auto_retry_count';
-  const WEBDAV_AUTO_RETRY_DELAY_MS = 5 * 60 * 1000;
   // 设置冲突挂起：手动同步选择「取消本次同步」后置位；自动同步遇到差异时跳过设置部分，直到手动处理
   const WEBDAV_SETTINGS_PENDING_KEY = 'xdex_webdav_settings_pending';
   // 开启开关触发的立即同步：60s 冷却 + 内容指纹防重
@@ -26628,31 +26624,14 @@ function 注册自动保存编辑() {
       // 抢锁：避免多标签页同时同步；30s 窗口内其他页面跳过本次
       const running = webdavAutoRead(WEBDAV_AUTO_RUNNING_KEY);
       if (tryNow - running < 30000) {
-        const retryAt = tryNow + WEBDAV_AUTO_RETRY_DELAY_MS;
-        const scheduledAt = Number(webdavAutoRead(WEBDAV_AUTO_RETRY_AT_KEY)) || 0;
-        const alreadyRetried = webdavAutoRead(WEBDAV_AUTO_RETRY_COUNT_KEY) === '1';
-        if (!alreadyRetried) {
-          // 第一次竞态：安排 5 分钟后重试一次（retryAt 防多页面重复排程）
-          if (retryAt > scheduledAt) {
-            webdavAutoWrite(WEBDAV_AUTO_RETRY_AT_KEY, retryAt);
-            try { localStorage.setItem(WEBDAV_AUTO_RETRY_COUNT_KEY, '1'); } catch (e) {}
-            console.log('[webdav] 自动同步竞态：其他页面正在同步，5 分钟后重试一次');
-            setTimeout(trySync, WEBDAV_AUTO_RETRY_DELAY_MS);
-          } else {
-            console.log('[webdav] 自动同步竞态：已有重试计划，等待中');
-          }
-          return;
-        }
-        // 已重试过仍处于竞态：放弃本次并显示原因，续排下一次自动同步
-        const runningAgo = Math.round((tryNow - running) / 1000);
-        console.log('[webdav] 自动同步失败：其他页面持续占用同步锁（' + runningAgo + 's），放弃本次');
-        setWebdavStatus('自动同步失败：其他页面正在同步（' + runningAgo + ' 秒前开始），已重试仍冲突');
+        // 同一端的其他页面正在同步：页面间共享同一份 GM 存储，
+        // 持锁页面同步的就是全量共享数据，本页无需重复同步（更不应额外排重试）；
+        // next 已被其推进，本页随共享计划等待下一轮即可
+        console.log('[webdav] 自动同步跳过：其他页面正在同步（同端数据共享，无需重复同步）');
         scheduleNext();
         return;
       }
-      // 抢到锁：清理竞态重试状态
-      webdavAutoRemove(WEBDAV_AUTO_RETRY_AT_KEY);
-      try { localStorage.removeItem(WEBDAV_AUTO_RETRY_COUNT_KEY); } catch (e) {}
+      // 抢到锁
       webdavAutoWrite(WEBDAV_AUTO_RUNNING_KEY, tryNow);
       // 无论成败都推进下次时间，避免失败后每个页面都重试
       webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, tryNow + WEBDAV_AUTO_INTERVAL_MS);
