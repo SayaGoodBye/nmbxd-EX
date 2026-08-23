@@ -26391,7 +26391,8 @@ function 注册自动保存编辑() {
     } catch (e) {}
     if (existing && existing.status >= 200 && existing.status < 300 && built.file.payload) {
       try {
-        const existingText = await existing.text();
+        // webdavRequest 返回 GM 风格响应：正文在 responseText（无 .text() 方法）
+        const existingText = String(existing.responseText || '');
         const parsed = utils.parseFullExportFile(existingText);
         if (parsed.valid && parsed.data.payload) {
           if (built.file.payload.threadHistory && utils.mergeThreadHistoryStoreWebdav && parsed.data.payload.threadHistory) {
@@ -26421,7 +26422,9 @@ function 注册自动保存编辑() {
       url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE,
       method: 'PUT',
       headers,
-      body: JSON.stringify(built.file)
+      body: JSON.stringify(built.file),
+      // 全量导出体积较大，放宽 PUT 超时（默认 10s 对慢速上行易超时）
+      timeout: 30000
     });
     return { ok: put.status >= 200 && put.status < 300, status: put.status };
   }
@@ -26449,6 +26452,7 @@ function 注册自动保存编辑() {
         notify('WebDAV：本地数据已上传');
         return { ok: true, direction: 'upload' };
       }
+      console.warn('[webdav] 上传失败', { direction: 'upload-first', status: up.status });
       setWebdavStatus('上传失败（HTTP ' + up.status + '）');
       notify('WebDAV 上传失败：HTTP ' + up.status);
       return { ok: false, reason: 'upload-failed' };
@@ -26533,6 +26537,7 @@ function 注册自动保存编辑() {
           notify('WebDAV：检测到设置差异，已保留本地设置并上传');
           return { ok: true, direction: 'upload-settings-local' };
         }
+        console.warn('[webdav] 上传失败', { direction: 'upload-settings-local', status: up.status });
         setWebdavStatus('上传失败（HTTP ' + (up.status == null ? '未知' : up.status) + '）');
         notify('WebDAV 上传失败：HTTP ' + up.status);
         return { ok: false, reason: 'upload-failed' };
@@ -26577,6 +26582,7 @@ function 注册自动保存编辑() {
       notify('WebDAV：本地数据已上传');
       return { ok: true, direction: 'upload' };
     }
+    console.warn('[webdav] 上传失败', { direction: 'upload', status: up.status, missingUtils: !!up.missingUtils });
     setWebdavStatus('上传失败（HTTP ' + (up.status == null ? (up.missingUtils ? '工具未就绪' : '未知') : up.status) + '）');
     notify('WebDAV 上传失败：' + (up.missingUtils ? '请先打开一次设置面板后重试' : 'HTTP ' + up.status));
     return { ok: false, reason: 'upload-failed' };
