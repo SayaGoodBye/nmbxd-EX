@@ -1251,11 +1251,11 @@
                     <div id="subscription-feed-inputs-container"></div>
                   </div>
                 </div>
-                <!-- 设置导入/导出 -->
+                <!-- 设置 导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
-                    <span>设置导入/导出</span>
+                    <span>设置 导入/导出</span>
                     <button id="btn_sp_importExport" class="sp_save xdex-inv" data-id="sp_importExport"
                             style="margin-left:auto;padding:2px 8px;">应用</button>
                   </div>
@@ -1271,11 +1271,11 @@
                     <div style="font-size:12px;color:#888;text-align:center;">导入将覆盖当前全部配置，建议先导出备份</div>
                   </div>
                 </div>
-                <!-- 使用数据导入/导出 -->
+                <!-- 使用数据 导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
-                    <span>使用数据导入/导出</span>
+                    <span>使用数据 导入/导出</span>
                     <button id="btn_sp_fullExport_reset" class="xdex-inv" style="margin-left:auto;padding:2px 8px;color:#c00;">重置所选项目</button>
                     <button id="btn_sp_fullExport_export" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">导出为文件</button>
                     <button id="btn_sp_fullExport_import" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">从文件导入</button>
@@ -1315,16 +1315,22 @@
                       </div>
                     </div>
                     <div id="sp_fullExport_import_preview" style="display:none;margin-top:8px;padding:6px 8px;border:1px dashed #aaa;border-radius:6px;background:#FFFFEE;"></div>
-                    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ccc;">
+                  </div>
+                </div>
+                <!-- WebDAV 备份/同步 -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>WebDAV 备份/同步</span>
+                    <button id="btn_sp_webdavSave" class="sp_save xdex-inv" data-id="sp_webdavSave"
+                            style="margin-left:auto;padding:2px 8px;">保存</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                       <div style="display:flex;align-items:center;margin-bottom:6px;">
-                        <div style="font-weight:bold;">WebDAV 备份/同步</div>
-                        <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-                          <span id="sp_webdavLastSyncLabel" style="color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
-                          <div style="display:flex;align-items:center;gap:4px;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
-                            <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
-                            <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
-                          </div>
-                          <button id="btn_sp_webdavSave" type="button" style="padding:2px 8px;">保存</button>
+                        <span id="sp_webdavLastSyncLabel" style="color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
+                        <div style="display:flex;align-items:center;gap:4px;margin-left:auto;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
+                          <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
+                          <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
                         </div>
                       </div>
                       <div style="display:flex;flex-direction:column;gap:6px;">
@@ -1340,7 +1346,6 @@
                         </div>
                         <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;"></div>
                       </div>
-                    </div>
                   </div>
                 </div>
                 </div>
