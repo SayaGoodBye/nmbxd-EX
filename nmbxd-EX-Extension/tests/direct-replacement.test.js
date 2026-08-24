@@ -355,7 +355,8 @@ function testBrowsingHistoryStorageContract() {
   assert(upstream.includes('THREAD_HISTORY_REVISIT_DWELL_MS = 5000'), 'history reactivation visits must require a dwell threshold to avoid counting quick tab switches');
   assert(upstream.includes('function createDefaultThreadHistoryStore()'), 'userscript must define a default history store factory');
   assert(upstream.includes('version: 1'), 'history store shape must include version: 1');
-  assert(upstream.includes('limit: 500'), 'history store shape must include limit: 500');
+  assert(upstream.includes('limit: THREAD_HISTORY_LIMIT'), 'history store shape must use THREAD_HISTORY_LIMIT (unlimited) instead of a hardcoded cap');
+  assert(upstream.includes('store.limit = THREAD_HISTORY_LIMIT;'), 'normalize must always derive limit from the constant so persisted legacy caps cannot survive');
   assert(upstream.includes('items: {}'), 'history store shape must include items map');
   assert(upstream.includes('index: {}'), 'history store shape must include index map');
   assert(upstream.includes('order: []'), 'history store shape must include order list');

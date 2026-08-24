@@ -20410,7 +20410,7 @@ function 注册自动保存编辑() {
   function createDefaultThreadHistoryStore() {
     return {
       version: 1,
-      limit: 500,
+      limit: THREAD_HISTORY_LIMIT,
       items: {},
       index: {},
       order: []
@@ -20422,7 +20422,8 @@ function 注册自动保存编辑() {
   function normalizeThreadHistoryStore(rawStore) {
     const store = Object.assign(createDefaultThreadHistoryStore(), rawStore || {});
     store.version = THREAD_HISTORY_STORE_VERSION;
-    store.limit = Number(store.limit) > 0 ? Number(store.limit) : THREAD_HISTORY_LIMIT;
+    // limit 一律以常量为准：旧版本持久化的 limit:500 不再沿用（否则 Infinity 设置永不生效）；Infinity 经 JSON 序列化为 null，读回后由此行回填
+    store.limit = THREAD_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
     store.index = store.index && typeof store.index === 'object' ? store.index : {};
     const seen = new Set();
