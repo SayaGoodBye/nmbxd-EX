@@ -892,6 +892,92 @@
                            color:#332200;
                            font-weight:bold;
                       }
+                  .xdex-recycle-btn {
+                          position:relative;
+                          display:inline-flex;
+                          align-items:center;
+                          justify-content:center;
+                          width:30px;
+                          height:30px;
+                          padding:0;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                          color:inherit;
+                     }
+                  .xdex-recycle-btn:hover {
+                          border-color:#c62828;
+                          color:#c62828;
+                     }
+                  .xdex-recycle-badge {
+                          position:absolute;
+                          top:-6px;
+                          right:-6px;
+                          min-width:16px;
+                          height:16px;
+                          padding:0 4px;
+                          border-radius:999px;
+                          background:#c62828;
+                          color:#fff;
+                          font-size:10px;
+                          line-height:16px;
+                          text-align:center;
+                          pointer-events:none;
+                     }
+                  .xdex-recycle-bar {
+                          display:none;
+                          align-items:center;
+                          gap:8px;
+                          margin:0 0 10px;
+                          padding:6px 8px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-fold-bg);
+                     }
+                  .xdex-recycle-bar .xdex-recycle-back {
+                          padding:4px 10px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                     }
+                  .xdex-recycle-bar .xdex-recycle-bar-title {
+                          flex:1;
+                          white-space:nowrap;
+                          overflow:hidden;
+                          text-overflow:ellipsis;
+                     }
+                  .xdex-recycle-bar .xdex-recycle-empty-btn {
+                          padding:4px 10px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                     }
+                  .xdex-recycle-bar .xdex-recycle-empty-btn:disabled {
+                          opacity:.5;
+                          cursor:not-allowed;
+                     }
+                  .xdex-recycle-mode .xdex-history-toolbar,
+                  .xdex-recycle-mode .xdex-post-history-type-buttons {
+                          display:none;
+                     }
+                  .xdex-recycle-mode .xdex-posts-add-row {
+                          display:none !important;
+                     }
+                  .xdex-recycle-mode .xdex-recycle-bar {
+                          display:flex;
+                     }
+                  .xdex-recycle-empty {
+                          margin:24px 0;
+                          padding:20px 12px;
+                          border:1px dashed var(--xdex-sp-border);
+                          border-radius:8px;
+                          text-align:center;
+                          color:var(--foreground, #333);
+                          opacity:.75;
+                     }
                    .xdex-history-item {
                            display:block !important;
                             position:relative;
@@ -1357,7 +1443,7 @@
                     <div id="sp_history_title" style="margin:0 0 10px; position:relative; text-align:center;">
                       <span style="font-size:20px; font-weight:bold;">浏览历史</span>
                     </div>
-                    <div class="xdex-history-toolbar">
+                    <div class="xdex-history-toolbar" id="sp_history_toolbar">
                       <input id="sp_history_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
                       <span id="sp_history_count" class="xdex-history-count">0 条</span>
                       <select id="sp_history_sort" aria-label="浏览历史排序">
@@ -1368,7 +1454,16 @@
                         <option value="page-desc">最高页码优先</option>
                       </select>
                       <button id="sp_history_clear" type="button" style="padding:6px 10px;">清空</button>
+                      <button id="sp_history_recycle" type="button" class="xdex-recycle-btn" title="回收站" aria-label="回收站">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <span id="sp_history_recycle_badge" class="xdex-recycle-badge" hidden>0</span>
+                      </button>
                     </div>
+                  <div id="sp_history_recycle_bar" class="xdex-recycle-bar" hidden>
+                    <button id="sp_history_recycle_back" type="button" class="xdex-recycle-back" title="返回浏览历史">← 返回</button>
+                    <span class="xdex-recycle-bar-title">回收站 <span id="sp_history_recycle_barcount" class="xdex-history-count">0 条</span></span>
+                    <button id="sp_history_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
+                  </div>
                     <div id="sp_history_results"></div>
                   </div>
                 </div>
@@ -1379,16 +1474,25 @@
                     <div id="sp_posts_title" style="margin:0 0 10px; position:relative; text-align:center;">
                       <span style="font-size:20px; font-weight:bold;">我的发言</span>
                     </div>
-                    <div class="xdex-history-toolbar">
+                    <div class="xdex-history-toolbar" id="sp_posts_toolbar">
                       <input id="sp_posts_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
                       <span id="sp_posts_count" class="xdex-history-count">0 条</span>
                       <button id="sp_posts_clear" type="button" style="padding:6px 10px;">清空</button>
+                      <button id="sp_posts_recycle" type="button" class="xdex-recycle-btn" title="回收站" aria-label="回收站">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <span id="sp_posts_recycle_badge" class="xdex-recycle-badge" hidden>0</span>
+                      </button>
                     </div>
+                  <div id="sp_posts_recycle_bar" class="xdex-recycle-bar" hidden>
+                    <button id="sp_posts_recycle_back" type="button" class="xdex-recycle-back" title="返回我的发言">← 返回</button>
+                    <span class="xdex-recycle-bar-title">回收站 <span id="sp_posts_recycle_barcount" class="xdex-history-count">0 条</span></span>
+                    <button id="sp_posts_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
+                  </div>
                     <div id="sp_posts_type_buttons" class="xdex-post-history-type-buttons">
                       <button type="button" data-post-history-type="thread">我的主题</button>
                       <button type="button" data-post-history-type="reply" class="active">我的回复</button>
                     </div>
-                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <div class="xdex-posts-add-row" style="display:flex;gap:6px;margin-bottom:8px;">
                       <input id="sp_posts_manual_add_input" type="search" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
                       <button id="sp_posts_manual_add_btn" type="button" style="padding:4px 10px;font-size:13px;">手动添加</button>
                     </div>
@@ -1454,6 +1558,9 @@
       syncFavoriteThreadsLinks();
       installSettingPanelEasterEgg(document);
       function setSettingsPanelModule(moduleName) {
+        // 离开对应模块时退出其回收站视图，回到正常列表态
+        if (moduleName !== 'history') setThreadHistoryRecycleMode(false);
+        if (moduleName !== 'posts') setPostHistoryRecycleMode(false);
         const $nextView = $(`#sp_panel_views [data-sp-module-view="${moduleName}"]`);
         const nextModule = $nextView.length ? moduleName : 'settings';
         $('#sp_panel_tab_slot .sp_panel_tab').removeClass('active')
@@ -22539,7 +22646,54 @@ function 注册自动保存编辑() {
       });
     }
   }
+  // ===== 回收站 UI（墓碑数据层未接入前 tombstones 恒为空，视图显示空态） =====
+  let threadHistoryRecycleMode = false;
+  function getThreadHistoryTombstoneList() {
+    const store = getThreadHistoryStore();
+    const tombs = store.tombstones || {};
+    return Object.keys(tombs)
+      .filter((key) => !tombs[key].purged)
+      .map((key) => Object.assign({ key }, tombs[key]))
+      .sort((a, b) => (Number(b.deletedAt) || 0) - (Number(a.deletedAt) || 0));
+  }
+  function updateThreadHistoryRecycleBadge() {
+    const badge = document.getElementById('sp_history_recycle_badge');
+    if (!badge) return;
+    const list = getThreadHistoryTombstoneList();
+    badge.textContent = String(list.length);
+    badge.hidden = list.length === 0;
+  }
+  function renderThreadHistoryRecycleView() {
+    const root = document.getElementById('sp_history_results');
+    if (!root) return;
+    const list = getThreadHistoryTombstoneList();
+    const barCount = document.getElementById('sp_history_recycle_barcount');
+    if (barCount) barCount.textContent = `${list.length} 条`;
+    const emptyBtn = document.getElementById('sp_history_recycle_empty');
+    if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    root.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'xdex-recycle-empty';
+    empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的浏览记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
+    root.appendChild(empty);
+  }
+  function setThreadHistoryRecycleMode(on) {
+    const next = !!on;
+    if (threadHistoryRecycleMode === next) return;
+    threadHistoryRecycleMode = next;
+    const content = document.getElementById('sp_history_content');
+    if (content) content.classList.toggle('xdex-recycle-mode', threadHistoryRecycleMode);
+    const bar = document.getElementById('sp_history_recycle_bar');
+    if (bar) bar.hidden = !threadHistoryRecycleMode;
+    if (threadHistoryRecycleMode) {
+      renderThreadHistoryRecycleView();
+    } else {
+      renderThreadHistoryModule();
+    }
+  }
   function renderThreadHistoryModule(query) {
+    if (threadHistoryRecycleMode) { renderThreadHistoryRecycleView(); return; }
+    updateThreadHistoryRecycleBadge();
     const root = document.getElementById('sp_history_results');
     if (!root) {
       logThreadHistory('render skipped: missing #sp_history_results');
@@ -22758,6 +22912,14 @@ function 注册自动保存编辑() {
         toast('已清空浏览历史');
       });
     });
+    $('#sp_history_recycle').off('click.xdex-history-recycle').on('click.xdex-history-recycle', function (e) {
+      e.preventDefault();
+      setThreadHistoryRecycleMode(true);
+    });
+    $('#sp_history_recycle_back').off('click.xdex-history-recycle').on('click.xdex-history-recycle', function (e) {
+      e.preventDefault();
+      setThreadHistoryRecycleMode(false);
+    });
   }
   function buildPostHistoryItemElement(result) {
     const item = result.item || {};
@@ -22857,7 +23019,54 @@ function 注册自动保存编辑() {
     markAllCookies(getHistoryMarkedGroups(), wrapper);
     return wrapper;
   }
+  // ===== 发言历史回收站 UI（与浏览历史同构） =====
+  let postHistoryRecycleMode = false;
+  function getPostHistoryTombstoneList() {
+    const store = getPostHistoryStore();
+    const tombs = store.tombstones || {};
+    return Object.keys(tombs)
+      .filter((key) => !tombs[key].purged)
+      .map((key) => Object.assign({ key }, tombs[key]))
+      .sort((a, b) => (Number(b.deletedAt) || 0) - (Number(a.deletedAt) || 0));
+  }
+  function updatePostHistoryRecycleBadge() {
+    const badge = document.getElementById('sp_posts_recycle_badge');
+    if (!badge) return;
+    const list = getPostHistoryTombstoneList();
+    badge.textContent = String(list.length);
+    badge.hidden = list.length === 0;
+  }
+  function renderPostHistoryRecycleView() {
+    const root = document.getElementById('sp_posts_results');
+    if (!root) return;
+    const list = getPostHistoryTombstoneList();
+    const barCount = document.getElementById('sp_posts_recycle_barcount');
+    if (barCount) barCount.textContent = `${list.length} 条`;
+    const emptyBtn = document.getElementById('sp_posts_recycle_empty');
+    if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    root.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'xdex-recycle-empty';
+    empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的发言记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
+    root.appendChild(empty);
+  }
+  function setPostHistoryRecycleMode(on) {
+    const next = !!on;
+    if (postHistoryRecycleMode === next) return;
+    postHistoryRecycleMode = next;
+    const content = document.getElementById('sp_posts_content');
+    if (content) content.classList.toggle('xdex-recycle-mode', postHistoryRecycleMode);
+    const bar = document.getElementById('sp_posts_recycle_bar');
+    if (bar) bar.hidden = !postHistoryRecycleMode;
+    if (postHistoryRecycleMode) {
+      renderPostHistoryRecycleView();
+    } else {
+      renderPostHistoryModule();
+    }
+  }
   function renderPostHistoryModule(query) {
+    if (postHistoryRecycleMode) { renderPostHistoryRecycleView(); return; }
+    updatePostHistoryRecycleBadge();
     const root = document.getElementById('sp_posts_results');
     if (!root) return;
     postHistoryLiveRenderDirty = false;
@@ -23682,6 +23891,14 @@ function 注册自动保存编辑() {
         renderPostHistoryModule();
         toast('已清空我的发言');
       });
+    });
+    $('#sp_posts_recycle').off('click.xdex-post-history-recycle').on('click.xdex-post-history-recycle', function (e) {
+      e.preventDefault();
+      setPostHistoryRecycleMode(true);
+    });
+    $('#sp_posts_recycle_back').off('click.xdex-post-history-recycle').on('click.xdex-post-history-recycle', function (e) {
+      e.preventDefault();
+      setPostHistoryRecycleMode(false);
     });
     // 手动添加发言历史
     // 禁用浏览器自动填充
