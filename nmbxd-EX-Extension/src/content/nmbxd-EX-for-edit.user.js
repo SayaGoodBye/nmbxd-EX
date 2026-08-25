@@ -2753,7 +2753,38 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         if (payload.kaomojiStats) {
           const local = GM_getValue('kaomojiUsageStats', {});
-          const merged = mergeKaomojiStats(local, payload.kaomojiStats);
+          let merged;
+          if (options.threadHistoryMode === 'webdav-delta') {
+            // WebDAV 双向同步：按各端基线计算独立贡献后加算，避免每轮把远端全量当新增而重复计数；
+            // lastUsed 恒取两端较大值（时间不可累加）
+            const baselines = getWebdavHistoryBaselines();
+            const kaoBase = (baselines && baselines.kaomojiStats) || {};
+            merged = {};
+            const keys = new Set(Object.keys(local).concat(Object.keys(payload.kaomojiStats)));
+            keys.forEach((key) => {
+              const l = local[key];
+              const r = payload.kaomojiStats[key];
+              if (!r) { merged[key] = l; return; }
+              if (!l || typeof l !== 'object' || typeof r !== 'object') { merged[key] = r; return; }
+              const baseCount = Number((kaoBase[key] && kaoBase[key].count) || 0);
+              const delta = Math.max(0, (Number(l.count) || 0) - baseCount);
+              merged[key] = {
+                count: (Number(r.count) || 0) + delta,
+                lastUsed: Math.max(Number(l.lastUsed) || 0, Number(r.lastUsed) || 0)
+              };
+            });
+            // 推进基线到合并值（与浏览历史同模式：回推失败时由外层快照统一回滚）
+            const newBaselines = Object.assign({}, baselines || {});
+            newBaselines.kaomojiStats = {};
+            Object.keys(merged).forEach((key) => {
+              const entry = merged[key];
+              newBaselines.kaomojiStats[key] = { count: (entry && Number(entry.count)) || 0, at: Date.now() };
+            });
+            try { GM_setValue('xdex_webdav_history_baselines', newBaselines); } catch (e) {}
+          } else {
+            // 手动导入导出：保持原有纯累加语义
+            merged = mergeKaomojiStats(local, payload.kaomojiStats);
+          }
           GM_setValue('kaomojiUsageStats', merged);
           report.kaomojiStats = { mode: 'accumulate', changed: true };
         }
@@ -26405,17 +26436,30 @@ function 注册自动保存编辑() {
               baselines
             );
             built.file.payload.threadHistory = merged;
+            // 回写本地：upload 端也必须吸收远端贡献。否则 baseline 已推进到合并值而本地滞后，
+            // 下轮 delta = max(0, 本地旧值 − 基线) 归零，本端新增计数会被静默吞掉
+            setThreadHistoryStore(merged);
             if (utils.saveWebdavHistoryBaselinesFromStore) utils.saveWebdavHistoryBaselinesFromStore(merged, baselines);
           }
           if (built.file.payload.postHistory && utils.mergePostHistoryStore && parsed.data.payload.postHistory) {
             // local=本端待上传数据，imported=远端数据（归一化合并，保留本端 key 优先）
-            built.file.payload.postHistory = utils.mergePostHistoryStore(built.file.payload.postHistory, parsed.data.payload.postHistory);
+            const mergedPosts = utils.mergePostHistoryStore(built.file.payload.postHistory, parsed.data.payload.postHistory);
+            built.file.payload.postHistory = mergedPosts;
+            // 回写本地：upload 端同样应看到远端发言，否则需等到下次 download 才能补齐
+            setPostHistoryStore(mergedPosts);
           }
           if (built.file.payload.myScriptSettings && utils.mergeSettingsForWebdavUpload && parsed.data.payload.myScriptSettings) {
             // 标量项以本地为准，复杂项（分组类）双向合并后再上传
             built.file.payload.myScriptSettings = utils.mergeSettingsForWebdavUpload(built.file.payload.myScriptSettings, parsed.data.payload.myScriptSettings);
           }
+        } else {
+          console.warn('[webdav] 上传前合并：远端文件解析失败，将原样覆盖上传', { error: parsed && parsed.error });
         }
+        console.log('[webdav] 上传内容统计', {
+          threadHistoryCount: Object.keys((built.file.payload.threadHistory || {}).items || {}).length,
+          postHistoryCount: Object.keys((built.file.payload.postHistory || {}).items || {}).length,
+          remoteExisted: !!(parsed && parsed.valid)
+        });
       } catch (e) {
         console.warn('[webdav] 上传前合并历史失败，按原样上传', e);
       }
@@ -26470,25 +26514,28 @@ function 注册自动保存编辑() {
       const head = JSON.parse(remote.responseText);
       remoteExportedAt = head && head.meta && head.meta.exportedAt ? Date.parse(head.meta.exportedAt) : 0;
     } catch (e) {}
-    if (remoteExportedAt > (cfg.lastSyncAt || 0)) {
-      // 远端较新：恢复远端
-      const utils = getWebdavUtils();
-      if (!utils || typeof utils.parseFullExportFile !== 'function' || typeof utils.applyFullImportPayload !== 'function') {
-        setWebdavStatus('恢复功能未就绪：请先打开一次设置面板后重试');
-        if (!silent) notify('WebDAV：恢复功能未就绪，请先打开设置面板');
-        return { ok: false, reason: 'utils-missing' };
-      }
-      const parsed = utils.parseFullExportFile(remote.responseText);
-      if (!parsed || !parsed.valid) {
-        setWebdavStatus('远端同步文件不合法，跳过恢复');
-        if (!silent) notify('WebDAV：远端同步文件不合法');
-        return { ok: false, reason: 'invalid-remote' };
-      }
+    console.log('[webdav] 同步开始：双向合并模式', { remoteExportedAt: remoteExportedAt || null, lastSyncAt: cfg.lastSyncAt || 0 });
+    const utils = getWebdavUtils();
+    if (!utils || typeof utils.parseFullExportFile !== 'function' || typeof utils.applyFullImportPayload !== 'function') {
+      setWebdavStatus('恢复功能未就绪：请先打开一次设置面板后重试');
+      if (!silent) notify('WebDAV：恢复功能未就绪，请先打开设置面板');
+      return { ok: false, reason: 'utils-missing' };
+    }
+    const parsed = utils.parseFullExportFile(remote.responseText);
+    if (!parsed || !parsed.valid) {
+      // 远端文件不合法时禁止本轮任何写入：避免不完整解析破坏数据
+      setWebdavStatus('远端同步文件不合法，跳过本轮同步');
+      console.warn('[webdav] 远端同步文件不合法', { error: parsed && parsed.error });
+      if (!silent) notify('WebDAV：远端同步文件不合法');
+      return { ok: false, reason: 'invalid-remote' };
+    }
       // WebDAV 配置不随同步覆盖：同步上传端已排除；
       // 若用户手动导出的含 webdav 配置文件被放到远端，下载时过滤掉，避免远端反向改写本地同步源
       if (parsed.data.payload && parsed.data.payload.webdavConfig) delete parsed.data.payload.webdavConfig;
       // 设置差异检测：手动同步弹窗让用户选择；自动同步按「本地是否默认」决定
+      // 决策仅作用于 myScriptSettings 分区，其余数据分区一律双向合并
       let settingsDecision = 'download';
+      let settingsSkipped = false;
       if (parsed.data.payload && parsed.data.payload.myScriptSettings) {
         const diffInfo = findWebdavSettingsDiff(parsed.data.payload.myScriptSettings);
         if (diffInfo.diff.length > 0) {
@@ -26496,9 +26543,9 @@ function 注册自动保存编辑() {
             // 自动同步：若此前手动取消过设置冲突（挂起标记），跳过设置部分，其余数据照常合并；
             // 否则按「本地是否默认」自动决策：默认→采用远端，已个性化→保留本地上传
             if (webdavAutoGet(WEBDAV_SETTINGS_PENDING_KEY) === '1') {
-              settingsDecision = 'skip-settings';
+              settingsDecision = 'keep-local';
             } else {
-              settingsDecision = diffInfo.localIsDefault ? 'download' : 'upload';
+              settingsDecision = diffInfo.localIsDefault ? 'download' : 'keep-local';
             }
           } else {
             // 三选对话框：采用远端 / 保留本地上传 / 取消本次同步
@@ -26510,45 +26557,26 @@ function 注册自动保存编辑() {
               return { ok: false, reason: 'canceled' };
             }
             webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
-            settingsDecision = userChoice === 'remote' ? 'download' : 'upload';
+            settingsDecision = userChoice === 'remote' ? 'download' : 'keep-local';
           }
         } else {
           // 两端设置已一致：清除挂起标记
           webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
         }
       }
-      if (settingsDecision === 'skip-settings') {
-        // 保留本地设置：仅跳过设置字段，其余数据照常下载合并（历史/草稿/统计等）
+      if (settingsDecision !== 'download') {
+        // 保留本地设置：仅剔除设置字段，其余数据分区照常双向合并
         if (parsed.data.payload && parsed.data.payload.myScriptSettings) delete parsed.data.payload.myScriptSettings;
-        const report = utils.applyFullImportPayload(parsed.data, { threadHistoryMode: 'webdav-delta' });
-        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
-        webdavUpdateLastSyncLabel();
-        setWebdavStatus('设置存在差异，已保留本地（等待手动处理）；其余数据已同步');
-        if (!silent) notify('WebDAV：设置差异已保留本地，其余数据已从远端合并');
-        return { ok: true, direction: 'download-skip-settings' };
+        settingsSkipped = true;
       }
-      if (settingsDecision === 'upload') {
-        // 本地设置优先：上传本地全量覆盖远端
-        const up = await webdavUploadLocal(cfg, headers);
-        if (up.ok) {
-          const now = Date.now();
-          storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
-          webdavUpdateLastSyncLabel();
-          console.log('[webdav] 同步成功（设置差异保留本地上传）', { direction: 'upload-settings-local', lastSyncAt: now });
-          setWebdavStatus('检测到设置差异，已保留本地设置并上传');
-          notify('WebDAV：检测到设置差异，已保留本地设置并上传');
-          return { ok: true, direction: 'upload-settings-local' };
-        }
-        console.warn('[webdav] 上传失败', { direction: 'upload-settings-local', status: up.status });
-        setWebdavStatus('上传失败（HTTP ' + (up.status == null ? '未知' : up.status) + '）');
-        notify('WebDAV 上传失败：HTTP ' + up.status);
-        return { ok: false, reason: 'upload-failed' };
-      }
+      // ── 数据分区：远端 → 本地 合并 ──
+      // 快照浏览历史存储与基线：回推失败时整体回滚，保证下轮 delta 仍可计算（否则本轮增量会被基线吞掉）
+      const thStoreBeforeMerge = (typeof GM_getValue === 'function') ? GM_getValue(THREAD_HISTORY_STORAGE_KEY, null) : null;
+      const thBaselineBeforeMerge = (typeof utils.getWebdavHistoryBaselines === 'function') ? (utils.getWebdavHistoryBaselines() || {}) : {};
+      const kaoStoreBeforeMerge = (typeof GM_getValue === 'function') ? GM_getValue('kaomojiUsageStats', null) : null;
       const report = utils.applyFullImportPayload(parsed.data, { threadHistoryMode: 'webdav-delta' });
-      storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: remoteExportedAt }));
-      webdavUpdateLastSyncLabel();
-      // 远端设置覆盖后：立即同步内存 state、回显面板，并即时应用可即时生效的设置
-      if (report.settings && typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+      // 远端设置被采用后：立即同步内存 state、回显面板，并即时应用可即时生效的设置
+      if (report.settings && settingsDecision === 'download' && typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
         try {
           SettingPanel.state = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
           if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs();
@@ -26561,33 +26589,52 @@ function 注册自动保存编辑() {
           console.warn('[webdav] 远端设置即时应用失败', e);
         }
       }
-      console.log('[webdav] 同步成功（远端恢复）', { direction: 'download', lastSyncAt: remoteExportedAt });
+
+      // ── 合并后的本地 → 云端 回推 ──
+      // apply 阶段已把远端贡献并入本地、基线已对齐到合并值；此处必须【直传】而不能再走 merge：
+      // 若再次按基线合并，delta = max(0, 本地 − 基线) = 0，云端会被写回旧值、本轮增量被吞。
+      // 直传即「云端 ← 并集」，各端独立贡献在各自 apply 阶段累入并集，天然满足跨端加算语义。
+      const builtForPush = utils.buildFullExportFile(webdavFullSelection());
+      const putResp = await webdavRequest({
+        url: remoteUrl,
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(builtForPush.file),
+        timeout: 30000
+      });
+      const pushOk = putResp.status >= 200 && putResp.status < 300;
+      const now = Date.now();
+
+      if (!pushOk) {
+        // 回滚浏览历史存储与基线到合并前：本地与云端重新解耦，下轮 delta = 本地 − 旧基线 仍完整可算
+        try {
+          if (thStoreBeforeMerge !== null) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(thStoreBeforeMerge));
+          if (kaoStoreBeforeMerge !== null) GM_setValue('kaomojiUsageStats', kaoStoreBeforeMerge);
+          GM_setValue('xdex_webdav_history_baselines', thBaselineBeforeMerge || {});
+        } catch (e) {
+          console.error('[webdav] 回滚同步快照失败', e);
+        }
+        console.warn('[webdav] 双向合并完成但回推失败（已回滚本地合并结果）', { status: putResp.status, report });
+        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: cfg.lastSyncAt || 0 }));
+        webdavUpdateLastSyncLabel();
+        setWebdavStatus('已尝试合并远端数据，回推云端失败（HTTP ' + putResp.status + '），本轮已还原待下轮重试');
+        if (!silent) notify('WebDAV：回推失败 HTTP ' + putResp.status + '，本轮改动已还原');
+        return { ok: false, reason: 'push-back-failed', report };
+      }
+      storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: Math.max(now, remoteExportedAt || 0) }));
+      webdavUpdateLastSyncLabel();
+
+      console.log('[webdav] 同步成功（双向合并）', { remoteExportedAt: remoteExportedAt || null, pushedAt: now, report });
       const parts = [];
-      if (report.settings) parts.push('设置');
+      if (report.settings && !settingsSkipped) parts.push('设置');
       if (report.threadHistory) parts.push('浏览历史');
       if (report.postHistory) parts.push('发言历史');
       if (report.drafts) parts.push('草稿');
       if (report.kaomojiStats) parts.push('颜文字统计');
       if (report.cookiePrefs) parts.push('饼干偏好');
-      setWebdavStatus('已从远端恢复');
-      notify('WebDAV：已恢复远端数据（' + (parts.join('、') || '空') + '），可即时生效的设置已应用；部分功能刷新页面后彻底生效');
-      return { ok: true, direction: 'download' };
-    }
-    // 本地不早于远端：上传本地
-    const up = await webdavUploadLocal(cfg, headers);
-    if (up.ok) {
-      const now = Date.now();
-      storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
-      webdavUpdateLastSyncLabel();
-      console.log('[webdav] 同步成功（本地上传）', { direction: 'upload', lastSyncAt: now });
-      setWebdavStatus('本地数据已上传');
-      notify('WebDAV：本地数据已上传');
-      return { ok: true, direction: 'upload' };
-    }
-    console.warn('[webdav] 上传失败', { direction: 'upload', status: up.status, missingUtils: !!up.missingUtils });
-    setWebdavStatus('上传失败（HTTP ' + (up.status == null ? (up.missingUtils ? '工具未就绪' : '未知') : up.status) + '）');
-    notify('WebDAV 上传失败：' + (up.missingUtils ? '请先打开一次设置面板后重试' : 'HTTP ' + up.status));
-    return { ok: false, reason: 'upload-failed' };
+      setWebdavStatus(settingsSkipped ? '双向合并完成（设置保留本地等待手动处理）' : '双向合并完成');
+      notify('WebDAV：双向合并完成（' + (parts.join('、') || '无变化') + '）；可即时生效的设置已应用');
+      return { ok: true, direction: 'bidirectional' };
   }
   async function webdavSyncNow() {
     saveWebdavConfigFromPanel(false);
