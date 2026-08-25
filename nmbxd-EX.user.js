@@ -2466,7 +2466,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               title: (newer.title || '').trim() ? newer.title : (localItem.title || impItem.title),
               name: (newer.name || '').trim() ? newer.name : (localItem.name || impItem.name),
             };
-            result.index[key] = local.index[key] || imported.index[key] || buildThreadHistoryIndexEntry(result.items[key]);
+            result.index[key] = buildThreadHistoryIndexEntry(result.items[key]); // index 为纯派生数据: 随合并后的 item 重建, 防止 lastVisitedAt 失步
           }
         });
         result.order = Object.keys(result.items)
@@ -2515,7 +2515,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           }
           if (mergedItem) {
             result.items[key] = mergedItem;
-            result.index[key] = (local.index && local.index[key]) || (remote.index && remote.index[key]) || buildThreadHistoryIndexEntry(mergedItem);
+            result.index[key] = buildThreadHistoryIndexEntry(mergedItem); // index 为纯派生数据: 必须随合并后的 item 重建, 沿用旧值会导致 lastVisitedAt 失步、排序错乱
           }
         });
         result.order = Object.keys(result.items)
@@ -20465,7 +20465,12 @@ function 注册自动保存编辑() {
         return true;
       });
     Object.keys(store.items).forEach(key => {
-      if (!store.index[key]) store.index[key] = buildThreadHistoryIndexEntry(store.items[key]);
+      const item = store.items[key];
+      const idx = store.index[key];
+      // 失步自愈: index.lastVisitedAt 与 item 不一致(历史合并缺陷的存量脏数据)时重建
+      if (!idx || Number(idx.lastVisitedAt) !== Number(item.lastVisitedAt)) {
+        store.index[key] = buildThreadHistoryIndexEntry(item);
+      }
       if (!seen.has(key)) {
         seen.add(key);
         store.order.push(key);
