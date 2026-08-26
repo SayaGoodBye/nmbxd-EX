@@ -991,7 +991,7 @@
                   .xdex-post-history-tombstone-mark {
                           position:absolute;
                           top:-9px;
-                          left:-9px;
+                          right:34px;
                           width:20px;
                           height:20px;
                           border:1px solid #a98f7a;
@@ -1041,6 +1041,29 @@
                   @keyframes xdexRecycleHighlight {
                           0%,60% { background:#ffe08a; }
                           100% { background:rgba(255,255,255,0.18); }
+                     }
+                  .xdex-recycle-item-actions {
+                          display:flex;
+                          gap:6px;
+                          margin-top:8px;
+                          justify-content:flex-end;
+                     }
+                  .xdex-recycle-item-btn {
+                          padding:3px 10px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:6px;
+                          background:var(--xdex-sp-panel-bg);
+                          color:inherit;
+                          cursor:pointer;
+                          font-size:12px;
+                     }
+                  .xdex-recycle-item-btn.xdex-recycle-item-restore:hover {
+                          border-color:#2e7d32;
+                          color:#2e7d32;
+                     }
+                  .xdex-recycle-item-btn.xdex-recycle-item-purge:hover {
+                          border-color:#c62828;
+                          color:#c62828;
                      }
                    .xdex-history-item {
                            display:block !important;
@@ -2660,11 +2683,42 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const result = Object.assign({}, local);
         result.items = Object.assign({}, local.items);
         result.index = Object.assign({}, local.index);
+        // ── 墓碑合并: deletedAt 取 max, record 取较新方, purged/revivedAt 双向传播 ──
+        result.tombstones = Object.assign({}, local.tombstones || {});
+        Object.keys(remote.tombstones || {}).forEach((tKey) => {
+          const rt = remote.tombstones[tKey];
+          const lt = result.tombstones[tKey];
+          if (!lt) { result.tombstones[tKey] = rt; return; }
+          const newerDeletedAt = Math.max(Number(rt.deletedAt) || 0, Number(lt.deletedAt) || 0);
+          const newer = (Number(rt.deletedAt) || 0) >= (Number(lt.deletedAt) || 0) ? rt : lt;
+          const purged = !!(rt.purged || lt.purged);
+          const revivedAt = Math.max(Number(rt.revivedAt) || 0, Number(lt.revivedAt) || 0) || null;
+          const mergedTomb = { deletedAt: newerDeletedAt, origin: newer.origin || 'local', purged, revivedAt };
+          if (!purged && !revivedAt && newer.record) mergedTomb.record = newer.record;
+          result.tombstones[tKey] = mergedTomb;
+        });
+        // 混跑防线+压制: 对存在本地墓碑(未复活)的 key, 过滤远端条目——
+        // lastVisitedAt > deletedAt 视为删除后的新段(参与合并), 否则为旧版传回的删除前数据(丢弃)
+        const effectiveRemoteItems = {};
+        Object.keys(remote.items || {}).forEach((key) => {
+          const t = result.tombstones[key];
+          if (t && !t.revivedAt && ((Number(remote.items[key].lastVisitedAt) || 0) <= (Number(t.deletedAt) || 0))) return;
+          effectiveRemoteItems[key] = remote.items[key];
+        });
         const baselineMap = (baselines && baselines.threadHistory) || {};
-        const keys = new Set(Object.keys(local.items).concat(Object.keys(remote.items)));
+        const keys = new Set(Object.keys(local.items).concat(Object.keys(effectiveRemoteItems)));
+        const localTombsForItems = result.tombstones;
         keys.forEach((key) => {
+          // 本端条目被远端墓碑压制: 条目早于删除时刻 → 应用删除(从合并结果移除)
+          const ownTomb = localTombsForItems[key];
+          if (ownTomb && !ownTomb.revivedAt && !effectiveRemoteItems[key] &&
+              ((Number(result.items[key] && result.items[key].lastVisitedAt) || 0) <= (Number(ownTomb.deletedAt) || 0))) {
+            delete result.items[key];
+            delete result.index[key];
+            return;
+          }
           const localItem = local.items[key];
-          const remoteItem = remote.items[key];
+          const remoteItem = effectiveRemoteItems[key];
           const baseCount = Number((baselineMap[key] && baselineMap[key].count) || 0);
           const localCount = Number(localItem && localItem.visitCount) || 0;
           const remoteCount = Number(remoteItem && remoteItem.visitCount) || 0;
@@ -2731,6 +2785,38 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const imported = normalizePostHistoryStore(importedStore);
         const result = Object.assign({}, local);
         result.items = Object.assign({}, local.items);
+        // ── 墓碑合并: deletedAt 取 max, record 取较新方, purged/revivedAt 双向传播 ──
+        result.tombstones = Object.assign({}, local.tombstones || {});
+        Object.keys(imported.tombstones || {}).forEach((tKey) => {
+          const rt = imported.tombstones[tKey];
+          const lt = result.tombstones[tKey];
+          if (!lt) { result.tombstones[tKey] = rt; return; }
+          const newerDeletedAt = Math.max(Number(rt.deletedAt) || 0, Number(lt.deletedAt) || 0);
+          const newer = (Number(rt.deletedAt) || 0) >= (Number(lt.deletedAt) || 0) ? rt : lt;
+          const purged = !!(rt.purged || lt.purged);
+          const revivedAt = Math.max(Number(rt.revivedAt) || 0, Number(lt.revivedAt) || 0) || null;
+          const mergedTomb = { deletedAt: newerDeletedAt, origin: newer.origin || 'local', purged, revivedAt };
+          if (!purged && !revivedAt && newer.record) mergedTomb.record = newer.record;
+          result.tombstones[tKey] = mergedTomb;
+        });
+        // 混跑防线: 被本地墓碑(未复活)压制且早于删除时刻的导入条目直接丢弃
+        Object.keys(imported.items).forEach((impKey) => {
+          const mk = postHistoryMatchKey(imported.items[impKey]);
+          if (!mk) return;
+          const t = result.tombstones[mk];
+          if (t && !t.revivedAt && ((Number(imported.items[impKey].submittedAt) || Infinity) <= (Number(t.deletedAt) || 0))) {
+            imported.items[impKey] = null;
+          }
+        });
+        // 本端条目被远端墓碑压制: 早于删除时刻 → 应用删除
+        Object.keys(result.items).forEach((localKey) => {
+          const mk = postHistoryMatchKey(result.items[localKey]);
+          if (!mk) return;
+          const t = result.tombstones[mk];
+          if (t && !t.revivedAt && ((Number(result.items[localKey].submittedAt) || Infinity) <= (Number(t.deletedAt) || 0))) {
+            delete result.items[localKey];
+          }
+        });
         const STATUS_PRIORITY = { confirmed: 3, unconfirmed: 2, pending: 1, failed: 0 };
         // 归一化匹配索引：避免两端 localId 不同导致同一帖子重复
         const matchIndex = new Map();
@@ -2740,6 +2826,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         });
         Object.keys(imported.items).forEach((key) => {
           const impItem = imported.items[key];
+          if (!impItem) return;   // 已被墓碑混跑防线丢弃
           const mk = postHistoryMatchKey(impItem);
           const matchKey = mk ? matchIndex.get(mk) : null;
           if (!matchKey || !result.items[matchKey]) {
@@ -20623,6 +20710,7 @@ function 注册自动保存编辑() {
       limit: THREAD_HISTORY_LIMIT,
       items: {},
       index: {},
+      tombstones: {},
       order: []
     };
   }
@@ -20636,6 +20724,28 @@ function 注册自动保存编辑() {
     store.limit = THREAD_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
     store.index = store.index && typeof store.index === 'object' ? store.index : {};
+    // 墓碑: 软删除记录(deletedAt/origin/purged/revivedAt/record)。TTL 到期降级 purged(丢快照保留压制);
+    // purged 超长安全期后物理清除; revivedAt 传播标记超期一并清除
+    store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
+    {
+      const nowTs = Date.now();
+      Object.keys(store.tombstones).forEach((tKey) => {
+        const t = store.tombstones[tKey];
+        if (!t || typeof t !== 'object') { delete store.tombstones[tKey]; return; }
+        const deletedAt = Number(t.deletedAt) || 0;
+        if (t.purged) {
+          if (nowTs - deletedAt > THREAD_HISTORY_TOMBSTONE_HARD_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (t.revivedAt) {
+          if (nowTs - (Number(t.revivedAt) || 0) > THREAD_HISTORY_TOMBSTONE_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (deletedAt && nowTs - deletedAt > THREAD_HISTORY_TOMBSTONE_TTL_MS) {
+          store.tombstones[tKey] = { deletedAt, origin: t.origin || 'local', purged: true };
+        }
+      });
+    }
     const seen = new Set();
     store.order = (Array.isArray(store.order) ? store.order : [])
       .filter(key => {
@@ -20753,6 +20863,7 @@ function 注册自动保存编辑() {
       version: POST_HISTORY_STORE_VERSION,
       // limit: POST_HISTORY_LIMIT,
       items: {},
+      tombstones: {},
       order: []
     };
   }
@@ -20912,6 +21023,27 @@ function 注册自动保存编辑() {
     store.version = POST_HISTORY_STORE_VERSION;
     // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    // 墓碑: 与浏览历史同构。TTL 到期降级 purged; purged 超安全期清除; revivedAt 标记超期清除
+    store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
+    {
+      const nowTs = Date.now();
+      Object.keys(store.tombstones).forEach((tKey) => {
+        const t = store.tombstones[tKey];
+        if (!t || typeof t !== 'object') { delete store.tombstones[tKey]; return; }
+        const deletedAt = Number(t.deletedAt) || 0;
+        if (t.purged) {
+          if (nowTs - deletedAt > POST_HISTORY_TOMBSTONE_HARD_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (t.revivedAt) {
+          if (nowTs - (Number(t.revivedAt) || 0) > POST_HISTORY_TOMBSTONE_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (deletedAt && nowTs - deletedAt > POST_HISTORY_TOMBSTONE_TTL_MS) {
+          store.tombstones[tKey] = { deletedAt, origin: t.origin || 'local', purged: true };
+        }
+      });
+    }
     const seen = new Set();
     store.order = (Array.isArray(store.order) ? store.order : [])
       .filter(key => {
@@ -21137,20 +21269,94 @@ function 注册自动保存编辑() {
   }
   function deletePostHistoryItem(localId) {
     const store = getPostHistoryStore();
+    // 软删除(分家): 原记录搬入墓碑快照, 主列表移除; 30 天内可恢复
+    const item = store.items[localId];
+    if (item) {
+      store.tombstones = store.tombstones || {};
+      store.tombstones[localId] = {
+        deletedAt: Date.now(),
+        origin: 'local',
+        purged: false,
+        revivedAt: null,
+        record: Object.assign({}, item)
+      };
+    }
     delete store.items[localId];
     store.order = (store.order || []).filter(key => key !== localId);
     return setPostHistoryStore(store);
   }
+  function restorePostHistoryFromTombstone(localId) {
+    const store = getPostHistoryStore();
+    const tomb = (store.tombstones || {})[localId];
+    if (!tomb || tomb.purged || tomb.revivedAt) return false;
+    const record = tomb.record || null;
+    const shadow = store.items[localId] || null;
+    let merged = null;
+    if (record && shadow) {
+      const recNewer = (Number(record.submittedAt) || 0) >= (Number(shadow.submittedAt) || 0);
+      merged = Object.assign({}, shadow, record, {
+        page: Math.max(Number(record.page) || 0, Number(shadow.page) || 0),
+        submittedAt: Math.min(Number(record.submittedAt) || Infinity, Number(shadow.submittedAt) || Infinity)
+      });
+      void recNewer;
+    } else {
+      merged = record ? Object.assign({}, record) : (shadow ? Object.assign({}, shadow) : null);
+    }
+    if (merged) {
+      merged.localId = merged.localId || localId;
+      store.items[localId] = merged;
+      if (!(store.order || []).includes(localId)) store.order.push(localId);
+    }
+    store.tombstones = store.tombstones || {};
+    store.tombstones[localId] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: false, revivedAt: Date.now() };
+    return setPostHistoryStore(store);
+  }
+  function purgePostHistoryTombstone(localId) {
+    const store = getPostHistoryStore();
+    const tomb = (store.tombstones || {})[localId];
+    if (!tomb) return false;
+    delete store.items[localId];
+    store.order = (store.order || []).filter(key => key !== localId);
+    store.tombstones[localId] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: true };
+    return setPostHistoryStore(store);
+  }
+  function purgeAllPostHistoryTombstones() {
+    const store = getPostHistoryStore();
+    const tombs = store.tombstones || {};
+    const now = Date.now();
+    Object.keys(tombs).forEach((key) => {
+      if (tombs[key].purged) return;
+      delete store.items[key];
+      tombs[key] = { deletedAt: Number(tombs[key].deletedAt) || now, origin: tombs[key].origin || 'local', purged: true };
+    });
+    store.order = (store.order || []).filter(k => !tombs[k] || tombs[k].purged);
+    return setPostHistoryStore(store);
+  }
   function clearPostHistory() {
-    return setPostHistoryStore(createDefaultPostHistoryStore());
+    // 批量软删除: 全部条目移入回收站; 30 天后自动彻底清除, 期间可恢复
+    const store = getPostHistoryStore();
+    const now = Date.now();
+    store.tombstones = store.tombstones || {};
+    Object.keys(store.items).forEach((key) => {
+      if (store.tombstones[key] && !store.tombstones[key].purged && !store.tombstones[key].revivedAt) return;
+      store.tombstones[key] = { deletedAt: now, origin: 'local', purged: false, revivedAt: null, record: Object.assign({}, store.items[key]) };
+    });
+    store.items = {};
+    store.order = [];
+    return setPostHistoryStore(store);
   }
   function searchPostHistory(query, type) {
     const store = getPostHistoryStore();
+    const tombs = store.tombstones || {};
     const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
     const { filters, tokens } = parsePostHistorySearchQuery(query);
     return (store.order || [])
       .map(key => ({ key, item: store.items[key] }))
       .filter(result => {
+        // 回收站压制: 未复活墓碑的条目不在主列表显示
+        const tomb = tombs[result.key];
+        // 仅"无删除后新记录"的纯墓碑才隐藏; 重新添加/更新会重建 items 影子条目并带标识显示
+        if (tomb && !tomb.revivedAt && !store.items[result.key]) return false;
         const item = result.item || {};
         if (normalizePostHistoryType(item.type) !== selectedType) return false;
         if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
@@ -22328,13 +22534,119 @@ function 注册自动保存编辑() {
   }
   function deleteThreadHistoryItem(key) {
     const store = getThreadHistoryStore();
+    // 软删除(分家): 原记录整体搬入墓碑快照, 主列表移除; 30 天内可恢复, 到期自动降级
+    const item = store.items[key];
+    if (item) {
+      store.tombstones = store.tombstones || {};
+      const prev = store.tombstones[key];
+      store.tombstones[key] = {
+        deletedAt: Date.now(),
+        origin: 'local',
+        purged: false,
+        revivedAt: null,
+        record: Object.assign({}, item)
+      };
+      void prev;
+      try {
+        const bl = GM_getValue('xdex_webdav_history_baselines', null);
+        if (bl && bl.threadHistory && (key in bl.threadHistory)) { delete bl.threadHistory[key]; GM_setValue('xdex_webdav_history_baselines', bl); }
+      } catch (e) {}
+    }
     delete store.items[key];
     delete store.index[key];
     store.order = (store.order || []).filter(itemKey => itemKey !== key);
     return setThreadHistoryStore(store);
   }
+  function restoreThreadHistoryFromTombstone(key) {
+    const store = getThreadHistoryStore();
+    const tomb = (store.tombstones || {})[key];
+    if (!tomb || tomb.purged || tomb.revivedAt) return false;
+    const record = tomb.record || null;
+    const shadow = store.items[key] || null;   // 删除后新段(如有)
+    let merged = null;
+    if (record && shadow) {
+      const recNewer = (Number(record.lastVisitedAt) || 0) >= (Number(shadow.lastVisitedAt) || 0);
+      merged = Object.assign({}, shadow, record, {
+        firstVisitedAt: Math.min(Number(record.firstVisitedAt) || Infinity, Number(shadow.firstVisitedAt) || Infinity),
+        lastVisitedAt: Math.max(Number(record.lastVisitedAt) || 0, Number(shadow.lastVisitedAt) || 0),
+        page: Math.max(Number(record.page) || 0, Number(shadow.page) || 0),
+        maxVisitedPage: Math.max(Number(record.maxVisitedPage) || 0, Number(shadow.maxVisitedPage) || 0),
+        visitCount: (Number(record.visitCount) || 0) + (Number(shadow.visitCount) || 0),
+        title: recNewer ? (record.title || shadow.title) : (shadow.title || record.title),
+        name: recNewer ? (record.name || shadow.name) : (shadow.name || record.name)
+      });
+    } else {
+      merged = record ? Object.assign({}, record) : (shadow ? Object.assign({}, shadow) : null);
+    }
+    if (merged) {
+      store.items[key] = merged;
+      store.index[key] = buildThreadHistoryIndexEntry(merged);
+      if (!(store.order || []).includes(key)) store.order.push(key);
+    }
+    // 墓碑转为 revivedAt 传播标记: 对端据此执行同样的恢复合并
+    store.tombstones = store.tombstones || {};
+    store.tombstones[key] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: false, revivedAt: Date.now() };
+    // 基线重置为恢复后的全局值, 防止下轮 delta 虚算
+    if (merged) {
+      try {
+        const bl = GM_getValue('xdex_webdav_history_baselines', null) || {};
+        bl.threadHistory = bl.threadHistory || {};
+        bl.threadHistory[key] = { count: Number(merged.visitCount) || 0, at: Date.now() };
+        GM_setValue('xdex_webdav_history_baselines', bl);
+      } catch (e) {}
+    } else {
+      deleteThreadHistoryBaselineEntry(key);
+    }
+    return setThreadHistoryStore(store);
+  }
+  function purgeThreadHistoryTombstone(key) {
+    const store = getThreadHistoryStore();
+    const tomb = (store.tombstones || {})[key];
+    if (!tomb) return false;
+    // 立即删除: 快照与新段一并清除, 仅留压制标记(purged), 防止对端旧数据复活
+    delete store.items[key];
+    delete store.index[key];
+    store.order = (store.order || []).filter(itemKey => itemKey !== key);
+    store.tombstones[key] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: true };
+    deleteThreadHistoryBaselineEntry(key);
+    return setThreadHistoryStore(store);
+  }
+  function purgeAllThreadHistoryTombstones() {
+    const store = getThreadHistoryStore();
+    const tombs = store.tombstones || {};
+    const now = Date.now();
+    Object.keys(tombs).forEach((key) => {
+      if (tombs[key].purged) return;
+      delete store.items[key];
+      delete store.index[key];
+      tombs[key] = { deletedAt: Number(tombs[key].deletedAt) || now, origin: tombs[key].origin || 'local', purged: true };
+      deleteThreadHistoryBaselineEntry(key);
+    });
+    store.order = (store.order || []).filter(k => !tombs[k] || tombs[k].purged);
+    return setThreadHistoryStore(store);
+  }
+  function deleteThreadHistoryBaselineEntry(key) {
+    try {
+      const bl = GM_getValue('xdex_webdav_history_baselines', null);
+      if (!bl || !bl.threadHistory || !(key in bl.threadHistory)) return;
+      delete bl.threadHistory[key];
+      GM_setValue('xdex_webdav_history_baselines', bl);
+    } catch (e) {}
+  }
   function clearThreadHistory() {
-    return setThreadHistoryStore(createDefaultThreadHistoryStore());
+    // 批量软删除: 全部条目移入回收站(逐条墓碑), 30 天后自动彻底清除; 期间可恢复
+    const store = getThreadHistoryStore();
+    const now = Date.now();
+    store.tombstones = store.tombstones || {};
+    Object.keys(store.items).forEach((key) => {
+      if (store.tombstones[key] && !store.tombstones[key].purged && !store.tombstones[key].revivedAt) return;
+      store.tombstones[key] = { deletedAt: now, origin: 'local', purged: false, revivedAt: null, record: Object.assign({}, store.items[key]) };
+      deleteThreadHistoryBaselineEntry(key);
+    });
+    store.items = {};
+    store.index = {};
+    store.order = [];
+    return setThreadHistoryStore(store);
   }
   function parseThreadHistorySearchQuery(query) {
     const filters = { mode: '', hasImage: false, isGif: false, hasZeroWidth: false, isSage: false };
@@ -22382,6 +22694,10 @@ function 注册自动保存编辑() {
       .filter(key => {
         const entry = store.index[key];
         if (!entry || !store.items[key]) return false;
+        // 回收站压制: 存在未复活墓碑的条目不在主列表显示(删除后新段同样隐藏, 恢复后随 revivedAt 解除)
+        const tomb = store.tombstones && store.tombstones[key];
+        // 仅"无删除后新段"的纯墓碑才隐藏; 再次浏览会重建 items 影子条目, 带回收站标识重新显示
+        if (tomb && !tomb.revivedAt && !store.items[key]) return false;
         if (filters.mode && entry.mode !== filters.mode) return false;
         if (filters.hasImage && !entry.hasImage) return false;
         if (filters.isGif && !entry.isGif) return false;
@@ -22741,6 +23057,8 @@ function 注册自动保存编辑() {
   const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
   const THREAD_HISTORY_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  const THREAD_HISTORY_TOMBSTONE_HARD_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+  const POST_HISTORY_TOMBSTONE_HARD_TTL_MS = 180 * 24 * 60 * 60 * 1000;
   const POST_HISTORY_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   // ===== 回收站 UI（墓碑数据层未接入前 tombstones 恒为空，视图显示空态） =====
   let threadHistoryRecycleMode = false;
@@ -22767,8 +23085,11 @@ function 注册自动保存编辑() {
     const badge = document.getElementById('sp_history_recycle_badge');
     if (!badge) return;
     const list = getThreadHistoryTombstoneList();
-    badge.textContent = String(list.length);
-    badge.hidden = list.length === 0;
+    // 角标仅在有"24 小时内删除"的条目时显示
+    const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const recentCount = list.filter(t => (Number(t.deletedAt) || 0) >= recentCutoff).length;
+    badge.textContent = String(recentCount);
+    badge.hidden = recentCount === 0;
   }
   function renderThreadHistoryRecycleView() {
     const root = document.getElementById('sp_history_results');
@@ -22780,24 +23101,55 @@ function 注册自动保存编辑() {
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
     root.textContent = '';
     const now = Date.now();
+    const liveStore = getThreadHistoryStore();
     for (const t of list) {
       const rec = t.record || {};
+      // 删除后的新段(items 中被压制的独立计数)动态合成展示
+      const shadow = liveStore.items[t.key] || null;
+      const newVisits = shadow ? (Number(shadow.visitCount) || 0) : 0;
       const daysLeft = Math.max(0, Math.ceil((t.deletedAt + THREAD_HISTORY_TOMBSTONE_TTL_MS - now) / 86400000));
-      const titleText = rec.title || rec.name || (rec.threadId ? `No.${rec.threadId}` : t.key);
+      // 合成展示视图: 快照为基础; 最近访问/最远页码与新段同步取最新, 与回收站信息保持一致
+      const itemView = Object.assign({}, rec);
+      if (shadow) {
+        itemView.lastVisitedAt = Math.max(Number(rec.lastVisitedAt) || 0, Number(shadow.lastVisitedAt) || 0);
+        itemView.maxVisitedPage = Math.max(Number(rec.maxVisitedPage) || 0, Number(shadow.maxVisitedPage) || 0);
+        itemView.page = Math.max(Number(rec.page) || 0, Number(shadow.page) || 0);
+      }
+      // 复用正常条目构建器, 展示形式与主列表完全一致
+      const card = buildThreadHistoryItemElement({
+        key: t.key,
+        item: itemView,
+        index: buildThreadHistoryIndexEntry(itemView)
+      });
+      const legacyDelete = card.querySelector('.xdex-history-delete');
+      if (legacyDelete) legacyDelete.remove();
+      const legacyMark = card.querySelector('.xdex-history-tombstone-mark');
+      if (legacyMark) legacyMark.remove();
       const item = document.createElement('div');
       item.className = 'xdex-recycle-item';
       item.dataset.recycleKey = t.key;
-      const mainEl = document.createElement('div');
-      mainEl.className = 'xdex-recycle-item-main';
-      const titleEl = document.createElement('div');
-      titleEl.className = 'xdex-recycle-item-title';
-      titleEl.textContent = titleText;
+      item.appendChild(card);
       const metaEl = document.createElement('div');
       metaEl.className = 'xdex-recycle-item-meta';
-      metaEl.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
-      mainEl.appendChild(titleEl);
-      mainEl.appendChild(metaEl);
-      item.appendChild(mainEl);
+      let metaText = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
+      if (newVisits > 0) metaText += ` · 删除后新增访问 ${newVisits} 次`;
+      metaEl.textContent = metaText;
+      const actionsEl = document.createElement('div');
+      actionsEl.className = 'xdex-recycle-item-actions';
+      const restoreBtn = document.createElement('button');
+      restoreBtn.type = 'button';
+      restoreBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-restore';
+      restoreBtn.dataset.recycleKey = t.key;
+      restoreBtn.textContent = '恢复';
+      const purgeBtn = document.createElement('button');
+      purgeBtn.type = 'button';
+      purgeBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-purge';
+      purgeBtn.dataset.recycleKey = t.key;
+      purgeBtn.textContent = '彻底删除';
+      actionsEl.appendChild(restoreBtn);
+      actionsEl.appendChild(purgeBtn);
+      item.appendChild(metaEl);
+      item.appendChild(actionsEl);
       root.appendChild(item);
     }
     if (!list.length) {
@@ -23031,7 +23383,7 @@ function 注册自动保存编辑() {
       if (!key) return;
       deleteThreadHistoryItem(key);
       renderThreadHistoryModule();
-      toast('已删除浏览历史');
+      toast('已移入回收站，30 天后自动清除，可在回收站恢复');
     });
     $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
       e.preventDefault();
@@ -23039,7 +23391,7 @@ function 注册自动保存编辑() {
         if (!window.confirm('确定要清空全部浏览历史吗？')) return;
         clearThreadHistory();
         renderThreadHistoryModule();
-        toast('已清空浏览历史');
+        toast('已清空浏览历史（已移入回收站，30 天内可恢复）');
       });
     });
     $('#sp_history_recycle').off('click.xdex-history-recycle').on('click.xdex-history-recycle', function (e) {
@@ -23053,6 +23405,33 @@ function 注册自动保存编辑() {
     $('#sp_history_recycle_sort').off('change.xdex-history-recycle').on('change.xdex-history-recycle', function () {
       threadHistoryRecycleSort = this.value;
       renderThreadHistoryRecycleView();
+    });
+    $('#sp_history_results').off('click.xdex-history-recycle-action', '.xdex-recycle-item-restore').on('click.xdex-history-recycle-action', '.xdex-recycle-item-restore', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      restoreThreadHistoryFromTombstone(key);
+      renderThreadHistoryRecycleView();
+      toast('已恢复该浏览记录');
+    });
+    $('#sp_history_results').off('click.xdex-history-recycle-action', '.xdex-recycle-item-purge').on('click.xdex-history-recycle-action', '.xdex-recycle-item-purge', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      if (!window.confirm('确定要彻底删除这条记录吗？此操作无法通过恢复找回。')) return;
+      purgeThreadHistoryTombstone(key);
+      renderThreadHistoryRecycleView();
+      toast('已彻底删除');
+    });
+    $('#sp_history_recycle_empty').off('click.xdex-history-recycle-empty').on('click.xdex-history-recycle-empty', function (e) {
+      e.preventDefault();
+      if (this.disabled) return;
+      if (!window.confirm('确定要清空回收站吗？全部待删除记录将被彻底清除，无法恢复。')) return;
+      purgeAllThreadHistoryTombstones();
+      renderThreadHistoryRecycleView();
+      toast('回收站已清空');
     });
   }
   function buildPostHistoryItemElement(result) {
@@ -23197,8 +23576,11 @@ function 注册自动保存编辑() {
     const badge = document.getElementById('sp_posts_recycle_badge');
     if (!badge) return;
     const list = getPostHistoryTombstoneList();
-    badge.textContent = String(list.length);
-    badge.hidden = list.length === 0;
+    // 角标仅在有"24 小时内删除"的条目时显示
+    const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const recentCount = list.filter(t => (Number(t.deletedAt) || 0) >= recentCutoff).length;
+    badge.textContent = String(recentCount);
+    badge.hidden = recentCount === 0;
   }
   function renderPostHistoryRecycleView() {
     const root = document.getElementById('sp_posts_results');
@@ -23210,24 +23592,53 @@ function 注册自动保存编辑() {
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
     root.textContent = '';
     const now = Date.now();
+    const liveStore = getPostHistoryStore();
     for (const t of list) {
       const rec = t.record || {};
+      // 删除后的新记录(items 中被压制的独立条目)动态合成展示
+      const shadow = liveStore.items[t.key] || null;
       const daysLeft = Math.max(0, Math.ceil((t.deletedAt + POST_HISTORY_TOMBSTONE_TTL_MS - now) / 86400000));
-      const titleText = rec.title || rec.name || rec.postId || t.key;
+      // 合成展示视图: 快照为基础; 页码/时间与新记录同步取最新
+      const itemView = Object.assign({}, rec);
+      if (shadow) {
+        itemView.submittedAt = Math.min(Number(rec.submittedAt) || Infinity, Number(shadow.submittedAt) || Infinity);
+        itemView.page = Math.max(Number(rec.page) || 0, Number(shadow.page) || 0);
+        itemView.contentText = shadow.contentText || rec.contentText;
+      }
+      // 复用正常条目构建器, 展示形式与发言历史主列表完全一致
+      const card = buildPostHistoryItemElement({
+        key: t.key,
+        item: itemView
+      });
+      const legacyDelete = card.querySelector('.xdex-post-history-delete');
+      if (legacyDelete) legacyDelete.remove();
+      const legacyMark = card.querySelector('.xdex-post-history-tombstone-mark');
+      if (legacyMark) legacyMark.remove();
       const item = document.createElement('div');
       item.className = 'xdex-recycle-item';
       item.dataset.recycleKey = t.key;
-      const mainEl = document.createElement('div');
-      mainEl.className = 'xdex-recycle-item-main';
-      const titleEl = document.createElement('div');
-      titleEl.className = 'xdex-recycle-item-title';
-      titleEl.textContent = titleText;
+      item.appendChild(card);
       const metaEl = document.createElement('div');
       metaEl.className = 'xdex-recycle-item-meta';
-      metaEl.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
-      mainEl.appendChild(titleEl);
-      mainEl.appendChild(metaEl);
-      item.appendChild(mainEl);
+      let metaText = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
+      if (shadow) metaText += ' · 删除后该发言有新的记录';
+      metaEl.textContent = metaText;
+      const actionsEl = document.createElement('div');
+      actionsEl.className = 'xdex-recycle-item-actions';
+      const restoreBtn = document.createElement('button');
+      restoreBtn.type = 'button';
+      restoreBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-restore';
+      restoreBtn.dataset.recycleKey = t.key;
+      restoreBtn.textContent = '恢复';
+      const purgeBtn = document.createElement('button');
+      purgeBtn.type = 'button';
+      purgeBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-purge';
+      purgeBtn.dataset.recycleKey = t.key;
+      purgeBtn.textContent = '彻底删除';
+      actionsEl.appendChild(restoreBtn);
+      actionsEl.appendChild(purgeBtn);
+      item.appendChild(metaEl);
+      item.appendChild(actionsEl);
       root.appendChild(item);
     }
     if (!list.length) {
@@ -24068,7 +24479,7 @@ function 注册自动保存编辑() {
       if (!window.confirm('确定要删除这条发言记录吗？')) return;
       deletePostHistoryItem(key);
       renderPostHistoryModule();
-      toast('已删除发言记录');
+      toast('已移入回收站，30 天后自动清除，可在回收站恢复');
     });
     $('#sp_posts_clear').off('click.xdex-post-history').on('click.xdex-post-history', function (e) {
       e.preventDefault();
@@ -24076,7 +24487,7 @@ function 注册自动保存编辑() {
         if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
         clearPostHistory();
         renderPostHistoryModule();
-        toast('已清空我的发言');
+        toast('已清空我的发言（已移入回收站，30 天内可恢复）');
       });
     });
     $('#sp_posts_recycle').off('click.xdex-post-history-recycle').on('click.xdex-post-history-recycle', function (e) {
@@ -24090,6 +24501,33 @@ function 注册自动保存编辑() {
     $('#sp_posts_recycle_sort').off('change.xdex-post-history-recycle').on('change.xdex-post-history-recycle', function () {
       postHistoryRecycleSort = this.value;
       renderPostHistoryRecycleView();
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-recycle-action', '.xdex-recycle-item-restore').on('click.xdex-post-history-recycle-action', '.xdex-recycle-item-restore', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      restorePostHistoryFromTombstone(key);
+      renderPostHistoryRecycleView();
+      toast('已恢复该发言记录');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-recycle-action', '.xdex-recycle-item-purge').on('click.xdex-post-history-recycle-action', '.xdex-recycle-item-purge', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      if (!window.confirm('确定要彻底删除这条记录吗？此操作无法通过恢复找回。')) return;
+      purgePostHistoryTombstone(key);
+      renderPostHistoryRecycleView();
+      toast('已彻底删除');
+    });
+    $('#sp_posts_recycle_empty').off('click.xdex-post-history-recycle-empty').on('click.xdex-post-history-recycle-empty', function (e) {
+      e.preventDefault();
+      if (this.disabled) return;
+      if (!window.confirm('确定要清空回收站吗？全部待删除记录将被彻底清除，无法恢复。')) return;
+      purgeAllPostHistoryTombstones();
+      renderPostHistoryRecycleView();
+      toast('回收站已清空');
     });
     // 手动添加发言历史
     // 禁用浏览器自动填充
@@ -25419,6 +25857,23 @@ function 注册自动保存编辑() {
         width: 18px; height: 18px;
         display: block; pointer-events: none;
       }
+      #xdex-tombstone-mark {
+        position: fixed; top: 44px; right: 52px; z-index: 10000;
+        width: 28px; height: 28px; padding: 0; margin: 0;
+        border: none; border-radius: 50%;
+        background: #F0E0D6; color: #5b4636;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,.18);
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden; line-height: 1;
+      }
+      #xdex-tombstone-mark:hover {
+        background: #e8d5c5; color: #c62828;
+      }
+      #xdex-tombstone-mark svg {
+        width: 15px; height: 15px;
+        display: block; pointer-events: none;
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -25512,6 +25967,39 @@ function 注册自动保存编辑() {
     }
     // 按当前隐藏模式同步外观（含无图隐藏可恢复）
     syncImageViewerButtonForHideMode(getCurrentImageHideModeForViewerBtn());
+  }
+  // ── 回收站墓碑标识: 浏览已被移入回收站的串时, 在阅图按钮下方展示垃圾桶标识 ──
+  function injectThreadTombstoneMark() {
+    const MARK_ID = 'xdex-tombstone-mark';
+    let mark = document.getElementById(MARK_ID);
+    if (!isImageViewerThreadPage()) { if (mark) mark.remove(); return; }
+    const threadId = getCurrentThreadIdForImageViewer();
+    if (!threadId) { if (mark) mark.remove(); return; }
+    const tombs = getThreadHistoryStore().tombstones || {};
+    const suffix = String(threadId).slice(0, 8);
+    const candidates = ['normal:' + suffix, 'reply:' + suffix];
+    let hitKey = null, tomb = null;
+    for (const k of candidates) {
+      if (tombs[k] && !tombs[k].purged && !tombs[k].revivedAt) { hitKey = k; tomb = tombs[k]; break; }
+    }
+    if (!tomb) { if (mark) mark.remove(); return; }
+    if (!mark) {
+      mark = document.createElement('button');
+      mark.type = 'button';
+      mark.id = MARK_ID;
+      mark.innerHTML = XDEX_SVG_TRASH;
+      mark.dataset.recycleKey = hitKey;
+      mark.addEventListener('click', function (e) {
+        e.preventDefault();
+        const key = this.dataset.recycleKey || hitKey;
+        try { openSettingsPanelModuleTab('history'); } catch (err) {}
+        setTimeout(() => openRecycleBinAndLocate(key), 150);
+      });
+      document.body.appendChild(mark);
+    }
+    const daysLeft = Math.max(0, Math.ceil((Number(tomb.deletedAt) + THREAD_HISTORY_TOMBSTONE_TTL_MS - Date.now()) / 86400000));
+    mark.title = `历史浏览数据在回收站中 · 约 ${daysLeft} 天后自动彻底清除 · 点击查看`;
+    mark.setAttribute('aria-label', mark.title);
   }
   // ── 打开阅览器 ──
   function getImageViewerStartPage() {
@@ -27377,6 +27865,7 @@ function 注册自动保存编辑() {
       }
     }
     injectImageViewerButton();                                    //阅图模式入口
+    injectThreadTombstoneMark();                                  //回收站墓碑标识
     enablePaginationDuplication(!!cfg.enablePaginationDuplication); //页码栏拓展为 7 个；开关仅控制是否添加页首页码
     if (cfg.disableWatermark)            disableWatermark();        //关闭图片水印
     if (cfg.updatePreviewCookie)         updatePreviewCookieId();   //预览真实饼干
