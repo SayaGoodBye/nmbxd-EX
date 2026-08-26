@@ -783,6 +783,15 @@
                          background:rgba(255,255,255,.18);
                          flex:0 0 var(--sp-panel-tab-icon-size);
                          text-align:center;
+                       display:flex;
+                       align-items:center;
+                       justify-content:center;
+                    }
+                  #sp_panel_tab_slot .sp_panel_tab_icon svg {
+                         width:72%;
+                         height:72%;
+                         display:block;
+                         margin:auto;
                     }
                   #sp_panel_tab_slot .sp_panel_tab_label {
                          width:var(--sp-panel-tab-label-width);
@@ -1176,10 +1185,10 @@
               max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_tab_slot" aria-label="设置面板模块">
-              <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon">言</span><span class="sp_panel_tab_label">我的发言</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="feeds"><span class="sp_panel_tab_icon">订</span><span class="sp_panel_tab_label">我的订阅</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span><span class="sp_panel_tab_label">设置</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"></path><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path><path d="M12 7v5l4 2"></path></svg></span><span class="sp_panel_tab_label">浏览历史</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></span><span class="sp_panel_tab_label">我的发言</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="feeds"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></span><span class="sp_panel_tab_label">我的订阅</span></button>
             </div>
             <div id="sp_panel_views">
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
@@ -25224,6 +25233,10 @@ function 注册自动保存编辑() {
         object-fit: cover; border-radius: 50%;
         pointer-events: none; display: block;
       }
+      .xdex-image-viewer-btn svg {
+        width: 18px; height: 18px;
+        display: block; pointer-events: none;
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -25248,6 +25261,7 @@ function 注册自动保存编辑() {
     return PageType.isThreadPage(false);
   }
   function syncImageViewerButtonForHideMode(mode) {
+    const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
     ensureImageViewerButtonStyle();
     const btn = document.querySelector('.xdex-image-viewer-btn');
     if (!btn) return;
@@ -25256,7 +25270,7 @@ function 注册自动保存编辑() {
     const tipsImg = btn.querySelector('.xdex-iv-btn-tips-img');
     if (tipsImg) tipsImg.remove();
     // 恢复默认文字入口
-    btn.textContent = '图';
+    btn.innerHTML = IMAGE_VIEWER_ICON_SVG;
     btn.setAttribute('title', '阅图模式');
     btn.setAttribute('aria-label', '阅图模式');
     btn.style.display = '';
@@ -25308,7 +25322,8 @@ function 注册自动保存编辑() {
     if (!threadId) return;
     let btn = document.querySelector('.xdex-image-viewer-btn');
     if (!btn) {
-      const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">图</button>');
+      const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
+      const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">').html(IMAGE_VIEWER_ICON_SVG);
       $btn.on('click', () => openImageViewer(threadId));
       $('body').append($btn);
       btn = $btn[0];
@@ -26745,11 +26760,21 @@ function 注册自动保存编辑() {
     }
     const parsed = utils.parseFullExportFile(remote.responseText);
     if (!parsed || !parsed.valid) {
-      // 远端文件不合法时禁止本轮任何写入：避免不完整解析破坏数据
-      setWebdavStatus('远端同步文件不合法，跳过本轮同步');
-      console.warn('[webdav] 远端同步文件不合法', { error: parsed && parsed.error });
-      if (!silent) notify('WebDAV：远端同步文件不合法');
-      return { ok: false, reason: 'invalid-remote' };
+      // 远端缺失或内容非同步文件(部分 WebDAV 实现对不存在路径返回 207/HTML)：无可合并内容，
+      // 退化为纯上传以重建云端；upload 内部对既有远端内容的合并守卫会自行跳过无效数据
+      console.warn('[webdav] 远端无有效同步文件，转为本地上传', { status: remote.status, error: parsed && parsed.error });
+      const rebuild = await webdavUploadLocal(cfg, headers);
+      const rebuiltAt = Date.now();
+      if (rebuild.ok) {
+        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: rebuiltAt }));
+        webdavUpdateLastSyncLabel();
+        setWebdavStatus('远端无有效同步文件，已上传本地数据');
+        notify('WebDAV：远端无有效同步文件，已上传本地数据');
+        return { ok: true, direction: 'upload-rebuild' };
+      }
+      setWebdavStatus('上传失败（HTTP ' + (rebuild.status == null ? '未知' : rebuild.status) + '）');
+      notify('WebDAV 上传失败：HTTP ' + rebuild.status);
+      return { ok: false, reason: 'upload-failed' };
     }
       // WebDAV 配置不随同步覆盖：同步上传端已排除；
       // 若用户手动导出的含 webdav 配置文件被放到远端，下载时过滤掉，避免远端反向改写本地同步源
