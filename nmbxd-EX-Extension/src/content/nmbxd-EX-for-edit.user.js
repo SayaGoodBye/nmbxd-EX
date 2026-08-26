@@ -18101,6 +18101,8 @@ function 注册自动保存编辑() {
             const p1 = typeof p1Raw === 'string' ? JSON.parse(p1Raw) : p1Raw;
             if (!p1 || p1.success === false) throw new Error((p1 && p1.error) || 'API error');
             const replyCount = Number(p1.ReplyCount || p1.reply_count || 0);
+            // OP 主的饼干哈希: 用于增量插入回复时补插 (PO主) 标记
+            const opUserHash = String((p1 && (p1.user_hash || p1.UserHash)) || '');
             const tailPage = Math.max(1, Math.ceil(replyCount / REPLY_PER_PAGE));
             // Step 2: 拉取末页
             const tResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + tailPage, 'json');
@@ -18188,7 +18190,7 @@ function 注册自动保存编辑() {
               // 只追加该节点缺失的回复
               for (const reply of newReplies) {
                 if (!existingIds.has(String(reply.id))) {
-                  const el = buildApiReplyNode(reply, tid);
+                  const el = buildApiReplyNode(reply, tid, opUserHash);
                   if (el) rc.appendChild(el);
                 }
               }
@@ -18232,7 +18234,7 @@ function 注册自动保存编辑() {
         })();
       }
       // 构建 API 回复的 DOM 节点（匹配页面原生 .h-threads-item-reply 结构）
-      function buildApiReplyNode(reply, threadId) {
+      function buildApiReplyNode(reply, threadId, opUserHash) {
         if (!reply || !reply.id) return null;
         const _e = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const id = String(reply.id);
@@ -18264,6 +18266,10 @@ function 注册自动保存编辑() {
         const uidHtml = hash
           ? '<span class="h-threads-info-uid" data-xdex-cookie-id="' + _e(hash) + '">ID:' + _e(hash) + '</span>'
           : '';
+        // PO 主判定: 与串的 OP 饼干哈希一致时插入 (PO主) 标记, 供 highlightPO 识别替换 Po 图标
+        const poMarkHtml = (opUserHash && hash && hash === opUserHash)
+          ? ' <span class="uk-text-primary uk-text-small">(PO主)</span>'
+          : '';
         const titleText = (title && title !== '无标题') ? _e(title) : '无标题';
         const emailText = (email && email !== '无名氏') ? _e(email) : '无名氏';
         const html = '<div data-threads-id="' + _e(id) + '" class="h-threads-item-reply">'
@@ -18275,6 +18281,7 @@ function 注册自动保存编辑() {
               + '<span class="h-threads-info-email">' + emailText + '</span>'
               + '<span class="h-threads-info-createdat">' + _e(now) + '</span>'
               + uidHtml
+              + poMarkHtml
               + '<span class="h-threads-info-report-btn">[<a href="/f/值班室?r=' + _e(id) + '">举报</a>]</span>'
               + '<a href="/t/' + _e(threadId) + '?r=' + _e(id) + '" class="h-threads-info-id">No.' + _e(id) + '</a>'
             + '</div>'
