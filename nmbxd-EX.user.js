@@ -987,6 +987,61 @@
                           color:var(--foreground, #333);
                           opacity:.75;
                      }
+                  .xdex-history-tombstone-mark,
+                  .xdex-post-history-tombstone-mark {
+                          position:absolute;
+                          top:-9px;
+                          left:-9px;
+                          width:20px;
+                          height:20px;
+                          border:1px solid #a98f7a;
+                          border-radius:999px;
+                          background:#F0E0D6;
+                          display:flex;
+                          align-items:center;
+                          justify-content:center;
+                          padding:0;
+                          cursor:pointer;
+                          z-index:1;
+                          color:#5b4636;
+                     }
+                  .xdex-history-tombstone-mark:hover,
+                  .xdex-post-history-tombstone-mark:hover {
+                          color:#c62828;
+                          border-color:#c62828;
+                     }
+                  .xdex-recycle-sort {
+                          padding:4px 6px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:6px;
+                          background:var(--xdex-sp-panel-bg);
+                          color:inherit;
+                          cursor:pointer;
+                     }
+                  .xdex-recycle-item {
+                          position:relative;
+                          border:1px solid #bfa58f;
+                          border-radius:8px;
+                          padding:10px 12px;
+                          margin-bottom:8px;
+                          background:rgba(255,255,255,0.18);
+                     }
+                  .xdex-recycle-item-title {
+                          font-weight:bold;
+                          margin-bottom:4px;
+                          word-break:break-all;
+                     }
+                  .xdex-recycle-item-meta {
+                          font-size:12px;
+                          opacity:.75;
+                     }
+                  .xdex-recycle-item.xdex-recycle-highlight {
+                          animation:xdexRecycleHighlight 2s ease;
+                     }
+                  @keyframes xdexRecycleHighlight {
+                          0%,60% { background:#ffe08a; }
+                          100% { background:rgba(255,255,255,0.18); }
+                     }
                    .xdex-history-item {
                            display:block !important;
                             position:relative;
@@ -1186,9 +1241,9 @@
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_tab_slot" aria-label="设置面板模块">
               <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span><span class="sp_panel_tab_label">设置</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"></path><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path><path d="M12 7v5l4 2"></path></svg></span><span class="sp_panel_tab_label">浏览历史</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></span><span class="sp_panel_tab_label">我的发言</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="feeds"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></span><span class="sp_panel_tab_label">我的订阅</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon"><svg viewBox="-1 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"></path><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path><path d="M12 7v5l4 2"></path></svg></span><span class="sp_panel_tab_label">浏览历史</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon"><svg viewBox="-0.8 0.3 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></span><span class="sp_panel_tab_label">我的发言</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="feeds"><span class="sp_panel_tab_icon"><svg viewBox="0 -0.5 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></span><span class="sp_panel_tab_label">我的订阅</span></button>
             </div>
             <div id="sp_panel_views">
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
@@ -1471,6 +1526,10 @@
                   <div id="sp_history_recycle_bar" class="xdex-recycle-bar" hidden>
                     <button id="sp_history_recycle_back" type="button" class="xdex-recycle-back" title="返回浏览历史">← 返回</button>
                     <span class="xdex-recycle-bar-title">回收站 <span id="sp_history_recycle_barcount" class="xdex-history-count">0 条</span></span>
+                    <select id="sp_history_recycle_sort" class="xdex-recycle-sort" aria-label="回收站排序">
+                      <option value="expiring">即将删除优先</option>
+                      <option value="recent">最近删除优先</option>
+                    </select>
                     <button id="sp_history_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
                   </div>
                     <div id="sp_history_results"></div>
@@ -1495,6 +1554,10 @@
                   <div id="sp_posts_recycle_bar" class="xdex-recycle-bar" hidden>
                     <button id="sp_posts_recycle_back" type="button" class="xdex-recycle-back" title="返回我的发言">← 返回</button>
                     <span class="xdex-recycle-bar-title">回收站 <span id="sp_posts_recycle_barcount" class="xdex-history-count">0 条</span></span>
+                    <select id="sp_posts_recycle_sort" class="xdex-recycle-sort" aria-label="回收站排序">
+                      <option value="expiring">即将删除优先</option>
+                      <option value="recent">最近删除优先</option>
+                    </select>
                     <button id="sp_posts_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
                   </div>
                     <div id="sp_posts_type_buttons" class="xdex-post-history-type-buttons">
@@ -3713,7 +3776,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="thread-cookie-whitelist-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
@@ -3725,7 +3788,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-input" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${placeholder}" value="${Utils.escapeHTML ? Utils.escapeHTML(value || '') : (value || '')}">
         </div>
@@ -3749,7 +3812,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="blocked-keyword-row" style="position:relative;margin:10px 0 8px;" data-regex="${regexOn ? '1' : '0'}">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <div style="display:flex;align-items:center;gap:8px;">
             <input class="blocked-keyword-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${safePlaceholder}" value="${safeValue}">
@@ -3807,7 +3870,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
@@ -17012,7 +17075,7 @@ function 注册自动保存编辑() {
           let $btn = $form.find('.xdex-clear-image-btn');
           if (hasFile) {
               if (!$btn.length) {
-                  $btn = $('<button type="button" class="xdex-clear-image-btn" title="清除图片">×</button>');
+                  $btn = $('<button type="button" class="xdex-clear-image-btn" title="清除图片">').html(XDEX_SVG_X);
                   $btn.css({
                       fontSize: '16px',
                       lineHeight: '1',
@@ -17643,7 +17706,7 @@ function 注册自动保存编辑() {
           // 包裹容器
           const $wrapper = $('<div class="xdex-file-wrapper" style="display:flex;align-items:center;justify-content:space-between;width:100%;"></div>');
           // “×”按钮
-          const $btnReset = $('<button type="button" class="js-reset" style="margin-right:6px;">×</button>');
+          const $btnReset = $('<button type="button" class="js-reset" style="margin-right:6px;display:inline-flex;align-items:center;">').html(XDEX_SVG_X);
           $btnReset.on('click', function(){
             // 重置 hidden 值
             $formPost.find('input[name="resto"]').val('20011114');
@@ -20342,7 +20405,7 @@ function 注册自动保存编辑() {
     return `
       <div class="favorite-thread-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
@@ -20355,7 +20418,7 @@ function 注册自动保存编辑() {
     return `
       <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
@@ -22544,8 +22607,27 @@ function 注册自动保存编辑() {
     deleteButton.className = 'xdex-history-delete';
     deleteButton.dataset.historyKey = result.key;
     deleteButton.title = '删除';
-    deleteButton.textContent = '×';
+    deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
+    // 回收站标识: 该串原始浏览数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    if (typeof getThreadHistoryStore === 'function') {
+      const tomb = (getThreadHistoryStore().tombstones || {})[result.key];
+      if (tomb && !tomb.purged) {
+        const daysLeft = Math.max(0, Math.ceil((tomb.deletedAt + THREAD_HISTORY_TOMBSTONE_TTL_MS - Date.now()) / 86400000));
+        const mark = document.createElement('button');
+        mark.type = 'button';
+        mark.className = 'xdex-history-tombstone-mark';
+        mark.title = `历史浏览数据在回收站中 · 约 ${daysLeft} 天后自动彻底清除`;
+        mark.setAttribute('aria-label', mark.title);
+        mark.innerHTML = XDEX_SVG_TRASH;
+        mark.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          openRecycleBinAndLocate(result.key);
+        });
+        main.appendChild(mark);
+      }
+    }
     if (item.imageFile) {
       const imageLink = document.createElement('a');
       imageLink.className = 'h-threads-img-a xdex-history-image';
@@ -22655,15 +22737,31 @@ function 注册自动保存编辑() {
       });
     }
   }
+  // ===== 共享 SVG 图标（统一视觉，替代字符"×"等占位） =====
+  const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
+  const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  const THREAD_HISTORY_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  const POST_HISTORY_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   // ===== 回收站 UI（墓碑数据层未接入前 tombstones 恒为空，视图显示空态） =====
   let threadHistoryRecycleMode = false;
+  let threadHistoryRecycleSort = 'expiring'; // 'expiring'=即将删除优先 | 'recent'=最近删除优先
   function getThreadHistoryTombstoneList() {
     const store = getThreadHistoryStore();
     const tombs = store.tombstones || {};
     return Object.keys(tombs)
       .filter((key) => !tombs[key].purged)
       .map((key) => Object.assign({ key }, tombs[key]))
-      .sort((a, b) => (Number(b.deletedAt) || 0) - (Number(a.deletedAt) || 0));
+      .sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (threadHistoryRecycleSort === 'recent' ? -1 : 1));
+  }
+  function openRecycleBinAndLocate(key) {
+    setThreadHistoryRecycleMode(true);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`#sp_history_results [data-recycle-key="${CSS.escape(key)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('xdex-recycle-highlight');
+      setTimeout(() => el.classList.remove('xdex-recycle-highlight'), 2000);
+    });
   }
   function updateThreadHistoryRecycleBadge() {
     const badge = document.getElementById('sp_history_recycle_badge');
@@ -22681,10 +22779,33 @@ function 注册自动保存编辑() {
     const emptyBtn = document.getElementById('sp_history_recycle_empty');
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
     root.textContent = '';
-    const empty = document.createElement('div');
-    empty.className = 'xdex-recycle-empty';
-    empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的浏览记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
-    root.appendChild(empty);
+    const now = Date.now();
+    for (const t of list) {
+      const rec = t.record || {};
+      const daysLeft = Math.max(0, Math.ceil((t.deletedAt + THREAD_HISTORY_TOMBSTONE_TTL_MS - now) / 86400000));
+      const titleText = rec.title || rec.name || (rec.threadId ? `No.${rec.threadId}` : t.key);
+      const item = document.createElement('div');
+      item.className = 'xdex-recycle-item';
+      item.dataset.recycleKey = t.key;
+      const mainEl = document.createElement('div');
+      mainEl.className = 'xdex-recycle-item-main';
+      const titleEl = document.createElement('div');
+      titleEl.className = 'xdex-recycle-item-title';
+      titleEl.textContent = titleText;
+      const metaEl = document.createElement('div');
+      metaEl.className = 'xdex-recycle-item-meta';
+      metaEl.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
+      mainEl.appendChild(titleEl);
+      mainEl.appendChild(metaEl);
+      item.appendChild(mainEl);
+      root.appendChild(item);
+    }
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-recycle-empty';
+      empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的浏览记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
+      root.appendChild(empty);
+    }
   }
   function setThreadHistoryRecycleMode(on) {
     const next = !!on;
@@ -22929,6 +23050,10 @@ function 注册自动保存编辑() {
       e.preventDefault();
       setThreadHistoryRecycleMode(false);
     });
+    $('#sp_history_recycle_sort').off('change.xdex-history-recycle').on('change.xdex-history-recycle', function () {
+      threadHistoryRecycleSort = this.value;
+      renderThreadHistoryRecycleView();
+    });
   }
   function buildPostHistoryItemElement(result) {
     const item = result.item || {};
@@ -22983,8 +23108,27 @@ function 注册自动保存编辑() {
     deleteButton.className = 'xdex-post-history-delete';
     deleteButton.dataset.postHistoryKey = result.key;
     deleteButton.title = '删除';
-    deleteButton.textContent = '×';
+    deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
+    // 回收站标识: 该发言原始数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    if (typeof getPostHistoryStore === 'function') {
+      const tomb = (getPostHistoryStore().tombstones || {})[result.key];
+      if (tomb && !tomb.purged) {
+        const daysLeft = Math.max(0, Math.ceil((tomb.deletedAt + POST_HISTORY_TOMBSTONE_TTL_MS - Date.now()) / 86400000));
+        const mark = document.createElement('button');
+        mark.type = 'button';
+        mark.className = 'xdex-post-history-tombstone-mark';
+        mark.title = `历史发言数据在回收站中 · 约 ${daysLeft} 天后自动彻底清除`;
+        mark.setAttribute('aria-label', mark.title);
+        mark.innerHTML = XDEX_SVG_TRASH;
+        mark.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          openPostRecycleBinAndLocate(result.key);
+        });
+        main.appendChild(mark);
+      }
+    }
     if (item.imageFile) {
       const imageLink = document.createElement('a');
       imageLink.className = 'h-threads-img-a xdex-post-history-image';
@@ -23030,13 +23174,24 @@ function 注册自动保存编辑() {
   }
   // ===== 发言历史回收站 UI（与浏览历史同构） =====
   let postHistoryRecycleMode = false;
+  let postHistoryRecycleSort = 'expiring';
   function getPostHistoryTombstoneList() {
     const store = getPostHistoryStore();
     const tombs = store.tombstones || {};
     return Object.keys(tombs)
       .filter((key) => !tombs[key].purged)
       .map((key) => Object.assign({ key }, tombs[key]))
-      .sort((a, b) => (Number(b.deletedAt) || 0) - (Number(a.deletedAt) || 0));
+      .sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (postHistoryRecycleSort === 'recent' ? -1 : 1));
+  }
+  function openPostRecycleBinAndLocate(key) {
+    setPostHistoryRecycleMode(true);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`#sp_posts_results [data-recycle-key="${CSS.escape(key)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('xdex-recycle-highlight');
+      setTimeout(() => el.classList.remove('xdex-recycle-highlight'), 2000);
+    });
   }
   function updatePostHistoryRecycleBadge() {
     const badge = document.getElementById('sp_posts_recycle_badge');
@@ -23054,10 +23209,33 @@ function 注册自动保存编辑() {
     const emptyBtn = document.getElementById('sp_posts_recycle_empty');
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
     root.textContent = '';
-    const empty = document.createElement('div');
-    empty.className = 'xdex-recycle-empty';
-    empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的发言记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
-    root.appendChild(empty);
+    const now = Date.now();
+    for (const t of list) {
+      const rec = t.record || {};
+      const daysLeft = Math.max(0, Math.ceil((t.deletedAt + POST_HISTORY_TOMBSTONE_TTL_MS - now) / 86400000));
+      const titleText = rec.title || rec.name || rec.postId || t.key;
+      const item = document.createElement('div');
+      item.className = 'xdex-recycle-item';
+      item.dataset.recycleKey = t.key;
+      const mainEl = document.createElement('div');
+      mainEl.className = 'xdex-recycle-item-main';
+      const titleEl = document.createElement('div');
+      titleEl.className = 'xdex-recycle-item-title';
+      titleEl.textContent = titleText;
+      const metaEl = document.createElement('div');
+      metaEl.className = 'xdex-recycle-item-meta';
+      metaEl.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
+      mainEl.appendChild(titleEl);
+      mainEl.appendChild(metaEl);
+      item.appendChild(mainEl);
+      root.appendChild(item);
+    }
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-recycle-empty';
+      empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的发言记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
+      root.appendChild(empty);
+    }
   }
   function setPostHistoryRecycleMode(on) {
     const next = !!on;
@@ -23513,7 +23691,7 @@ function 注册自动保存编辑() {
     deleteButton.className = 'xdex-post-history-delete';
     deleteButton.dataset.feedThreadId = String(threadId);
     deleteButton.title = '取消订阅';
-    deleteButton.textContent = '×';
+    deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
     // 图片
     const imgRaw = String(item.img || '');
@@ -23908,6 +24086,10 @@ function 注册自动保存编辑() {
     $('#sp_posts_recycle_back').off('click.xdex-post-history-recycle').on('click.xdex-post-history-recycle', function (e) {
       e.preventDefault();
       setPostHistoryRecycleMode(false);
+    });
+    $('#sp_posts_recycle_sort').off('change.xdex-post-history-recycle').on('change.xdex-post-history-recycle', function () {
+      postHistoryRecycleSort = this.value;
+      renderPostHistoryRecycleView();
     });
     // 手动添加发言历史
     // 禁用浏览器自动填充
