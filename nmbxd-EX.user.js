@@ -1042,6 +1042,30 @@
                           0%,60% { background:#ffe08a; }
                           100% { background:rgba(255,255,255,0.18); }
                      }
+                  .xdex-recycle-item-meta {
+                          display:flex;
+                          align-items:center;
+                          gap:6px;
+                     }
+                  .xdex-recycle-item-meta > span {
+                          flex:1;
+                          min-width:0;
+                     }
+                  .xdex-recycle-icon-btn,
+                  .xdex-recycle-item-btn {
+                          background:none;
+                          border:none;
+                          padding:2px;
+                          cursor:pointer;
+                          color:#6b5644;
+                          display:inline-flex;
+                          align-items:center;
+                          justify-content:center;
+                          border-radius:4px;
+                     }
+                  .xdex-recycle-icon-btn:hover { color:#c62828; }
+                  .xdex-recycle-item-restore:hover { color:#2e7d32; }
+                  .xdex-recycle-item-purge:hover { color:#c62828; }
                   .xdex-recycle-item-actions {
                           display:flex;
                           gap:6px;
@@ -1551,7 +1575,7 @@
                     <span class="xdex-recycle-bar-title">回收站 <span id="sp_history_recycle_barcount" class="xdex-history-count">0 条</span></span>
                     <select id="sp_history_recycle_sort" class="xdex-recycle-sort" aria-label="回收站排序">
                       <option value="expiring">即将删除优先</option>
-                      <option value="recent">最近删除优先</option>
+                      <option value="recent">最近删除优先</option><option value="due24h">24小时内到期</option>
                     </select>
                     <button id="sp_history_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
                   </div>
@@ -1579,7 +1603,7 @@
                     <span class="xdex-recycle-bar-title">回收站 <span id="sp_posts_recycle_barcount" class="xdex-history-count">0 条</span></span>
                     <select id="sp_posts_recycle_sort" class="xdex-recycle-sort" aria-label="回收站排序">
                       <option value="expiring">即将删除优先</option>
-                      <option value="recent">最近删除优先</option>
+                      <option value="recent">最近删除优先</option><option value="due24h">24小时内到期</option>
                     </select>
                     <button id="sp_posts_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
                   </div>
@@ -22929,11 +22953,10 @@ function 注册自动保存编辑() {
     if (typeof getThreadHistoryStore === 'function') {
       const tomb = (getThreadHistoryStore().tombstones || {})[result.key];
       if (tomb && !tomb.purged) {
-        const daysLeft = Math.max(0, Math.ceil((tomb.deletedAt + THREAD_HISTORY_TOMBSTONE_TTL_MS - Date.now()) / 86400000));
         const mark = document.createElement('button');
         mark.type = 'button';
         mark.className = 'xdex-history-tombstone-mark';
-        mark.title = `历史浏览数据在回收站中 · 约 ${daysLeft} 天后自动彻底清除`;
+        mark.title = `历史浏览数据在回收站中 · ${formatTombstoneRemainText(tomb.deletedAt, THREAD_HISTORY_TOMBSTONE_TTL_MS)}`;
         mark.setAttribute('aria-label', mark.title);
         mark.innerHTML = XDEX_SVG_TRASH;
         mark.addEventListener('click', function (e) {
@@ -23056,6 +23079,14 @@ function 注册自动保存编辑() {
   // ===== 共享 SVG 图标（统一视觉，替代字符"×"等占位） =====
   const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  const XDEX_SVG_RESTORE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"></path><path d="M18.5 6.5l-1.3 3.6"></path><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"></path></svg>';
+  const XDEX_SVG_PURGE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  // 剩余时间略写: 24 小时内显示小时数, 超过显示天数
+  function formatTombstoneRemainText(deletedAt, ttlMs) {
+    const remain = Math.max(0, (Number(deletedAt) || 0) + (ttlMs || 0) - Date.now());
+    const hours = Math.ceil(remain / (60 * 60 * 1000));
+    return hours <= 24 ? `${hours} 小时后删除` : `${Math.ceil(remain / (24 * 60 * 60 * 1000))} 天后删除`;
+  }
   const THREAD_HISTORY_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const THREAD_HISTORY_TOMBSTONE_HARD_TTL_MS = 180 * 24 * 60 * 60 * 1000;
   const POST_HISTORY_TOMBSTONE_HARD_TTL_MS = 180 * 24 * 60 * 60 * 1000;
@@ -23066,10 +23097,18 @@ function 注册自动保存编辑() {
   function getThreadHistoryTombstoneList() {
     const store = getThreadHistoryStore();
     const tombs = store.tombstones || {};
-    return Object.keys(tombs)
+    let arr = Object.keys(tombs)
       .filter((key) => !tombs[key].purged)
-      .map((key) => Object.assign({ key }, tombs[key]))
-      .sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (threadHistoryRecycleSort === 'recent' ? -1 : 1));
+      .map((key) => Object.assign({ key }, tombs[key]));
+      const nowTs = Date.now();
+      if (threadHistoryRecycleSort === 'due24h') {
+        // 筛选: 剩余不足 24 小时的条目, 仍按即将删除优先排列
+        arr = arr.filter(t => ((Number(t.deletedAt) || 0) + THREAD_HISTORY_TOMBSTONE_TTL_MS - nowTs) <= 24 * 60 * 60 * 1000);
+        arr.sort((a, b) => (Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0));
+      } else {
+        arr.sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (threadHistoryRecycleSort === 'recent' ? -1 : 1));
+      }
+      return arr;
   }
   function openRecycleBinAndLocate(key) {
     setThreadHistoryRecycleMode(true);
@@ -23085,11 +23124,14 @@ function 注册自动保存编辑() {
     const badge = document.getElementById('sp_history_recycle_badge');
     if (!badge) return;
     const list = getThreadHistoryTombstoneList();
-    // 角标仅在有"24 小时内删除"的条目时显示
-    const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const recentCount = list.filter(t => (Number(t.deletedAt) || 0) >= recentCutoff).length;
-    badge.textContent = String(recentCount);
-    badge.hidden = recentCount === 0;
+    // 角标仅在有条目"剩余不足 24 小时"(即将被彻底删除)时显示
+    const dueCutoff = Date.now() + 24 * 60 * 60 * 1000;
+    const dueSoonCount = list.filter(t => {
+      const expireAt = (Number(t.deletedAt) || 0) + THREAD_HISTORY_TOMBSTONE_TTL_MS;
+      return expireAt > Date.now() && expireAt <= dueCutoff;
+    }).length;
+    badge.textContent = String(dueSoonCount);
+    badge.hidden = dueSoonCount === 0;
   }
   function renderThreadHistoryRecycleView() {
     const root = document.getElementById('sp_history_results');
@@ -23107,7 +23149,6 @@ function 注册自动保存编辑() {
       // 删除后的新段(items 中被压制的独立计数)动态合成展示
       const shadow = liveStore.items[t.key] || null;
       const newVisits = shadow ? (Number(shadow.visitCount) || 0) : 0;
-      const daysLeft = Math.max(0, Math.ceil((t.deletedAt + THREAD_HISTORY_TOMBSTONE_TTL_MS - now) / 86400000));
       // 合成展示视图: 快照为基础; 最近访问/最远页码与新段同步取最新, 与回收站信息保持一致
       const itemView = Object.assign({}, rec);
       if (shadow) {
@@ -23131,25 +23172,26 @@ function 注册自动保存编辑() {
       item.appendChild(card);
       const metaEl = document.createElement('div');
       metaEl.className = 'xdex-recycle-item-meta';
-      let metaText = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
-      if (newVisits > 0) metaText += ` · 删除后新增访问 ${newVisits} 次`;
-      metaEl.textContent = metaText;
-      const actionsEl = document.createElement('div');
-      actionsEl.className = 'xdex-recycle-item-actions';
+      const metaText = document.createElement('span');
+      metaText.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString('zh-CN', { hour12: false })} · ${formatTombstoneRemainText(t.deletedAt, THREAD_HISTORY_TOMBSTONE_TTL_MS)}${newVisits > 0 ? ` · 新增访问 ${newVisits} 次` : ''}`;
+      metaEl.appendChild(metaText);
       const restoreBtn = document.createElement('button');
       restoreBtn.type = 'button';
       restoreBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-restore';
       restoreBtn.dataset.recycleKey = t.key;
-      restoreBtn.textContent = '恢复';
+      restoreBtn.title = '恢复该条目到浏览历史';
+      restoreBtn.setAttribute('aria-label', '恢复');
+      restoreBtn.innerHTML = XDEX_SVG_RESTORE_ICON;
       const purgeBtn = document.createElement('button');
       purgeBtn.type = 'button';
       purgeBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-purge';
       purgeBtn.dataset.recycleKey = t.key;
-      purgeBtn.textContent = '彻底删除';
-      actionsEl.appendChild(restoreBtn);
-      actionsEl.appendChild(purgeBtn);
+      purgeBtn.title = '彻底删除（无法恢复）';
+      purgeBtn.setAttribute('aria-label', '彻底删除');
+      purgeBtn.innerHTML = XDEX_SVG_PURGE_ICON;
+      metaEl.appendChild(restoreBtn);
+      metaEl.appendChild(purgeBtn);
       item.appendChild(metaEl);
-      item.appendChild(actionsEl);
       root.appendChild(item);
     }
     if (!list.length) {
@@ -23493,11 +23535,10 @@ function 注册自动保存编辑() {
     if (typeof getPostHistoryStore === 'function') {
       const tomb = (getPostHistoryStore().tombstones || {})[result.key];
       if (tomb && !tomb.purged) {
-        const daysLeft = Math.max(0, Math.ceil((tomb.deletedAt + POST_HISTORY_TOMBSTONE_TTL_MS - Date.now()) / 86400000));
         const mark = document.createElement('button');
         mark.type = 'button';
         mark.className = 'xdex-post-history-tombstone-mark';
-        mark.title = `历史发言数据在回收站中 · 约 ${daysLeft} 天后自动彻底清除`;
+        mark.title = `历史发言数据在回收站中 · ${formatTombstoneRemainText(tomb.deletedAt, POST_HISTORY_TOMBSTONE_TTL_MS)}`;
         mark.setAttribute('aria-label', mark.title);
         mark.innerHTML = XDEX_SVG_TRASH;
         mark.addEventListener('click', function (e) {
@@ -23557,10 +23598,17 @@ function 注册自动保存编辑() {
   function getPostHistoryTombstoneList() {
     const store = getPostHistoryStore();
     const tombs = store.tombstones || {};
-    return Object.keys(tombs)
+    let arr = Object.keys(tombs)
       .filter((key) => !tombs[key].purged)
-      .map((key) => Object.assign({ key }, tombs[key]))
-      .sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (postHistoryRecycleSort === 'recent' ? -1 : 1));
+      .map((key) => Object.assign({ key }, tombs[key]));
+      const nowTs = Date.now();
+      if (postHistoryRecycleSort === 'due24h') {
+        arr = arr.filter(t => ((Number(t.deletedAt) || 0) + POST_HISTORY_TOMBSTONE_TTL_MS - nowTs) <= 24 * 60 * 60 * 1000);
+        arr.sort((a, b) => (Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0));
+      } else {
+        arr.sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (postHistoryRecycleSort === 'recent' ? -1 : 1));
+      }
+      return arr;
   }
   function openPostRecycleBinAndLocate(key) {
     setPostHistoryRecycleMode(true);
@@ -23576,11 +23624,14 @@ function 注册自动保存编辑() {
     const badge = document.getElementById('sp_posts_recycle_badge');
     if (!badge) return;
     const list = getPostHistoryTombstoneList();
-    // 角标仅在有"24 小时内删除"的条目时显示
-    const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const recentCount = list.filter(t => (Number(t.deletedAt) || 0) >= recentCutoff).length;
-    badge.textContent = String(recentCount);
-    badge.hidden = recentCount === 0;
+    // 角标仅在有条目"剩余不足 24 小时"(即将被彻底删除)时显示
+    const dueCutoff = Date.now() + 24 * 60 * 60 * 1000;
+    const dueSoonCount = list.filter(t => {
+      const expireAt = (Number(t.deletedAt) || 0) + POST_HISTORY_TOMBSTONE_TTL_MS;
+      return expireAt > Date.now() && expireAt <= dueCutoff;
+    }).length;
+    badge.textContent = String(dueSoonCount);
+    badge.hidden = dueSoonCount === 0;
   }
   function renderPostHistoryRecycleView() {
     const root = document.getElementById('sp_posts_results');
@@ -23597,7 +23648,6 @@ function 注册自动保存编辑() {
       const rec = t.record || {};
       // 删除后的新记录(items 中被压制的独立条目)动态合成展示
       const shadow = liveStore.items[t.key] || null;
-      const daysLeft = Math.max(0, Math.ceil((t.deletedAt + POST_HISTORY_TOMBSTONE_TTL_MS - now) / 86400000));
       // 合成展示视图: 快照为基础; 页码/时间与新记录同步取最新
       const itemView = Object.assign({}, rec);
       if (shadow) {
@@ -23620,25 +23670,26 @@ function 注册自动保存编辑() {
       item.appendChild(card);
       const metaEl = document.createElement('div');
       metaEl.className = 'xdex-recycle-item-meta';
-      let metaText = `删除于 ${new Date(t.deletedAt).toLocaleString()} · ${t.origin === 'remote' ? '来自其他设备' : '本机删除'} · 约 ${daysLeft} 天后自动彻底清除`;
-      if (shadow) metaText += ' · 删除后该发言有新的记录';
-      metaEl.textContent = metaText;
-      const actionsEl = document.createElement('div');
-      actionsEl.className = 'xdex-recycle-item-actions';
+      const metaText = document.createElement('span');
+      metaText.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString('zh-CN', { hour12: false })} · ${formatTombstoneRemainText(t.deletedAt, POST_HISTORY_TOMBSTONE_TTL_MS)}${shadow ? ' · 删除后有新记录' : ''}`;
+      metaEl.appendChild(metaText);
       const restoreBtn = document.createElement('button');
       restoreBtn.type = 'button';
       restoreBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-restore';
       restoreBtn.dataset.recycleKey = t.key;
-      restoreBtn.textContent = '恢复';
+      restoreBtn.title = '恢复该条目到发言历史';
+      restoreBtn.setAttribute('aria-label', '恢复');
+      restoreBtn.innerHTML = XDEX_SVG_RESTORE_ICON;
       const purgeBtn = document.createElement('button');
       purgeBtn.type = 'button';
       purgeBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-purge';
       purgeBtn.dataset.recycleKey = t.key;
-      purgeBtn.textContent = '彻底删除';
-      actionsEl.appendChild(restoreBtn);
-      actionsEl.appendChild(purgeBtn);
+      purgeBtn.title = '彻底删除（无法恢复）';
+      purgeBtn.setAttribute('aria-label', '彻底删除');
+      purgeBtn.innerHTML = XDEX_SVG_PURGE_ICON;
+      metaEl.appendChild(restoreBtn);
+      metaEl.appendChild(purgeBtn);
       item.appendChild(metaEl);
-      item.appendChild(actionsEl);
       root.appendChild(item);
     }
     if (!list.length) {
