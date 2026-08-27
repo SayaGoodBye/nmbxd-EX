@@ -1516,20 +1516,18 @@
                 </div>
                 <!-- WebDAV 备份/同步 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
-                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave"
+                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave,.xdex-webdav-head-actions"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>WebDAV 备份/同步</span>
+                    <span id="sp_webdavLastSyncLabel" style="flex:1;min-width:0;margin:0 8px;text-align:center;color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
+                    <div class="xdex-webdav-head-actions xdex-inv" style="display:flex;align-items:center;gap:4px;margin-left:auto;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
+                      <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
+                      <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
+                    </div>
                     <button id="btn_sp_webdavSave" class="sp_save xdex-inv" data-id="sp_webdavSave"
-                            style="margin-left:auto;padding:2px 8px;">保存</button>
+                            style="padding:2px 8px;">保存</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
-                      <div style="display:flex;align-items:center;margin-bottom:6px;">
-                        <span id="sp_webdavLastSyncLabel" style="color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
-                        <div style="display:flex;align-items:center;gap:4px;margin-left:auto;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
-                          <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
-                          <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
-                        </div>
-                      </div>
                       <div style="display:flex;flex-direction:column;gap:6px;">
                         <input id="sp_webdavUrl" type="text" value="${webdavPanelField('url')}" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
                         <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
@@ -1736,10 +1734,16 @@
       // 浏览/发言历史改为首次进入对应 tab 时再渲染，避免 init 阶段双模块预构建卡顿
       // 折叠头：统一控制
       $('.sp_fold_head').off('click').on('click', function(){
+        // WebDAV 头部的自动同步开关与保存按钮等控件不触发折叠
+        if ($(this).closest('.xdex-webdav-head-actions').length || this.id === 'btn_sp_webdavSave') return;
         const $head = $(this);
         $head.next('.sp_fold_body').slideToggle(150);
         const btns = ($head.data('btn') || '').split(',');
         btns.forEach(sel => $(sel).toggleClass('xdex-inv'));
+      });
+      // 控件交互独立于折叠: 阻止冒泡到 .sp_fold_head
+      $('#sp_webdavAutoSync, label[for="sp_webdavAutoSync"], #btn_sp_webdavSave').off('click.xdex-webdav-fold-guard').on('click.xdex-webdav-fold-guard', function (e) {
+        e.stopPropagation();
       });
       // 同步已有配置 & 默认折叠
       this.syncInputs();
