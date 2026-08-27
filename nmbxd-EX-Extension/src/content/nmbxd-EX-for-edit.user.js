@@ -23035,14 +23035,18 @@ function 注册自动保存编辑() {
     }
     return element;
   }
-  function batchRenderHistoryItems(root, results, buildFn, queueId) {
+  function cancelHistoryRenderQueue(queueId) {
     const prev = historyRenderQueues.get(queueId);
-    if (prev) {
-      prev.cancelled = true;
-      if (prev.scrollHandler && prev.scrollContainer) {
-        prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
-      }
+    if (!prev) return;
+    prev.cancelled = true;
+    if (prev.scrollHandler && prev.scrollContainer) {
+      prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
     }
+    historyRenderQueues.delete(queueId);
+  }
+  function batchRenderHistoryItems(root, results, buildFn, queueId) {
+    // 新批次顶替旧批次: 同队列已有在途渲染一律取消
+    cancelHistoryRenderQueue(queueId);
     if (!root) return;
     const total = results.length;
     if (total <= 0) return;
@@ -23216,6 +23220,8 @@ function 注册自动保存编辑() {
     const next = !!on;
     if (threadHistoryRecycleMode === next) return;
     threadHistoryRecycleMode = next;
+    // 进入回收站前终止主列表在途批次: 否则旧批次回调会在回收站视图上继续追加普通条目
+    if (next) cancelHistoryRenderQueue('threadHistory');
     const content = document.getElementById('sp_history_content');
     if (content) content.classList.toggle('xdex-recycle-mode', threadHistoryRecycleMode);
     const bar = document.getElementById('sp_history_recycle_bar');
@@ -23714,6 +23720,8 @@ function 注册自动保存编辑() {
     const next = !!on;
     if (postHistoryRecycleMode === next) return;
     postHistoryRecycleMode = next;
+    // 进入回收站前终止主列表在途批次
+    if (next) cancelHistoryRenderQueue('postHistory');
     const content = document.getElementById('sp_posts_content');
     if (content) content.classList.toggle('xdex-recycle-mode', postHistoryRecycleMode);
     const bar = document.getElementById('sp_posts_recycle_bar');
