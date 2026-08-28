@@ -3061,7 +3061,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           GM_setValue(POST_HISTORY_STORAGE_KEY, merged);
           report.postHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
         }
-        if (payload.drafts) {
+        // 草稿暂为纯本地数据: WebDAV 下载侧跳过导入, 远端旧草稿不再回流
+        if (payload.drafts && options.threadHistoryMode !== 'webdav-delta') {
           const result = applyDraftsFromImport(payload.drafts);
           report.drafts = { mode: 'override-imported', imported: result.imported, overwritten: result.overwritten };
         }
@@ -27474,7 +27475,7 @@ function 注册自动保存编辑() {
   }
   function webdavFullSelection() {
     // 同步文件不含 WebDAV 配置（用户自行选择同步源更合理）；手动导入导出才迁移配置
-    return { settings: true, threadHistory: true, postHistory: true, drafts: true, kaomojiStats: true, cookiePrefs: true };
+    return { settings: true, threadHistory: true, postHistory: true, drafts: false, kaomojiStats: true, cookiePrefs: true };
   }
   function getWebdavUtils() {
     // full-export 工具定义在 SettingPanel.render 嵌套作用域，需先打开过一次设置面板（按钮本身在面板内）
