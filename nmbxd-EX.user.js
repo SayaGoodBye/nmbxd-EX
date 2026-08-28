@@ -2893,27 +2893,49 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const registry = getDraftRegistry();
         const items = {};
         registry.forEach((key) => {
-          const raw = readDraftValue(key);
+          const canonical = key.indexOf('xdex_draft:') === 0 ? key : ('xdex_draft:' + key);
+          const pathname = canonical.slice('xdex_draft:'.length);
+          const raw = readDraftValue(pathname);
           const clean = normalizeDraftExportText(raw);
-          if (clean) items[key] = raw;
+          if (clean) items[canonical] = raw;
         });
-        return { registry: Object.keys(items), items };
+        return { registry: Object.keys(items), items, deletions: getDraftDeletionStore() };
       }
       function applyDraftsFromImport(drafts) {
         if (!drafts || typeof drafts !== 'object') return { imported: 0, overwritten: 0 };
         const items = drafts.items || {};
+        // 合并删除账本: deletedAt 双向取 max, 统一为 canonical key
+        const deletionStore = getDraftDeletionStore();
+        const remoteDeletions = (drafts.deletions && typeof drafts.deletions === 'object') ? drafts.deletions : {};
+        Object.keys(remoteDeletions).forEach((key) => {
+          const ck = canonicalDraftKey(key);
+          if (!ck) return;
+          deletionStore[ck] = Math.max(Number(deletionStore[ck]) || 0, Number(remoteDeletions[key]) || 0);
+        });
+        try { GM_setValue('xdex_draft_deletions', deletionStore); } catch (_) {}
+        // 本地草稿命中账本(远端已删除且无翻案内容) → 删除本地
+        Object.keys(deletionStore).forEach((ck) => {
+          if (items[ck] !== undefined) return;   // 远端仍有内容 = 重新编辑翻案, 保留
+          let v = '';
+          try { v = GM_getValue(ck, ''); } catch (_) {}
+          if (typeof v === 'string' && v !== '') {
+            try { deleteDraftSafe(ck); } catch (_) {}
+          }
+        });
         let imported = 0;
         let overwritten = 0;
         const newRegistry = new Set(getDraftRegistry());
         Object.keys(items).forEach((key) => {
+          const ck = canonicalDraftKey(key);
+          if (ck && deletionStore[ck]) return;   // 命中删除账本: 远端旧草稿不死灰复燃
           const clean = normalizeDraftExportText(items[key]);
           if (!clean) return;
-          const existing = readDraftValue(key);
+          const existing = readDraftValue(ck.slice('xdex_draft:'.length));
           if (existing === items[key]) return;
           if (existing) overwritten++;
           else imported++;
-          GM_setValue(key, items[key]);
-          newRegistry.add(key);
+          GM_setValue(ck, items[key]);
+          newRegistry.add(ck);
         });
         saveDraftRegistry(Array.from(newRegistry));
         return { imported, overwritten };
@@ -16587,7 +16609,23 @@ ${markedSwatchHtml}
     try {
       if (typeof GM_getValue === 'function') {
         const value = GM_getValue(getDraftRegistryKey(), []);
-        return Array.isArray(value) ? value : [];
+        if (!Array.isArray(value)) return [];
+        // 惰性自愈: 值为空的内容不保留——避免旧版本留存的空草稿键导致存储膨胀
+        const clean = value.filter((key) => {
+          try {
+            const v = (typeof GM_getValue === 'function') ? GM_getValue(key, '') : '';
+            return typeof v === 'string' && v !== '';
+          } catch (_) { return false; }
+        });
+        if (clean.length !== value.length) {
+          try { GM_setValue(getDraftRegistryKey(), clean); } catch (_) {}
+          value.forEach((key) => {
+            if (clean.indexOf(key) === -1) {
+              try { if (typeof GM_deleteValue === 'function') GM_deleteValue(key); else GM_setValue(key, ''); } catch (_) {}
+            }
+          });
+        }
+        return clean;
       }
     } catch (_) {}
     return [];
@@ -16647,10 +16685,16 @@ ${markedSwatchHtml}
   function saveDraftValue(pathname, content) {
     if (!getDraftEnabledNow()) return;
     const storageKey = getDraftStorageKey(pathname);
+    // 正文清空等于删除草稿: 删除本地并登记账本, 防止云端旧草稿经同步复活
+    if (String(content == null ? '' : content).trim() === '') {
+      deleteDraftSafe(storageKey);
+      return;
+    }
     try {
       if (typeof GM_setValue === 'function') {
         GM_setValue(storageKey, content);
         addDraftKeyToRegistry(storageKey);
+        removeDraftDeletion(storageKey);   // 重新编辑即翻案: 撤销该 URL 的删除标记
       }
     } catch (_) {}
   }
@@ -16676,6 +16720,34 @@ ${markedSwatchHtml}
     return legacyValue;
   }
   // 统一：安全删除草稿（有 GM_deleteValue 用之；否则写空串兜底）
+  // ── 草稿删除账本: WebDAV 双向同步时传播"草稿被删除"状态 ──
+  // 语义与分组设置删除账本一致: 删除总是赢, 重新编辑即翻案
+  function getDraftDeletionStore() {
+    try {
+      const v = GM_getValue('xdex_draft_deletions', null);
+      return (v && typeof v === 'object') ? v : {};
+    } catch (_) { return {}; }
+  }
+  function canonicalDraftKey(anyKey) {
+    const s = String(anyKey || '');
+    if (!s) return '';
+    return s.indexOf('xdex_draft:') === 0 ? s : getDraftStorageKey(s);
+  }
+  function registerDraftDeletion(storageKey) {
+    const key = canonicalDraftKey(storageKey);
+    if (!key) return;
+    const store = getDraftDeletionStore();
+    store[key] = Math.max(Number(store[key]) || 0, Date.now());
+    try { GM_setValue('xdex_draft_deletions', store); } catch (_) {}
+  }
+  function removeDraftDeletion(storageKey) {
+    const key = canonicalDraftKey(storageKey);
+    if (!key) return;
+    const store = getDraftDeletionStore();
+    if (!(key in store)) return;
+    delete store[key];
+    try { GM_setValue('xdex_draft_deletions', store); } catch (_) {}
+  }
   function deleteDraftSafe(key) {
     try {
       if (!key) key = getDraftKey();
@@ -16688,6 +16760,7 @@ ${markedSwatchHtml}
       }
     } catch (_) {}
     removeDraftKeyFromRegistry(key);
+    registerDraftDeletion(key);   // 标记已删除, 供 WebDAV 同步压制远端旧草稿
   }
   function deleteAllDraftsSafe() {
     const keysToDelete = new Set(getDraftRegistry());
