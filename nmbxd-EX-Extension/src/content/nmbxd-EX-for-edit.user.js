@@ -2904,17 +2904,11 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       function applyDraftsFromImport(drafts) {
         if (!drafts || typeof drafts !== 'object') return { imported: 0, overwritten: 0 };
         const items = drafts.items || {};
-        // 合并删除账本: deletedAt 双向取 max, 统一为 canonical key
-        const deletionStore = getDraftDeletionStore();
+        // 远端账本仅用于本轮导入裁决, 不回灌本地: 否则"重新编辑翻案"会被旧账本抹杀
+        const localDeletionStore = getDraftDeletionStore();
         const remoteDeletions = (drafts.deletions && typeof drafts.deletions === 'object') ? drafts.deletions : {};
-        Object.keys(remoteDeletions).forEach((key) => {
-          const ck = canonicalDraftKey(key);
-          if (!ck) return;
-          deletionStore[ck] = Math.max(Number(deletionStore[ck]) || 0, Number(remoteDeletions[key]) || 0);
-        });
-        try { GM_setValue('xdex_draft_deletions', deletionStore); } catch (_) {}
-        // 本地草稿命中账本(远端已删除且无翻案内容) → 删除本地
-        Object.keys(deletionStore).forEach((ck) => {
+        // 本地草稿命中"本地账本"(本端删除且未翻案) → 删除本地
+        Object.keys(localDeletionStore).forEach((ck) => {
           if (items[ck] !== undefined) return;   // 远端仍有内容 = 重新编辑翻案, 保留
           let v = '';
           try { v = GM_getValue(ck, ''); } catch (_) {}
@@ -2927,7 +2921,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const newRegistry = new Set(getDraftRegistry());
         Object.keys(items).forEach((key) => {
           const ck = canonicalDraftKey(key);
-          if (ck && deletionStore[ck]) return;   // 命中删除账本: 远端旧草稿不死灰复燃
+          if (!ck) return;
+          // 远端已删除(账本有) → 压制;
+          // 远端无删除账本但本地残留删除账本 → 本地账本失效放行(远端有内容=翻案)
+          if (remoteDeletions[ck]) return;
           const clean = normalizeDraftExportText(items[key]);
           if (!clean) return;
           const existing = readDraftValue(ck.slice('xdex_draft:'.length));
@@ -2936,6 +2933,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           else imported++;
           GM_setValue(ck, items[key]);
           newRegistry.add(ck);
+          removeDraftDeletion(ck);   // 远端翻案内容落地时撤销本地残留账本
         });
         saveDraftRegistry(Array.from(newRegistry));
         return { imported, overwritten };
