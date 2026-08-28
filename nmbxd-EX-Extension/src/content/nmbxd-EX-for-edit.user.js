@@ -11450,6 +11450,12 @@ ${markedSwatchHtml}
           .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
             overflow-y: auto;
           }
+          .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
+            scrollbar-width: thin;
+          }
+          .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote::-webkit-scrollbar {
+            width: 8px;
+          }
           .qp-overlay .qp-stack > .qp-quote textarea[name="content"] {
             resize: vertical !important; /* 允许纵向缩放；宽度跟浮窗走 */
             min-width: 0 !important;
@@ -11866,7 +11872,9 @@ ${markedSwatchHtml}
         const rect = stack.getBoundingClientRect();
         // 高度几乎不变时不写 style；no-op 时不要开静默窗，否则会吞掉紧随其后的预览增高
         const heightDelta = Math.abs((rect.height || 0) - needed);
-        const atCap = needed >= maxH - 1;
+        // 滞回判定: 进入/退出滚动态需跨越阈值带, 避免内容高度临界抖动导致滚动条反复出现/消失、横向挤压布局
+        const wasScroll = stack.classList.contains('qp-content-scroll');
+        const atCap = wasScroll ? (needed > maxH - 24) : (needed >= maxH - 1);
         stack.classList.toggle('qp-content-scroll', atCap);
         if (heightDelta < 2) {
           if (options.save !== false) {
