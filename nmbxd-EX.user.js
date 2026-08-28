@@ -11744,6 +11744,7 @@ ${markedSwatchHtml}
           const rect = stack.getBoundingClientRect();
           // 只记位置/宽度，高度不记，避免被预览撑开的高度“粘住”
           overlay.__savedPanelRect = {
+            winW: Math.round(overlay.__panelWinW || window.innerWidth),   // 布局时窗口宽度: 打开期间 resize 后关闭也能在下次重开时重新居中
             width: Math.round(rect.width),
             left: Math.round(rect.left),
             top: Math.round(rect.top),
@@ -11879,6 +11880,7 @@ ${markedSwatchHtml}
         if (heightDelta < 2) {
           if (options.save !== false) {
             ov.__savedPanelRect = {
+              winW: Math.round(ov.__panelWinW || window.innerWidth),
               width: Math.round(rect.width),
               height: Math.round(rect.height),
               left: Math.round(rect.left),
@@ -11911,6 +11913,7 @@ ${markedSwatchHtml}
           // auto-fit 只记当前几何，不把 userSized 标真
           const r = stack.getBoundingClientRect();
           ov.__savedPanelRect = {
+            winW: Math.round(ov.__panelWinW || window.innerWidth),
             width: Math.round(r.width),
             height: Math.round(r.height),
             left: Math.round(r.left),
@@ -12013,6 +12016,7 @@ ${markedSwatchHtml}
       if (!stack || !ov) return;
       const rect = stack.getBoundingClientRect();
       ov.__savedPanelRect = {
+        winW: Math.round(window.innerWidth),
         width: Math.round(rect.width),
         height: Math.round(rect.height),
         left: Math.round(rect.left),
@@ -12359,11 +12363,21 @@ ${markedSwatchHtml}
         ov.__userSizedPanel = false;
         const saved = ov.__savedPanelRect || null;
         const base = getReplyPanelDefaults();
+        // 记录本次布局计算时的视口宽度(而非关闭时刻的实时宽度):
+        // 打开期间改变窗口宽度后关闭, 下次打开应重新居中而不是沿用旧几何
+        ov.__panelWinW = Math.round(window.innerWidth);
+        // 窗口宽度已变化: 上次保存的水平几何(位置/宽度)不可信, 按当前视口重新居中;
+        // 垂直位置沿用上次(fit 阶段有越界上移兜底)
+        const viewportWidthChanged = saved && Number.isFinite(Number(saved.winW))
+          && Math.abs(Number(saved.winW) - window.innerWidth) > 2;
+        const useSavedW = saved && saved.width && !viewportWidthChanged;
+        const useSavedLeft = saved && Number.isFinite(Number(saved.left)) && !viewportWidthChanged;
+        const useSavedTop = saved && Number.isFinite(Number(saved.top));
         layoutRect = {
-          width: saved && saved.width ? saved.width : base.width,
+          width: useSavedW ? saved.width : base.width,
           height: base.height, // 仅作测量前的初始几何；真正露出前会 fit 成内容高
-          left: saved && Number.isFinite(Number(saved.left)) ? saved.left : base.left,
-          top: saved && Number.isFinite(Number(saved.top)) ? saved.top : base.top,
+          left: useSavedLeft ? saved.left : base.left,
+          top: useSavedTop ? saved.top : base.top,
           userSized: false
         };
       }
