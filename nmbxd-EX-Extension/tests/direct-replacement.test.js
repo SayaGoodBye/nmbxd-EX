@@ -293,8 +293,8 @@ function testSettingsPanelModuleShellContract() {
   assert(upstream.includes('id="sp_module_settings"'), 'settings panel must wrap existing settings UI in #sp_module_settings');
   assert(upstream.includes('data-sp-module="settings"'), 'settings panel must add a visible Settings module tab control');
   assert(upstream.includes('data-sp-module="history"'), 'settings panel must add a visible History module tab control');
-  assert(upstream.includes('<span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span>'), 'settings tab must expose stable icon and label spans with 设/设置 text');
-  assert(upstream.includes('<span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span>'), 'history tab must expose stable icon and label spans with 浏/浏览历史 text');
+  assert(upstream.includes('data-sp-module="settings"') && /data-sp-module="settings"><span class="sp_panel_tab_icon"><svg/.test(upstream), 'settings tab must render a gear SVG inside .sp_panel_tab_icon');
+  assert(/data-sp-module="history"><span class="sp_panel_tab_icon"><svg/.test(upstream), 'history tab must render a history-clock SVG inside .sp_panel_tab_icon');
   assert(upstream.includes('id="sp_module_history"'), 'settings panel must add a History module view #sp_module_history');
   assert(upstream.includes('setSettingsPanelModule'), 'settings panel must expose an in-place active module setter');
   assert(upstream.includes('data-sp-module-view="settings"'), 'settings panel must declare the settings module view');
@@ -552,7 +552,7 @@ function testPostHistoryPanelContract() {
   const moduleEnd = upstream.indexOf('<div id="sp_panel_footer"', moduleStart);
   const moduleBody = upstream.slice(moduleStart, moduleEnd);
   assert(upstream.includes('data-sp-module="posts"'), 'settings panel must add a posts peer module tab');
-  assert(upstream.includes('<span class="sp_panel_tab_icon">言</span><span class="sp_panel_tab_label">我的发言</span>'), 'posts tab must expose stable 言/我的发言 icon and label');
+  assert(/data-sp-module="posts"><span class="sp_panel_tab_icon"><svg/.test(upstream), 'posts tab must render a speech-bubble SVG inside .sp_panel_tab_icon');
   assert(postsTabCss.includes('--sp-panel-tab-bg:#FFFF00') && postsTabCss.includes('color:#332200'), 'posts side tab must use #FFFF00 with dark readable text');
   assert(upstream.includes('id="sp_module_posts"') && upstream.includes('data-sp-module-view="posts"'), 'settings panel must add #sp_module_posts with posts module view');
   assert(moduleBody.includes('id="sp_posts_title"') && moduleBody.includes('我的发言'), 'posts module must title itself 我的发言');
@@ -918,7 +918,7 @@ function testBrowsingHistoryExtractionAndRenderingContract() {
   assert(upstream.includes('h-threads-info xdex-history-info'), 'History UI must reuse original .h-threads-info metadata row semantics');
   assert(upstream.includes('main.appendChild(deleteButton)'), 'History delete button must float from the item body instead of occupying the metadata row');
   assert(!upstream.includes('info.appendChild(deleteButton)'), 'History delete button must not reserve right-side space in .xdex-history-info');
-  assert(upstream.includes("deleteButton.textContent = '×'"), 'History delete button must use the compact floating x style');
+  assert(upstream.includes('deleteButton.innerHTML = XDEX_SVG_X'), 'History delete button must render the shared SVG cross icon instead of the × character');
   assert(upstream.includes('#sp_history_results') && upstream.includes('padding-top:8px'), 'History result list must keep a small safe gap below the toolbar for the first floating delete button');
   const historyDeleteCss = extractCssRule(upstream, '.xdex-history-delete,\n                     .xdex-post-history-delete') || extractCssRule(upstream, '.xdex-history-delete');
   assert(historyDeleteCss.includes('position:absolute') && historyDeleteCss.includes('top:-9px') && historyDeleteCss.includes('right:10px'), 'History delete button must float at the top-right like setting-row delete buttons');
