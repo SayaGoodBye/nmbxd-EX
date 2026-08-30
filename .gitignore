@@ -23,3 +23,6 @@ release/
 # node dependencies, if package tooling is added later
 node_modules/
 AGENTS.md
+.semgrep/
+.serena/.gitignore
+.serena/project.yml

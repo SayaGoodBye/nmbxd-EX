@@ -27,7 +27,7 @@
     "// ==UserScript==",
     "// @name         X岛-EX",
     "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
-    "// @version      3.12.0",
+    "// @version      4.0.0",
     "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。",
     "// @author       XY",
     "// @match        https://*.nmbxd1.com/*",
@@ -55,13 +55,15 @@
     "// @connect      scriptcat.org",
     "// @connect      code.jquery.com",
     "// @connect      unpkg.com",
+    "// @connect      *",
+    "// 说明：* 通配允许 GM_xmlhttpRequest 访问任意域名，用于用户自定义 WebDAV 地址（无需手动逐域授权）",
     "// @require      https://code.jquery.com/jquery-3.6.0.min.js",
     "// @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js",
     "// @require      https://unpkg.com/upng-js@2.1.0/UPNG.js",
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
     "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
     "// @license      WTFPL",
-    "// @changelog    新增：\\n1.新增WebP、HEIF等格式自动转化为PNG以及压缩链路。请注意HEIF图片无法预览。\\n2.添加基于获取版块页首页信息拉起发串信息的回退机制，用于“测试”版块发串信息的获取；同时，“测试”版块默认发串模式。\\n\\n优化：\\n1.优化“浏览历史/发言历史/我的订阅”以及拓展坞启动的速度。\\n2.优化了图片懒加载并发队列与动态预加载机制，现在可以更快加载滚动方向上的图像原图。\\n3.阅图模式按钮与图片显示模式状态同步。\\n\\n修复：\\n1.修复了部分图片错误进入压缩循环且无法提交的问题。\\n2.修复在发送前二次确认窗口中使用鼠标点击的饼干没有被选择并作用，而实际使用列表最后一个饼干发送的问题。\\n3.修复拓展引用弹窗在打开多层后，较早的层级无法拖拽移动的问题。\\n",
+    "// @changelog    新增：\\n1.新增WebDAV同步设置，支持手动/自动同步。\\n2.新增回收站，浏览历史/发言历史删除后可保留30天或直接删除。\\n3.在QwQnt框架下搭配QwQnt-nmbxd插件，可在QQNT端浏览X岛。\\n\\n优化：\\n1.部分图标优化。\\n2.拓展坞支持固定/隐藏两种模式，并添加上/下一个串按钮，可在版块页中更快跳过长串。\\n3.颜文字面板中，焦点中的颜文字可以使用键盘按键C复制。\\n4.为串内与当前串号相同的引用号添加下划线标记。\\n\\n修复：\\n1.修复浏览历史上限固定为500的问题。\\n2.修复页面回复满后发送新回复后没有自动打开新一页的问题。\\n3.修复在版块页快速回复暂无回复的串时未能实现增量更新的问题。\\n",
     "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
     "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
     "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
@@ -74,7 +76,7 @@
     "// @run-at       document-start",
     "// ==/UserScript=="
   ].join('\n');
-  const scriptMeta = { name: "X岛-EX", version: "3.12.0" };
+  const scriptMeta = { name: "X岛-EX", version: "4.0.0" };
   // END GENERATED USERSCRIPT META
 
   function normalizeKey(key) {
@@ -593,7 +595,7 @@
           return;
         }
 
-        if (!response || !response.ok) {
+        if (!response) {
           if (typeof details.onerror === 'function') details.onerror(response && response.error ? response.error : response);
           return;
         }
@@ -607,6 +609,8 @@
           responseBody = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
         }
 
+        // 收到 HTTP 响应（含 4xx/5xx）即按 XHR 语义走 onload 并携带 status：
+        // 业务层需要区分 401/404 等状态码（如 WebDAV 远端文件不存在=404，应触发上传而非网络错误）
         if (typeof details.onload === 'function') {
           details.onload({
             status: response.status,

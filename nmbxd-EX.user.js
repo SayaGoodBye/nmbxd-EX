@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      3.12.0
+// @version      4.0.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -29,13 +29,15 @@
 // @connect      scriptcat.org
 // @connect      code.jquery.com
 // @connect      unpkg.com
+// @connect      *
+// 说明：* 通配允许 GM_xmlhttpRequest 访问任意域名，用于用户自定义 WebDAV 地址（无需手动逐域授权）
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
 // @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增：\n1.新增WebP、HEIF等格式自动转化为PNG以及压缩链路。请注意HEIF图片无法预览。\n2.添加基于获取版块页首页信息拉起发串信息的回退机制，用于“测试”版块发串信息的获取；同时，“测试”版块默认发串模式。\n\n优化：\n1.优化“浏览历史/发言历史/我的订阅”以及拓展坞启动的速度。\n2.优化了图片懒加载并发队列与动态预加载机制，现在可以更快加载滚动方向上的图像原图。\n3.阅图模式按钮与图片显示模式状态同步。\n\n修复：\n1.修复了部分图片错误进入压缩循环且无法提交的问题。\n2.修复在发送前二次确认窗口中使用鼠标点击的饼干没有被选择并作用，而实际使用列表最后一个饼干发送的问题。\n3.修复拓展引用弹窗在打开多层后，较早的层级无法拖拽移动的问题。\n
+// @changelog    新增：\n1.新增WebDAV同步设置，支持手动/自动同步。\n2.新增回收站，浏览历史/发言历史删除后可保留30天或直接删除。\n3.在QwQnt框架下搭配QwQnt-nmbxd插件，可在QQNT端浏览X岛。\n\n优化：\n1.部分图标优化。\n2.拓展坞支持固定/隐藏两种模式，并添加上/下一个串按钮，可在版块页中更快跳过长串。\n3.颜文字面板中，焦点中的颜文字可以使用键盘按键C复制。\n4.为串内与当前串号相同的引用号添加下划线标记。\n\n修复：\n1.修复浏览历史上限固定为500的问题。\n2.修复页面回复满后发送新回复后没有自动打开新一页的问题。\n3.修复在版块页快速回复暂无回复的串时未能实现增量更新的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -136,6 +138,57 @@
   }
   const toastQueue = [];
   let isShowing = false;
+  let refreshStatusGeneration = 0;
+  function beginRefreshStatus() {
+    refreshStatusGeneration += 1;
+    return refreshStatusGeneration;
+  }
+  // ============ 页面类型 / 页码通用工具（PageType） ============
+  const PageType = {
+    getPathname() { return location.pathname || ''; },
+    isThreadPage(loose) {
+      if (/^\/Forum\/po\/id\/\d+/.test(this.getPathname())) return true;
+      const re = loose === false ? /^\/t\/\d{6,8}(?:\/|$)/ : /^\/t\/\d{4,}(?:\/|$)/;
+      return re.test(this.getPathname());
+    },
+    isPOThreadPage() { return /^\/Forum\/po\/id\/\d+/.test(this.getPathname()); },
+    isBoardPage() { return /^\/f\//.test(this.getPathname()); },
+    isTimelinePage() { return /^\/Forum\/timeline\/id\/\d+/.test(this.getPathname()); },
+    isTimelineAnyPage() { return /\/Forum\/timeline\//i.test(this.getPathname()); },
+    isTimelineLikePage() { return /\/Forum\/timeline\/id\/\d+/.test(this.getPathname()) || /\/timeline|\/feed/.test(this.getPathname()); },
+    isBoardOrTimelinePage() { return this.isBoardPage() || this.isTimelinePage(); },
+    isSpecialBoard() { return /^\/f\/(?:值班室|测试)(?:\/|$)/.test(decodeURIComponent(this.getPathname())); },
+    getThreadId(loose) {
+      const p = this.getPathname();
+      const re = loose === false ? /^\/t\/(\d{6,8})(?:\/|$)/ : /^\/t\/(\d{4,})(?:\/|$)/;
+      const m = p.match(re) || p.match(/^\/Forum\/po\/id\/(\d+)/);
+      return m ? m[1] : '';
+    },
+    getPageNum() {
+      // ?page= 优先，再回退路径 /page/N（与多数调用点语义一致）
+      const q = parseInt(new URL(location.href, location.origin).searchParams.get('page') || '', 10);
+      if (q > 0) return q;
+      const m = this.getPathname().match(/\/page\/(\d+)(?:\.html)?$/);
+      return m ? Math.max(1, parseInt(m[1], 10)) : 1;
+    },
+    getPathPageNum() {
+      // 路径 /page/N 优先，再回退 ?page=（阅图模式语义）
+      const m = this.getPathname().match(/\/page\/(\d+)(?:\.html)?$/);
+      if (m) return Math.max(1, parseInt(m[1], 10));
+      const q = parseInt(new URL(location.href, location.origin).searchParams.get('page') || '', 10);
+      return q > 0 ? q : 1;
+    },
+    getTimelineInfo() {
+      const m = this.getPathname().match(/^\/Forum\/timeline\/id\/(\d+)(?:\/page\/(\d+)(?:\.html)?)?/i);
+      return m ? { id: m[1], page: m[2] ? parseInt(m[2], 10) : 1 } : null;
+    }
+  };
+  function isCurrentRefreshStatus(generation) {
+    return generation === refreshStatusGeneration;
+  }
+  function showRefreshStatus(msg, duration = 900) {
+    return toast(msg, duration, { queue: false, key: 'refresh-status' });
+  }
 
   function toast(msg, duration = 1800, options = {}) {
     if (options.queue === false) {
@@ -175,6 +228,13 @@
         background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
         border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
       $('body').append($t);
+    }
+    if (safeKey === 'refresh-status') {
+      $t.css({
+        background: '#242424',
+        boxShadow: '0 4px 16px rgba(0,0,0,.55)',
+        fontWeight: 'bold',
+      });
     }
     const el = $t[0];
     const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
@@ -345,6 +405,7 @@
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
+  dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
@@ -546,6 +607,8 @@
           if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
           this.syncInputs();
           this.syncAuxiliaryControls();
+          // 面板渲染后回填 WebDAV 已保存配置（tag29），避免需先点击输入框才显示
+          try { if (typeof ensureWebdavConfigInPanel === 'function') ensureWebdavConfigInPanel(); } catch (e) {}
           try { renderFavoriteThreadsMenu(); } catch (e) {}
           try { refreshFilterDisplay(this.state); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
@@ -720,6 +783,15 @@
                          background:rgba(255,255,255,.18);
                          flex:0 0 var(--sp-panel-tab-icon-size);
                          text-align:center;
+                       display:flex;
+                       align-items:center;
+                       justify-content:center;
+                    }
+                  #sp_panel_tab_slot .sp_panel_tab_icon svg {
+                         width:72%;
+                         height:72%;
+                         display:block;
+                         margin:auto;
                     }
                   #sp_panel_tab_slot .sp_panel_tab_label {
                          width:var(--sp-panel-tab-label-width);
@@ -829,6 +901,194 @@
                            color:#332200;
                            font-weight:bold;
                       }
+                  .xdex-recycle-btn {
+                          position:relative;
+                          display:inline-flex;
+                          align-items:center;
+                          justify-content:center;
+                          width:30px;
+                          height:30px;
+                          padding:0;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                          color:inherit;
+                     }
+                  .xdex-recycle-btn:hover {
+                          border-color:#c62828;
+                          color:#c62828;
+                     }
+                  .xdex-recycle-badge {
+                          position:absolute;
+                          top:-6px;
+                          right:-6px;
+                          min-width:16px;
+                          height:16px;
+                          padding:0 4px;
+                          border-radius:999px;
+                          background:#c62828;
+                          color:#fff;
+                          font-size:10px;
+                          line-height:16px;
+                          text-align:center;
+                          pointer-events:none;
+                     }
+                  .xdex-recycle-bar {
+                          display:none;
+                          align-items:center;
+                          gap:8px;
+                          margin:0 0 10px;
+                          padding:6px 8px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-fold-bg);
+                     }
+                  .xdex-recycle-bar .xdex-recycle-back {
+                          padding:4px 10px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                     }
+                  .xdex-recycle-bar .xdex-recycle-bar-title {
+                          flex:1;
+                          white-space:nowrap;
+                          overflow:hidden;
+                          text-overflow:ellipsis;
+                     }
+                  .xdex-recycle-bar .xdex-recycle-empty-btn {
+                          padding:4px 10px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                     }
+                  .xdex-recycle-bar .xdex-recycle-empty-btn:disabled {
+                          opacity:.5;
+                          cursor:not-allowed;
+                     }
+                  .xdex-recycle-mode .xdex-history-toolbar,
+                  .xdex-recycle-mode .xdex-post-history-type-buttons {
+                          display:none;
+                     }
+                  .xdex-recycle-mode .xdex-posts-add-row {
+                          display:none !important;
+                     }
+                  .xdex-recycle-mode .xdex-recycle-bar {
+                          display:flex;
+                     }
+                  .xdex-recycle-empty {
+                          margin:24px 0;
+                          padding:20px 12px;
+                          border:1px dashed var(--xdex-sp-border);
+                          border-radius:8px;
+                          text-align:center;
+                          color:var(--foreground, #333);
+                          opacity:.75;
+                     }
+                  .xdex-history-tombstone-mark,
+                  .xdex-post-history-tombstone-mark {
+                          position:absolute;
+                          top:-9px;
+                          right:34px;
+                          width:20px;
+                          height:20px;
+                          border:1px solid #a98f7a;
+                          border-radius:999px;
+                          background:#F0E0D6;
+                          display:flex;
+                          align-items:center;
+                          justify-content:center;
+                          padding:0;
+                          cursor:pointer;
+                          z-index:1;
+                          color:#5b4636;
+                     }
+                  .xdex-history-tombstone-mark:hover,
+                  .xdex-post-history-tombstone-mark:hover {
+                          color:#c62828;
+                          border-color:#c62828;
+                     }
+                  .xdex-recycle-sort {
+                          padding:4px 6px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:6px;
+                          background:var(--xdex-sp-panel-bg);
+                          color:inherit;
+                          cursor:pointer;
+                     }
+                  .xdex-recycle-item {
+                          position:relative;
+                          border:1px solid #bfa58f;
+                          border-radius:8px;
+                          padding:10px 12px;
+                          margin-bottom:8px;
+                          background:rgba(255,255,255,0.18);
+                     }
+                  .xdex-recycle-item-title {
+                          font-weight:bold;
+                          margin-bottom:4px;
+                          word-break:break-all;
+                     }
+                  .xdex-recycle-item-meta {
+                          font-size:12px;
+                          opacity:.75;
+                     }
+                  .xdex-recycle-item.xdex-recycle-highlight {
+                          animation:xdexRecycleHighlight 2s ease;
+                     }
+                  @keyframes xdexRecycleHighlight {
+                          0%,60% { background:#ffe08a; }
+                          100% { background:rgba(255,255,255,0.18); }
+                     }
+                  .xdex-recycle-item-meta {
+                          display:flex;
+                          align-items:center;
+                          gap:6px;
+                     }
+                  .xdex-recycle-item-meta > span {
+                          flex:1;
+                          min-width:0;
+                     }
+                  .xdex-recycle-icon-btn,
+                  .xdex-recycle-item-btn {
+                          background:none;
+                          border:none;
+                          padding:2px;
+                          cursor:pointer;
+                          color:#6b5644;
+                          display:inline-flex;
+                          align-items:center;
+                          justify-content:center;
+                          border-radius:4px;
+                     }
+                  .xdex-recycle-icon-btn:hover { color:#c62828; }
+                  .xdex-recycle-item-restore:hover { color:#2e7d32; }
+                  .xdex-recycle-item-purge:hover { color:#c62828; }
+                  .xdex-recycle-item-actions {
+                          display:flex;
+                          gap:6px;
+                          margin-top:8px;
+                          justify-content:flex-end;
+                     }
+                  .xdex-recycle-item-btn {
+                          padding:3px 10px;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:6px;
+                          background:var(--xdex-sp-panel-bg);
+                          color:inherit;
+                          cursor:pointer;
+                          font-size:12px;
+                     }
+                  .xdex-recycle-item-btn.xdex-recycle-item-restore:hover {
+                          border-color:#2e7d32;
+                          color:#2e7d32;
+                     }
+                  .xdex-recycle-item-btn.xdex-recycle-item-purge:hover {
+                          border-color:#c62828;
+                          color:#c62828;
+                     }
                    .xdex-history-item {
                            display:block !important;
                             position:relative;
@@ -1027,10 +1287,10 @@
               max-height:calc(100vh - 80px);background:#FFFFEE;border-radius:8px;
               display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
             <div id="sp_panel_tab_slot" aria-label="设置面板模块">
-              <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon">设</span><span class="sp_panel_tab_label">设置</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon">浏</span><span class="sp_panel_tab_label">浏览历史</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon">言</span><span class="sp_panel_tab_label">我的发言</span></button>
-              <button type="button" class="sp_panel_tab" data-sp-module="feeds"><span class="sp_panel_tab_icon">订</span><span class="sp_panel_tab_label">我的订阅</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="settings"><span class="sp_panel_tab_icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span><span class="sp_panel_tab_label">设置</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="history"><span class="sp_panel_tab_icon"><svg viewBox="-1 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"></path><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path><path d="M12 7v5l4 2"></path></svg></span><span class="sp_panel_tab_label">浏览历史</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="posts"><span class="sp_panel_tab_icon"><svg viewBox="-0.8 0.3 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></span><span class="sp_panel_tab_label">我的发言</span></button>
+              <button type="button" class="sp_panel_tab" data-sp-module="feeds"><span class="sp_panel_tab_icon"><svg viewBox="0 -0.5 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></span><span class="sp_panel_tab_label">我的订阅</span></button>
             </div>
             <div id="sp_panel_views">
               <div id="sp_module_settings" class="sp_panel_module active" data-sp-module-view="settings">
@@ -1061,7 +1321,7 @@
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyFormUnvcode" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormUnvcode"> unvcode</label><input type="checkbox" id="sp_interceptReplyFormU200B" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormU200B"> 零宽空格优先</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_updateReplyNumbers" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_updateReplyNumbers"> 当页回复编号</label><input type="hidden" name="sp_updateReplyNumbers" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_replaceRightSidebar" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_replaceRightSidebar"> 扩展坞增强</label><select id="sp_dockDisplayMode" style="height:24px;"><option value="hover">隐藏</option><option value="fixed">固定</option></select><input type="hidden" name="sp_replaceRightSidebar" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_kaomojiEnhancer" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_kaomojiEnhancer"> 颜文字拓展</label><select id="sp_kaomojiSort" style="height:24px;"><option value="default">默认</option><option value="recent">最近</option><option value="freq">常用</option></select><input type="hidden" name="sp_kaomojiEnhancer" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_highlightPO" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_highlightPO"> 标记Po主</label><input type="hidden" name="sp_highlightPO" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_applyFilters" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_applyFilters"> 标记/屏蔽-饼干/关键词</label><select id="sp_blockDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option></select><input type="hidden" name="sp_applyFilters" value="1"></div>
@@ -1188,11 +1448,11 @@
                     <div id="subscription-feed-inputs-container"></div>
                   </div>
                 </div>
-                <!-- 设置导入/导出 -->
+                <!-- 设置 导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
-                    <span>设置导入/导出</span>
+                    <span>设置 导入/导出</span>
                     <button id="btn_sp_importExport" class="sp_save xdex-inv" data-id="sp_importExport"
                             style="margin-left:auto;padding:2px 8px;">应用</button>
                   </div>
@@ -1208,11 +1468,11 @@
                     <div style="font-size:12px;color:#888;text-align:center;">导入将覆盖当前全部配置，建议先导出备份</div>
                   </div>
                 </div>
-                <!-- 使用数据导入/导出 -->
+                <!-- 使用数据 导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
-                    <span>使用数据导入/导出</span>
+                    <span>使用数据 导入/导出</span>
                     <button id="btn_sp_fullExport_reset" class="xdex-inv" style="margin-left:auto;padding:2px 8px;color:#c00;">重置所选项目</button>
                     <button id="btn_sp_fullExport_export" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">导出为文件</button>
                     <button id="btn_sp_fullExport_import" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">从文件导入</button>
@@ -1246,8 +1506,41 @@
                         <input type="checkbox" id="sp_fullExport_cookiePrefs" class="xdex-switch" role="switch" checked>
                         <label for="sp_fullExport_cookiePrefs">串内饼干偏好</label>
                       </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_webdav" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_webdav">WebDAV 配置</label>
+                      </div>
                     </div>
                     <div id="sp_fullExport_import_preview" style="display:none;margin-top:8px;padding:6px 8px;border:1px dashed #aaa;border-radius:6px;background:#FFFFEE;"></div>
+                  </div>
+                </div>
+                <!-- WebDAV 备份/同步 -->
+                <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave,.xdex-webdav-head-actions"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                    <span>WebDAV 备份/同步</span>
+                    <span id="sp_webdavLastSyncLabel" style="flex:1;min-width:0;margin:0 8px;text-align:center;color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
+                    <div class="xdex-webdav-head-actions xdex-inv" style="display:flex;align-items:center;gap:4px;margin-left:auto;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
+                      <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
+                      <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
+                    </div>
+                    <button id="btn_sp_webdavSave" class="sp_save xdex-inv" data-id="sp_webdavSave"
+                            style="padding:2px 8px;">保存</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                      <div style="display:flex;flex-direction:column;gap:6px;">
+                        <input id="sp_webdavUrl" type="text" value="${webdavPanelField('url')}" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                          <input id="sp_webdavPassword" type="password" value="${webdavPanelField('password')}" placeholder="密码" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                          <button id="btn_webdavTogglePassword" type="button" style="padding:4px 8px;flex:0 0 auto;">显示</button>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                          <button id="btn_webdavCheck" type="button" style="padding:4px 10px;">检查连接</button>
+                          <button id="btn_webdavSync" type="button" style="padding:4px 10px;">手动同步</button>
+                        </div>
+                        <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;"></div>
+                      </div>
                   </div>
                 </div>
                 </div>
@@ -1259,7 +1552,7 @@
                     <div id="sp_history_title" style="margin:0 0 10px; position:relative; text-align:center;">
                       <span style="font-size:20px; font-weight:bold;">浏览历史</span>
                     </div>
-                    <div class="xdex-history-toolbar">
+                    <div class="xdex-history-toolbar" id="sp_history_toolbar">
                       <input id="sp_history_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
                       <span id="sp_history_count" class="xdex-history-count">0 条</span>
                       <select id="sp_history_sort" aria-label="浏览历史排序">
@@ -1270,7 +1563,20 @@
                         <option value="page-desc">最高页码优先</option>
                       </select>
                       <button id="sp_history_clear" type="button" style="padding:6px 10px;">清空</button>
+                      <button id="sp_history_recycle" type="button" class="xdex-recycle-btn" title="回收站" aria-label="回收站">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <span id="sp_history_recycle_badge" class="xdex-recycle-badge" hidden>0</span>
+                      </button>
                     </div>
+                  <div id="sp_history_recycle_bar" class="xdex-recycle-bar" hidden>
+                    <button id="sp_history_recycle_back" type="button" class="xdex-recycle-back" title="返回浏览历史">← 返回</button>
+                    <span class="xdex-recycle-bar-title">回收站 <span id="sp_history_recycle_barcount" class="xdex-history-count">0 条</span></span>
+                    <select id="sp_history_recycle_sort" class="xdex-recycle-sort" aria-label="回收站排序">
+                      <option value="expiring">即将删除优先</option>
+                      <option value="recent">最近删除优先</option><option value="due24h">24小时内到期</option>
+                    </select>
+                    <button id="sp_history_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
+                  </div>
                     <div id="sp_history_results"></div>
                   </div>
                 </div>
@@ -1281,16 +1587,29 @@
                     <div id="sp_posts_title" style="margin:0 0 10px; position:relative; text-align:center;">
                       <span style="font-size:20px; font-weight:bold;">我的发言</span>
                     </div>
-                    <div class="xdex-history-toolbar">
+                    <div class="xdex-history-toolbar" id="sp_posts_toolbar">
                       <input id="sp_posts_search" type="search" autocomplete="off" placeholder="搜索标题、名称、正文、串号等关键词；高级检索见后方 ?">
                       <span id="sp_posts_count" class="xdex-history-count">0 条</span>
                       <button id="sp_posts_clear" type="button" style="padding:6px 10px;">清空</button>
+                      <button id="sp_posts_recycle" type="button" class="xdex-recycle-btn" title="回收站" aria-label="回收站">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <span id="sp_posts_recycle_badge" class="xdex-recycle-badge" hidden>0</span>
+                      </button>
                     </div>
+                  <div id="sp_posts_recycle_bar" class="xdex-recycle-bar" hidden>
+                    <button id="sp_posts_recycle_back" type="button" class="xdex-recycle-back" title="返回我的发言">← 返回</button>
+                    <span class="xdex-recycle-bar-title">回收站 <span id="sp_posts_recycle_barcount" class="xdex-history-count">0 条</span></span>
+                    <select id="sp_posts_recycle_sort" class="xdex-recycle-sort" aria-label="回收站排序">
+                      <option value="expiring">即将删除优先</option>
+                      <option value="recent">最近删除优先</option><option value="due24h">24小时内到期</option>
+                    </select>
+                    <button id="sp_posts_recycle_empty" type="button" class="xdex-recycle-empty-btn" disabled>清空回收站</button>
+                  </div>
                     <div id="sp_posts_type_buttons" class="xdex-post-history-type-buttons">
                       <button type="button" data-post-history-type="thread">我的主题</button>
                       <button type="button" data-post-history-type="reply" class="active">我的回复</button>
                     </div>
-                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <div class="xdex-posts-add-row" style="display:flex;gap:6px;margin-bottom:8px;">
                       <input id="sp_posts_manual_add_input" type="search" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
                       <button id="sp_posts_manual_add_btn" type="button" style="padding:4px 10px;font-size:13px;">手动添加</button>
                     </div>
@@ -1356,6 +1675,9 @@
       syncFavoriteThreadsLinks();
       installSettingPanelEasterEgg(document);
       function setSettingsPanelModule(moduleName) {
+        // 离开对应模块时退出其回收站视图，回到正常列表态
+        if (moduleName !== 'history') setThreadHistoryRecycleMode(false);
+        if (moduleName !== 'posts') setPostHistoryRecycleMode(false);
         const $nextView = $(`#sp_panel_views [data-sp-module-view="${moduleName}"]`);
         const nextModule = $nextView.length ? moduleName : 'settings';
         $('#sp_panel_tab_slot .sp_panel_tab').removeClass('active')
@@ -1412,10 +1734,16 @@
       // 浏览/发言历史改为首次进入对应 tab 时再渲染，避免 init 阶段双模块预构建卡顿
       // 折叠头：统一控制
       $('.sp_fold_head').off('click').on('click', function(){
+        // WebDAV 头部的自动同步开关与保存按钮等控件不触发折叠
+        if ($(this).closest('.xdex-webdav-head-actions').length || this.id === 'btn_sp_webdavSave') return;
         const $head = $(this);
         $head.next('.sp_fold_body').slideToggle(150);
         const btns = ($head.data('btn') || '').split(',');
         btns.forEach(sel => $(sel).toggleClass('xdex-inv'));
+      });
+      // 控件交互独立于折叠: 阻止冒泡到 .sp_fold_head
+      $('#sp_webdavAutoSync, label[for="sp_webdavAutoSync"], #btn_sp_webdavSave').off('click.xdex-webdav-fold-guard').on('click.xdex-webdav-fold-guard', function (e) {
+        e.stopPropagation();
       });
       // 同步已有配置 & 默认折叠
       this.syncInputs();
@@ -1471,6 +1799,16 @@
           applyImageHideMode(mode, document);
         }
       };
+      // 扩展坞显示模式：即时切换并即时应用（固定/隐藏）
+      const applyDockDisplayModeImmediately = () => {
+        const mode = $('#sp_dockDisplayMode').val() || 'hover';
+        this.state.dockDisplayMode = mode;
+        try { GM_setValue(this.key, this.state); } catch (e) {}
+        if (typeof applyDockDisplayMode === 'function') {
+          applyDockDisplayMode(mode);
+        }
+      };
+      $('#sp_dockDisplayMode').off('change').on('change', applyDockDisplayModeImmediately);
       $('#sp_enableImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       $('#sp_applyImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       // 设置面板内打开阅图：串内页可用；无图模式下右上角按钮隐藏时的备选入口
@@ -2197,7 +2535,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'extendQuote', 'kaomojiSort', 'toggleSidebar',
         'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
         'replyModeDefault', 'replyExtraDefault', 'blockDisplayMode',
-        'postAfterAction'
+        'postAfterAction', 'enablePostExpandAll', 'dockDisplayMode', 'disableAutoQuote'
       ];
       function mergeFavoriteThreads(localItems, importedItems) {
         const local = Array.isArray(localItems) ? spData('normalizeFavoriteThreads', localItems) : [];
@@ -2317,56 +2655,229 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
         return result;
       }
+      // WebDAV「保留本地上传」专用：标量项以本地为准（result 以 localSettings 为底），
+      // 复杂项（分组类）无论方向都合并，避免上传全量覆盖时丢失远端分组
+      function mergeSettingsForWebdavUpload(localSettings, remoteSettings) {
+        const result = Object.assign({}, localSettings);
+        if (!remoteSettings || typeof remoteSettings !== 'object') return result;
+        result.favoriteThreads = mergeFavoriteThreads(localSettings.favoriteThreads, remoteSettings.favoriteThreads);
+        result.subscriptionFeeds = mergeSubscriptionFeeds(localSettings.subscriptionFeeds, remoteSettings.subscriptionFeeds);
+        result.blockedKeywords = mergeBlockedKeywords(localSettings.blockedKeywords, remoteSettings.blockedKeywords);
+        result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, remoteSettings.markedGroups);
+        result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, remoteSettings.blockedCookies);
+        result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, remoteSettings.threadCookieWhitelistGroups);
+        return result;
+      }
       function mergeThreadHistoryStore(localStore, importedStore) {
+        // 本地导入/导出合并（非 WebDAV）：浏览次数直接累加；最新浏览时间/串内最远取较大值，首访取较早值
         const local = normalizeThreadHistoryStore(localStore);
         const imported = normalizeThreadHistoryStore(importedStore);
         const result = Object.assign({}, local);
         result.items = Object.assign({}, local.items);
+        result.index = Object.assign({}, local.index);
         Object.keys(imported.items).forEach((key) => {
           const impItem = imported.items[key];
           if (!result.items[key]) {
             result.items[key] = impItem;
+            result.index[key] = imported.index[key] || buildThreadHistoryIndexEntry(impItem);
           } else {
             const localItem = result.items[key];
+            const impNewer = (Number(impItem.lastVisitedAt) || 0) >= (Number(localItem.lastVisitedAt) || 0);
+            const newer = impNewer ? impItem : localItem;
             result.items[key] = {
               ...localItem,
               ...impItem,
+              firstVisitedAt: Math.min(Number(localItem.firstVisitedAt) || Infinity, Number(impItem.firstVisitedAt) || Infinity),
               lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(impItem.lastVisitedAt) || 0),
               page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
-              visitCount: Math.max(Number(localItem.visitCount) || 0, Number(impItem.visitCount) || 0),
-              title: impItem.title || localItem.title,
-              name: impItem.name || localItem.name,
+              maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(impItem.maxVisitedPage) || 0),
+              visitCount: (Number(localItem.visitCount) || 0) + (Number(impItem.visitCount) || 0),
+              lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : impItem.lastScrollY),
+              title: (newer.title || '').trim() ? newer.title : (localItem.title || impItem.title),
+              name: (newer.name || '').trim() ? newer.name : (localItem.name || impItem.name),
             };
+            result.index[key] = buildThreadHistoryIndexEntry(result.items[key]); // index 为纯派生数据: 随合并后的 item 重建, 防止 lastVisitedAt 失步
           }
         });
         result.order = Object.keys(result.items)
           .sort((a, b) => (Number(result.items[b].lastVisitedAt) || 0) - (Number(result.items[a].lastVisitedAt) || 0));
         return result;
       }
+      // WebDAV 浏览历史合并：基于“各端上次参与同步时的基线”计算独立贡献，避免直接累加导致多端计数翻倍
+      // baseline.threadHistory[key].count = 该端上次参与 WebDAV 同步后本地 visitCount（从未同步过 → 0 → 全量计入）
+      function mergeThreadHistoryStoreWebdav(localStore, remoteStore, baselines) {
+        const local = normalizeThreadHistoryStore(localStore);
+        const remote = normalizeThreadHistoryStore(remoteStore);
+        const result = Object.assign({}, local);
+        result.items = Object.assign({}, local.items);
+        result.index = Object.assign({}, local.index);
+        // ── 墓碑合并: deletedAt 取 max, record 取较新方, purged/revivedAt 双向传播 ──
+        result.tombstones = Object.assign({}, local.tombstones || {});
+        Object.keys(remote.tombstones || {}).forEach((tKey) => {
+          const rt = remote.tombstones[tKey];
+          const lt = result.tombstones[tKey];
+          if (!lt) { result.tombstones[tKey] = rt; return; }
+          const newerDeletedAt = Math.max(Number(rt.deletedAt) || 0, Number(lt.deletedAt) || 0);
+          const newer = (Number(rt.deletedAt) || 0) >= (Number(lt.deletedAt) || 0) ? rt : lt;
+          const purged = !!(rt.purged || lt.purged);
+          const revivedAt = Math.max(Number(rt.revivedAt) || 0, Number(lt.revivedAt) || 0) || null;
+          const mergedTomb = { deletedAt: newerDeletedAt, origin: newer.origin || 'local', purged, revivedAt };
+          if (!purged && !revivedAt && newer.record) mergedTomb.record = newer.record;
+          result.tombstones[tKey] = mergedTomb;
+        });
+        // 混跑防线+压制: 对存在本地墓碑(未复活)的 key, 过滤远端条目——
+        // lastVisitedAt > deletedAt 视为删除后的新段(参与合并), 否则为旧版传回的删除前数据(丢弃)
+        const effectiveRemoteItems = {};
+        Object.keys(remote.items || {}).forEach((key) => {
+          const t = result.tombstones[key];
+          if (t && !t.revivedAt && ((Number(remote.items[key].lastVisitedAt) || 0) <= (Number(t.deletedAt) || 0))) return;
+          effectiveRemoteItems[key] = remote.items[key];
+        });
+        const baselineMap = (baselines && baselines.threadHistory) || {};
+        const keys = new Set(Object.keys(local.items).concat(Object.keys(effectiveRemoteItems)));
+        const localTombsForItems = result.tombstones;
+        keys.forEach((key) => {
+          // 本端条目被远端墓碑压制: 条目早于删除时刻 → 应用删除(从合并结果移除)
+          const ownTomb = localTombsForItems[key];
+          if (ownTomb && !ownTomb.revivedAt && !effectiveRemoteItems[key] &&
+              ((Number(result.items[key] && result.items[key].lastVisitedAt) || 0) <= (Number(ownTomb.deletedAt) || 0))) {
+            delete result.items[key];
+            delete result.index[key];
+            return;
+          }
+          const localItem = local.items[key];
+          const remoteItem = effectiveRemoteItems[key];
+          const baseCount = Number((baselineMap[key] && baselineMap[key].count) || 0);
+          const localCount = Number(localItem && localItem.visitCount) || 0;
+          const remoteCount = Number(remoteItem && remoteItem.visitCount) || 0;
+          // 独立贡献 = 本地当前值 - 上次参与同步时的值（未同步过则全量）；远端值 += 独立贡献
+          const delta = Math.max(0, localCount - baseCount);
+          const mergedCount = remoteCount + delta;
+          let mergedItem = null;
+          if (remoteItem && localItem) {
+            const impNewer = (Number(remoteItem.lastVisitedAt) || 0) >= (Number(localItem.lastVisitedAt) || 0);
+            const newer = impNewer ? remoteItem : localItem;
+            mergedItem = {
+              ...localItem,
+              ...remoteItem,
+              firstVisitedAt: Math.min(Number(localItem.firstVisitedAt) || Infinity, Number(remoteItem.firstVisitedAt) || Infinity),
+              lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(remoteItem.lastVisitedAt) || 0),
+              page: Math.max(Number(localItem.page) || 0, Number(remoteItem.page) || 0),
+              maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(remoteItem.maxVisitedPage) || 0),
+              visitCount: mergedCount,
+              lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : remoteItem.lastScrollY),
+              title: (newer.title || '').trim() ? newer.title : (localItem.title || remoteItem.title),
+              name: (newer.name || '').trim() ? newer.name : (localItem.name || remoteItem.name),
+            };
+          } else if (localItem) {
+            mergedItem = Object.assign({}, localItem, { visitCount: mergedCount });
+          } else if (remoteItem) {
+            mergedItem = Object.assign({}, remoteItem, { visitCount: mergedCount });
+          }
+          if (mergedItem) {
+            result.items[key] = mergedItem;
+            result.index[key] = buildThreadHistoryIndexEntry(mergedItem); // index 为纯派生数据: 必须随合并后的 item 重建, 沿用旧值会导致 lastVisitedAt 失步、排序错乱
+          }
+        });
+        result.order = Object.keys(result.items)
+          .sort((a, b) => (Number(result.items[b].lastVisitedAt) || 0) - (Number(result.items[a].lastVisitedAt) || 0));
+        return result;
+      }
+      function getWebdavHistoryBaselines() {
+        try {
+          const v = GM_getValue('xdex_webdav_history_baselines', null);
+          return (v && typeof v === 'object') ? v : {};
+        } catch (e) { return {}; }
+      }
+      function saveWebdavHistoryBaselinesFromStore(store, existingBaselines) {
+        const baselines = Object.assign({}, existingBaselines || getWebdavHistoryBaselines());
+        baselines.threadHistory = Object.assign({}, baselines.threadHistory || {});
+        Object.keys(store.items || {}).forEach((key) => {
+          baselines.threadHistory[key] = { count: Number(store.items[key].visitCount) || 0, at: Date.now() };
+        });
+        try { GM_setValue('xdex_webdav_history_baselines', baselines); } catch (e) {}
+        return baselines;
+      }
+      function postHistoryMatchKey(item) {
+        if (!item) return '';
+        // 已确认记录优先用服务端 No.（跨端稳定）；未确认退回 type+resto+内容指纹
+        const postId = String(item.postId || item.id || '').trim();
+        if (postId) return 'id:' + postId;
+        const type = normalizePostHistoryType(item.type);
+        const resto = String(item.resto || (type === 'reply' ? item.threadId : '') || '').trim();
+        const hash = item.contentHash || hashPostHistoryText(item.contentText || item.contentRaw || '');
+        return 'fp:' + type + ':' + resto + ':' + hash;
+      }
       function mergePostHistoryStore(localStore, importedStore) {
         const local = normalizePostHistoryStore(localStore);
         const imported = normalizePostHistoryStore(importedStore);
         const result = Object.assign({}, local);
         result.items = Object.assign({}, local.items);
+        // ── 墓碑合并: deletedAt 取 max, record 取较新方, purged/revivedAt 双向传播 ──
+        result.tombstones = Object.assign({}, local.tombstones || {});
+        Object.keys(imported.tombstones || {}).forEach((tKey) => {
+          const rt = imported.tombstones[tKey];
+          const lt = result.tombstones[tKey];
+          if (!lt) { result.tombstones[tKey] = rt; return; }
+          const newerDeletedAt = Math.max(Number(rt.deletedAt) || 0, Number(lt.deletedAt) || 0);
+          const newer = (Number(rt.deletedAt) || 0) >= (Number(lt.deletedAt) || 0) ? rt : lt;
+          const purged = !!(rt.purged || lt.purged);
+          const revivedAt = Math.max(Number(rt.revivedAt) || 0, Number(lt.revivedAt) || 0) || null;
+          const mergedTomb = { deletedAt: newerDeletedAt, origin: newer.origin || 'local', purged, revivedAt };
+          if (!purged && !revivedAt && newer.record) mergedTomb.record = newer.record;
+          result.tombstones[tKey] = mergedTomb;
+        });
+        // 混跑防线: 被本地墓碑(未复活)压制且早于删除时刻的导入条目直接丢弃
+        Object.keys(imported.items).forEach((impKey) => {
+          const mk = postHistoryMatchKey(imported.items[impKey]);
+          if (!mk) return;
+          const t = result.tombstones[mk];
+          if (t && !t.revivedAt && ((Number(imported.items[impKey].submittedAt) || Infinity) <= (Number(t.deletedAt) || 0))) {
+            imported.items[impKey] = null;
+          }
+        });
+        // 本端条目被远端墓碑压制: 早于删除时刻 → 应用删除
+        Object.keys(result.items).forEach((localKey) => {
+          const mk = postHistoryMatchKey(result.items[localKey]);
+          if (!mk) return;
+          const t = result.tombstones[mk];
+          if (t && !t.revivedAt && ((Number(result.items[localKey].submittedAt) || Infinity) <= (Number(t.deletedAt) || 0))) {
+            delete result.items[localKey];
+          }
+        });
         const STATUS_PRIORITY = { confirmed: 3, unconfirmed: 2, pending: 1, failed: 0 };
+        // 归一化匹配索引：避免两端 localId 不同导致同一帖子重复
+        const matchIndex = new Map();
+        Object.keys(result.items).forEach((key) => {
+          const mk = postHistoryMatchKey(result.items[key]);
+          if (mk) matchIndex.set(mk, key);
+        });
         Object.keys(imported.items).forEach((key) => {
           const impItem = imported.items[key];
-          if (!result.items[key]) {
+          if (!impItem) return;   // 已被墓碑混跑防线丢弃
+          const mk = postHistoryMatchKey(impItem);
+          const matchKey = mk ? matchIndex.get(mk) : null;
+          if (!matchKey || !result.items[matchKey]) {
             result.items[key] = impItem;
-          } else {
-            const localItem = result.items[key];
-            const localStatus = STATUS_PRIORITY[localItem.status] || 0;
-            const impStatus = STATUS_PRIORITY[impItem.status] || 0;
-            result.items[key] = {
-              ...localItem,
-              ...impItem,
-              status: impStatus >= localStatus ? impItem.status : localItem.status,
-              page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
-              submittedAt: Math.min(Number(localItem.submittedAt) || Infinity, Number(impItem.submittedAt) || Infinity),
-              contentText: impItem.contentText || localItem.contentText,
-              forumName: impItem.forumName || localItem.forumName,
-            };
+            if (mk && key) matchIndex.set(mk, key);
+            return;
           }
+          const localItem = result.items[matchKey];
+          const localStatus = STATUS_PRIORITY[localItem.status] || 0;
+          const impStatus = STATUS_PRIORITY[impItem.status] || 0;
+          result.items[matchKey] = {
+            ...localItem,
+            ...impItem,
+            id: String(impItem.id || localItem.id || ''),
+            postId: String(impItem.postId || localItem.postId || impItem.id || localItem.id || ''),
+            threadId: String(impItem.threadId || localItem.threadId || ''),
+            resto: String(impItem.resto || localItem.resto || ''),
+            status: impStatus >= localStatus ? impItem.status : localItem.status,
+            page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
+            submittedAt: Math.min(Number(localItem.submittedAt) || Infinity, Number(impItem.submittedAt) || Infinity),
+            contentText: impItem.contentText || localItem.contentText,
+            forumName: impItem.forumName || localItem.forumName,
+          };
         });
         result.order = Object.keys(result.items)
           .sort((a, b) => (Number(result.items[b].submittedAt) || 0) - (Number(result.items[a].submittedAt) || 0));
@@ -2382,27 +2893,47 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const registry = getDraftRegistry();
         const items = {};
         registry.forEach((key) => {
-          const raw = readDraftValue(key);
+          const canonical = key.indexOf('xdex_draft:') === 0 ? key : ('xdex_draft:' + key);
+          const pathname = canonical.slice('xdex_draft:'.length);
+          const raw = readDraftValue(pathname);
           const clean = normalizeDraftExportText(raw);
-          if (clean) items[key] = raw;
+          if (clean) items[canonical] = raw;
         });
-        return { registry: Object.keys(items), items };
+        return { registry: Object.keys(items), items, deletions: getDraftDeletionStore() };
       }
       function applyDraftsFromImport(drafts) {
         if (!drafts || typeof drafts !== 'object') return { imported: 0, overwritten: 0 };
         const items = drafts.items || {};
+        // 远端账本仅用于本轮导入裁决, 不回灌本地: 否则"重新编辑翻案"会被旧账本抹杀
+        const localDeletionStore = getDraftDeletionStore();
+        const remoteDeletions = (drafts.deletions && typeof drafts.deletions === 'object') ? drafts.deletions : {};
+        // 本地草稿命中"本地账本"(本端删除且未翻案) → 删除本地
+        Object.keys(localDeletionStore).forEach((ck) => {
+          if (items[ck] !== undefined) return;   // 远端仍有内容 = 重新编辑翻案, 保留
+          let v = '';
+          try { v = GM_getValue(ck, ''); } catch (_) {}
+          if (typeof v === 'string' && v !== '') {
+            try { deleteDraftSafe(ck); } catch (_) {}
+          }
+        });
         let imported = 0;
         let overwritten = 0;
         const newRegistry = new Set(getDraftRegistry());
         Object.keys(items).forEach((key) => {
+          const ck = canonicalDraftKey(key);
+          if (!ck) return;
+          // 远端已删除(账本有) → 压制;
+          // 远端无删除账本但本地残留删除账本 → 本地账本失效放行(远端有内容=翻案)
+          if (remoteDeletions[ck]) return;
           const clean = normalizeDraftExportText(items[key]);
           if (!clean) return;
-          const existing = readDraftValue(key);
+          const existing = readDraftValue(ck.slice('xdex_draft:'.length));
           if (existing === items[key]) return;
           if (existing) overwritten++;
           else imported++;
-          GM_setValue(key, items[key]);
-          newRegistry.add(key);
+          GM_setValue(ck, items[key]);
+          newRegistry.add(ck);
+          removeDraftDeletion(ck);   // 远端翻案内容落地时撤销本地残留账本
         });
         saveDraftRegistry(Array.from(newRegistry));
         return { imported, overwritten };
@@ -2449,6 +2980,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (selection.cookiePrefs) {
           payload.cookiePrefs = GM_getValue('xdex_thread_cookie_prefs', {});
         }
+        if (selection.webdav) {
+          try { payload.webdavConfig = GM_getValue(WEBDAV_CONFIG_KEY, null); } catch (e) { payload.webdavConfig = null; }
+        }
         return payload;
       }
       function buildFullExportFile(selection) {
@@ -2461,13 +2995,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           file: {
             meta: { format: 'xdex-full-export', schemaVersion: FULL_EXPORT_SCHEMA_VERSION, exportedAt: now.toISOString(), source: 'nmbxd-EX', scriptVersion, platform },
             selection,
-            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate', cookiePrefs: 'merge' },
+            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate', cookiePrefs: 'merge', webdav: 'override' },
             summary: {
               threadHistoryCount: selection.threadHistory ? Object.keys((payload.threadHistory || {}).items || {}).length : 0,
               postHistoryCount: selection.postHistory ? Object.keys((payload.postHistory || {}).items || {}).length : 0,
               draftCount: selection.drafts ? (payload.drafts.registry || []).length : 0,
               kaomojiStatsEntries: selection.kaomojiStats ? Object.keys(payload.kaomojiStats || {}).length : 0,
               cookiePrefsCount: selection.cookiePrefs ? Object.keys(payload.cookiePrefs || {}).length : 0,
+              webdavConfig: selection.webdav && payload.webdavConfig ? 1 : 0,
             },
             payload
           },
@@ -2492,7 +3027,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (!parsed.payload || typeof parsed.payload !== 'object') return { valid: false, error: '文件缺少 payload 数据' };
         return { valid: true, data: parsed };
       }
-      function applyFullImportPayload(importData) {
+      function applyFullImportPayload(importData, options) {
+        options = options || {};
         const payload = importData.payload;
         const report = {};
         if (payload.myScriptSettings) {
@@ -2503,9 +3039,21 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         if (payload.threadHistory) {
           const local = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
-          const merged = mergeThreadHistoryStore(local, payload.threadHistory);
-          GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
-          report.threadHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
+          let merged;
+          let mode = 'merge';
+          if (options.threadHistoryMode === 'webdav-delta') {
+            // WebDAV：基于基线计算独立贡献，不直接累加
+            const baselines = getWebdavHistoryBaselines();
+            merged = mergeThreadHistoryStoreWebdav(local, normalizeThreadHistoryStore(payload.threadHistory), baselines);
+            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+            saveWebdavHistoryBaselinesFromStore(merged, baselines);
+            mode = 'webdav-delta';
+          } else {
+            // 本地导入导出：浏览次数累加
+            merged = mergeThreadHistoryStore(local, payload.threadHistory);
+            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+          }
+          report.threadHistory = { mode, count: Object.keys(merged.items || {}).length };
         }
         if (payload.postHistory) {
           const local = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
@@ -2513,13 +3061,45 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           GM_setValue(POST_HISTORY_STORAGE_KEY, merged);
           report.postHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
         }
-        if (payload.drafts) {
+        // 草稿暂为纯本地数据: WebDAV 下载侧跳过导入, 远端旧草稿不再回流
+        if (payload.drafts && options.threadHistoryMode !== 'webdav-delta') {
           const result = applyDraftsFromImport(payload.drafts);
           report.drafts = { mode: 'override-imported', imported: result.imported, overwritten: result.overwritten };
         }
         if (payload.kaomojiStats) {
           const local = GM_getValue('kaomojiUsageStats', {});
-          const merged = mergeKaomojiStats(local, payload.kaomojiStats);
+          let merged;
+          if (options.threadHistoryMode === 'webdav-delta') {
+            // WebDAV 双向同步：按各端基线计算独立贡献后加算，避免每轮把远端全量当新增而重复计数；
+            // lastUsed 恒取两端较大值（时间不可累加）
+            const baselines = getWebdavHistoryBaselines();
+            const kaoBase = (baselines && baselines.kaomojiStats) || {};
+            merged = {};
+            const keys = new Set(Object.keys(local).concat(Object.keys(payload.kaomojiStats)));
+            keys.forEach((key) => {
+              const l = local[key];
+              const r = payload.kaomojiStats[key];
+              if (!r) { merged[key] = l; return; }
+              if (!l || typeof l !== 'object' || typeof r !== 'object') { merged[key] = r; return; }
+              const baseCount = Number((kaoBase[key] && kaoBase[key].count) || 0);
+              const delta = Math.max(0, (Number(l.count) || 0) - baseCount);
+              merged[key] = {
+                count: (Number(r.count) || 0) + delta,
+                lastUsed: Math.max(Number(l.lastUsed) || 0, Number(r.lastUsed) || 0)
+              };
+            });
+            // 推进基线到合并值（与浏览历史同模式：回推失败时由外层快照统一回滚）
+            const newBaselines = Object.assign({}, baselines || {});
+            newBaselines.kaomojiStats = {};
+            Object.keys(merged).forEach((key) => {
+              const entry = merged[key];
+              newBaselines.kaomojiStats[key] = { count: (entry && Number(entry.count)) || 0, at: Date.now() };
+            });
+            try { GM_setValue('xdex_webdav_history_baselines', newBaselines); } catch (e) {}
+          } else {
+            // 手动导入导出：保持原有纯累加语义
+            merged = mergeKaomojiStats(local, payload.kaomojiStats);
+          }
           GM_setValue('kaomojiUsageStats', merged);
           report.kaomojiStats = { mode: 'accumulate', changed: true };
         }
@@ -2530,9 +3110,24 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           GM_setValue('xdex_thread_cookie_prefs', merged);
           report.cookiePrefs = { mode: 'merge', count: Object.keys(merged).length };
         }
+        if (payload.webdavConfig && typeof payload.webdavConfig === 'object') {
+          try { GM_setValue(WEBDAV_CONFIG_KEY, payload.webdavConfig); } catch (e) {}
+          report.webdavConfig = { mode: 'override', changed: true };
+        }
 
         return report;
       }
+      // 暴露给 tag29 WebDAV 使用：本组工具位于 render 嵌套作用域，顶层不可见
+      window.__xdexWebdavUtils = {
+        buildFullExportFile,
+        parseFullExportFile,
+        applyFullImportPayload,
+        mergeThreadHistoryStoreWebdav,
+        mergePostHistoryStore,
+        mergeSettingsForWebdavUpload,
+        getWebdavHistoryBaselines,
+        saveWebdavHistoryBaselinesFromStore
+      };
       // === 使用数据导入导出 end ===
       function buildJSONC(state) {
         const filtered = {};
@@ -2545,7 +3140,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             exportedAt: new Date().toISOString(),
             source: 'nmbxd-EX'
           },
-          settings: filtered
+          settings: filtered,
+          webdavConfig: (function () {
+            try { return GM_getValue(WEBDAV_CONFIG_KEY, null); } catch (e) { return null; }
+          })()
         };
         const lines = JSON.stringify(meta, null, 2).split('\n');
         // 在 _meta 前加注释，在 settings 闭合括号前加尾随逗号
@@ -2592,6 +3190,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const incoming = parsed.settings || parsed;
         const merged = validateImport(incoming);
         if (!merged) return;
+        // WebDAV 配置随设置文件一并导入（独立 GM key，不进 settings 白名单）
+        if (parsed && parsed.webdavConfig && typeof parsed.webdavConfig === 'object') {
+          try { GM_setValue(WEBDAV_CONFIG_KEY, parsed.webdavConfig); } catch (e) {}
+        }
         SettingPanel.__pendingImport = merged;
         // 显示保存按钮
         $('#btn_sp_importExport').removeClass('xdex-inv');
@@ -2673,7 +3275,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
           cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
-          cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
+          webdav: $('#sp_fullExport_webdav').is(':checked')
         };
         if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
         const parts = [];
@@ -2683,6 +3285,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (selection.drafts) parts.push('草稿');
         if (selection.kaomojiStats) parts.push('颜文字统计');
         if (selection.cookiePrefs) parts.push('串内饼干偏好');
+        if (selection.webdav) parts.push('WebDAV 配置');
         if (!window.confirm(`确定要清除以下项目的全部内容吗？\n\n${parts.join('、')}\n\n清除后页面将自动刷新。`)) return;
         try {
           if (selection.settings) GM_setValue(SettingPanel.key, {});
@@ -2694,6 +3297,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           }
           if (selection.kaomojiStats) GM_setValue('kaomojiUsageStats', {});
           if (selection.cookiePrefs) GM_setValue('xdex_thread_cookie_prefs', {});
+          if (selection.webdav) GM_setValue(WEBDAV_CONFIG_KEY, {});
           toast('已清除所选项目，即将刷新');
           setTimeout(() => location.reload(), 800);
         } catch (err) {
@@ -2708,6 +3312,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           postHistory: $('#sp_fullExport_postHistory').is(':checked'),
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+          cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
+          webdav: $('#sp_fullExport_webdav').is(':checked')
         };
         if (!Object.values(selection).some(Boolean)) { toast('请至少勾选一项'); return; }
         const fileData = buildFullExportFile(selection);
@@ -2745,6 +3351,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (summary.draftCount) html += `<li>草稿: ${summary.draftCount} 条</li>`;
         if (summary.kaomojiStatsEntries) html += `<li>颜文字统计: ${summary.kaomojiStatsEntries} 项</li>`;
         if (summary.cookiePrefsCount) html += `<li>串内饼干偏好: ${summary.cookiePrefsCount} 条</li>`;
+        if (summary.webdavConfig) html += '<li>WebDAV 配置（覆盖导入）</li>';
         if (data.selection && data.selection.settings) html += '<li>设置配置（合并导入）</li>';
         html += '</ul>';
         html += '<div style="color:#666;margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
@@ -2779,6 +3386,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         this.state.replyModeDefault = $('#sp_replyModeDefault').val();
         this.state.replyExtraDefault = $('#sp_replyExtraDefault').val();
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
+        this.state.dockDisplayMode = $('#sp_dockDisplayMode').val() || 'hover';
         this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
@@ -3084,6 +3692,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       $('#sp_threadCookieWhitelistDisplayMode').val(this.state.threadCookieWhitelistDisplayMode || 'fold');
       $('#sp_poAnnotationSideDisplayMode').val(this.state.poAnnotationSideDisplayMode || 'collapse');
       $('#sp_kaomojiSort').val(this.state.kaomojiSort || 'default');
+      $('#sp_dockDisplayMode').val(this.state.dockDisplayMode || 'fixed');
       $('#sp_timeDisplayMode').val(this.state.timeDisplayMode === 'exact' ? 'exact' : 'relative');
       // 标记分组
       const groupsM = this.state.markedGroups.length ? this.state.markedGroups : [{desc:'',cookies:[]}];
@@ -3303,7 +3912,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="thread-cookie-whitelist-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
@@ -3315,7 +3924,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-input" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${placeholder}" value="${Utils.escapeHTML ? Utils.escapeHTML(value || '') : (value || '')}">
         </div>
@@ -3339,7 +3948,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="blocked-keyword-row" style="position:relative;margin:10px 0 8px;" data-regex="${regexOn ? '1' : '0'}">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <div style="display:flex;align-items:center;gap:8px;">
             <input class="blocked-keyword-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${safePlaceholder}" value="${safeValue}">
@@ -3397,7 +4006,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
@@ -3760,8 +4369,8 @@ ${markedSwatchHtml}
     const $index = $el.closest('.h-threads-item-index[data-threads-id]');
     const indexTid = ($index.attr('data-threads-id') || '').trim();
     if (isValidThreadId(indexTid)) return indexTid;
-    const pathMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-    if (pathMatch) return pathMatch[1].slice(0, 8);
+    const pathTid = PageType.getThreadId(false);
+    if (pathTid) return pathTid.slice(0, 8);
     const href = $el.closest('.h-threads-item-index, .h-threads-item, .h-threads-item-reply, .h-threads-item-reply-main')
       .find('.h-threads-info-id[href*="/t/"]').first().attr('href') || '';
     const hrefMatch = href.match(/\/t\/(\d{6,8})/);
@@ -4109,7 +4718,10 @@ ${markedSwatchHtml}
         enableQuotePreview();
       }
       if (typeof window.__xdexOpenQuoteByTid !== 'function') return false;
-      const ret = window.__xdexOpenQuoteByTid(tid, { fromPOImage: true });
+      const ret = window.__xdexOpenQuoteByTid(tid, {
+        fromPOImage: true,
+        currentThreadId: (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(replyEl)) || ''
+      });
       if (ret && typeof ret.then === 'function') {
         ret.catch(() => {});
       }
@@ -5582,7 +6194,7 @@ ${markedSwatchHtml}
     const href = String(sampleHref || '');
     if (/[?&]page=\d+/.test(href)) return href.replace(/page=\d+/, `page=${pageNum}`);
     if (/\/page\/\d+\.html/.test(href)) return href.replace(/\/page\/\d+\.html/, `/page/${pageNum}.html`);
-    if (isBoardPaginationContext() || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
+    if (isBoardPaginationContext() || PageType.isTimelinePage()) {
       const base = location.pathname.replace(/\/page\/\d+\.html$/, '').replace(/\.html$/, '');
       return `${base}/page/${pageNum}.html`;
     }
@@ -5976,7 +6588,7 @@ ${markedSwatchHtml}
       imgEl.style.left = '0px';
       imgEl.style.width = 'auto';
       imgEl.style.height = 'auto';
-      const isInOverlay = __omp_shell("!$liveBox.closest('.qp-body').length;")
+      const isInOverlay = !!$liveBox.closest('.qp-body').length;
       if (isInOverlay) {
         const wrapEl = $liveBox.closest('.qp-content-wrap')[0];
         if (wrapEl) {
@@ -6072,7 +6684,7 @@ ${markedSwatchHtml}
                   <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
                   </span> -->
-                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
                 </div>
                 <div class="h-threads-content"></div>
               </div>
@@ -6685,7 +7297,8 @@ ${markedSwatchHtml}
     setTimeout(() => {
       liveCfg = getLatestCfg();
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
-      try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
+      // 只处理本次新增内容（root=新克隆/目标回复区），避免无缝翻页后对全页既有内容重复编号与重标 Po
+      try { if (typeof highlightPO === 'function') highlightPO(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
       try {
@@ -6712,7 +7325,7 @@ ${markedSwatchHtml}
     }, 50);
   }
   function isEnhanceIslandAutoTitlePage() {
-    return /^\/t\/\d{4,}/.test(location.pathname) || /^\/Forum\/po\/id\/\d+/.test(location.pathname);
+    return PageType.isThreadPage();
   }
   function refreshEnhanceIslandAutoTitle() {
     if (!isEnhanceIslandAutoTitlePage()) return;
@@ -6775,7 +7388,7 @@ ${markedSwatchHtml}
   }
   function buildThreadPageUrl(threadId, pageNum) {
     // 如果当前是 /Forum/po/id/{threadId}/page/N.html 形式
-    if (/^\/Forum\/po\/id\/\d+/.test(location.pathname)) {
+    if (PageType.isPOThreadPage()) {
       return `${location.origin}/Forum/po/id/${threadId}/page/${pageNum}.html`;
     }
     // 默认 /t/{threadId}?page=N
@@ -6907,18 +7520,14 @@ ${markedSwatchHtml}
       // const loadedPages = new Set();
       // let reachedLastPageAt = -1;     // 记录“最后一页已加载”的页码（例如 20）
       // let lastFinalToastTs = 0;       // 防抖：末页提示的时间戳，避免重复弹
-      const isThreadPage = /\/t\/\d{4,}/.test(location.pathname) || /^\/Forum\/po\/id\/\d+/.test(location.pathname);
-      const isBoardPage = /^\/f\//.test(location.pathname) || /^\/Forum\/timeline\/id\/\d+/.test(location.pathname);
+      const isThreadPage = PageType.isThreadPage();
+      const isBoardPage = PageType.isBoardOrTimelinePage();
       const originInfo = (function () {
-        const cur = new URL(location.href, location.origin);
-        const threadMatch =
-          location.pathname.match(/\/t\/(\d{4,})/) ||
-          location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
+        const threadMatch = PageType.getThreadId();
         return {
           origin: location.origin,
-          threadId: threadMatch
-           ? threadMatch[1] : (document.querySelector('[data-threads-id]')?.getAttribute('data-threads-id') || null),
-          page: Number(cur.searchParams.get('page') || (location.pathname.match(/\/page\/(\d+)(?:\.html)?$/)?.[1] || 1))
+          threadId: threadMatch || (document.querySelector('[data-threads-id]')?.getAttribute('data-threads-id') || null),
+          page: PageType.getPageNum()
         };
       })();
       // let lastLoadedPage = originInfo.page || 1;
@@ -7125,9 +7734,11 @@ ${markedSwatchHtml}
       // 刷新目标回复区（主页面回复区 或 data-cloned-page = 最大的克隆页）并检查是否有下一页
       // done(result) 回调会收到 { status: 'last'|'hasNext'|'error', nextPage?: number }
       // Phase2：定区/增量/分页走共享核；末页判定与 toast 仍在本包装
-      function refreshRepliesAndCheckNext(done, options = {}) {
+      function refreshRepliesAndCheckNext(done, options = {}, refreshGeneration) {
         const showResultToast = options.showResultToast !== false;
         const suppressResultToastOnHasNext = options.suppressResultToastOnHasNext !== false;
+        const activeGeneration = refreshGeneration == null ? beginRefreshStatus() : refreshGeneration;
+        if (!isCurrentRefreshStatus(activeGeneration)) return;
         try {
           const domMaxPage = getDomLastPageNum();
           const maxCloned = getMaxClonedPageInDOM();
@@ -7138,7 +7749,7 @@ ${markedSwatchHtml}
           const list = getRealThreadsList(document);
           if (!list) {
             console.warn('[refreshReplies] 未找到 .h-threads-list');
-            toast('刷新回复失败，该串可能已被删除');
+            showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
             return done && done({ status: "error" });
           }
           const pageAttr = maxCloned > 0 ? maxCloned : 0;
@@ -7169,7 +7780,7 @@ ${markedSwatchHtml}
               const newList = getRealThreadsList(doc);
               if (!newList) {
                 console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-list');
-                toast('刷新回复失败，该串可能已被删除');
+                showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
                 return done && done({ status: "error" });
               }
               const newReplies = newList.querySelector('.h-threads-item-replies');
@@ -7205,7 +7816,7 @@ ${markedSwatchHtml}
               })();
               if (userCount < 19) {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
@@ -7217,7 +7828,7 @@ ${markedSwatchHtml}
                 return;
               } else {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
@@ -7225,8 +7836,8 @@ ${markedSwatchHtml}
             })
             .catch(err => {
               console.error('refreshRepliesAndCheckNext error:', err);
-              toast('刷新回复区失败');
-              if (typeof done === 'function') done({ status: 'error' });
+          if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新回复区失败', 1800);
+          if (typeof done === 'function') done({ status: 'error' });
             });
         } catch (err) {
           console.error('refreshRepliesAndCheckNext pre error:', err);
@@ -7245,19 +7856,20 @@ ${markedSwatchHtml}
       // }
       // Phase3-3：刷新检查结果共用处理（刷新按钮 click / loadNext 末页旁路）
       // 语义：error 静默；hasNext → toast + prepareForceLoadNext + 延迟 loadNext；last → 已更新/无更新
-      function handleSeamlessRefreshCheckResult(result) {
+      function handleSeamlessRefreshCheckResult(result, refreshGeneration) {
         if (!result || result.status === 'error') return;
+        if (!isCurrentRefreshStatus(refreshGeneration)) return;
         if (result.status === 'hasNext' && result.nextPage) {
-          toast(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700, { queue: false, key: 'refresh-status' });
+          showRefreshStatus(`发现新回复，正在加载第 ${result.nextPage} 页……`, 700);
           // 旧：内联状态回退（已统一到 prepareForceLoadNext）
           // loadedPages.delete(result.nextPage);
           // loading = false;
           // lastLoadedPage = result.nextPage - 1;
           // lastCheckAt = 0;
           prepareForceLoadNext(result.nextPage);
-          setTimeout(() => loadNext(), 50);
+          setTimeout(() => loadNext(refreshGeneration), 50);
         } else if (result.status === 'last') {
-          toast(result.hasUpdate ? '已更新' : '无更新', 900, { queue: false, key: 'refresh-status' });
+          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新');
         }
       }
       // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）
@@ -7304,7 +7916,7 @@ ${markedSwatchHtml}
         btn.id = 'seamless-refresh-btn';
         btn.className = 'qp-reset-btn seamless-refresh-btn';
         btn.title = '手动检查回复更新';
-        btn.textContent = '🗘';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
         // --- 固定位置样式 ---
         btn.style.position = 'fixed';
         btn.style.right = '12px';
@@ -7316,16 +7928,22 @@ ${markedSwatchHtml}
         btn.style.padding = '6px 12px';
         btn.style.borderRadius = '6px';
         btn.style.cursor = 'pointer';
-        btn.style.zIndex = '9001';
+        // 层级置于拓展坞（.hld__docker z-index:9998）之上：串内页两者位置可能重叠；下行为 10000，勿再被覆盖
+        btn.style.zIndex = '10000';
         btn.style.userSelect = 'none';
         btn.style.display = 'none';   // 默认不显示
         document.body.appendChild(btn);
         // 点击触发“局部刷新 → 若有下一页则无缝翻页”
         btn.addEventListener('click', () => {
           try {
-            toast("正在刷新……", 1500, { queue: false, key: 'refresh-status' });
+            const refreshGeneration = beginRefreshStatus();
+            showRefreshStatus("正在刷新……", 1500);
             // 旧：内联 hasNext/last 分支（已抽到 handleSeamlessRefreshCheckResult）
-            refreshRepliesAndCheckNext(handleSeamlessRefreshCheckResult, { showResultToast: false });
+            refreshRepliesAndCheckNext(
+              (result) => handleSeamlessRefreshCheckResult(result, refreshGeneration),
+              { showResultToast: false },
+              refreshGeneration
+            );
           } catch (e) {
             console.warn('刷新按钮触发失败:', e);
           }
@@ -7365,7 +7983,9 @@ ${markedSwatchHtml}
         globalObserver.observe(document.body, { childList: true, subtree: true });
       }
       // 串内页加载
-      async function loadNext() {
+      async function loadNext(refreshGeneration) {
+        const activeGeneration = refreshGeneration == null ? beginRefreshStatus() : refreshGeneration;
+        if (!isCurrentRefreshStatus(activeGeneration)) return;
         const loadNextStarted = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
         startupPerfDebug.mark('seamless.loadNext.start', { lastLoadedPage, loading, done });
         seamlessDebugLog('[loadNext] 函数被调用');
@@ -7419,7 +8039,12 @@ ${markedSwatchHtml}
           }
           // 👉 每次末页判定时，都刷新最新回复区和分页
           // 旧：内联 hasNext/last 分支（Phase3-3 已抽到 handleSeamlessRefreshCheckResult）
-          refreshRepliesAndCheckNext(handleSeamlessRefreshCheckResult, { showResultToast: false });
+          const refreshGeneration = beginRefreshStatus();
+          refreshRepliesAndCheckNext(
+            (result) => handleSeamlessRefreshCheckResult(result, refreshGeneration),
+            { showResultToast: false },
+            refreshGeneration
+          );
           return;
         }
         // if (loading) return;
@@ -7440,12 +8065,12 @@ ${markedSwatchHtml}
         seamlessDebugLog('[loadNext] 准备加载页码:', nextPageNum);
         const nextUrl = computeNextUrl();
         if (!nextUrl) { return; }
-        toast(`正在加载第 ${nextPageNum} 页……`);
+        showRefreshStatus(`正在加载第 ${nextPageNum} 页……`, 900);
         loading = true;
         try {
           const res = await startupPerfDebug.measureAsync('seamless.loadNext.fetch', () => fetch(nextUrl, { credentials: 'same-origin' }), { nextPageNum, nextUrl });
           if (!res.ok) {
-              toast('刷新失败，网络错误');
+              if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新失败，网络错误', 1800);
               return;
           }
           const html = await startupPerfDebug.measureAsync('seamless.loadNext.responseText', () => res.text(), { nextPageNum });
@@ -7526,7 +8151,7 @@ ${markedSwatchHtml}
         const nextPageNum = lastLoadedPage + 1;
         if (loadedPages.has(nextPageNum)) return;
         let nextUrl;
-        if (/^\/Forum\/timeline\/id\/\d+/.test(location.pathname)) {
+        if (PageType.isTimelinePage()) {
           // 时间线模式
           const base = location.pathname.replace(/\/page\/\d+\.html$/, ''); // 去掉已有的 /page/N.html
           nextUrl = `${location.origin}${base}/page/${nextPageNum}.html`;
@@ -9312,7 +9937,7 @@ ${markedSwatchHtml}
     });
     const $overlay = $('<div class="qp-overlay-quote"></div>').appendTo('body');
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
-    const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗">❌</div>').appendTo($overlay);
+    const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="red" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path style="fill:none" d="M6 6l12 12"/><path style="fill:none" d="M18 6L6 18"/></svg></div>').appendTo($overlay);
     $closeAll.on('click', () => {
       $stack.empty();
       $overlay.fadeOut(160);
@@ -9387,6 +10012,10 @@ ${markedSwatchHtml}
       $quote.append($header);
       const $content = stripIds($('<div></div>').html(html));
       simplifyQuoteInfoIdLinks($content);
+      // 引用浮窗内容同样应用“引用号是否当前串”标注：currentThreadId 由打开方传入
+      if (options && options.currentThreadId) {
+        try { markCurrentThreadQuoteRefs($content[0], options.currentThreadId); } catch (e) {}
+      }
       $quote.append($content.contents());
       // 在 $quote 内添加四条边框拖拽手柄 + 四角拉伸手柄
 
@@ -9437,7 +10066,12 @@ ${markedSwatchHtml}
     window.__xdexOpenQuoteByTid = function(tid, options = {}) {
       if (!tid) return Promise.resolve(false);
       return fetchData(String(tid)).then(html => {
-        showQuote(html, options || {});
+        // 引用浮窗“当前串”上下文：显式传入优先，否则用调用方临时写入的上下文
+        if (!options.currentThreadId && window.__xdexPendingQuoteCtxTid) {
+          options.currentThreadId = window.__xdexPendingQuoteCtxTid;
+          window.__xdexPendingQuoteCtxTid = '';
+        }
+        showQuote(html, options);
         return true;
       }).catch(err => {
         console.warn('open quote by tid failed', tid, err);
@@ -9594,8 +10228,91 @@ ${markedSwatchHtml}
       }
       lastQuoteTid = tid;
       lastQuoteAt = now;
-      fetchData(tid).then(showQuote);
+      const ctxTid = getRefContextThreadId(this);
+      window.__xdexNativeRefCtxTid = ctxTid;
+      const refViewEl = document.getElementById('h-ref-view');
+      if (refViewEl) {
+        try { markCurrentThreadQuoteRefs(refViewEl, ctxTid); } catch (e) {}
+      }
+      fetchData(tid).then(html => {
+        showQuote(html, { currentThreadId: ctxTid });
+        // 兑底：对最上层拓展浮窗内容再标一次，防 options 链路/后处理导致漏标
+        setTimeout(() => {
+          try {
+            const quotes = document.querySelectorAll('.qp-overlay-quote .qp-quote');
+            const top = quotes[quotes.length - 1];
+            if (top) markCurrentThreadQuoteRefs(top, ctxTid);
+            console.log('[xdex] quote overlay marked', { ctx: ctxTid, ref: tid });
+          } catch (e) {}
+        }, 60);
+      });
     });
+    // 原生引用浮窗标注（多路兑底）：ctx 来自最近一次 hover/click 的引用号所属串；
+    // 每次都重新 getElementById，防止 X岛 重建 #h-ref-view 元素后旧 observer/引用失效
+    let nativeRefMarkLast = 0;
+    let nativeRefViewDirty = true; // 浮窗内容/上下文变化后需重新标注；稳态下跳过全量扫描
+    const markNativeRefViewCurrentThread = (force, ctxOverride) => {
+      try {
+        const refViewEl = document.getElementById('h-ref-view');
+        if (!refViewEl) return;
+        const ctx = String(ctxOverride || window.__xdexNativeRefCtxTid || '');
+        if (!ctx) return;
+        // 稳态短路：上下文未变且浮窗内容未变 → 不做任何查询
+        if (!force && !nativeRefViewDirty && refViewEl.dataset.xdexMarkedCtx === ctx) return;
+        // 非 force 时跳过隐藏态（显示瞬间由 observer/延迟补标接管）；force 用于 hover 后异步填充的补标
+        if (!force && refViewEl.style.display === 'none') return;
+        markCurrentThreadQuoteRefs(refViewEl, ctx);
+        refViewEl.dataset.xdexMarkedCtx = ctx;
+        nativeRefViewDirty = false;
+      } catch (e) {}
+    };
+    const ensureNativeRefViewMarkObserver = () => {
+      const refViewEl = document.getElementById('h-ref-view');
+      if (!refViewEl || refViewEl.__xdexRefViewMarkObserved) return;
+      refViewEl.__xdexRefViewMarkObserved = true;
+      const timer = { id: 0 };
+      const mark = () => {
+        try {
+          const ctx = window.__xdexNativeRefCtxTid || '';
+          if (!ctx) return;
+          markCurrentThreadQuoteRefs(refViewEl, ctx);
+        } catch (e) {}
+      };
+      const observer = new MutationObserver(() => {
+        clearTimeout(timer.id);
+        timer.id = setTimeout(mark, 120);
+      });
+      // 监听 style：X岛 将浮窗从 display:none 切换为可见的瞬间也需要标注
+      observer.observe(refViewEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] });
+      mark();
+    };
+    // 原生 capture 阶段监听：不受 X岛 自身事件 stopPropagation / jQuery 委托时序影响，首次悬浮即能记录上下文
+    document.addEventListener('mouseover', function (e) {
+      // 快速短路：绝大多数元素非引用号，一次属性比较即返回
+      if (!e.target || e.target.tagName !== 'FONT') return;
+      if ((e.target.getAttribute('color') || '') !== '#789922') return;
+      const ctx = getRefContextThreadId(e.target);
+      if (ctx !== window.__xdexNativeRefCtxTid) nativeRefViewDirty = true; // 上下文变了需重标
+      window.__xdexNativeRefCtxTid = ctx;
+      ensureNativeRefViewMarkObserver();
+      markNativeRefViewCurrentThread(true, ctx);
+      // 首次悬停时序兑底：X岛 异步填充内容并显示后才能标注，
+      // 每 300ms 重试直到浮窗内容出现标记（最多 3 次），覆盖任意填充/显示时序
+      let tries = 0;
+      const retryUntilMarked = function () {
+        tries += 1;
+        try {
+          const ctx2 = window.__xdexNativeRefCtxTid || '';
+          const refViewEl = document.getElementById('h-ref-view');
+          if (!ctx2 || !refViewEl) return;
+          markCurrentThreadQuoteRefs(refViewEl, ctx2);
+          if (!refViewEl.querySelector('font[data-xdex-cur-thread-marked-tid]') && tries < 3) {
+            setTimeout(retryUntilMarked, 300);
+          }
+        } catch (e) {}
+      };
+      setTimeout(retryUntilMarked, 300);
+    }, true);
     $(document).on('mouseleave', 'font[color="#789922"]', function () {
       $('#h-ref-view').hide();   // 鼠标移开时关闭原生引用框
     });
@@ -9624,13 +10341,23 @@ ${markedSwatchHtml}
       } catch (_) {
         return;
       }
-      const isOnQuote = elementsUnderMouse.some(el => {
-        return el.tagName === 'FONT' && el.getAttribute('color') === '#789922';
-      });
+      const quoteFont = elementsUnderMouse.find(el => el.tagName === 'FONT' && el.getAttribute('color') === '#789922');
+      const isOnQuote = !!quoteFont;
       // 如果不在引用号上，立即隐藏
       if (!isOnQuote) {
         refView.style.display = 'none';
         refView.style.opacity = '';  // 重置透明度
+        return;
+      }
+      // 即时计算触发上下文：串内页（含只看PO）直接读网址；版块/时间线用鼠标下引用号所属串
+      // 并对原生浮窗内容标注（兑底 mouseover/observer 链路失效的场景）；稳态下内部 dirty 短路零查询
+      const pageTid = (typeof PageType !== 'undefined' && PageType.getThreadId) ? PageType.getThreadId(true) : '';
+      const liveCtxTid = pageTid || getRefContextThreadId(quoteFont);
+      if (liveCtxTid) window.__xdexNativeRefCtxTid = liveCtxTid;
+      const nowMarkTs = Date.now();
+      if (nowMarkTs - nativeRefMarkLast > 250) {
+        nativeRefMarkLast = nowMarkTs;
+        markNativeRefViewCurrentThread(false, liveCtxTid);
       }
     });
     enableQuotePreview.__initialized = true;
@@ -9647,6 +10374,11 @@ ${markedSwatchHtml}
       rafLock = requestAnimationFrame(() => {
         rafLock = 0;
         hideEmptyTitleAndEmail(refView);
+        // 原生引用浮窗显示/内容更新时：按最近触发串上下文标注当前串引用号
+        try {
+          const ctx = window.__xdexNativeRefCtxTid || '';
+          if (ctx && refView.style.display !== 'none') markCurrentThreadQuoteRefs(refView, ctx);
+        } catch (e) {}
       });
     });
     observer.observe(refView, {
@@ -9801,6 +10533,90 @@ ${markedSwatchHtml}
   //     }, 300); // 每 300ms 检查一次
   // }
 
+  // —— 引用号“是否当前串”标注（tag 9 扩展）：当前串判定 = 引用所在串节点 data-threads-id，串内页（含只看PO）回退 URL ——
+  const QUOTE_REF_COLOR = '#789922'; // 与原生引用号颜色一致
+  function getRefContextThreadId(el) {
+    try {
+      if (el && el.closest) {
+        const node = el.closest('.h-threads-item[data-threads-id]');
+        const tid = node && /^\d{1,}$/.test(node.getAttribute('data-threads-id') || '') ? node.getAttribute('data-threads-id').trim() : '';
+        if (tid && tid !== '9999999') return tid;
+      }
+      return (typeof PageType !== 'undefined' && PageType.getThreadId) ? PageType.getThreadId(true) || '' : '';
+    } catch (e) { return ''; }
+  }
+  function markCurrentThreadQuoteRefs(root, contextThreadId) {
+    if (!root || !contextThreadId) return;
+    const tids = String(contextThreadId).trim();
+    if (!tids) return;
+    try {
+      const els = Array.from(root.querySelectorAll('font[color="#789922"]'));
+      els.forEach((el) => {
+        if (el.dataset && el.dataset.xdexCurThreadMarkedTid === tids) return;
+        const refNum = (String(el.textContent || '').match(/\d+/) || [])[0];
+        if (!refNum) return;
+        // underline 贴近引用号文字；颜色继承 font[color=#789922]（与引用号颜色一致）
+        // 回应模式行（实际容器 .h-post-form-grid / .js-reply-mode-row）内的 No.xxxx 不添加横线
+        if (refNum === tids && !(el.closest && el.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row'))) {
+          el.style.textDecoration = 'underline';
+          el.style.textDecorationThickness = '2px';
+        }
+        if (el.dataset) el.dataset.xdexCurThreadMarkedTid = tids;
+      });
+      // 兑底：仅处理正文区（.h-threads-content）内未渲染成 <font> 的裸引用号（如 >>No.xxx），
+      // 消息信息区（.h-threads-info / a.h-threads-info-id，如 "No.69299379" 编号链接）一律不改
+      const contentRoots = [];
+      try {
+        if (root.matches && root.matches('.h-threads-content')) contentRoots.push(root);
+        Array.prototype.push.apply(contentRoots, Array.from(root.querySelectorAll('.h-threads-content')));
+      } catch (e) {}
+      contentRoots.forEach((contentRoot) => {
+        const walker = document.createTreeWalker(contentRoot, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            if (!node.nodeValue || !/(>>\s*)?No\.\s*\d{4,}/.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+            const p = node.parentElement;
+            if (p && p.tagName.toLowerCase() === 'font' && (p.getAttribute('color') || '').toLowerCase() === '#789922') return NodeFilter.FILTER_REJECT;
+            if (p && p.closest && p.closest('a.h-threads-info-id, .h-threads-info')) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        const bareNodes = [];
+        let bn;
+        while ((bn = walker.nextNode())) bareNodes.push(bn);
+        bareNodes.forEach((textNode) => {
+          const text = textNode.nodeValue;
+          const frag = document.createDocumentFragment();
+          let cursor = 0;
+          const re = /(>>\s*)?No\.\s*(\d{4,})/g;
+          let m;
+          while ((m = re.exec(text))) {
+            const start = m.index, end = re.lastIndex;
+            const refNum = m[2];
+            if (start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, start)));
+            const font = document.createElement('font');
+            font.setAttribute('color', '#789922');
+            font.textContent = text.slice(start, end);
+            if (refNum === tids) {
+              font.style.textDecoration = 'underline';
+              font.style.textDecorationThickness = '2px';
+              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = tids;
+            } else if (font.dataset) {
+              font.dataset.xdexCurThreadMarkedTid = tids;
+            }
+            frag.appendChild(font);
+            cursor = end;
+          }
+          if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
+          textNode.replaceWith(frag);
+        });
+      });
+    } catch (e) {}
+  }
+  window.__xdexQuoteRefMark = {
+    getContextThreadId: getRefContextThreadId,
+    markCurrentThreadQuoteRefs: markCurrentThreadQuoteRefs
+  };
+
   //引用格式拓展
   function extendQuote(root = document) {
     return startupPerfDebug.measure('extendQuote', () => {
@@ -9833,6 +10649,9 @@ ${markedSwatchHtml}
         let n;
         while ((n = walker.nextNode())) textNodes.push(n);
         textNodes.forEach(processTextNode);
+        // 原生标准引用号（>>No.12345678 已由原站渲染为 <font color="#789922">）会被 walker 跳过，
+        // 这里统一补标：引用号 == 当前串号 → 同色下划线
+        try { markCurrentThreadQuoteRefs(root, getRefContextThreadId(root)); } catch (e) {}
     });
     function processTextNode(textNode) {
         const text = textNode.nodeValue;
@@ -9863,6 +10682,15 @@ ${markedSwatchHtml}
             font.setAttribute('color', QUOTE_COLOR);
             // 直接保留原始匹配文本（可能是 "No.12345678" 或 "12345678"）
             font.textContent = text.slice(start, end);
+            // 标识引用号是否为当前串串号：是则在引用号下方添加同色横线（underline 贴近文字）
+            // 回应模式行（实际容器 .h-post-form-grid / .js-reply-mode-row）内的 No.xxxx 不添加横线
+            const refNum = (font.textContent.match(/\d+/) || [])[0];
+            const modeTextEl = textNode.parentElement && textNode.parentElement.closest ? textNode.parentElement.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row') : null;
+            if (refNum && !modeTextEl && refNum === getRefContextThreadId(textNode.parentElement)) {
+              font.style.textDecoration = 'underline';
+              font.style.textDecorationThickness = '2px';
+              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = refNum;
+            }
             frag.appendChild(font);
             cursor = end;
             changed = true;
@@ -9965,7 +10793,132 @@ ${markedSwatchHtml}
   /* --------------------------------------------------
    * tag 10. 创建拓展坞+reply按钮呼出回复悬浮窗
    * -------------------------------------------------- */
+  function isBoardThreadListPage() {
+    // 版块页/时间线页：顶层串列表（串内页无串列表，保持三按钮）
+    return PageType.isBoardPage() || PageType.isTimelineAnyPage();
+  }
+  function scrollPageToY(targetY, behavior) {
+    try {
+      window.scrollTo({ top: targetY, left: 0, behavior: behavior || 'smooth' });
+    } catch (e) {
+      try { window.scrollTo(0, targetY); } catch (e2) {
+        document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+      }
+    }
+  }
+  function isThreadItemVisible(el) {
+    if (!el || !el.isConnected) return false;
+    try {
+      const cs = window.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    } catch (e) { return true; }
+  }
+  function getBoardThreadItems() {
+    // 只收集可见顶层串：过滤 display:none 的屏蔽/隐藏项，避免其 rect.top=0 干扰基准判定
+    return Array.from(document.querySelectorAll('.h-threads-list > .h-threads-item[data-threads-id]'))
+      .filter(isThreadItemVisible);
+  }
+  function isSeamlessPagingEnabled() {
+    try {
+      if (SettingPanel && SettingPanel.state) return !!SettingPanel.state.enableSeamlessPaging;
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      return !!cfg.enableSeamlessPaging;
+    } catch (e) { return false; }
+  }
+  function triggerNextPageLoad() {
+    logRightSidebarDocker('thread-nav-nextpage', { seamlessEnabled: isSeamlessPagingEnabled() });
+    // 无缝翻页启用：与触底/手动翻页一致，调用 loadNext（自动/手动模式共用）
+    if (isSeamlessPagingEnabled() && window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
+      try {
+        window.SeamlessPaging.loadNext();
+        return true;
+      } catch (e) {
+        console.warn('[rightSidebarDocker] loadNext 调用失败', e);
+      }
+    }
+    // 非无缝：跳转站点分页「下一页」链接
+    try {
+      const pager = document.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination');
+      const nextLi = pager && Array.from(pager.querySelectorAll('li')).find((li) => {
+        const t = (li.textContent || '').trim();
+        return /下一页|下页|Next|›|»|→/i.test(t) && !li.classList.contains('uk-disabled');
+      });
+      const link = nextLi && nextLi.querySelector('a[href]');
+      if (link && link.href) {
+        let url = null;
+        try { url = new URL(link.href, location.href); } catch (e) {}
+        // 仅当解析出的地址与当前页不同才跳转，避免异常 href（如首页/空链）造成误跳
+        if (url && url.href !== location.href) {
+          logRightSidebarDocker('thread-nav-nextpage-native', { href: url.href });
+          location.href = url.href;
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  }
+  function getWebdavPageScrollY() {
+    return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  }
+  let navLastAlign = null; // {tid, y, ts}：最近一次“对齐当前串顶”的目标，用于抗布局漂移判定
+  function scrollToAdjacentThread(direction) {
+    const items = getBoardThreadItems();
+    if (!items.length) {
+      logRightSidebarDocker('thread-nav-skip', { reason: 'no-thread-items' });
+      if (typeof toast === 'function') toast('当前页面没有串');
+      return;
+    }
+    // 即时判定（每次点击实时计算，无缓存、不依赖上次点击状态）：
+    // 当前串 = 视口顶部线正压着的串（top<=0 && bottom>0 的第一个）；
+    // 页面顶部未滚动 → 第一个 top>=0 的串；全部滚出视口上方 → 最后一个
+    let base = -1;
+    for (let i = 0; i < items.length; i++) {
+      const r = items[i].getBoundingClientRect();
+      if (r.top <= 0 && r.bottom > 0) { base = i; break; }
+      if (r.top >= 0) { base = i; break; }
+    }
+    if (base < 0) base = items.length - 1;
+    const curTop = items[base].getBoundingClientRect().top;
+    // 上一串：当前串顶部已被滚出视口上方（顶部线压在其中间）→ 先滚回当前串顶部
+    // 抗漂移判定：若刚对齐过同一个串且页面未被手动滚动（无缝翻页/懒加载造成的布局漂移会让
+    // curTop 持续为负，此时按像素阈值判断会永远“未对齐”），直接视为已对齐并跳前串
+    if (direction < 0 && curTop < 0) {
+      const now = Date.now();
+      const scrollY = getWebdavPageScrollY();
+      const tid = items[base].getAttribute('data-threads-id');
+      if (navLastAlign && navLastAlign.tid === tid
+          && now - navLastAlign.ts < 10000
+          && Math.abs(scrollY - navLastAlign.y) < 3) {
+        navLastAlign = null; // 已对齐（即使布局漂移后 curTop 仍为负）：走下方跳转分支
+      } else {
+        const y = curTop + scrollY;
+        logRightSidebarDocker('thread-nav-align-current', { base, tid, y });
+        navLastAlign = { tid, y, ts: now };
+        scrollPageToY(y, 'auto');
+        return;
+      }
+    }
+    navLastAlign = null;
+    const target = base + direction;
+    if (target < 0 || target >= items.length) {
+      logRightSidebarDocker('thread-nav-boundary', { direction, base, target, total: items.length });
+      // 向下到末尾：主动加载下一页（无缝/手动按设置，类似触底翻页）；向上则提示
+      if (direction > 0 && triggerNextPageLoad()) {
+        return;
+      }
+      if (typeof toast === 'function') toast(direction > 0 ? '已经是最后一个串' : '已经是第一个串');
+      return;
+    }
+    const el = items[target];
+    const y = el.getBoundingClientRect().top + getWebdavPageScrollY();
+    logRightSidebarDocker('thread-nav', { direction, base, target, tid: el.getAttribute('data-threads-id'), y, scrollTop: getWebdavPageScrollY() });
+    scrollPageToY(y);
+  }
   function buildRightSidebarDockerHtml() {
+    const withThreadNav = isBoardThreadListPage();
     return `
         <div class="hld__docker">
             <div class="hld__docker-sidebar">
@@ -9975,9 +10928,11 @@ ${markedSwatchHtml}
                 </svg>
             </div>
             <div class="hld__docker-btns">
-                <div data-type="TOP">↑</div>
-                <div data-type="REPLY">↩</div>
-                <div data-type="BOTTOM">↓</div>
+                <div data-type="TOP" title="回到顶部"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8 L18 15 H6 Z"/><path d="M12 3 L16 7 H8 Z"/></svg></div>
+                ${withThreadNav ? '<div data-type="PREV-THREAD" title="上一个串"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 6 L19 17 H5 Z"/></svg></div>' : ''}
+                <div data-type="REPLY"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M19.9 4.8V14.2a1.5 1.5 0 0 1-1.5 1.5H4.1"/><path style="fill:none" d="M8.8 19.2L4.1 15.7l4.7-3.5"/></svg></div>
+                ${withThreadNav ? '<div data-type="NEXT-THREAD" title="下一个串"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 18 L5 7 H19 Z"/></svg></div>' : ''}
+                <div data-type="BOTTOM" title="到底部"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 16 L6 9 H18 Z"/><path d="M12 21 L8 17 H16 Z"/></svg></div>
             </div>
         </div>
     `;
@@ -10016,47 +10971,269 @@ ${markedSwatchHtml}
         transition: opacity .06s ease;
       }
       .hld__docker:hover .hld__docker-btns>div,
-      .hld__docker.is-hover .hld__docker-btns>div,
+      .hld__docker.is-hover .hld__docker-btns>div {
+        opacity: 1; pointer-events: auto;
+      }
       .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div {
         opacity: 1; pointer-events: auto;
       }
       .hld__docker.xdex-docker-boot .hld__docker-btns>div { transition: none; }
-      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
+      /* 上一串/下一串/TOP/BOTTOM：面积缩小为原本的 2/3（直径 50px → 约 41px）；REPLY 保持 50px；间隙 10px → 7px（缩 1/3） */
+      .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 7px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
       .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+      .hld__docker-btns>div svg { display: block; }
+      .hld__docker-btns>div svg path { fill: currentColor; }
+      .hld__docker-btns>div[data-type="PREV-THREAD"],
+      .hld__docker-btns>div[data-type="NEXT-THREAD"],
+      .hld__docker-btns>div[data-type="TOP"],
+      .hld__docker-btns>div[data-type="BOTTOM"] { width: 41px; height: 41px; font-size: 16px; }
+      /* 固定模式：dock 收窄贴右、三按钮常显、隐藏左侧把手（不依赖 hover/:has，回退机制不受影响）
+         提高特异性压过 qp-style 后注入的 :hover/is-hover/:has 展开规则，固定下悬浮不抖动 */
+      .hld__docker.xdex-dock-fixed { width: 60px; height: 300px; bottom: 75px; }
+      .hld__docker.xdex-dock-fixed:hover,
+      .hld__docker.xdex-dock-fixed.is-hover,
+      .hld__docker.xdex-dock-fixed:has(.hld__docker-sidebar:hover) { width: 60px; height: 300px; bottom: 75px; }
+      .hld__docker.xdex-dock-fixed .hld__docker-sidebar { display: none; }
+      .hld__docker.xdex-dock-fixed .hld__docker-btns { left: 0; right: 0; }
+      .hld__docker.xdex-dock-fixed .hld__docker-btns>div { opacity: 1; pointer-events: auto; }
+      .hld__docker.xdex-dock-boot.xdex-dock-fixed { transition: none; }
     `;
   }
-  function openRightSidebarReplyWhenReady(retry = 0) {
-    const hasForm = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
+  function logRightSidebarDocker(stage, detail) {
+    try {
+      console.log('[rightSidebarDocker]', stage, detail || {});
+    } catch (e) {}
+  }
+  function getRightSidebarReplyForm() {
+    return document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
       || document.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]');
+  }
+  // 旧核可能不认 scrollTo({ top, behavior })；先对象写法，失败再回退坐标写法。
+  function scrollPageByDockerButton(kind) {
+    const beforeY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    const maxY = Math.max(
+      document.documentElement.scrollHeight || 0,
+      document.body.scrollHeight || 0
+    );
+    const targetY = kind === 'TOP' ? 0 : maxY;
+    let method = 'none';
+    let errorMessage = '';
+    try {
+      if (typeof window.scrollTo === 'function') {
+        try {
+          window.scrollTo({ top: targetY, left: 0, behavior: 'smooth' });
+          method = 'scrollTo-options-smooth';
+        } catch (optionsErr) {
+          window.scrollTo(0, targetY);
+          method = 'scrollTo-coords-after-options-throw';
+          errorMessage = optionsErr && optionsErr.message ? optionsErr.message : String(optionsErr);
+        }
+      } else if (typeof window.scroll === 'function') {
+        window.scroll(0, targetY);
+        method = 'scroll-coords';
+      } else {
+        document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+        method = 'scrollTop-assign';
+      }
+    } catch (err) {
+      errorMessage = err && err.message ? err.message : String(err);
+      try {
+        document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+        method = method === 'none' ? 'scrollTop-assign-fallback' : (method + '+scrollTop-fallback');
+      } catch (err2) {
+        errorMessage = (errorMessage ? errorMessage + ' | ' : '') + (err2 && err2.message ? err2.message : String(err2));
+        method = 'failed';
+      }
+    }
+    // 下一帧核对是否真的动了；旧核常“吃掉 options 且不抛错”，需再回退坐标写法
+    setTimeout(() => {
+      let afterY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      let moved = Math.abs(afterY - beforeY) > 1 || (kind === 'TOP' && afterY <= 1);
+      // TOP 时 before 已接近 0 也算到位；BOTTOM 需明显靠近 target
+      if (kind === 'BOTTOM') {
+        moved = Math.abs(afterY - beforeY) > 1 || afterY >= Math.max(0, targetY - 50);
+      }
+      if (!moved && method.indexOf('scrollTo-options') === 0) {
+        try {
+          window.scrollTo(0, targetY);
+          method = 'scrollTo-coords-after-options-noop';
+          afterY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+          moved = Math.abs(afterY - beforeY) > 1 || (kind === 'TOP' ? afterY <= 1 : afterY >= Math.max(0, targetY - 50));
+        } catch (coordErr) {
+          errorMessage = (errorMessage ? errorMessage + ' | ' : '') + (coordErr && coordErr.message ? coordErr.message : String(coordErr));
+          try {
+            document.documentElement.scrollTop = targetY;
+            if (document.body) document.body.scrollTop = targetY;
+            method = 'scrollTop-assign-after-options-noop';
+            afterY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            moved = Math.abs(afterY - beforeY) > 1 || (kind === 'TOP' ? afterY <= 1 : afterY >= Math.max(0, targetY - 50));
+          } catch (err3) {
+            method = 'failed';
+            errorMessage = (errorMessage ? errorMessage + ' | ' : '') + (err3 && err3.message ? err3.message : String(err3));
+          }
+        }
+      }
+      logRightSidebarDocker('scroll-result', {
+        kind,
+        method,
+        beforeY,
+        targetY,
+        afterY,
+        moved,
+        errorMessage: errorMessage || undefined,
+        supportsScrollTo: typeof window.scrollTo === 'function',
+      });
+      // BOTTOM：图片/无缝内容可能使页面在滚动中继续增高，延迟后再校正一次
+      if (kind === 'BOTTOM') {
+        setTimeout(() => {
+          try {
+            const maxY2 = Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0);
+            const y2 = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            if (y2 < maxY2 - 30) {
+              window.scrollTo(0, maxY2);
+              logRightSidebarDocker('bottom-realign', { from: y2, to: maxY2 });
+            }
+          } catch (e) {}
+        }, 500);
+      }
+    }, 50);
+    logRightSidebarDocker('scroll-attempt', {
+      kind,
+      method,
+      beforeY,
+      targetY,
+      errorMessage: errorMessage || undefined,
+    });
+  }
+  function openRightSidebarReplyWhenReady(retry = 0) {
+    const hasForm = getRightSidebarReplyForm();
+    logRightSidebarDocker('reply-click', {
+      retry,
+      hasForm: !!hasForm,
+      formAction: hasForm ? (hasForm.getAttribute('action') || '') : '',
+      readyState: document.readyState,
+    });
     if (hasForm) {
-      ensureRightSidebarReplyController().open();
+      try {
+        logRightSidebarDocker('reply-open-start', {
+          retry,
+          hasController: typeof ensureRightSidebarReplyController === 'function',
+        });
+        ensureRightSidebarReplyController().open();
+        logRightSidebarDocker('reply-open-called', { retry, ok: true });
+      } catch (err) {
+        logRightSidebarDocker('reply-open-called', {
+          retry,
+          ok: false,
+          errorMessage: err && err.message ? err.message : String(err),
+          errorStack: err && err.stack ? String(err.stack).slice(0, 500) : undefined,
+        });
+        if (typeof toast === 'function') toast('打开回复浮窗失败，请查看控制台日志');
+      }
       return;
     }
     if (retry < 12) {
+      logRightSidebarDocker('reply-wait-form', { retry, nextRetryInMs: 80 });
       setTimeout(() => openRightSidebarReplyWhenReady(retry + 1), 80);
       return;
     }
+    logRightSidebarDocker('reply-form-missing', {
+      retry,
+      replyFormCount: document.querySelectorAll('form[action="/Home/Forum/doReplyThread.html"]').length,
+      postFormCount: document.querySelectorAll('#h-post-form form[action="/Home/Forum/doPostThread.html"]').length,
+    });
     if (typeof toast === 'function') toast('未找到回复/发串表单');
   }
   function bindRightSidebarReplyButton(docker) {
-    const replyBtn = docker?.querySelector('[data-type="REPLY"]');
-    if (!replyBtn || replyBtn.dataset.xdexReplyDockBound === '1') return;
+    if (!docker || !docker.querySelector) {
+      logRightSidebarDocker('reply-bind-skip', { reason: 'no-docker' });
+      return;
+    }
+    const replyBtn = docker.querySelector('[data-type="REPLY"]');
+    if (!replyBtn) {
+      logRightSidebarDocker('reply-bind-skip', { reason: 'no-reply-btn' });
+      return;
+    }
+    if (replyBtn.dataset.xdexReplyDockBound === '1') {
+      logRightSidebarDocker('reply-bind-skip', { reason: 'already-bound' });
+      return;
+    }
     replyBtn.dataset.xdexReplyDockBound = '1';
-    replyBtn.addEventListener('click', () => openRightSidebarReplyWhenReady());
+    replyBtn.addEventListener('click', function onDockerReplyClick(e) {
+      logRightSidebarDocker('reply-btn-event', {
+        type: e && e.type,
+        readyState: document.readyState,
+      });
+      openRightSidebarReplyWhenReady();
+    });
+    logRightSidebarDocker('reply-bind-ok', {
+      bound: true,
+      hasClickListenerMarker: replyBtn.dataset.xdexReplyDockBound === '1',
+    });
   }
   function bindRightSidebarShellButtons(docker) {
-    if (!docker) return;
+    if (!docker) {
+      logRightSidebarDocker('shell-bind-skip', { reason: 'no-docker' });
+      return;
+    }
     const supportsHasSelector = !!(window.CSS && CSS.supports && CSS.supports('selector(:has(*))'));
-    if (docker.dataset.xdexSidebarShellBound !== '1') {
+    const alreadyBound = docker.dataset.xdexSidebarShellBound === '1';
+    if (!alreadyBound) {
       docker.dataset.xdexSidebarShellBound = '1';
       if (!supportsHasSelector) {
-        docker.addEventListener('mouseenter', () => docker.classList.add('is-hover'));
-        docker.addEventListener('mouseleave', () => docker.classList.remove('is-hover'));
+        docker.addEventListener('mouseenter', function onDockerEnter() {
+          docker.classList.add('is-hover');
+        });
+        docker.addEventListener('mouseleave', function onDockerLeave() {
+          docker.classList.remove('is-hover');
+        });
       }
       const topBtn = docker.querySelector('[data-type="TOP"]');
       const bottomBtn = docker.querySelector('[data-type="BOTTOM"]');
-      topBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-      bottomBtn?.addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
+      if (topBtn) {
+        topBtn.addEventListener('click', function onDockerTopClick(e) {
+          logRightSidebarDocker('top-btn-event', { type: e && e.type });
+          scrollPageByDockerButton('TOP');
+        });
+      }
+      if (bottomBtn) {
+        bottomBtn.addEventListener('click', function onDockerBottomClick(e) {
+          logRightSidebarDocker('bottom-btn-event', { type: e && e.type });
+          scrollPageByDockerButton('BOTTOM');
+        });
+      }
+      // 版块页/时间线页：上一串/下一串（REPLY 居中）
+      const prevBtn = docker.querySelector('[data-type="PREV-THREAD"]');
+      const nextBtn = docker.querySelector('[data-type="NEXT-THREAD"]');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', function onDockerPrevThreadClick(e) {
+          logRightSidebarDocker('prev-thread-btn-event', { type: e && e.type });
+          scrollToAdjacentThread(-1);
+        });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function onDockerNextThreadClick(e) {
+          logRightSidebarDocker('next-thread-btn-event', { type: e && e.type });
+          scrollToAdjacentThread(1);
+        });
+      }
+      logRightSidebarDocker('shell-bind-ok', {
+        supportsHasSelector,
+        hoverFallbackBound: !supportsHasSelector,
+        topBound: !!topBtn,
+        bottomBound: !!bottomBtn,
+        prevThreadBound: !!prevBtn,
+        nextThreadBound: !!nextBtn,
+        topTag: topBtn ? topBtn.tagName : '',
+        bottomTag: bottomBtn ? bottomBtn.tagName : '',
+      });
+    } else {
+      logRightSidebarDocker('shell-bind-skip', {
+        reason: 'already-bound',
+        supportsHasSelector,
+      });
     }
     bindRightSidebarReplyButton(docker);
   }
@@ -10103,8 +11280,27 @@ ${markedSwatchHtml}
       if (docker) docker.dataset.xdexEarlyDocker = '1';
     }
     if (docker) markRightSidebarDockerBootMotion(docker);
+    // 按设置应用「固定/隐藏」模式（不触碰 :has 回退逻辑）
+    if (docker) applyDockDisplayMode(getDockDisplayMode());
     bindRightSidebarShellButtons(docker);
     return !!docker;
+  }
+  function getDockDisplayMode() {
+    try {
+      const stateMode = SettingPanel && SettingPanel.state && SettingPanel.state.dockDisplayMode;
+      if (stateMode === 'fixed' || stateMode === 'hover') return stateMode;
+      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const m = cfg.dockDisplayMode;
+      if (m === 'fixed' || m === 'hover') return m;
+    } catch (e) {}
+    return 'fixed';
+  }
+  function applyDockDisplayMode(mode) {
+    const docker = document.querySelector('.hld__docker');
+    if (!docker) return;
+    const fixed = mode === 'fixed';
+    docker.classList.toggle('xdex-dock-fixed', fixed);
+    console.log('[rightSidebarDocker] 显示模式应用', { mode: fixed ? 'fixed' : 'hover' });
   }
   function isDarkReaderActive() {
     const root = document.documentElement;
@@ -10275,6 +11471,12 @@ ${markedSwatchHtml}
           .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
             overflow-y: auto;
           }
+          .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
+            scrollbar-width: thin;
+          }
+          .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote::-webkit-scrollbar {
+            width: 8px;
+          }
           .qp-overlay .qp-stack > .qp-quote textarea[name="content"] {
             resize: vertical !important; /* 允许纵向缩放；宽度跟浮窗走 */
             min-width: 0 !important;
@@ -10425,18 +11627,40 @@ ${markedSwatchHtml}
             max-width: 50% !important;
             height: auto !important;
           }
-          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: all ease .2s; z-index: 9998; }
+          /* 扩展坞（与 ensureRightSidebarShellStyle 保持一致的最新版本，兜底双份冗余） */
+          #h-tool { display: none !important; }
+          .hld__docker { position: fixed; height: 80px; width: 30px; bottom: 180px; right: 0; transition: width .12s ease, height .12s ease, bottom .12s ease; z-index: 9998; }
           .hld__docker:hover,
           .hld__docker.is-hover { width: 150px; height: 300px; bottom: 75px; }
           .hld__docker:has(.hld__docker-sidebar:hover) { width: 150px; height: 300px; bottom: 75px; }
+          .hld__docker.xdex-docker-boot,
+          .hld__docker.xdex-docker-boot:hover,
+          .hld__docker.xdex-docker-boot.is-hover,
+          .hld__docker.xdex-docker-boot:has(.hld__docker-sidebar:hover) { transition: none; }
           .hld__docker-sidebar { background: #fff; position: fixed; height: 50px; width: 20px; bottom: 195px; right: 0; display: flex; justify-content: center; align-items: center; border: 1px solid #CCC; box-shadow: 0 0 1px #333; border-right: none; border-radius: 5px 0 0 5px; }
           .hld__docker-btns { position: absolute; top: 0; left: 50px; bottom: 0; right: 50px; display: flex; justify-content: center; align-items: center; flex-direction: column; }
-          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; }
+          .hld__docker .hld__docker-btns>div { opacity: 0; flex-shrink: 0; pointer-events: none; transition: opacity .06s ease; }
           .hld__docker:hover .hld__docker-btns>div,
-          .hld__docker.is-hover .hld__docker-btns>div { opacity: 1; }
-          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; }
-          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 10px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .2s, transform .2s; }
+          .hld__docker.is-hover .hld__docker-btns>div,
+          .hld__docker:has(.hld__docker-sidebar:hover) .hld__docker-btns>div { opacity: 1; pointer-events: auto; }
+          .hld__docker.xdex-docker-boot .hld__docker-btns>div { transition: none; }
+          .hld__docker-btns>div { background: #fff; border: 1px solid #CCC; box-shadow: 0 0 1px #444; width: 50px; height: 50px; border-radius: 50%; margin: 7px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #333; transition: background .12s ease, transform .12s ease, opacity .06s ease; }
           .hld__docker-btns>div:hover { background: #f0f0f0; transform: scale(1.1); }
+          .hld__docker-btns>div svg { display: block; }
+          .hld__docker-btns>div svg path { fill: currentColor; }
+          .hld__docker-btns>div[data-type="PREV-THREAD"],
+          .hld__docker-btns>div[data-type="NEXT-THREAD"],
+          .hld__docker-btns>div[data-type="TOP"],
+          .hld__docker-btns>div[data-type="BOTTOM"] { width: 41px; height: 41px; font-size: 16px; }
+          /* 固定模式：dock 收窄贴右、三按钮常显、隐藏左侧把手（不依赖 hover/:has，回退机制不受影响） */
+          .hld__docker.xdex-dock-fixed { width: 60px; height: 300px; bottom: 75px; }
+          .hld__docker.xdex-dock-fixed:hover,
+          .hld__docker.xdex-dock-fixed.is-hover,
+          .hld__docker.xdex-dock-fixed:has(.hld__docker-sidebar:hover) { width: 60px; height: 300px; bottom: 75px; }
+          .hld__docker.xdex-dock-fixed .hld__docker-sidebar { display: none; }
+          .hld__docker.xdex-dock-fixed .hld__docker-btns { left: 0; right: 0; }
+          .hld__docker.xdex-dock-fixed .hld__docker-btns>div { opacity: 1; pointer-events: auto; }
+          .hld__docker.xdex-dock-boot.xdex-dock-fixed { transition: none; }
         `;
       if (!style.parentNode) {
         (document.head || document.documentElement).appendChild(style);
@@ -10467,7 +11691,7 @@ ${markedSwatchHtml}
                       <div class="qp-body"></div>
                   </div>
               </div>
-              <div class="qp-reset-btn">🗘</div>
+              <div class="qp-reset-btn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
           `;
           document.body.appendChild(overlay);
           // 点击遮罩关闭（点内容不关闭，且允许事件冒泡到 document 以触发引用弹窗）
@@ -10541,6 +11765,7 @@ ${markedSwatchHtml}
           const rect = stack.getBoundingClientRect();
           // 只记位置/宽度，高度不记，避免被预览撑开的高度“粘住”
           overlay.__savedPanelRect = {
+            winW: Math.round(overlay.__panelWinW || window.innerWidth),   // 布局时窗口宽度: 打开期间 resize 后关闭也能在下次重开时重新居中
             width: Math.round(rect.width),
             left: Math.round(rect.left),
             top: Math.round(rect.top),
@@ -10669,11 +11894,14 @@ ${markedSwatchHtml}
         const rect = stack.getBoundingClientRect();
         // 高度几乎不变时不写 style；no-op 时不要开静默窗，否则会吞掉紧随其后的预览增高
         const heightDelta = Math.abs((rect.height || 0) - needed);
-        const atCap = needed >= maxH - 1;
+        // 滞回判定: 进入/退出滚动态需跨越阈值带, 避免内容高度临界抖动导致滚动条反复出现/消失、横向挤压布局
+        const wasScroll = stack.classList.contains('qp-content-scroll');
+        const atCap = wasScroll ? (needed > maxH - 24) : (needed >= maxH - 1);
         stack.classList.toggle('qp-content-scroll', atCap);
         if (heightDelta < 2) {
           if (options.save !== false) {
             ov.__savedPanelRect = {
+              winW: Math.round(ov.__panelWinW || window.innerWidth),
               width: Math.round(rect.width),
               height: Math.round(rect.height),
               left: Math.round(rect.left),
@@ -10706,6 +11934,7 @@ ${markedSwatchHtml}
           // auto-fit 只记当前几何，不把 userSized 标真
           const r = stack.getBoundingClientRect();
           ov.__savedPanelRect = {
+            winW: Math.round(ov.__panelWinW || window.innerWidth),
             width: Math.round(r.width),
             height: Math.round(r.height),
             left: Math.round(r.left),
@@ -10808,6 +12037,7 @@ ${markedSwatchHtml}
       if (!stack || !ov) return;
       const rect = stack.getBoundingClientRect();
       ov.__savedPanelRect = {
+        winW: Math.round(window.innerWidth),
         width: Math.round(rect.width),
         height: Math.round(rect.height),
         left: Math.round(rect.left),
@@ -11154,11 +12384,21 @@ ${markedSwatchHtml}
         ov.__userSizedPanel = false;
         const saved = ov.__savedPanelRect || null;
         const base = getReplyPanelDefaults();
+        // 记录本次布局计算时的视口宽度(而非关闭时刻的实时宽度):
+        // 打开期间改变窗口宽度后关闭, 下次打开应重新居中而不是沿用旧几何
+        ov.__panelWinW = Math.round(window.innerWidth);
+        // 窗口宽度已变化: 上次保存的水平几何(位置/宽度)不可信, 按当前视口重新居中;
+        // 垂直位置沿用上次(fit 阶段有越界上移兜底)
+        const viewportWidthChanged = saved && Number.isFinite(Number(saved.winW))
+          && Math.abs(Number(saved.winW) - window.innerWidth) > 2;
+        const useSavedW = saved && saved.width && !viewportWidthChanged;
+        const useSavedLeft = saved && Number.isFinite(Number(saved.left)) && !viewportWidthChanged;
+        const useSavedTop = saved && Number.isFinite(Number(saved.top));
         layoutRect = {
-          width: saved && saved.width ? saved.width : base.width,
+          width: useSavedW ? saved.width : base.width,
           height: base.height, // 仅作测量前的初始几何；真正露出前会 fit 成内容高
-          left: saved && Number.isFinite(Number(saved.left)) ? saved.left : base.left,
-          top: saved && Number.isFinite(Number(saved.top)) ? saved.top : base.top,
+          left: useSavedLeft ? saved.left : base.left,
+          top: useSavedTop ? saved.top : base.top,
           userSized: false
         };
       }
@@ -11238,7 +12478,7 @@ ${markedSwatchHtml}
       href: location.href,
     });
     // 移除原始工具栏；early shell 可能已经处理过，这里兜底
-    const hadDockerBefore = __omp_shell("!document.querySelector('.hld__docker');")
+    const hadDockerBefore = !!document.querySelector('.hld__docker');
     tryReplaceRightSidebarEarly();
     logRightSidebar('original-toolbar-removed', {
       remainingToolbarCount: $('#h-tool').length,
@@ -11251,8 +12491,8 @@ ${markedSwatchHtml}
       bindRightSidebarShellButtons(dockerDom[0]);
     }
     const dockerEl = dockerDom[0];
-    const earlyReady = __omp_shell("!(dockerEl && (dockerEl.dataset.xdexEarlyDocker === '1' || hadDockerBefore));")
-    const styleExisted = __omp_shell("!document.getElementById('qp-style');")
+    const earlyReady = !!(dockerEl && (dockerEl.dataset.xdexEarlyDocker === '1' || hadDockerBefore));
+    const styleExisted = !!document.getElementById('qp-style');
     // 悬停展开只依赖 shell CSS；qp-style 仅服务 REPLY 浮窗。
     // batch2 若坞已在且样式未装：改为空闲预热，避免与首次悬停抢主线程。
     // 首次点 REPLY 时 open() 仍会 ensureReplyOverlayStyle 兜底。
@@ -11277,6 +12517,8 @@ ${markedSwatchHtml}
     });
     // REPLY 按钮：early shell 已绑定；这里兜底补绑，完整浮窗控制器仍延迟到首次点击再初始化
     bindRightSidebarReplyButton(dockerEl);
+    // 按设置应用「固定/隐藏」模式（early 已应用则幂等）
+    try { applyDockDisplayMode(getDockDisplayMode()); } catch (e) {}
     // TOP/BOTTOM 在 early shell 阶段已绑定轻量滚动；这里不重复绑定，避免一次点击触发两套滚动。
   }
 
@@ -11471,7 +12713,7 @@ ${markedSwatchHtml}
                     <!-- <span class="h-threads-info-report-btn">
                       [<a href="/f/值班室" target="_blank">举报</a>]
                     </span> -->
-                    <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                    <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
                   </div>
                   <div class="h-threads-content"></div>
                 </div>
@@ -13154,14 +14396,22 @@ ${markedSwatchHtml}
         if (isReply) {
           // 板块页/时间线页：跳过全量刷新，由 handleBoardQuickReplyRefresh 做增量更新
           // 串内页：正常全量刷新
-          const _isBoardOrTimeline = /^\/f\//.test(location.pathname) || /\/Forum\/timeline\/id\/\d+/i.test(location.pathname);
+          const _isBoardOrTimeline = PageType.isBoardOrTimelinePage();
           if (!_isBoardOrTimeline) {
             try {
-              refreshRepliesWithSeamlessPaging(() => {
-                // 刷新完成（翻页逻辑已在内部处理）
-                recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
-                console.log('回复区刷新完成');
-              }, { getConfig: safeGetConfig });
+              // 错峰 150ms 发起：避开发送后发言历史回查（getLastPost/ref/thread api）的并发峰值
+              setTimeout(() => {
+                refreshRepliesWithSeamlessPaging((result) => {
+                  const ok = !(result && result.ok === false);
+                  // 刷新完成（翻页逻辑已在内部处理）
+                  recordCurrentThreadHistory(0, { reason: 'reply-success-refresh', countVisit: false, touchVisitedAt: true });
+                  if (ok) {
+                    console.log('回复区刷新完成');
+                  } else {
+                    console.warn('回复区刷新失败', result && result.reason);
+                  }
+                }, { getConfig: safeGetConfig });
+              }, 150);
             } catch (err) {
               console.error('refreshRepliesWithSeamlessPaging 调用失败', err);
             }
@@ -13416,7 +14666,7 @@ ${markedSwatchHtml}
                 try {
                   const actualFormat = await detectImageFormat(file);
                   console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
-                  toast('图片大小>2048KB，正在尝试自动压缩', 3000);
+                  toast(`图片大小 ${(file.size / 1024).toFixed(1)}KB（>2048KB），正在尝试自动压缩`, 3000);
                   console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩……`);
                   const compressedFile = await compressImageForRetry(file, actualFormat);
                   resetIllegalRetryState({ clearOriginalContent: false });
@@ -13593,8 +14843,8 @@ ${markedSwatchHtml}
       const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
       if (_cookieConfirmEnabled) {
         const _resto = (formData.get("resto") || "").toString().trim();
-        const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-        const _threadId = _resto || (_tidMatch ? _tidMatch[1].slice(0, 8) : "");
+        const _tid = PageType.getThreadId(false);
+        const _threadId = _resto || (_tid ? _tid.slice(0, 8) : "");
         if (_threadId && _threadId !== '20011114' && /^\d{6,8}$/.test(_threadId)) {
           const _pref = getThreadCookiePref(_threadId);
           const _doSend = () => {
@@ -13663,12 +14913,7 @@ ${markedSwatchHtml}
     // }
   function getCurrentPage() {
       // 对齐 originInfo / getImageViewerStartPage：?page= 优先，再 fallback path /page/N
-      const sp = new URL(location.href, location.origin).searchParams;
-      const q = parseInt(sp.get('page') || '', 10);
-      if (q > 0) return q;
-      const m = location.pathname.match(/\/page\/(\d+)(?:\.html)?$/);
-      if (m) return Math.max(1, parseInt(m[1], 10));
-      return 1;
+      return PageType.getPageNum();
     }
   function getMaxPageFromPagination() {
       const paginations = Array.from(document.querySelectorAll('.uk-pagination.uk-pagination-left.h-pagination'));
@@ -13749,12 +14994,10 @@ ${markedSwatchHtml}
       let fetchUrl;
       if (targetPage) {
         // cloned 目标页用 buildThreadPageUrl，避免 /t/.../page/N?page=M 混拼
-        const tidMatch =
-          location.pathname.match(/\/t\/(\d{4,})/) ||
-          location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
+        const tidMatch = PageType.getThreadId();
         const tidEl = document.querySelector('[data-threads-id]');
         const tid = (tidEl && tidEl.getAttribute('data-threads-id'))
-          || (tidMatch && tidMatch[1])
+          || tidMatch
           || null;
         if (tid && typeof buildThreadPageUrl === 'function') {
           fetchUrl = buildThreadPageUrl(tid, targetPage);
@@ -13767,8 +15010,26 @@ ${markedSwatchHtml}
         fetchUrl = location.href;
       }
       try { console.log('[refreshRepliesWithSeamlessPaging] fetchUrl', fetchUrl); } catch (e) {}
-      fetch(fetchUrl, { credentials: 'include' })
-        .then(res => res.text())
+      // 网络层失败重试：最多 2 次退避（300ms/800ms），连续失败才走外层 catch
+      const fetchTextWithRetry = (url, attempt = 0) => {
+        return fetch(url, { credentials: 'include' })
+          .then((res) => res.text())
+          .catch((err) => {
+            console.error('[refreshRepliesWithSeamlessPaging] fetch failed', {
+              url,
+              attempt,
+              name: err && err.name,
+              message: err && err.message,
+              at: Date.now()
+            });
+            if (attempt < 2) {
+              return new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 300 : 800))
+                .then(() => fetchTextWithRetry(url, attempt + 1));
+            }
+            throw err;
+          });
+      };
+      fetchTextWithRetry(fetchUrl)
         .then(html => {
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const newList = getRealThreadsList(doc);
@@ -13820,7 +15081,7 @@ ${markedSwatchHtml}
                 applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === 'function' ? getConfig() : null));
               } else {
                 try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
-                try { if (typeof highlightPO === 'function') highlightPO(); } catch (e) {}
+                try { if (typeof highlightPO === 'function') highlightPO(targetReplies); } catch (e) {}
                 try { if (typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(document); } catch (e) {}
                 try { if (typeof enableHDImage === 'function') enableHDImage(document); } catch (e) {}
                 try { if (typeof initContent === 'function') initContent(targetReplies); } catch (e) {}
@@ -13855,7 +15116,8 @@ ${markedSwatchHtml}
                 ? parsePaginationPageNum(nextLink.getAttribute('href') || nextLink.href || '')
                 : null;
               if (nextPageNum) {
-                toast('发现' + nextPageNum + '页，正在加载……');
+                // 发送成功后的单次刷新无代际并发，不引用其他函数的 activeGeneration（跨作用域 ReferenceError）
+                showRefreshStatus('发现' + nextPageNum + '页，正在加载……', 700);
                 if (window.SeamlessPaging && typeof window.SeamlessPaging.loadNext === 'function') {
                   setTimeout(() => {
                     window.SeamlessPaging.loadNext();
@@ -13871,9 +15133,15 @@ ${markedSwatchHtml}
           } catch (e) {}
           if (typeof done === 'function') done();
         })
-        .catch(() => {
-          toast('刷新回复区失败');
-          if (typeof done === 'function') done();
+        .catch((err) => {
+          console.error('[refreshRepliesWithSeamlessPaging] refresh failed', {
+            url: fetchUrl,
+            name: err && err.name,
+            message: err && err.message,
+            at: Date.now()
+          });
+          toast('刷新回复区失败，可能已有新回复，请手动刷新');
+          if (typeof done === 'function') done({ ok: false, reason: 'fetch-failed' });
         });
     }
   function isCookieDropdownShortcut(e) {
@@ -14738,6 +16006,28 @@ ${markedSwatchHtml}
             const panel = document.createElement('div');
             panel.className = 'kaomoji-panel';
             //panel.tabIndex = -1; // 👈 添加：使 panel 可以接收焦点
+            // 复制颜文字：右键菜单与键盘 C 共用；成功/失败反馈一致，焦点回到对应文本框
+            function copyKaomojiValue(value) {
+              const textarea = (select && select.closest && select.closest('form'))
+                ? select.closest('form').querySelector('textarea.h-post-form-textarea[name="content"]')
+                : null;
+              const restoreFocus = () => {
+                try {
+                  if (textarea && typeof textarea.focus === 'function') textarea.focus();
+                } catch (e) {}
+              };
+              return writeClipboardText(value, null)
+                .then(() => {
+                  toast('颜文字已复制', 900, { queue: false, key: 'kaomoji-copy' });
+                  hidePanel();
+                  restoreFocus();
+                })
+                .catch((err) => {
+                  console.warn('[kaomoji] copy failed:', err);
+                  toast('颜文字复制失败', 900, { queue: false, key: 'kaomoji-copy' });
+                  restoreFocus();
+                });
+            }
             function renderPanelItems() {
               while (panel.firstChild) panel.removeChild(panel.firstChild);
               const options = getSortedKaomojiOptions(select);
@@ -14754,17 +16044,10 @@ ${markedSwatchHtml}
                   trigger.textContent = opt.textContent || '选择颜文字';
                   hidePanel();
                 });
-                item.addEventListener('contextmenu', async (e) => {
+                item.addEventListener('contextmenu', (e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  try {
-                    await writeClipboardText(opt.value, null);
-                    toast('颜文字已复制', 900, { queue: false, key: 'kaomoji-copy' });
-                    hidePanel();
-                  } catch (err) {
-                    console.warn('[kaomoji] copy failed:', err);
-                    toast('颜文字复制失败', 900, { queue: false, key: 'kaomoji-copy' });
-                  }
+                  copyKaomojiValue(opt.value);
                 });
                 panel.appendChild(item);
               });
@@ -15069,6 +16352,14 @@ ${markedSwatchHtml}
                     e.preventDefault();
                     items[currentIndex].click();
                     return;
+                } else if (key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    // 焦点在面板内时，按 C 复制当前高亮颜文字（与右键复制一致）
+                    const activeEl = document.activeElement;
+                    if (panel.contains(activeEl) && items[currentIndex] && items[currentIndex].dataset && items[currentIndex].dataset.value) {
+                        e.preventDefault();
+                        copyKaomojiValue(items[currentIndex].dataset.value);
+                    }
+                    return;
                 }
                 if (newIndex !== currentIndex) {
                   setActive(items, newIndex);
@@ -15107,7 +16398,7 @@ ${markedSwatchHtml}
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)",
+              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
@@ -15317,7 +16608,23 @@ ${markedSwatchHtml}
     try {
       if (typeof GM_getValue === 'function') {
         const value = GM_getValue(getDraftRegistryKey(), []);
-        return Array.isArray(value) ? value : [];
+        if (!Array.isArray(value)) return [];
+        // 惰性自愈: 值为空的内容不保留——避免旧版本留存的空草稿键导致存储膨胀
+        const clean = value.filter((key) => {
+          try {
+            const v = (typeof GM_getValue === 'function') ? GM_getValue(key, '') : '';
+            return typeof v === 'string' && v !== '';
+          } catch (_) { return false; }
+        });
+        if (clean.length !== value.length) {
+          try { GM_setValue(getDraftRegistryKey(), clean); } catch (_) {}
+          value.forEach((key) => {
+            if (clean.indexOf(key) === -1) {
+              try { if (typeof GM_deleteValue === 'function') GM_deleteValue(key); else GM_setValue(key, ''); } catch (_) {}
+            }
+          });
+        }
+        return clean;
       }
     } catch (_) {}
     return [];
@@ -15377,10 +16684,16 @@ ${markedSwatchHtml}
   function saveDraftValue(pathname, content) {
     if (!getDraftEnabledNow()) return;
     const storageKey = getDraftStorageKey(pathname);
+    // 正文清空等于删除草稿: 删除本地并登记账本, 防止云端旧草稿经同步复活
+    if (String(content == null ? '' : content).trim() === '') {
+      deleteDraftSafe(storageKey);
+      return;
+    }
     try {
       if (typeof GM_setValue === 'function') {
         GM_setValue(storageKey, content);
         addDraftKeyToRegistry(storageKey);
+        removeDraftDeletion(storageKey);   // 重新编辑即翻案: 撤销该 URL 的删除标记
       }
     } catch (_) {}
   }
@@ -15406,6 +16719,34 @@ ${markedSwatchHtml}
     return legacyValue;
   }
   // 统一：安全删除草稿（有 GM_deleteValue 用之；否则写空串兜底）
+  // ── 草稿删除账本: WebDAV 双向同步时传播"草稿被删除"状态 ──
+  // 语义与分组设置删除账本一致: 删除总是赢, 重新编辑即翻案
+  function getDraftDeletionStore() {
+    try {
+      const v = GM_getValue('xdex_draft_deletions', null);
+      return (v && typeof v === 'object') ? v : {};
+    } catch (_) { return {}; }
+  }
+  function canonicalDraftKey(anyKey) {
+    const s = String(anyKey || '');
+    if (!s) return '';
+    return s.indexOf('xdex_draft:') === 0 ? s : getDraftStorageKey(s);
+  }
+  function registerDraftDeletion(storageKey) {
+    const key = canonicalDraftKey(storageKey);
+    if (!key) return;
+    const store = getDraftDeletionStore();
+    store[key] = Math.max(Number(store[key]) || 0, Date.now());
+    try { GM_setValue('xdex_draft_deletions', store); } catch (_) {}
+  }
+  function removeDraftDeletion(storageKey) {
+    const key = canonicalDraftKey(storageKey);
+    if (!key) return;
+    const store = getDraftDeletionStore();
+    if (!(key in store)) return;
+    delete store[key];
+    try { GM_setValue('xdex_draft_deletions', store); } catch (_) {}
+  }
   function deleteDraftSafe(key) {
     try {
       if (!key) key = getDraftKey();
@@ -15418,6 +16759,7 @@ ${markedSwatchHtml}
       }
     } catch (_) {}
     removeDraftKeyFromRegistry(key);
+    registerDraftDeletion(key);   // 标记已删除, 供 WebDAV 同步压制远端旧草稿
   }
   function deleteAllDraftsSafe() {
     const keysToDelete = new Set(getDraftRegistry());
@@ -15942,7 +17284,7 @@ function 注册自动保存编辑() {
           let $btn = $form.find('.xdex-clear-image-btn');
           if (hasFile) {
               if (!$btn.length) {
-                  $btn = $('<button type="button" class="xdex-clear-image-btn" title="清除图片">×</button>');
+                  $btn = $('<button type="button" class="xdex-clear-image-btn" title="清除图片">').html(XDEX_SVG_X);
                   $btn.css({
                       fontSize: '16px',
                       lineHeight: '1',
@@ -16212,12 +17554,12 @@ function 注册自动保存编辑() {
    * -------------------------------------------------- */
   function replyQuicklyOnBoardPage() {
     // 同时识别 /f/ 板块 和 /Forum/timeline/id/{id} 时间线
-    const isBoardPage = /^\/f\//.test(location.pathname);
-    const timelineMatch = location.pathname.match(/\/Forum\/timeline\/id\/(\d+)(?:\/page\/\d+(\.html)?)?/i);
-    const isTimeline = !!timelineMatch;
+    const isBoardPage = PageType.isBoardPage();
+    const timelineInfo = PageType.getTimelineInfo();
+    const isTimeline = !!timelineInfo;
     if (!isBoardPage && !isTimeline) return;
     // 时间线 id 与名称映射（1-7）
-    const timelineId = timelineMatch ? timelineMatch[1] : null;
+    const timelineId = timelineInfo ? timelineInfo.id : null;
     const timelineNameMap = {
       '1': '综合线',
       '2': '创作线',
@@ -16449,7 +17791,7 @@ function 注册自动保存编辑() {
         // 当前是板块页，直接使用发串表单
     } else if ($formReply.length) {
         // 当前是串内页，直接使用回串表单
-    } else if (/\/timeline|\/feed/.test(location.pathname)) {
+    } else if (PageType.isTimelineLikePage()) {
         // 当前是时间线页，无表单 → 插入一个回串表单
         $formReply = $(`
             <form action="/Home/Forum/doReplyThread.html" method="post" id="timeline-reply-form">
@@ -16573,7 +17915,7 @@ function 注册自动保存编辑() {
           // 包裹容器
           const $wrapper = $('<div class="xdex-file-wrapper" style="display:flex;align-items:center;justify-content:space-between;width:100%;"></div>');
           // “×”按钮
-          const $btnReset = $('<button type="button" class="js-reset" style="margin-right:6px;">×</button>');
+          const $btnReset = $('<button type="button" class="js-reset" style="margin-right:6px;display:inline-flex;align-items:center;">').html(XDEX_SVG_X);
           $btnReset.on('click', function(){
             // 重置 hidden 值
             $formPost.find('input[name="resto"]').val('20011114');
@@ -16625,7 +17967,7 @@ function 注册自动保存编辑() {
                             <!-- <span class="h-threads-info-report-btn">
                               [<a href="/f/值班室" target="_blank">举报</a>]
                             </span> -->
-                            <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.9999999</a>
+                            <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
                           </div>
                           <div class="h-threads-content">
                           </div>
@@ -16680,7 +18022,7 @@ function 注册自动保存编辑() {
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').text('连续');
       }
-    } else if (/^\/f\/(?:值班室|测试)(?:\/|$)/.test(decodeURIComponent(location.pathname))) {
+    } else if (PageType.isSpecialBoard()) {
       // 值班室/测试版块强制发串模式，方便快速举报/测试（不修改设置项，用户仍可手动切换回复模式)
       const _boardName = (/^\/f\/(值班室|测试)(?:\/|$)/.exec(decodeURIComponent(location.pathname)) || [])[1] || '特殊';
       setMode('发串', {silent: true});
@@ -16839,7 +18181,7 @@ function 注册自动保存编辑() {
       // === v3: API 拉取末页+倒数第二页，位置感知增量合并，滚动位置保持 ===
       function handleBoardQuickReplyRefresh(e) {
         // 只在 板块页 或 时间线 页生效
-        if (!/^\/f\//.test(location.pathname) && !/\/Forum\/timeline\/id\/\d+/i.test(location.pathname)) return;
+        if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
         const tid = e.detail?.tid || currentReplyTid;
         if (!tid) {
           toast('订阅失败：未识别到当前串号');
@@ -16857,6 +18199,8 @@ function 注册自动保存编辑() {
             const p1 = typeof p1Raw === 'string' ? JSON.parse(p1Raw) : p1Raw;
             if (!p1 || p1.success === false) throw new Error((p1 && p1.error) || 'API error');
             const replyCount = Number(p1.ReplyCount || p1.reply_count || 0);
+            // OP 主的饼干哈希: 用于增量插入回复时补插 (PO主) 标记
+            const opUserHash = String((p1 && (p1.user_hash || p1.UserHash)) || '');
             const tailPage = Math.max(1, Math.ceil(replyCount / REPLY_PER_PAGE));
             // Step 2: 拉取末页
             const tResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + tailPage, 'json');
@@ -16909,7 +18253,8 @@ function 注册自动保存编辑() {
                 }
               }
             } else {
-              newReplies = tailReplies;
+              // 无回复区串：页面从未展示过回复；排除 PO 主帖（Replies[0].id === tid）后即为新增回复
+              newReplies = tailReplies.filter(r => r && Number(r.id) !== Number(tid));
             }
             if (!newReplies.length) return;
             // Step 5: 保存滚动位置（插入前）
@@ -16927,8 +18272,13 @@ function 注册自动保存编辑() {
             });
             // Step 6: 遍历所有匹配节点，每个节点独立增量追加
             for (const node of allOldNodes) {
-              const rc = node.querySelector('.h-threads-item-replies');
-              if (!rc) continue;
+              let rc = node.querySelector('.h-threads-item-replies');
+              // 无回复区（新串未展开过回复）→ 创建容器，否则增量刷新会被静默跳过
+              if (!rc) {
+                rc = document.createElement('div');
+                rc.className = 'h-threads-item-replies';
+                node.appendChild(rc);
+              }
               // 收集该节点已有的回复 ID
               const existingIds = new Set(
                 Array.from(rc.querySelectorAll('.h-threads-item-reply[data-threads-id]'))
@@ -16938,7 +18288,7 @@ function 注册自动保存编辑() {
               // 只追加该节点缺失的回复
               for (const reply of newReplies) {
                 if (!existingIds.has(String(reply.id))) {
-                  const el = buildApiReplyNode(reply, tid);
+                  const el = buildApiReplyNode(reply, tid, opUserHash);
                   if (el) rc.appendChild(el);
                 }
               }
@@ -16982,7 +18332,7 @@ function 注册自动保存编辑() {
         })();
       }
       // 构建 API 回复的 DOM 节点（匹配页面原生 .h-threads-item-reply 结构）
-      function buildApiReplyNode(reply, threadId) {
+      function buildApiReplyNode(reply, threadId, opUserHash) {
         if (!reply || !reply.id) return null;
         const _e = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const id = String(reply.id);
@@ -17014,6 +18364,10 @@ function 注册自动保存编辑() {
         const uidHtml = hash
           ? '<span class="h-threads-info-uid" data-xdex-cookie-id="' + _e(hash) + '">ID:' + _e(hash) + '</span>'
           : '';
+        // PO 主判定: 与串的 OP 饼干哈希一致时插入 (PO主) 标记, 供 highlightPO 识别替换 Po 图标
+        const poMarkHtml = (opUserHash && hash && hash === opUserHash)
+          ? ' <span class="uk-text-primary uk-text-small">(PO主)</span>'
+          : '';
         const titleText = (title && title !== '无标题') ? _e(title) : '无标题';
         const emailText = (email && email !== '无名氏') ? _e(email) : '无名氏';
         const html = '<div data-threads-id="' + _e(id) + '" class="h-threads-item-reply">'
@@ -17025,6 +18379,7 @@ function 注册自动保存编辑() {
               + '<span class="h-threads-info-email">' + emailText + '</span>'
               + '<span class="h-threads-info-createdat">' + _e(now) + '</span>'
               + uidHtml
+              + poMarkHtml
               + '<span class="h-threads-info-report-btn">[<a href="/f/值班室?r=' + _e(id) + '">举报</a>]</span>'
               + '<a href="/t/' + _e(threadId) + '?r=' + _e(id) + '" class="h-threads-info-id">No.' + _e(id) + '</a>'
             + '</div>'
@@ -19266,7 +20621,7 @@ function 注册自动保存编辑() {
     return `
       <div class="favorite-thread-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
@@ -19279,7 +20634,7 @@ function 注册自动保存编辑() {
     return `
       <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
-        <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;line-height:16px;padding:0;font-size:14px;cursor:pointer;z-index:1;">×</button>
+        <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
@@ -19481,9 +20836,10 @@ function 注册自动保存编辑() {
   function createDefaultThreadHistoryStore() {
     return {
       version: 1,
-      limit: 500,
+      limit: THREAD_HISTORY_LIMIT,
       items: {},
       index: {},
+      tombstones: {},
       order: []
     };
   }
@@ -19493,9 +20849,32 @@ function 注册自动保存编辑() {
   function normalizeThreadHistoryStore(rawStore) {
     const store = Object.assign(createDefaultThreadHistoryStore(), rawStore || {});
     store.version = THREAD_HISTORY_STORE_VERSION;
-    store.limit = Number(store.limit) > 0 ? Number(store.limit) : THREAD_HISTORY_LIMIT;
+    // limit 一律以常量为准：旧版本持久化的 limit:500 不再沿用（否则 Infinity 设置永不生效）；Infinity 经 JSON 序列化为 null，读回后由此行回填
+    store.limit = THREAD_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
     store.index = store.index && typeof store.index === 'object' ? store.index : {};
+    // 墓碑: 软删除记录(deletedAt/origin/purged/revivedAt/record)。TTL 到期降级 purged(丢快照保留压制);
+    // purged 超长安全期后物理清除; revivedAt 传播标记超期一并清除
+    store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
+    {
+      const nowTs = Date.now();
+      Object.keys(store.tombstones).forEach((tKey) => {
+        const t = store.tombstones[tKey];
+        if (!t || typeof t !== 'object') { delete store.tombstones[tKey]; return; }
+        const deletedAt = Number(t.deletedAt) || 0;
+        if (t.purged) {
+          if (nowTs - deletedAt > THREAD_HISTORY_TOMBSTONE_HARD_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (t.revivedAt) {
+          if (nowTs - (Number(t.revivedAt) || 0) > THREAD_HISTORY_TOMBSTONE_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (deletedAt && nowTs - deletedAt > THREAD_HISTORY_TOMBSTONE_TTL_MS) {
+          store.tombstones[tKey] = { deletedAt, origin: t.origin || 'local', purged: true };
+        }
+      });
+    }
     const seen = new Set();
     store.order = (Array.isArray(store.order) ? store.order : [])
       .filter(key => {
@@ -19504,7 +20883,12 @@ function 注册自动保存编辑() {
         return true;
       });
     Object.keys(store.items).forEach(key => {
-      if (!store.index[key]) store.index[key] = buildThreadHistoryIndexEntry(store.items[key]);
+      const item = store.items[key];
+      const idx = store.index[key];
+      // 失步自愈: index.lastVisitedAt 与 item 不一致(历史合并缺陷的存量脏数据)时重建
+      if (!idx || Number(idx.lastVisitedAt) !== Number(item.lastVisitedAt)) {
+        store.index[key] = buildThreadHistoryIndexEntry(item);
+      }
       if (!seen.has(key)) {
         seen.add(key);
         store.order.push(key);
@@ -19608,6 +20992,7 @@ function 注册自动保存编辑() {
       version: POST_HISTORY_STORE_VERSION,
       // limit: POST_HISTORY_LIMIT,
       items: {},
+      tombstones: {},
       order: []
     };
   }
@@ -19767,6 +21152,27 @@ function 注册自动保存编辑() {
     store.version = POST_HISTORY_STORE_VERSION;
     // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    // 墓碑: 与浏览历史同构。TTL 到期降级 purged; purged 超安全期清除; revivedAt 标记超期清除
+    store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
+    {
+      const nowTs = Date.now();
+      Object.keys(store.tombstones).forEach((tKey) => {
+        const t = store.tombstones[tKey];
+        if (!t || typeof t !== 'object') { delete store.tombstones[tKey]; return; }
+        const deletedAt = Number(t.deletedAt) || 0;
+        if (t.purged) {
+          if (nowTs - deletedAt > POST_HISTORY_TOMBSTONE_HARD_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (t.revivedAt) {
+          if (nowTs - (Number(t.revivedAt) || 0) > POST_HISTORY_TOMBSTONE_TTL_MS) delete store.tombstones[tKey];
+          return;
+        }
+        if (deletedAt && nowTs - deletedAt > POST_HISTORY_TOMBSTONE_TTL_MS) {
+          store.tombstones[tKey] = { deletedAt, origin: t.origin || 'local', purged: true };
+        }
+      });
+    }
     const seen = new Set();
     store.order = (Array.isArray(store.order) ? store.order : [])
       .filter(key => {
@@ -19992,20 +21398,94 @@ function 注册自动保存编辑() {
   }
   function deletePostHistoryItem(localId) {
     const store = getPostHistoryStore();
+    // 软删除(分家): 原记录搬入墓碑快照, 主列表移除; 30 天内可恢复
+    const item = store.items[localId];
+    if (item) {
+      store.tombstones = store.tombstones || {};
+      store.tombstones[localId] = {
+        deletedAt: Date.now(),
+        origin: 'local',
+        purged: false,
+        revivedAt: null,
+        record: Object.assign({}, item)
+      };
+    }
     delete store.items[localId];
     store.order = (store.order || []).filter(key => key !== localId);
     return setPostHistoryStore(store);
   }
+  function restorePostHistoryFromTombstone(localId) {
+    const store = getPostHistoryStore();
+    const tomb = (store.tombstones || {})[localId];
+    if (!tomb || tomb.purged || tomb.revivedAt) return false;
+    const record = tomb.record || null;
+    const shadow = store.items[localId] || null;
+    let merged = null;
+    if (record && shadow) {
+      const recNewer = (Number(record.submittedAt) || 0) >= (Number(shadow.submittedAt) || 0);
+      merged = Object.assign({}, shadow, record, {
+        page: Math.max(Number(record.page) || 0, Number(shadow.page) || 0),
+        submittedAt: Math.min(Number(record.submittedAt) || Infinity, Number(shadow.submittedAt) || Infinity)
+      });
+      void recNewer;
+    } else {
+      merged = record ? Object.assign({}, record) : (shadow ? Object.assign({}, shadow) : null);
+    }
+    if (merged) {
+      merged.localId = merged.localId || localId;
+      store.items[localId] = merged;
+      if (!(store.order || []).includes(localId)) store.order.push(localId);
+    }
+    store.tombstones = store.tombstones || {};
+    store.tombstones[localId] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: false, revivedAt: Date.now() };
+    return setPostHistoryStore(store);
+  }
+  function purgePostHistoryTombstone(localId) {
+    const store = getPostHistoryStore();
+    const tomb = (store.tombstones || {})[localId];
+    if (!tomb) return false;
+    delete store.items[localId];
+    store.order = (store.order || []).filter(key => key !== localId);
+    store.tombstones[localId] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: true };
+    return setPostHistoryStore(store);
+  }
+  function purgeAllPostHistoryTombstones() {
+    const store = getPostHistoryStore();
+    const tombs = store.tombstones || {};
+    const now = Date.now();
+    Object.keys(tombs).forEach((key) => {
+      if (tombs[key].purged) return;
+      delete store.items[key];
+      tombs[key] = { deletedAt: Number(tombs[key].deletedAt) || now, origin: tombs[key].origin || 'local', purged: true };
+    });
+    store.order = (store.order || []).filter(k => !tombs[k] || tombs[k].purged);
+    return setPostHistoryStore(store);
+  }
   function clearPostHistory() {
-    return setPostHistoryStore(createDefaultPostHistoryStore());
+    // 批量软删除: 全部条目移入回收站; 30 天后自动彻底清除, 期间可恢复
+    const store = getPostHistoryStore();
+    const now = Date.now();
+    store.tombstones = store.tombstones || {};
+    Object.keys(store.items).forEach((key) => {
+      if (store.tombstones[key] && !store.tombstones[key].purged && !store.tombstones[key].revivedAt) return;
+      store.tombstones[key] = { deletedAt: now, origin: 'local', purged: false, revivedAt: null, record: Object.assign({}, store.items[key]) };
+    });
+    store.items = {};
+    store.order = [];
+    return setPostHistoryStore(store);
   }
   function searchPostHistory(query, type) {
     const store = getPostHistoryStore();
+    const tombs = store.tombstones || {};
     const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
     const { filters, tokens } = parsePostHistorySearchQuery(query);
     return (store.order || [])
       .map(key => ({ key, item: store.items[key] }))
       .filter(result => {
+        // 回收站压制: 未复活墓碑的条目不在主列表显示
+        const tomb = tombs[result.key];
+        // 仅"无删除后新记录"的纯墓碑才隐藏; 重新添加/更新会重建 items 影子条目并带标识显示
+        if (tomb && !tomb.revivedAt && !store.items[result.key]) return false;
         const item = result.item || {};
         if (normalizePostHistoryType(item.type) !== selectedType) return false;
         if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
@@ -20200,12 +21680,14 @@ function 注册自动保存编辑() {
     const postId = String(id || '').trim();
     if (!postId) return Promise.resolve(null);
     const detail = Object.assign({}, context || {}, { id: postId });
-    return fetchPostHistoryRefApiPost(postId, detail)
-      .then(refPost => {
-        if (postHistoryRefPostHasImage(refPost)) return refPost;
-        return fetchPostHistorySameOriginRefPost(postId, detail);
-      })
-      .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
+    // [停用-注释保留] 同源降级链（/Api/ref → /Home/Forum/ref）经实证（2026-08-18）对浏览器 UA 稳定返回 503/空，仅走主 API api.nmb.best/api/ref
+    return fetchPostHistoryRefApiPost(postId, detail);
+    // return fetchPostHistoryRefApiPost(postId, detail)
+    //   .then(refPost => {
+    //     if (postHistoryRefPostHasImage(refPost)) return refPost;
+    //     return fetchPostHistorySameOriginRefPost(postId, detail);
+    //   })
+    //   .catch(() => fetchPostHistorySameOriginRefPost(postId, detail));
   }
   function fetchPostHistoryRefApiPost(id, context) {
     const postId = String(id || '').trim();
@@ -20226,27 +21708,29 @@ function 注册自动保存编辑() {
       throw e;
     });
   }
-  function fetchPostHistorySameOriginRefPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
-    const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
-    return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
-      .then(resp => {
-        const refPost = parsePostHistoryRefResponse(resp, detail);
-        if (postHistoryRefPostHasImage(refPost)) return refPost;
-        return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
-      })
-      .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
-  }
-  function fetchPostHistoryRefHtmlFallbackPost(id, context) {
-    const postId = String(id || '').trim();
-    if (!postId) return Promise.resolve(null);
-    const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
-    const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
-    return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
-      .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
-  }
+  // [停用-注释保留] 同源降级（/Api/ref）：经实证（2026-08-18）该端点对浏览器 UA 稳定返回 503，恢复时取消注释并恢复 fetchPostHistoryRefPost 内调用即可
+  // function fetchPostHistorySameOriginRefPost(id, context) {
+  //   const postId = String(id || '').trim();
+  //   if (!postId) return Promise.resolve(null);
+  //   const url = `${POST_HISTORY_API_BASE}/ref?id=${encodeURIComponent(postId)}`;
+  //   const detail = Object.assign({}, context || {}, { id: postId, sameOriginFallback: true });
+  //   return fetchPostHistorySameOriginText(url, detail, 'ref same-origin fallback')
+  //     .then(resp => {
+  //       const refPost = parsePostHistoryRefResponse(resp, detail);
+  //       if (postHistoryRefPostHasImage(refPost)) return refPost;
+  //       return fetchPostHistoryRefHtmlFallbackPost(postId, detail);
+  //     })
+  //     .catch(() => fetchPostHistoryRefHtmlFallbackPost(postId, detail));
+  // }
+  // [停用-注释保留] HTML 降级（/Home/Forum/ref）：实证返回空页，随 /Api/ref 降级一并停用
+  // function fetchPostHistoryRefHtmlFallbackPost(id, context) {
+  //   const postId = String(id || '').trim();
+  //   if (!postId) return Promise.resolve(null);
+  //   const url = `/Home/Forum/ref?id=${encodeURIComponent(postId)}`;
+  //   const detail = Object.assign({}, context || {}, { id: postId, htmlFallback: true });
+  //   return fetchPostHistorySameOriginText(url, detail, 'ref html fallback')
+  //     .then(resp => parsePostHistoryRefHtmlResponse(resp, detail));
+  // }
   function enrichPostHistoryRefImage(localId, postId) {
     return fetchPostHistoryRefPost(postId, { localId }).then(refPost => {
       const imageFile = refPost ? buildPostHistoryImageFile(refPost.img, refPost.ext) : '';
@@ -20278,8 +21762,10 @@ function 注册自动保存编辑() {
   }
   function fetchPostHistoryThreadPage(threadId, page, context) {
     const detail = Object.assign({}, context || {}, { threadId, page });
-    return fetchPostHistoryThreadApiPage(threadId, page, detail)
-      .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
+    // [停用-注释保留] 同源降级（/Api/thread）经实证（2026-08-18）对浏览器 UA 稳定返回 503，仅走主 API api.nmb.best/api/thread
+    return fetchPostHistoryThreadApiPage(threadId, page, detail);
+    // return fetchPostHistoryThreadApiPage(threadId, page, detail)
+    //   .catch(() => fetchPostHistorySameOriginThreadPage(threadId, page, detail));
   }
   function fetchPostHistoryThreadApiPage(threadId, page, context) {
     const url = `${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
@@ -20297,11 +21783,12 @@ function 注册自动保存编辑() {
       throw e;
     });
   }
-  function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
-    const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
-    const detail = Object.assign({}, context || {}, { threadId, page });
-    return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
-  }
+  // [停用-注释保留] 同源降级（/Api/thread）：经实证（2026-08-18）该端点对浏览器 UA 稳定返回 503，恢复时取消注释并恢复 fetchPostHistoryThreadPage 内的 catch 即可
+  // function fetchPostHistorySameOriginThreadPage(threadId, page, context) {
+  //   const url = `${POST_HISTORY_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`;
+  //   const detail = Object.assign({}, context || {}, { threadId, page });
+  //   return fetchPostHistorySameOriginText(url, detail, 'thread same-origin fallback').then(resp => parsePostHistoryThreadResponse(resp, detail));
+  // }
   function getPostHistoryThreadFallbackPages(replyCount) {
     const total = Number(replyCount) || 0;
     const tailPage = Math.max(1, Math.ceil(total / POST_HISTORY_REPLIES_PER_PAGE));
@@ -21176,13 +22663,119 @@ function 注册自动保存编辑() {
   }
   function deleteThreadHistoryItem(key) {
     const store = getThreadHistoryStore();
+    // 软删除(分家): 原记录整体搬入墓碑快照, 主列表移除; 30 天内可恢复, 到期自动降级
+    const item = store.items[key];
+    if (item) {
+      store.tombstones = store.tombstones || {};
+      const prev = store.tombstones[key];
+      store.tombstones[key] = {
+        deletedAt: Date.now(),
+        origin: 'local',
+        purged: false,
+        revivedAt: null,
+        record: Object.assign({}, item)
+      };
+      void prev;
+      try {
+        const bl = GM_getValue('xdex_webdav_history_baselines', null);
+        if (bl && bl.threadHistory && (key in bl.threadHistory)) { delete bl.threadHistory[key]; GM_setValue('xdex_webdav_history_baselines', bl); }
+      } catch (e) {}
+    }
     delete store.items[key];
     delete store.index[key];
     store.order = (store.order || []).filter(itemKey => itemKey !== key);
     return setThreadHistoryStore(store);
   }
+  function restoreThreadHistoryFromTombstone(key) {
+    const store = getThreadHistoryStore();
+    const tomb = (store.tombstones || {})[key];
+    if (!tomb || tomb.purged || tomb.revivedAt) return false;
+    const record = tomb.record || null;
+    const shadow = store.items[key] || null;   // 删除后新段(如有)
+    let merged = null;
+    if (record && shadow) {
+      const recNewer = (Number(record.lastVisitedAt) || 0) >= (Number(shadow.lastVisitedAt) || 0);
+      merged = Object.assign({}, shadow, record, {
+        firstVisitedAt: Math.min(Number(record.firstVisitedAt) || Infinity, Number(shadow.firstVisitedAt) || Infinity),
+        lastVisitedAt: Math.max(Number(record.lastVisitedAt) || 0, Number(shadow.lastVisitedAt) || 0),
+        page: Math.max(Number(record.page) || 0, Number(shadow.page) || 0),
+        maxVisitedPage: Math.max(Number(record.maxVisitedPage) || 0, Number(shadow.maxVisitedPage) || 0),
+        visitCount: (Number(record.visitCount) || 0) + (Number(shadow.visitCount) || 0),
+        title: recNewer ? (record.title || shadow.title) : (shadow.title || record.title),
+        name: recNewer ? (record.name || shadow.name) : (shadow.name || record.name)
+      });
+    } else {
+      merged = record ? Object.assign({}, record) : (shadow ? Object.assign({}, shadow) : null);
+    }
+    if (merged) {
+      store.items[key] = merged;
+      store.index[key] = buildThreadHistoryIndexEntry(merged);
+      if (!(store.order || []).includes(key)) store.order.push(key);
+    }
+    // 墓碑转为 revivedAt 传播标记: 对端据此执行同样的恢复合并
+    store.tombstones = store.tombstones || {};
+    store.tombstones[key] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: false, revivedAt: Date.now() };
+    // 基线重置为恢复后的全局值, 防止下轮 delta 虚算
+    if (merged) {
+      try {
+        const bl = GM_getValue('xdex_webdav_history_baselines', null) || {};
+        bl.threadHistory = bl.threadHistory || {};
+        bl.threadHistory[key] = { count: Number(merged.visitCount) || 0, at: Date.now() };
+        GM_setValue('xdex_webdav_history_baselines', bl);
+      } catch (e) {}
+    } else {
+      deleteThreadHistoryBaselineEntry(key);
+    }
+    return setThreadHistoryStore(store);
+  }
+  function purgeThreadHistoryTombstone(key) {
+    const store = getThreadHistoryStore();
+    const tomb = (store.tombstones || {})[key];
+    if (!tomb) return false;
+    // 立即删除: 快照与新段一并清除, 仅留压制标记(purged), 防止对端旧数据复活
+    delete store.items[key];
+    delete store.index[key];
+    store.order = (store.order || []).filter(itemKey => itemKey !== key);
+    store.tombstones[key] = { deletedAt: Number(tomb.deletedAt) || Date.now(), origin: tomb.origin || 'local', purged: true };
+    deleteThreadHistoryBaselineEntry(key);
+    return setThreadHistoryStore(store);
+  }
+  function purgeAllThreadHistoryTombstones() {
+    const store = getThreadHistoryStore();
+    const tombs = store.tombstones || {};
+    const now = Date.now();
+    Object.keys(tombs).forEach((key) => {
+      if (tombs[key].purged) return;
+      delete store.items[key];
+      delete store.index[key];
+      tombs[key] = { deletedAt: Number(tombs[key].deletedAt) || now, origin: tombs[key].origin || 'local', purged: true };
+      deleteThreadHistoryBaselineEntry(key);
+    });
+    store.order = (store.order || []).filter(k => !tombs[k] || tombs[k].purged);
+    return setThreadHistoryStore(store);
+  }
+  function deleteThreadHistoryBaselineEntry(key) {
+    try {
+      const bl = GM_getValue('xdex_webdav_history_baselines', null);
+      if (!bl || !bl.threadHistory || !(key in bl.threadHistory)) return;
+      delete bl.threadHistory[key];
+      GM_setValue('xdex_webdav_history_baselines', bl);
+    } catch (e) {}
+  }
   function clearThreadHistory() {
-    return setThreadHistoryStore(createDefaultThreadHistoryStore());
+    // 批量软删除: 全部条目移入回收站(逐条墓碑), 30 天后自动彻底清除; 期间可恢复
+    const store = getThreadHistoryStore();
+    const now = Date.now();
+    store.tombstones = store.tombstones || {};
+    Object.keys(store.items).forEach((key) => {
+      if (store.tombstones[key] && !store.tombstones[key].purged && !store.tombstones[key].revivedAt) return;
+      store.tombstones[key] = { deletedAt: now, origin: 'local', purged: false, revivedAt: null, record: Object.assign({}, store.items[key]) };
+      deleteThreadHistoryBaselineEntry(key);
+    });
+    store.items = {};
+    store.index = {};
+    store.order = [];
+    return setThreadHistoryStore(store);
   }
   function parseThreadHistorySearchQuery(query) {
     const filters = { mode: '', hasImage: false, isGif: false, hasZeroWidth: false, isSage: false };
@@ -21230,6 +22823,10 @@ function 注册自动保存编辑() {
       .filter(key => {
         const entry = store.index[key];
         if (!entry || !store.items[key]) return false;
+        // 回收站压制: 存在未复活墓碑的条目不在主列表显示(删除后新段同样隐藏, 恢复后随 revivedAt 解除)
+        const tomb = store.tombstones && store.tombstones[key];
+        // 仅"无删除后新段"的纯墓碑才隐藏; 再次浏览会重建 items 影子条目, 带回收站标识重新显示
+        if (tomb && !tomb.revivedAt && !store.items[key]) return false;
         if (filters.mode && entry.mode !== filters.mode) return false;
         if (filters.hasImage && !entry.hasImage) return false;
         if (filters.isGif && !entry.isGif) return false;
@@ -21455,8 +23052,26 @@ function 注册自动保存编辑() {
     deleteButton.className = 'xdex-history-delete';
     deleteButton.dataset.historyKey = result.key;
     deleteButton.title = '删除';
-    deleteButton.textContent = '×';
+    deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
+    // 回收站标识: 该串原始浏览数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    if (typeof getThreadHistoryStore === 'function') {
+      const tomb = (getThreadHistoryStore().tombstones || {})[result.key];
+      if (tomb && !tomb.purged) {
+        const mark = document.createElement('button');
+        mark.type = 'button';
+        mark.className = 'xdex-history-tombstone-mark';
+        mark.title = `历史浏览数据在回收站中 · ${formatTombstoneRemainText(tomb.deletedAt, THREAD_HISTORY_TOMBSTONE_TTL_MS)}`;
+        mark.setAttribute('aria-label', mark.title);
+        mark.innerHTML = XDEX_SVG_TRASH;
+        mark.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          openRecycleBinAndLocate(result.key);
+        });
+        main.appendChild(mark);
+      }
+    }
     if (item.imageFile) {
       const imageLink = document.createElement('a');
       imageLink.className = 'h-threads-img-a xdex-history-image';
@@ -21514,14 +23129,18 @@ function 注册自动保存编辑() {
     }
     return element;
   }
-  function batchRenderHistoryItems(root, results, buildFn, queueId) {
+  function cancelHistoryRenderQueue(queueId) {
     const prev = historyRenderQueues.get(queueId);
-    if (prev) {
-      prev.cancelled = true;
-      if (prev.scrollHandler && prev.scrollContainer) {
-        prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
-      }
+    if (!prev) return;
+    prev.cancelled = true;
+    if (prev.scrollHandler && prev.scrollContainer) {
+      prev.scrollContainer.removeEventListener('scroll', prev.scrollHandler, { passive: true });
     }
+    historyRenderQueues.delete(queueId);
+  }
+  function batchRenderHistoryItems(root, results, buildFn, queueId) {
+    // 新批次顶替旧批次: 同队列已有在途渲染一律取消
+    cancelHistoryRenderQueue(queueId);
     if (!root) return;
     const total = results.length;
     if (total <= 0) return;
@@ -21566,7 +23185,150 @@ function 注册自动保存编辑() {
       });
     }
   }
+  // ===== 共享 SVG 图标（统一视觉，替代字符"×"等占位） =====
+  const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
+  const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  const XDEX_SVG_RESTORE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"></path><path d="M18.5 6.5l-1.3 3.6"></path><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"></path></svg>';
+  const XDEX_SVG_PURGE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  // 剩余时间略写: 24 小时内显示小时数, 超过显示天数
+  function formatTombstoneRemainText(deletedAt, ttlMs) {
+    const remain = Math.max(0, (Number(deletedAt) || 0) + (ttlMs || 0) - Date.now());
+    const hours = Math.ceil(remain / (60 * 60 * 1000));
+    return hours <= 24 ? `${hours} 小时后删除` : `${Math.ceil(remain / (24 * 60 * 60 * 1000))} 天后删除`;
+  }
+  const THREAD_HISTORY_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  const THREAD_HISTORY_TOMBSTONE_HARD_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+  const POST_HISTORY_TOMBSTONE_HARD_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+  const POST_HISTORY_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  // ===== 回收站 UI（墓碑数据层未接入前 tombstones 恒为空，视图显示空态） =====
+  let threadHistoryRecycleMode = false;
+  let threadHistoryRecycleSort = 'expiring'; // 'expiring'=即将删除优先 | 'recent'=最近删除优先
+  function getThreadHistoryTombstoneList() {
+    const store = getThreadHistoryStore();
+    const tombs = store.tombstones || {};
+    let arr = Object.keys(tombs)
+      .filter((key) => !tombs[key].purged)
+      .map((key) => Object.assign({ key }, tombs[key]));
+      const nowTs = Date.now();
+      if (threadHistoryRecycleSort === 'due24h') {
+        // 筛选: 剩余不足 24 小时的条目, 仍按即将删除优先排列
+        arr = arr.filter(t => ((Number(t.deletedAt) || 0) + THREAD_HISTORY_TOMBSTONE_TTL_MS - nowTs) <= 24 * 60 * 60 * 1000);
+        arr.sort((a, b) => (Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0));
+      } else {
+        arr.sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (threadHistoryRecycleSort === 'recent' ? -1 : 1));
+      }
+      return arr;
+  }
+  function openRecycleBinAndLocate(key) {
+    setThreadHistoryRecycleMode(true);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`#sp_history_results [data-recycle-key="${CSS.escape(key)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('xdex-recycle-highlight');
+      setTimeout(() => el.classList.remove('xdex-recycle-highlight'), 2000);
+    });
+  }
+  function updateThreadHistoryRecycleBadge() {
+    const badge = document.getElementById('sp_history_recycle_badge');
+    if (!badge) return;
+    const list = getThreadHistoryTombstoneList();
+    // 角标仅在有条目"剩余不足 24 小时"(即将被彻底删除)时显示
+    const dueCutoff = Date.now() + 24 * 60 * 60 * 1000;
+    const dueSoonCount = list.filter(t => {
+      const expireAt = (Number(t.deletedAt) || 0) + THREAD_HISTORY_TOMBSTONE_TTL_MS;
+      return expireAt > Date.now() && expireAt <= dueCutoff;
+    }).length;
+    badge.textContent = String(dueSoonCount);
+    badge.hidden = dueSoonCount === 0;
+  }
+  function renderThreadHistoryRecycleView() {
+    const root = document.getElementById('sp_history_results');
+    if (!root) return;
+    const list = getThreadHistoryTombstoneList();
+    const barCount = document.getElementById('sp_history_recycle_barcount');
+    if (barCount) barCount.textContent = `${list.length} 条`;
+    const emptyBtn = document.getElementById('sp_history_recycle_empty');
+    if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    root.textContent = '';
+    const now = Date.now();
+    const liveStore = getThreadHistoryStore();
+    for (const t of list) {
+      const rec = t.record || {};
+      // 删除后的新段(items 中被压制的独立计数)动态合成展示
+      const shadow = liveStore.items[t.key] || null;
+      const newVisits = shadow ? (Number(shadow.visitCount) || 0) : 0;
+      // 合成展示视图: 快照为基础; 最近访问/最远页码与新段同步取最新, 与回收站信息保持一致
+      const itemView = Object.assign({}, rec);
+      if (shadow) {
+        itemView.lastVisitedAt = Math.max(Number(rec.lastVisitedAt) || 0, Number(shadow.lastVisitedAt) || 0);
+        itemView.maxVisitedPage = Math.max(Number(rec.maxVisitedPage) || 0, Number(shadow.maxVisitedPage) || 0);
+        itemView.page = Math.max(Number(rec.page) || 0, Number(shadow.page) || 0);
+      }
+      // 复用正常条目构建器, 展示形式与主列表完全一致
+      const card = buildThreadHistoryItemElement({
+        key: t.key,
+        item: itemView,
+        index: buildThreadHistoryIndexEntry(itemView)
+      });
+      const legacyDelete = card.querySelector('.xdex-history-delete');
+      if (legacyDelete) legacyDelete.remove();
+      const legacyMark = card.querySelector('.xdex-history-tombstone-mark');
+      if (legacyMark) legacyMark.remove();
+      const item = document.createElement('div');
+      item.className = 'xdex-recycle-item';
+      item.dataset.recycleKey = t.key;
+      item.appendChild(card);
+      const metaEl = document.createElement('div');
+      metaEl.className = 'xdex-recycle-item-meta';
+      const metaText = document.createElement('span');
+      metaText.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString('zh-CN', { hour12: false })} · ${formatTombstoneRemainText(t.deletedAt, THREAD_HISTORY_TOMBSTONE_TTL_MS)}${newVisits > 0 ? ` · 新增访问 ${newVisits} 次` : ''}`;
+      metaEl.appendChild(metaText);
+      const restoreBtn = document.createElement('button');
+      restoreBtn.type = 'button';
+      restoreBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-restore';
+      restoreBtn.dataset.recycleKey = t.key;
+      restoreBtn.title = '恢复该条目到浏览历史';
+      restoreBtn.setAttribute('aria-label', '恢复');
+      restoreBtn.innerHTML = XDEX_SVG_RESTORE_ICON;
+      const purgeBtn = document.createElement('button');
+      purgeBtn.type = 'button';
+      purgeBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-purge';
+      purgeBtn.dataset.recycleKey = t.key;
+      purgeBtn.title = '彻底删除（无法恢复）';
+      purgeBtn.setAttribute('aria-label', '彻底删除');
+      purgeBtn.innerHTML = XDEX_SVG_PURGE_ICON;
+      metaEl.appendChild(restoreBtn);
+      metaEl.appendChild(purgeBtn);
+      item.appendChild(metaEl);
+      root.appendChild(item);
+    }
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-recycle-empty';
+      empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的浏览记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
+      root.appendChild(empty);
+    }
+  }
+  function setThreadHistoryRecycleMode(on) {
+    const next = !!on;
+    if (threadHistoryRecycleMode === next) return;
+    threadHistoryRecycleMode = next;
+    // 进入回收站前终止主列表在途批次: 否则旧批次回调会在回收站视图上继续追加普通条目
+    if (next) cancelHistoryRenderQueue('threadHistory');
+    const content = document.getElementById('sp_history_content');
+    if (content) content.classList.toggle('xdex-recycle-mode', threadHistoryRecycleMode);
+    const bar = document.getElementById('sp_history_recycle_bar');
+    if (bar) bar.hidden = !threadHistoryRecycleMode;
+    if (threadHistoryRecycleMode) {
+      renderThreadHistoryRecycleView();
+    } else {
+      renderThreadHistoryModule();
+    }
+  }
   function renderThreadHistoryModule(query) {
+    if (threadHistoryRecycleMode) { renderThreadHistoryRecycleView(); return; }
+    updateThreadHistoryRecycleBadge();
     const root = document.getElementById('sp_history_results');
     if (!root) {
       logThreadHistory('render skipped: missing #sp_history_results');
@@ -21644,6 +23406,9 @@ function 注册自动保存编辑() {
     const quoteId = String(tid || '').trim();
     if (!/^\d+$/.test(quoteId) || quoteId === '9999999') return false;
     try {
+      // 由调用方写入的“当前串”上下文（保持函数签名契约不变）
+      const ctxThreadId = window.__xdexPendingQuoteCtxTid || ((typeof PageType !== 'undefined' && PageType.getThreadId) ? PageType.getThreadId(true) : '');
+      window.__xdexPendingQuoteCtxTid = '';
       if (typeof window.__xdexOpenQuoteByTid !== 'function' && typeof enableQuotePreview === 'function') {
         enableQuotePreview();
       }
@@ -21758,6 +23523,7 @@ function 注册自动保存编辑() {
     });
     $('#sp_history_results').off('click.xdex-history-image-quote', '.xdex-history-image').on('click.xdex-history-image-quote', '.xdex-history-image', function (e) {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      window.__xdexPendingQuoteCtxTid = (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(this)) || '';
       const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
       if (!opened) return;
       e.preventDefault();
@@ -21770,7 +23536,7 @@ function 注册自动保存编辑() {
       if (!key) return;
       deleteThreadHistoryItem(key);
       renderThreadHistoryModule();
-      toast('已删除浏览历史');
+      toast('已移入回收站，30 天后自动清除，可在回收站恢复');
     });
     $('#sp_history_clear').off('click.xdex-history').on('click.xdex-history', function (e) {
       e.preventDefault();
@@ -21778,8 +23544,47 @@ function 注册自动保存编辑() {
         if (!window.confirm('确定要清空全部浏览历史吗？')) return;
         clearThreadHistory();
         renderThreadHistoryModule();
-        toast('已清空浏览历史');
+        toast('已清空浏览历史（已移入回收站，30 天内可恢复）');
       });
+    });
+    $('#sp_history_recycle').off('click.xdex-history-recycle').on('click.xdex-history-recycle', function (e) {
+      e.preventDefault();
+      setThreadHistoryRecycleMode(true);
+    });
+    $('#sp_history_recycle_back').off('click.xdex-history-recycle').on('click.xdex-history-recycle', function (e) {
+      e.preventDefault();
+      setThreadHistoryRecycleMode(false);
+    });
+    $('#sp_history_recycle_sort').off('change.xdex-history-recycle').on('change.xdex-history-recycle', function () {
+      threadHistoryRecycleSort = this.value;
+      renderThreadHistoryRecycleView();
+    });
+    $('#sp_history_results').off('click.xdex-history-recycle-action', '.xdex-recycle-item-restore').on('click.xdex-history-recycle-action', '.xdex-recycle-item-restore', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      restoreThreadHistoryFromTombstone(key);
+      renderThreadHistoryRecycleView();
+      toast('已恢复该浏览记录');
+    });
+    $('#sp_history_results').off('click.xdex-history-recycle-action', '.xdex-recycle-item-purge').on('click.xdex-history-recycle-action', '.xdex-recycle-item-purge', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      if (!window.confirm('确定要彻底删除这条记录吗？此操作无法通过恢复找回。')) return;
+      purgeThreadHistoryTombstone(key);
+      renderThreadHistoryRecycleView();
+      toast('已彻底删除');
+    });
+    $('#sp_history_recycle_empty').off('click.xdex-history-recycle-empty').on('click.xdex-history-recycle-empty', function (e) {
+      e.preventDefault();
+      if (this.disabled) return;
+      if (!window.confirm('确定要清空回收站吗？全部待删除记录将被彻底清除，无法恢复。')) return;
+      purgeAllThreadHistoryTombstones();
+      renderThreadHistoryRecycleView();
+      toast('回收站已清空');
     });
   }
   function buildPostHistoryItemElement(result) {
@@ -21835,8 +23640,26 @@ function 注册自动保存编辑() {
     deleteButton.className = 'xdex-post-history-delete';
     deleteButton.dataset.postHistoryKey = result.key;
     deleteButton.title = '删除';
-    deleteButton.textContent = '×';
+    deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
+    // 回收站标识: 该发言原始数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    if (typeof getPostHistoryStore === 'function') {
+      const tomb = (getPostHistoryStore().tombstones || {})[result.key];
+      if (tomb && !tomb.purged) {
+        const mark = document.createElement('button');
+        mark.type = 'button';
+        mark.className = 'xdex-post-history-tombstone-mark';
+        mark.title = `历史发言数据在回收站中 · ${formatTombstoneRemainText(tomb.deletedAt, POST_HISTORY_TOMBSTONE_TTL_MS)}`;
+        mark.setAttribute('aria-label', mark.title);
+        mark.innerHTML = XDEX_SVG_TRASH;
+        mark.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          openPostRecycleBinAndLocate(result.key);
+        });
+        main.appendChild(mark);
+      }
+    }
     if (item.imageFile) {
       const imageLink = document.createElement('a');
       imageLink.className = 'h-threads-img-a xdex-post-history-image';
@@ -21880,7 +23703,132 @@ function 注册自动保存编辑() {
     markAllCookies(getHistoryMarkedGroups(), wrapper);
     return wrapper;
   }
+  // ===== 发言历史回收站 UI（与浏览历史同构） =====
+  let postHistoryRecycleMode = false;
+  let postHistoryRecycleSort = 'expiring';
+  function getPostHistoryTombstoneList() {
+    const store = getPostHistoryStore();
+    const tombs = store.tombstones || {};
+    let arr = Object.keys(tombs)
+      .filter((key) => !tombs[key].purged)
+      .map((key) => Object.assign({ key }, tombs[key]));
+      const nowTs = Date.now();
+      if (postHistoryRecycleSort === 'due24h') {
+        arr = arr.filter(t => ((Number(t.deletedAt) || 0) + POST_HISTORY_TOMBSTONE_TTL_MS - nowTs) <= 24 * 60 * 60 * 1000);
+        arr.sort((a, b) => (Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0));
+      } else {
+        arr.sort((a, b) => ((Number(a.deletedAt) || 0) - (Number(b.deletedAt) || 0)) * (postHistoryRecycleSort === 'recent' ? -1 : 1));
+      }
+      return arr;
+  }
+  function openPostRecycleBinAndLocate(key) {
+    setPostHistoryRecycleMode(true);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`#sp_posts_results [data-recycle-key="${CSS.escape(key)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('xdex-recycle-highlight');
+      setTimeout(() => el.classList.remove('xdex-recycle-highlight'), 2000);
+    });
+  }
+  function updatePostHistoryRecycleBadge() {
+    const badge = document.getElementById('sp_posts_recycle_badge');
+    if (!badge) return;
+    const list = getPostHistoryTombstoneList();
+    // 角标仅在有条目"剩余不足 24 小时"(即将被彻底删除)时显示
+    const dueCutoff = Date.now() + 24 * 60 * 60 * 1000;
+    const dueSoonCount = list.filter(t => {
+      const expireAt = (Number(t.deletedAt) || 0) + POST_HISTORY_TOMBSTONE_TTL_MS;
+      return expireAt > Date.now() && expireAt <= dueCutoff;
+    }).length;
+    badge.textContent = String(dueSoonCount);
+    badge.hidden = dueSoonCount === 0;
+  }
+  function renderPostHistoryRecycleView() {
+    const root = document.getElementById('sp_posts_results');
+    if (!root) return;
+    const list = getPostHistoryTombstoneList();
+    const barCount = document.getElementById('sp_posts_recycle_barcount');
+    if (barCount) barCount.textContent = `${list.length} 条`;
+    const emptyBtn = document.getElementById('sp_posts_recycle_empty');
+    if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    root.textContent = '';
+    const now = Date.now();
+    const liveStore = getPostHistoryStore();
+    for (const t of list) {
+      const rec = t.record || {};
+      // 删除后的新记录(items 中被压制的独立条目)动态合成展示
+      const shadow = liveStore.items[t.key] || null;
+      // 合成展示视图: 快照为基础; 页码/时间与新记录同步取最新
+      const itemView = Object.assign({}, rec);
+      if (shadow) {
+        itemView.submittedAt = Math.min(Number(rec.submittedAt) || Infinity, Number(shadow.submittedAt) || Infinity);
+        itemView.page = Math.max(Number(rec.page) || 0, Number(shadow.page) || 0);
+        itemView.contentText = shadow.contentText || rec.contentText;
+      }
+      // 复用正常条目构建器, 展示形式与发言历史主列表完全一致
+      const card = buildPostHistoryItemElement({
+        key: t.key,
+        item: itemView
+      });
+      const legacyDelete = card.querySelector('.xdex-post-history-delete');
+      if (legacyDelete) legacyDelete.remove();
+      const legacyMark = card.querySelector('.xdex-post-history-tombstone-mark');
+      if (legacyMark) legacyMark.remove();
+      const item = document.createElement('div');
+      item.className = 'xdex-recycle-item';
+      item.dataset.recycleKey = t.key;
+      item.appendChild(card);
+      const metaEl = document.createElement('div');
+      metaEl.className = 'xdex-recycle-item-meta';
+      const metaText = document.createElement('span');
+      metaText.textContent = `删除于 ${new Date(t.deletedAt).toLocaleString('zh-CN', { hour12: false })} · ${formatTombstoneRemainText(t.deletedAt, POST_HISTORY_TOMBSTONE_TTL_MS)}${shadow ? ' · 删除后有新记录' : ''}`;
+      metaEl.appendChild(metaText);
+      const restoreBtn = document.createElement('button');
+      restoreBtn.type = 'button';
+      restoreBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-restore';
+      restoreBtn.dataset.recycleKey = t.key;
+      restoreBtn.title = '恢复该条目到发言历史';
+      restoreBtn.setAttribute('aria-label', '恢复');
+      restoreBtn.innerHTML = XDEX_SVG_RESTORE_ICON;
+      const purgeBtn = document.createElement('button');
+      purgeBtn.type = 'button';
+      purgeBtn.className = 'xdex-recycle-item-btn xdex-recycle-item-purge';
+      purgeBtn.dataset.recycleKey = t.key;
+      purgeBtn.title = '彻底删除（无法恢复）';
+      purgeBtn.setAttribute('aria-label', '彻底删除');
+      purgeBtn.innerHTML = XDEX_SVG_PURGE_ICON;
+      metaEl.appendChild(restoreBtn);
+      metaEl.appendChild(purgeBtn);
+      item.appendChild(metaEl);
+      root.appendChild(item);
+    }
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'xdex-recycle-empty';
+      empty.innerHTML = '回收站为空<br><span style="font-size:12px;opacity:.8;">已删除的发言记录会在这里保留 30 天，期间可随时恢复；到期未恢复将自动彻底清除</span>';
+      root.appendChild(empty);
+    }
+  }
+  function setPostHistoryRecycleMode(on) {
+    const next = !!on;
+    if (postHistoryRecycleMode === next) return;
+    postHistoryRecycleMode = next;
+    // 进入回收站前终止主列表在途批次
+    if (next) cancelHistoryRenderQueue('postHistory');
+    const content = document.getElementById('sp_posts_content');
+    if (content) content.classList.toggle('xdex-recycle-mode', postHistoryRecycleMode);
+    const bar = document.getElementById('sp_posts_recycle_bar');
+    if (bar) bar.hidden = !postHistoryRecycleMode;
+    if (postHistoryRecycleMode) {
+      renderPostHistoryRecycleView();
+    } else {
+      renderPostHistoryModule();
+    }
+  }
   function renderPostHistoryModule(query) {
+    if (postHistoryRecycleMode) { renderPostHistoryRecycleView(); return; }
+    updatePostHistoryRecycleBadge();
     const root = document.getElementById('sp_posts_results');
     if (!root) return;
     postHistoryLiveRenderDirty = false;
@@ -22318,7 +24266,7 @@ function 注册自动保存编辑() {
     deleteButton.className = 'xdex-post-history-delete';
     deleteButton.dataset.feedThreadId = String(threadId);
     deleteButton.title = '取消订阅';
-    deleteButton.textContent = '×';
+    deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
     // 图片
     const imgRaw = String(item.img || '');
@@ -22539,6 +24487,7 @@ function 注册自动保存编辑() {
     // 订阅面板图片点击 → 打开引用弹窗（图片激活态）
     $('#sp_feeds_results').off('click.xdex-feed-image-quote', '.xdex-history-image').on('click.xdex-feed-image-quote', '.xdex-history-image', function (e) {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      window.__xdexPendingQuoteCtxTid = (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(this)) || '';
       const opened = openHistoryImageQuotePreview(this.dataset.historyQuoteId || '');
       if (!opened) return;
       e.preventDefault();
@@ -22680,6 +24629,7 @@ function 注册自动保存编辑() {
     });
     $('#sp_posts_results').off('click.xdex-post-history-image-quote', '.xdex-post-history-image').on('click.xdex-post-history-image-quote', '.xdex-post-history-image', function (e) {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      window.__xdexPendingQuoteCtxTid = (window.__xdexQuoteRefMark && window.__xdexQuoteRefMark.getContextThreadId(this)) || '';
       const opened = openHistoryImageQuotePreview(this.dataset.postHistoryQuoteId || '');
       if (!opened) return;
       e.preventDefault();
@@ -22693,7 +24643,7 @@ function 注册自动保存编辑() {
       if (!window.confirm('确定要删除这条发言记录吗？')) return;
       deletePostHistoryItem(key);
       renderPostHistoryModule();
-      toast('已删除发言记录');
+      toast('已移入回收站，30 天后自动清除，可在回收站恢复');
     });
     $('#sp_posts_clear').off('click.xdex-post-history').on('click.xdex-post-history', function (e) {
       e.preventDefault();
@@ -22701,8 +24651,47 @@ function 注册自动保存编辑() {
         if (!window.confirm('确定要清空全部我的发言记录吗？')) return;
         clearPostHistory();
         renderPostHistoryModule();
-        toast('已清空我的发言');
+        toast('已清空我的发言（已移入回收站，30 天内可恢复）');
       });
+    });
+    $('#sp_posts_recycle').off('click.xdex-post-history-recycle').on('click.xdex-post-history-recycle', function (e) {
+      e.preventDefault();
+      setPostHistoryRecycleMode(true);
+    });
+    $('#sp_posts_recycle_back').off('click.xdex-post-history-recycle').on('click.xdex-post-history-recycle', function (e) {
+      e.preventDefault();
+      setPostHistoryRecycleMode(false);
+    });
+    $('#sp_posts_recycle_sort').off('change.xdex-post-history-recycle').on('change.xdex-post-history-recycle', function () {
+      postHistoryRecycleSort = this.value;
+      renderPostHistoryRecycleView();
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-recycle-action', '.xdex-recycle-item-restore').on('click.xdex-post-history-recycle-action', '.xdex-recycle-item-restore', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      restorePostHistoryFromTombstone(key);
+      renderPostHistoryRecycleView();
+      toast('已恢复该发言记录');
+    });
+    $('#sp_posts_results').off('click.xdex-post-history-recycle-action', '.xdex-recycle-item-purge').on('click.xdex-post-history-recycle-action', '.xdex-recycle-item-purge', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = this.dataset.recycleKey || '';
+      if (!key) return;
+      if (!window.confirm('确定要彻底删除这条记录吗？此操作无法通过恢复找回。')) return;
+      purgePostHistoryTombstone(key);
+      renderPostHistoryRecycleView();
+      toast('已彻底删除');
+    });
+    $('#sp_posts_recycle_empty').off('click.xdex-post-history-recycle-empty').on('click.xdex-post-history-recycle-empty', function (e) {
+      e.preventDefault();
+      if (this.disabled) return;
+      if (!window.confirm('确定要清空回收站吗？全部待删除记录将被彻底清除，无法恢复。')) return;
+      purgeAllPostHistoryTombstones();
+      renderPostHistoryRecycleView();
+      toast('回收站已清空');
     });
     // 手动添加发言历史
     // 禁用浏览器自动填充
@@ -24028,6 +26017,27 @@ function 注册自动保存编辑() {
         object-fit: cover; border-radius: 50%;
         pointer-events: none; display: block;
       }
+      .xdex-image-viewer-btn svg {
+        width: 18px; height: 18px;
+        display: block; pointer-events: none;
+      }
+      #xdex-tombstone-mark {
+        position: fixed; top: 44px; right: 52px; z-index: 10000;
+        width: 28px; height: 28px; padding: 0; margin: 0;
+        border: none; border-radius: 50%;
+        background: #F0E0D6; color: #5b4636;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,.18);
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden; line-height: 1;
+      }
+      #xdex-tombstone-mark:hover {
+        background: #e8d5c5; color: #c62828;
+      }
+      #xdex-tombstone-mark svg {
+        width: 15px; height: 15px;
+        display: block; pointer-events: none;
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -24046,13 +26056,13 @@ function 注册自动保存编辑() {
     return 'default';
   }
   function getCurrentThreadIdForImageViewer() {
-    const threadMatch = location.pathname.match(/\/t\/(\d{6,8})/) || location.pathname.match(/\/Forum\/po\/id\/(\d+)/);
-    return threadMatch ? threadMatch[1] : '';
+    return PageType.getThreadId(false);
   }
   function isImageViewerThreadPage() {
-    return /\/t\/\d{6,8}/.test(location.pathname) || /\/Forum\/po\/id\/\d+/.test(location.pathname);
+    return PageType.isThreadPage(false);
   }
   function syncImageViewerButtonForHideMode(mode) {
+    const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
     ensureImageViewerButtonStyle();
     const btn = document.querySelector('.xdex-image-viewer-btn');
     if (!btn) return;
@@ -24061,7 +26071,7 @@ function 注册自动保存编辑() {
     const tipsImg = btn.querySelector('.xdex-iv-btn-tips-img');
     if (tipsImg) tipsImg.remove();
     // 恢复默认文字入口
-    btn.textContent = '图';
+    btn.innerHTML = IMAGE_VIEWER_ICON_SVG;
     btn.setAttribute('title', '阅图模式');
     btn.setAttribute('aria-label', '阅图模式');
     btn.style.display = '';
@@ -24113,7 +26123,8 @@ function 注册自动保存编辑() {
     if (!threadId) return;
     let btn = document.querySelector('.xdex-image-viewer-btn');
     if (!btn) {
-      const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">图</button>');
+      const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
+      const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">').html(IMAGE_VIEWER_ICON_SVG);
       $btn.on('click', () => openImageViewer(threadId));
       $('body').append($btn);
       btn = $btn[0];
@@ -24121,13 +26132,43 @@ function 注册自动保存编辑() {
     // 按当前隐藏模式同步外观（含无图隐藏可恢复）
     syncImageViewerButtonForHideMode(getCurrentImageHideModeForViewerBtn());
   }
+  // ── 回收站墓碑标识: 浏览已被移入回收站的串时, 在阅图按钮下方展示垃圾桶标识 ──
+  function injectThreadTombstoneMark() {
+    const MARK_ID = 'xdex-tombstone-mark';
+    let mark = document.getElementById(MARK_ID);
+    if (!isImageViewerThreadPage()) { if (mark) mark.remove(); return; }
+    const threadId = getCurrentThreadIdForImageViewer();
+    if (!threadId) { if (mark) mark.remove(); return; }
+    const tombs = getThreadHistoryStore().tombstones || {};
+    const suffix = String(threadId).slice(0, 8);
+    const candidates = ['normal:' + suffix, 'reply:' + suffix];
+    let hitKey = null, tomb = null;
+    for (const k of candidates) {
+      if (tombs[k] && !tombs[k].purged && !tombs[k].revivedAt) { hitKey = k; tomb = tombs[k]; break; }
+    }
+    if (!tomb) { if (mark) mark.remove(); return; }
+    if (!mark) {
+      mark = document.createElement('button');
+      mark.type = 'button';
+      mark.id = MARK_ID;
+      mark.innerHTML = XDEX_SVG_TRASH;
+      mark.dataset.recycleKey = hitKey;
+      mark.addEventListener('click', function (e) {
+        e.preventDefault();
+        const key = this.dataset.recycleKey || hitKey;
+        try { openSettingsPanelModuleTab('history'); } catch (err) {}
+        setTimeout(() => openRecycleBinAndLocate(key), 150);
+      });
+      document.body.appendChild(mark);
+    }
+    const daysLeft = Math.max(0, Math.ceil((Number(tomb.deletedAt) + THREAD_HISTORY_TOMBSTONE_TTL_MS - Date.now()) / 86400000));
+    mark.title = `历史浏览数据在回收站中 · 约 ${daysLeft} 天后自动彻底清除 · 点击查看`;
+    mark.setAttribute('aria-label', mark.title);
+  }
   // ── 打开阅览器 ──
   function getImageViewerStartPage() {
-    const m1 = location.pathname.match(/\/page\/(\d+)(?:\.html)?$/);
-    if (m1) return Math.max(1, parseInt(m1[1], 10));
-    const m2 = location.search.match(/[?&]page=(\d+)/);
-    if (m2) return Math.max(1, parseInt(m2[1], 10));
-    return 1;
+    // 路径 /page/N 优先，再回退 ?page=（阅图语义）
+    return PageType.getPathPageNum();
   }
   function renderGridImages() {
     const overlay = document.getElementById('xdex-image-viewer');
@@ -25088,6 +27129,810 @@ function 注册自动保存编辑() {
   }
 
   /* --------------------------------------------------
+   * tag 29. WebDAV 备份/同步
+   * -------------------------------------------------- */
+  const WEBDAV_CONFIG_KEY = 'xdex_webdav_config';
+  const WEBDAV_SYNC_FILE = 'xdex-webdav-sync.json';
+  // 自动同步：跨页面共享计时器（localStorage），间隔 1 小时；到点未同步则新页面立即补一次；手动同步会重置计时器
+  const WEBDAV_AUTO_INTERVAL_MS = 60 * 60 * 1000;
+  const WEBDAV_AUTO_NEXT_KEY = 'xdex_webdav_auto_next_ts';
+  const WEBDAV_AUTO_RUNNING_KEY = 'xdex_webdav_auto_running_ts';
+  const WEBDAV_AUTO_LAST_FP_KEY = 'xdex_webdav_last_fp';
+  const WEBDAV_AUTO_LAST_IMMEDIATE_KEY = 'xdex_webdav_last_immediate_ts';
+  // 设置冲突挂起：手动同步选择「取消本次同步」后置位；自动同步遇到差异时跳过设置部分，直到手动处理
+  const WEBDAV_SETTINGS_PENDING_KEY = 'xdex_webdav_settings_pending';
+  // 开启开关触发的立即同步：60s 冷却 + 内容指纹防重
+  const WEBDAV_IMMEDIATE_COOLDOWN_MS = 60 * 1000;
+  function webdavAutoGet(key) {
+    try { const v = localStorage.getItem(key); return v == null ? '' : String(v); } catch (e) { return ''; }
+  }
+  function webdavFnv1a(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+    return h;
+  }
+  // 内容指纹：剔除自变机制字段（lastSyncAt / lastUpdatedAt），保留反映真实活动的数据
+  function webdavFingerprint(payload) {
+    try {
+      const copy = JSON.parse(JSON.stringify(payload || {}));
+      const strip = (v) => {
+        if (v === null || typeof v !== 'object') return;
+        Object.keys(v).forEach((k) => {
+          if (k === 'lastSyncAt' || k === 'lastUpdatedAt') {
+            delete v[k];
+          } else if (v[k] !== null && typeof v[k] === 'object') {
+            strip(v[k]);
+          }
+        });
+      };
+      strip(copy);
+      return String(webdavFnv1a(JSON.stringify(copy)));
+    } catch (e) {
+      return '';
+    }
+  }
+  function webdavAutoNow() {
+    return Date.now();
+  }
+  function webdavAutoRead(key) {
+    try { return Number(localStorage.getItem(key)) || 0; } catch (e) { return 0; }
+  }
+  function webdavAutoWrite(key, ts) {
+    try { localStorage.setItem(key, String(ts)); } catch (e) {}
+  }
+  function webdavAutoRemove(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
+  function getWebdavConfig() {
+    try {
+      const saved = typeof GM_getValue === 'function' ? GM_getValue(WEBDAV_CONFIG_KEY, {}) : {};
+      return Object.assign({ url: '', username: '', password: '', autoSync: false, lastSyncAt: 0 }, saved);
+    } catch (e) {
+      return { url: '', username: '', password: '', autoSync: false, lastSyncAt: 0 };
+    }
+  }
+  function storeWebdavConfig(cfg) {
+    try { if (typeof GM_setValue === 'function') GM_setValue(WEBDAV_CONFIG_KEY, cfg); } catch (e) {}
+    return cfg;
+  }
+  function ensureWebdavConfigInPanel() {
+    const cfg = getWebdavConfig();
+    const $url = $('#sp_webdavUrl');
+    if (!$url.length) return;
+    if (!$url.val()) $url.val(cfg.url);
+    if (!$('#sp_webdavUsername').val()) $('#sp_webdavUsername').val(cfg.username);
+    if (!$('#sp_webdavPassword').val()) $('#sp_webdavPassword').val(cfg.password);
+    $('#sp_webdavAutoSync').prop('checked', cfg.autoSync);
+  }
+  function saveWebdavConfigFromPanel(showToast) {
+    const prev = getWebdavConfig();
+    const cfg = {
+      url: String($('#sp_webdavUrl').val() || '').trim(),
+      username: String($('#sp_webdavUsername').val() || '').trim(),
+      password: String($('#sp_webdavPassword').val() || ''),
+      autoSync: !!$('#sp_webdavAutoSync').is(':checked'),
+      lastSyncAt: prev.lastSyncAt || 0
+    };
+    storeWebdavConfig(cfg);
+    if (showToast && typeof toast === 'function') toast('WebDAV 配置已保存');
+    // 刚打开自动同步开关（false→true）：立即同步一次，并让计时器从此刻起算
+    // 防重：60s 冷却 + 内容指纹（无变化不写服务器）
+    if (showToast && cfg.autoSync && !prev.autoSync && cfg.url) {
+      // 开启自动同步（保存路径）：立即同步一次（防重逻辑在 webdavTriggerImmediateSync 内）
+      webdavTriggerImmediateSync(cfg);
+    }
+  }
+  // 开启自动同步触发的立即同步：60s 冷却 + 内容指纹防重 + 互斥锁
+  function webdavTriggerImmediateSync(cfg) {
+    const now = webdavAutoNow();
+    webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, now + WEBDAV_AUTO_INTERVAL_MS);
+    // 冷却层：短时间连续开关不再每次触发
+    const lastImmediate = webdavAutoRead(WEBDAV_AUTO_LAST_IMMEDIATE_KEY);
+    if (now - lastImmediate < WEBDAV_IMMEDIATE_COOLDOWN_MS) {
+      webdavAutoWrite(WEBDAV_AUTO_LAST_IMMEDIATE_KEY, now);
+      if (typeof toast === 'function') toast('WebDAV：刚同步过，已跳过本次立即同步');
+      return;
+    }
+    // 指纹层：本次要上传的内容与上次成功同步时一致则跳过
+    const utils = getWebdavUtils();
+    if (utils && typeof utils.buildFullExportFile === 'function') {
+      const fp = webdavFingerprint(utils.buildFullExportFile(webdavFullSelection()).file.payload);
+      if (fp && webdavAutoGet(WEBDAV_AUTO_LAST_FP_KEY) === fp) {
+        webdavAutoWrite(WEBDAV_AUTO_LAST_IMMEDIATE_KEY, now);
+        if (typeof toast === 'function') toast('WebDAV：内容无变化，跳过同步');
+        return;
+      }
+    }
+    // 走互斥锁立即同步；成功后重算指纹（下载/上传后本地内容都可能变化）
+    const running = webdavAutoRead(WEBDAV_AUTO_RUNNING_KEY);
+    if (now - running < 30000) {
+      if (typeof toast === 'function') toast('WebDAV：有同步正在进行，请稍后重试');
+      return;
+    }
+    webdavAutoWrite(WEBDAV_AUTO_RUNNING_KEY, now);
+    webdavAutoWrite(WEBDAV_AUTO_LAST_IMMEDIATE_KEY, now);
+    // 延迟 300ms，让「配置已保存/已开启」toast 先展示，再显示同步结果
+    setTimeout(() => {
+      webdavSyncCore(cfg, false).then(() => {
+        try {
+          const u2 = getWebdavUtils();
+          if (u2 && typeof u2.buildFullExportFile === 'function') {
+            webdavAutoWrite(WEBDAV_AUTO_LAST_FP_KEY, webdavFingerprint(u2.buildFullExportFile(webdavFullSelection()).file.payload));
+          }
+        } catch (e) {}
+      }).finally(() => webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY));
+    }, 300);
+  }
+  function webdavRequest(details) {
+    return new Promise((resolve) => {
+      if (typeof GM_xmlhttpRequest !== 'function') {
+        resolve({ ok: false, status: 0, unavailable: true });
+        return;
+      }
+      let settled = false;
+      const settle = (result) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      const req = {
+        method: details.method || 'GET',
+        url: details.url,
+        headers: details.headers || {},
+        data: details.body || null,
+        responseType: details.responseType || 'text',
+        timeout: details.timeout || 10000,
+        onload: (resp) => settle({
+          ok: resp.status >= 200 && resp.status < 300,
+          status: resp.status,
+          statusText: resp.statusText || '',
+          responseText: resp.responseText || ''
+        }),
+        onerror: (err) => {
+          console.error('[webdav] 请求 onerror', {
+            url: details.url,
+            method: details.method || 'GET',
+            name: err && err.name,
+            message: err && err.message ? String(err.message) : '(空)',
+            rawError: err
+          });
+          settle({
+            ok: false,
+            status: 0,
+            networkError: true,
+            errorMessage: err && err.message ? String(err.message) : ''
+          });
+        },
+        ontimeout: () => settle({ ok: false, status: 0, timeout: true })
+      };
+      try {
+        GM_xmlhttpRequest(req);
+      } catch (err) {
+        console.error('[webdav] GM_xmlhttpRequest 调用异常', err);
+        settle({ ok: false, status: 0, callError: err && err.message ? String(err.message) : String(err) });
+      }
+      // 兜底：即使管理器的 onload/onerror/ontimeout 全部未触发，也避免 Promise 永久挂起
+      setTimeout(() => settle({ ok: false, status: 0, timeout: true, hanging: true }), (details.timeout || 10000) + 3000);
+    });
+  }
+  function buildWebdavAuthHeader(cfg) {
+    const raw = cfg.username + ':' + cfg.password;
+    return 'Basic ' + btoa(unescape(encodeURIComponent(raw)));
+  }
+  function webdavBaseUrl(cfg) {
+    return String(cfg.url || '').replace(/\/+$/, '') + '/';
+  }
+  async function checkWebdavConnection(cfg) {
+    const headers = { Authorization: buildWebdavAuthHeader(cfg) };
+    const url = webdavBaseUrl(cfg);
+    const isPlainHttp = /^http:\/\//i.test(url);
+    if (isPlainHttp) {
+      // Firefox 扩展环境默认 CSP 带 upgrade-insecure-requests，http:// 可能被升级为 https:// 导致失败
+      console.warn('[webdav] HTTP 明文地址提示', { url, note: 'Firefox/Tampermonkey 可能拦截或升级明文 HTTP 请求，建议启用 HTTPS' });
+    }
+    // 用 GET 探测：GET 是浏览器/脚本环境都支持的基础方法，PROPFIND 在部分脚本管理器不可用
+    console.log('[webdav] 检查连接请求', { method: 'GET', url });
+    const r = await webdavRequest({ url, method: 'GET', headers });
+    if (r.unavailable) return { ok: false, message: 'GM_xmlhttpRequest 不可用' };
+    if (r.callError) return { ok: false, message: 'GM_xmlhttpRequest 异常：' + r.callError };
+    if (r.hanging) return { ok: false, message: '请求无响应（脚本管理器未触发回调），请重试或检查脚本版本' };
+      if (r.networkError) {
+      const msg = r.errorMessage || '';
+      // Tampermonkey 未授权域名时 onerror 会带 denied/connect 提示
+      if (/denied|not allowed|connect/i.test(msg)) {
+        return { ok: false, message: '请求被脚本管理器拦截：请在 Tampermonkey/脚本管理器中授权该 WebDAV 域名（或将其加入脚本 @connect）' };
+      }
+      const plainHttp = /^http:\/\//i.test(url);
+      return {
+        ok: false,
+        message: '网络错误：无法连接到服务器'
+          + (plainHttp ? '（注意：当前为 HTTP 明文地址，请确认服务器可达，若可建议改用 HTTPS）' : '')
+          + (msg ? '（' + msg.slice(0, 160) + '）' : '')
+      };
+      }
+    if (r.timeout) return { ok: false, message: '连接超时' };
+    if (r.status === 401 || r.status === 403) return { ok: false, message: '认证失败（HTTP ' + r.status + '），请检查账户与密码' };
+    if (r.status === 0) return { ok: false, message: '请求失败' };
+    // 404/405/207 等均说明服务器可达且认证通过（目录无 index / 不支持 GET 均属正常）
+    if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(r.status) >= 0) {
+      return { ok: true, message: '连接成功（HTTP ' + r.status + '）' };
+    }
+    return { ok: false, message: '异常响应 HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : '') };
+  }
+  function setWebdavStatus(text) {
+    const $el = $('#sp_webdavStatus');
+    if ($el && $el.length) $el.text(text);
+  }
+  function webdavPanelField(name) {
+    // 模板渲染时读取已保存配置，让输入框默认显示（无需先点击）
+    try {
+      const cfg = getWebdavConfig();
+      if (name === 'url') return cfg.url || '';
+      if (name === 'username') return cfg.username || '';
+      if (name === 'password') return cfg.password || '';
+      if (name === 'autoSync') return cfg.autoSync ? 'checked' : '';
+      if (name === 'lastSync') return webdavFormatLastSync(cfg.lastSyncAt || 0);
+    } catch (e) {}
+    return '';
+  }
+  function webdavFormatLastSync(ts) {
+    if (!ts) return '尚未同步';
+    return '上次同步 ' + webdavFormatTime(ts);
+  }
+  function webdavFormatTime(ts) {
+    try {
+      const d = new Date(ts);
+      const pad = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    } catch (e) { return '?'; }
+  }
+  function webdavUpdateLastSyncLabel() {
+    const $el = $('#sp_webdavLastSyncLabel');
+    if ($el && $el.length) $el.text(webdavFormatLastSync((getWebdavConfig().lastSyncAt) || 0));
+  }
+  // 与 tag1 FIXED_KEYS 中的固定启用项对齐：这些键不参与「本地是否默认」与差异提示，避免噪声
+  const WEBDAV_SETTINGS_SKIP_KEYS = new Set([
+    'enableImageHideMode', 'interceptReplyForm', 'updateReplyNumbers', 'replaceRightSidebar',
+    'enablePostExpandAll', 'kaomojiEnhancer', 'enableImageViewerMode', 'autoSelectReportReason',
+    'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory', 'enableSubscriptionFeed'
+  ]);
+  function sameSettingValue(a, b) {
+    if (a === b) return true;
+    if (a == null || b == null) return a === b;
+    if (typeof a !== typeof b) return false;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b)) return false;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (!sameSettingValue(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    if (typeof a === 'object') {
+      const ak = Object.keys(a).sort();
+      const bk = Object.keys(b).sort();
+      if (ak.length !== bk.length) return false;
+      for (let i = 0; i < ak.length; i++) {
+        if (ak[i] !== bk[i]) return false;
+        if (!sameSettingValue(a[ak[i]], b[bk[i]])) return false;
+      }
+      return true;
+    }
+    return false;
+  }
+  function webdavShowSettingsConflictDialog(diffInfo) {
+    // 三选：采用远端 / 保留本地上传 / 取消本次同步（Promise 化）
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+      const panel = document.createElement('div');
+      // 使用设置面板的 dark reader 兼容变量
+      panel.style.cssText = 'background:var(--xdex-sp-panel-bg, #FFFFEE);color:var(--foreground, #333);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 8px 24px var(--xdex-sp-shadow, rgba(0,0,0,.3));padding:16px 18px;max-width:min(460px,92vw);font-size:13px;line-height:1.6;';
+      const sample = diffInfo.diff.slice(0, 6).join('、') + (diffInfo.diff.length > 6 ? '…' : '');
+      panel.innerHTML = ''
+        + '<div style="font-size:15px;font-weight:700;margin-bottom:8px;">检测到设置与远端不同</div>'
+        + '<div style="margin-bottom:4px;">共 ' + diffInfo.diff.length + ' 项：' + sample + (diffInfo.localIsDefault ? '（本地当前为默认设置）' : '') + '</div>'
+        + '<div style="color:var(--muted-foreground, #666);margin-bottom:12px;">请选择保留哪个版本的设置：</div>'
+        + '<div style="display:flex;flex-direction:column;gap:8px;">'
+        + '<button data-act="remote" style="padding:6px 10px;cursor:pointer;background:var(--xdex-sp-fold-bg, #F0E0D6);border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;color:var(--foreground, #333);">采用远端设置（覆盖本地）</button>'
+        + '<button data-act="local" style="padding:6px 10px;cursor:pointer;background:var(--xdex-sp-fold-bg, #F0E0D6);border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;color:var(--foreground, #333);">保留本地设置（上传覆盖远端）</button>'
+        + '<button data-act="cancel" style="padding:6px 10px;cursor:pointer;background:var(--xdex-sp-fold-bg, #F0E0D6);border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;color:var(--foreground, #333);">取消本次同步</button>'
+        + '</div>';
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      const done = (act) => {
+        try { document.body.removeChild(backdrop); } catch (e) {}
+        document.removeEventListener('keydown', onKey, true);
+        resolve(act);
+      };
+      const onKey = (ev) => { if (ev.key === 'Escape') done('cancel'); };
+      panel.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
+        if (btn) { e.stopPropagation(); done(btn.getAttribute('data-act')); }
+      });
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) done('cancel'); });
+      document.addEventListener('keydown', onKey, true);
+    });
+  }
+  function findWebdavSettingsDiff(remoteSettings) {
+    // 返回 { diff: 两端不同的设置键, localIsDefault: 本地是否仍是默认值 }
+    const result = { diff: [], localIsDefault: true };
+    try {
+      const defaults = SettingPanel && SettingPanel.defaults ? SettingPanel.defaults : {};
+      const local = Object.assign({}, defaults, GM_getValue(SettingPanel.key, {}));
+      if (!remoteSettings || typeof remoteSettings !== 'object') return result;
+      Object.keys(defaults).forEach((k) => {
+        if (WEBDAV_SETTINGS_SKIP_KEYS.has(k)) return;
+        if (!sameSettingValue(local[k], defaults[k])) result.localIsDefault = false;
+        if (!(k in remoteSettings) || !sameSettingValue(local[k], remoteSettings[k])) result.diff.push(k);
+      });
+      // 远端比 defaults 多的键（未来版本新增）也视为差异
+      Object.keys(remoteSettings).forEach((k) => {
+        if (!(k in defaults) && !WEBDAV_SETTINGS_SKIP_KEYS.has(k)) result.diff.push(k);
+      });
+    } catch (e) {}
+    return result;
+  }
+  function webdavFullSelection() {
+    // 同步文件不含 WebDAV 配置（用户自行选择同步源更合理）；手动导入导出才迁移配置
+    return { settings: true, threadHistory: true, postHistory: true, drafts: false, kaomojiStats: true, cookiePrefs: true };
+  }
+  function getWebdavUtils() {
+    // full-export 工具定义在 SettingPanel.render 嵌套作用域，需先打开过一次设置面板（按钮本身在面板内）
+    return window.__xdexWebdavUtils || null;
+  }
+  async function webdavUploadLocal(cfg, headers) {
+    const utils = getWebdavUtils();
+    if (!utils || typeof utils.buildFullExportFile !== 'function') {
+      return { ok: false, status: 0, missingUtils: true };
+    }
+    const built = utils.buildFullExportFile(webdavFullSelection());
+    // 上传前先拉取远端（若存在）：浏览历史按“基线增量”合并、发言历史按 postId/指纹归一化合并，
+    // 避免全量覆盖其他端已贡献的独立记录
+    let existing = null;
+    try {
+      existing = await webdavRequest({ url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE, method: 'GET', headers });
+    } catch (e) {}
+    if (existing && existing.status >= 200 && existing.status < 300 && built.file.payload) {
+      try {
+        // webdavRequest 返回 GM 风格响应：正文在 responseText（无 .text() 方法）
+        const existingText = String(existing.responseText || '');
+        const parsed = utils.parseFullExportFile(existingText);
+        if (parsed.valid && parsed.data.payload) {
+          if (built.file.payload.threadHistory && utils.mergeThreadHistoryStoreWebdav && parsed.data.payload.threadHistory) {
+            const baselines = utils.getWebdavHistoryBaselines ? utils.getWebdavHistoryBaselines() : {};
+            const merged = utils.mergeThreadHistoryStoreWebdav(
+              built.file.payload.threadHistory,
+              parsed.data.payload.threadHistory,
+              baselines
+            );
+            built.file.payload.threadHistory = merged;
+            // 回写本地：upload 端也必须吸收远端贡献。否则 baseline 已推进到合并值而本地滞后，
+            // 下轮 delta = max(0, 本地旧值 − 基线) 归零，本端新增计数会被静默吞掉
+            setThreadHistoryStore(merged);
+            if (utils.saveWebdavHistoryBaselinesFromStore) utils.saveWebdavHistoryBaselinesFromStore(merged, baselines);
+          }
+          if (built.file.payload.postHistory && utils.mergePostHistoryStore && parsed.data.payload.postHistory) {
+            // local=本端待上传数据，imported=远端数据（归一化合并，保留本端 key 优先）
+            const mergedPosts = utils.mergePostHistoryStore(built.file.payload.postHistory, parsed.data.payload.postHistory);
+            built.file.payload.postHistory = mergedPosts;
+            // 回写本地：upload 端同样应看到远端发言，否则需等到下次 download 才能补齐
+            setPostHistoryStore(mergedPosts);
+          }
+          if (built.file.payload.myScriptSettings && utils.mergeSettingsForWebdavUpload && parsed.data.payload.myScriptSettings) {
+            // 标量项以本地为准，复杂项（分组类）双向合并后再上传
+            built.file.payload.myScriptSettings = utils.mergeSettingsForWebdavUpload(built.file.payload.myScriptSettings, parsed.data.payload.myScriptSettings);
+          }
+        } else {
+          console.warn('[webdav] 上传前合并：远端文件解析失败，将原样覆盖上传', { error: parsed && parsed.error });
+        }
+        console.log('[webdav] 上传内容统计', {
+          threadHistoryCount: Object.keys((built.file.payload.threadHistory || {}).items || {}).length,
+          postHistoryCount: Object.keys((built.file.payload.postHistory || {}).items || {}).length,
+          remoteExisted: !!(parsed && parsed.valid)
+        });
+      } catch (e) {
+        console.warn('[webdav] 上传前合并历史失败，按原样上传', e);
+      }
+    }
+    const put = await webdavRequest({
+      url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE,
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(built.file),
+      // 全量导出体积较大，放宽 PUT 超时（默认 10s 对慢速上行易超时）
+      timeout: 30000
+    });
+    return { ok: put.status >= 200 && put.status < 300, status: put.status };
+  }
+  async function webdavSyncCore(cfg, silent) {
+    const notify = (t) => { if (!silent && typeof toast === 'function') toast(t); };
+    setWebdavStatus('同步中……');
+    const conn = await checkWebdavConnection(cfg);
+    if (!conn.ok) {
+      setWebdavStatus(conn.message);
+      if (!silent) notify('WebDAV 同步失败：' + conn.message);
+      return { ok: false, reason: 'connection' };
+    }
+    const headers = { Authorization: buildWebdavAuthHeader(cfg) };
+    const remoteUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
+    const remote = await webdavRequest({ url: remoteUrl, method: 'GET', headers });
+    if (remote.status === 404) {
+      // 远端无数据：上传本地
+        const up = await webdavUploadLocal(cfg, headers);
+      if (up.ok) {
+        const now = Date.now();
+        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: now }));
+        webdavUpdateLastSyncLabel();
+        console.log('[webdav] 同步成功（远端无数据上传）', { direction: 'upload', lastSyncAt: now });
+        setWebdavStatus('远端无数据，本地数据已上传');
+        notify('WebDAV：本地数据已上传');
+        return { ok: true, direction: 'upload' };
+      }
+      console.warn('[webdav] 上传失败', { direction: 'upload-first', status: up.status });
+      setWebdavStatus('上传失败（HTTP ' + up.status + '）');
+      notify('WebDAV 上传失败：HTTP ' + up.status);
+      return { ok: false, reason: 'upload-failed' };
+    }
+    if (remote.status !== 200) {
+      setWebdavStatus('读取远端失败（HTTP ' + remote.status + '）');
+      notify('WebDAV 读取远端失败：HTTP ' + remote.status);
+      return { ok: false, reason: 'remote-read' };
+    }
+    // 远端存在：按导出时间 last-write-wins
+    let remoteExportedAt = 0;
+    try {
+      const head = JSON.parse(remote.responseText);
+      remoteExportedAt = head && head.meta && head.meta.exportedAt ? Date.parse(head.meta.exportedAt) : 0;
+    } catch (e) {}
+    console.log('[webdav] 同步开始：双向合并模式', { remoteExportedAt: remoteExportedAt || null, lastSyncAt: cfg.lastSyncAt || 0 });
+    const utils = getWebdavUtils();
+    if (!utils || typeof utils.parseFullExportFile !== 'function' || typeof utils.applyFullImportPayload !== 'function') {
+      setWebdavStatus('恢复功能未就绪：请先打开一次设置面板后重试');
+      if (!silent) notify('WebDAV：恢复功能未就绪，请先打开设置面板');
+      return { ok: false, reason: 'utils-missing' };
+    }
+    const parsed = utils.parseFullExportFile(remote.responseText);
+    if (!parsed || !parsed.valid) {
+      // 远端缺失或内容非同步文件(部分 WebDAV 实现对不存在路径返回 207/HTML)：无可合并内容，
+      // 退化为纯上传以重建云端；upload 内部对既有远端内容的合并守卫会自行跳过无效数据
+      console.warn('[webdav] 远端无有效同步文件，转为本地上传', { status: remote.status, error: parsed && parsed.error });
+      const rebuild = await webdavUploadLocal(cfg, headers);
+      const rebuiltAt = Date.now();
+      if (rebuild.ok) {
+        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: rebuiltAt }));
+        webdavUpdateLastSyncLabel();
+        setWebdavStatus('远端无有效同步文件，已上传本地数据');
+        notify('WebDAV：远端无有效同步文件，已上传本地数据');
+        return { ok: true, direction: 'upload-rebuild' };
+      }
+      setWebdavStatus('上传失败（HTTP ' + (rebuild.status == null ? '未知' : rebuild.status) + '）');
+      notify('WebDAV 上传失败：HTTP ' + rebuild.status);
+      return { ok: false, reason: 'upload-failed' };
+    }
+      // WebDAV 配置不随同步覆盖：同步上传端已排除；
+      // 若用户手动导出的含 webdav 配置文件被放到远端，下载时过滤掉，避免远端反向改写本地同步源
+      if (parsed.data.payload && parsed.data.payload.webdavConfig) delete parsed.data.payload.webdavConfig;
+      // 设置差异检测：手动同步弹窗让用户选择；自动同步按「本地是否默认」决定
+      // 决策仅作用于 myScriptSettings 分区，其余数据分区一律双向合并
+      let settingsDecision = 'download';
+      let settingsSkipped = false;
+      if (parsed.data.payload && parsed.data.payload.myScriptSettings) {
+        const diffInfo = findWebdavSettingsDiff(parsed.data.payload.myScriptSettings);
+        if (diffInfo.diff.length > 0) {
+          if (silent) {
+            // 自动同步：若此前手动取消过设置冲突（挂起标记），跳过设置部分，其余数据照常合并；
+            // 否则按「本地是否默认」自动决策：默认→采用远端，已个性化→保留本地上传
+            if (webdavAutoGet(WEBDAV_SETTINGS_PENDING_KEY) === '1') {
+              settingsDecision = 'keep-local';
+            } else {
+              settingsDecision = diffInfo.localIsDefault ? 'download' : 'keep-local';
+            }
+          } else {
+            // 三选对话框：采用远端 / 保留本地上传 / 取消本次同步
+            const userChoice = await webdavShowSettingsConflictDialog(diffInfo);
+            if (userChoice === 'cancel') {
+              webdavAutoWrite(WEBDAV_SETTINGS_PENDING_KEY, '1');
+              setWebdavStatus('已取消本次同步（设置存在差异，自动同步将跳过设置直到手动处理）');
+              if (!silent) notify('WebDAV：已取消本次同步');
+              return { ok: false, reason: 'canceled' };
+            }
+            webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
+            settingsDecision = userChoice === 'remote' ? 'download' : 'keep-local';
+          }
+        } else {
+          // 两端设置已一致：清除挂起标记
+          webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
+        }
+      }
+      if (settingsDecision !== 'download') {
+        // 保留本地设置：仅剔除设置字段，其余数据分区照常双向合并
+        if (parsed.data.payload && parsed.data.payload.myScriptSettings) delete parsed.data.payload.myScriptSettings;
+        settingsSkipped = true;
+      }
+      // ── 数据分区：远端 → 本地 合并 ──
+      // 快照浏览历史存储与基线：回推失败时整体回滚，保证下轮 delta 仍可计算（否则本轮增量会被基线吞掉）
+      const thStoreBeforeMerge = (typeof GM_getValue === 'function') ? GM_getValue(THREAD_HISTORY_STORAGE_KEY, null) : null;
+      const thBaselineBeforeMerge = (typeof utils.getWebdavHistoryBaselines === 'function') ? (utils.getWebdavHistoryBaselines() || {}) : {};
+      const kaoStoreBeforeMerge = (typeof GM_getValue === 'function') ? GM_getValue('kaomojiUsageStats', null) : null;
+      const report = utils.applyFullImportPayload(parsed.data, { threadHistoryMode: 'webdav-delta' });
+      // 远端设置被采用后：立即同步内存 state、回显面板，并即时应用可即时生效的设置
+      if (report.settings && settingsDecision === 'download' && typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+        try {
+          SettingPanel.state = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+          if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs();
+          if (typeof SettingPanel.syncAuxiliaryControls === 'function') SettingPanel.syncAuxiliaryControls();
+          try { if (typeof renderFavoriteThreadsMenu === 'function') renderFavoriteThreadsMenu(); } catch (e) {}
+          try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state); } catch (e) {}
+          try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
+          try { if (typeof applyImageHideMode === 'function') applyImageHideMode(SettingPanel.state.applyImageHideMode || 'default', document); } catch (e) {}
+        } catch (e) {
+          console.warn('[webdav] 远端设置即时应用失败', e);
+        }
+      }
+
+      // ── 合并后的本地 → 云端 回推 ──
+      // apply 阶段已把远端贡献并入本地、基线已对齐到合并值；此处必须【直传】而不能再走 merge：
+      // 若再次按基线合并，delta = max(0, 本地 − 基线) = 0，云端会被写回旧值、本轮增量被吞。
+      // 直传即「云端 ← 并集」，各端独立贡献在各自 apply 阶段累入并集，天然满足跨端加算语义。
+      const builtForPush = utils.buildFullExportFile(webdavFullSelection());
+      const putResp = await webdavRequest({
+        url: remoteUrl,
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(builtForPush.file),
+        timeout: 30000
+      });
+      const pushOk = putResp.status >= 200 && putResp.status < 300;
+      const now = Date.now();
+
+      if (!pushOk) {
+        // 回滚浏览历史存储与基线到合并前：本地与云端重新解耦，下轮 delta = 本地 − 旧基线 仍完整可算
+        try {
+          if (thStoreBeforeMerge !== null) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(thStoreBeforeMerge));
+          if (kaoStoreBeforeMerge !== null) GM_setValue('kaomojiUsageStats', kaoStoreBeforeMerge);
+          GM_setValue('xdex_webdav_history_baselines', thBaselineBeforeMerge || {});
+        } catch (e) {
+          console.error('[webdav] 回滚同步快照失败', e);
+        }
+        console.warn('[webdav] 双向合并完成但回推失败（已回滚本地合并结果）', { status: putResp.status, report });
+        storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: cfg.lastSyncAt || 0 }));
+        webdavUpdateLastSyncLabel();
+        setWebdavStatus('已尝试合并远端数据，回推云端失败（HTTP ' + putResp.status + '），本轮已还原待下轮重试');
+        if (!silent) notify('WebDAV：回推失败 HTTP ' + putResp.status + '，本轮改动已还原');
+        return { ok: false, reason: 'push-back-failed', report };
+      }
+      storeWebdavConfig(Object.assign({}, cfg, { lastSyncAt: Math.max(now, remoteExportedAt || 0) }));
+      webdavUpdateLastSyncLabel();
+
+      console.log('[webdav] 同步成功（双向合并）', { remoteExportedAt: remoteExportedAt || null, pushedAt: now, report });
+      const parts = [];
+      if (report.settings && !settingsSkipped) parts.push('设置');
+      if (report.threadHistory) parts.push('浏览历史');
+      if (report.postHistory) parts.push('发言历史');
+      if (report.drafts) parts.push('草稿');
+      if (report.kaomojiStats) parts.push('颜文字统计');
+      if (report.cookiePrefs) parts.push('饼干偏好');
+      setWebdavStatus(settingsSkipped ? '双向合并完成（设置保留本地等待手动处理）' : '双向合并完成');
+      notify('WebDAV：双向合并完成（' + (parts.join('、') || '无变化') + '）；可即时生效的设置已应用');
+      return { ok: true, direction: 'bidirectional' };
+  }
+  async function webdavSyncNow() {
+    saveWebdavConfigFromPanel(false);
+    const cfg = getWebdavConfig();
+    if (!cfg.url) {
+      if (typeof toast === 'function') toast('请先填写 WebDAV 链接');
+      return;
+    }
+    // 与自动同步共用互斥锁：避免手动/自动或多标签并发双写（30s 窗口）
+    const now = webdavAutoNow();
+    const running = webdavAutoRead(WEBDAV_AUTO_RUNNING_KEY);
+    if (now - running < 30000) {
+      console.warn('[webdav] 手动同步跳过：其他同步正在进行');
+      if (typeof toast === 'function') toast('WebDAV：有同步正在进行，请稍后重试');
+      return;
+    }
+    webdavAutoWrite(WEBDAV_AUTO_RUNNING_KEY, now);
+    // 手动同步后重置自动同步计时器：避免紧随的空转
+    webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, now + WEBDAV_AUTO_INTERVAL_MS);
+    try {
+      await webdavSyncCore(cfg, false);
+    } finally {
+      webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY);
+    }
+  }
+  function webdavAutoSyncIfEnabled() {
+    const cfg = getWebdavConfig();
+    if (!cfg.url || !cfg.autoSync) return;
+    const now = webdavAutoNow();
+    const next = webdavAutoRead(WEBDAV_AUTO_NEXT_KEY);
+    let scheduleHandle = 0;
+    const trySync = () => {
+      // 到点执行时重新取当前时间（排程等待期间可能已过去很久）
+      const tryNow = webdavAutoNow();
+      // 复检开关：关闭自动同步后，本页已排程的定时器不再执行
+      if (!getWebdavConfig().autoSync) {
+        console.log('[webdav] 自动同步跳过：开关已关闭');
+        return;
+      }
+      // 抢锁：避免多标签页同时同步；30s 窗口内其他页面跳过本次
+      const running = webdavAutoRead(WEBDAV_AUTO_RUNNING_KEY);
+      if (tryNow - running < 30000) {
+        // 同一端的其他页面正在同步：页面间共享同一份 GM 存储，
+        // 持锁页面同步的就是全量共享数据，本页无需重复同步（更不应额外排重试）；
+        // next 已被其推进，本页随共享计划等待下一轮即可
+        console.log('[webdav] 自动同步跳过：其他页面正在同步（同端数据共享，无需重复同步）');
+        scheduleNext();
+        return;
+      }
+      // 抢到锁
+      webdavAutoWrite(WEBDAV_AUTO_RUNNING_KEY, tryNow);
+      // 无论成败都推进下次时间，避免失败后每个页面都重试
+      webdavAutoWrite(WEBDAV_AUTO_NEXT_KEY, tryNow + WEBDAV_AUTO_INTERVAL_MS);
+      console.log('[webdav] 自动同步开始', { at: new Date(tryNow).toLocaleString(), intervalMs: WEBDAV_AUTO_INTERVAL_MS });
+      const done = () => {
+        webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY);
+        // 同步结束（无论成败）续排下一次：页面存活期间不再依赖重载
+        scheduleNext();
+      };
+      try {
+        webdavSyncCore(cfg, true).then(done, done);
+      } catch (e) {
+        done();
+        console.warn('[webdav] auto sync failed', e);
+      }
+    };
+    // 循环排程：每次按共享 next 排一次；到点执行后由 trySync 末尾再次调用本函数续排
+    const scheduleNext = () => {
+      clearTimeout(scheduleHandle);
+      const cfg2 = getWebdavConfig();
+      if (!cfg2.url || !cfg2.autoSync) return;
+      const nextMs = Number(webdavAutoRead(WEBDAV_AUTO_NEXT_KEY)) || 0;
+      const now2 = webdavAutoNow();
+      const delay = nextMs ? Math.max(1000, Math.min(nextMs - now2, WEBDAV_AUTO_INTERVAL_MS)) : WEBDAV_AUTO_INTERVAL_MS;
+      console.log('[webdav] 自动同步已排程', { at: new Date(now2 + delay).toLocaleString(), delayMs: delay });
+      scheduleHandle = setTimeout(trySync, delay);
+    };
+    if (!next || now >= next) {
+      // 首次或已到点（含上次页面关闭未同步）：立即补一次（trySync 完成后会续排）
+      console.log('[webdav] 自动同步到点，立即执行', { next: next ? new Date(next).toLocaleString() : '首次' });
+      trySync();
+      return;
+    }
+    // 未到点：排程等待；执行后由 trySync 续排，页面存活也能持续自动同步
+    scheduleNext();
+  }
+  function bindWebdavPanelEvents() {
+    // 原生 DOM 委托（capture 阶段），不依赖 jQuery / 面板重建时机 / 脚本管理器注入顺序
+    try {
+      // 划词抑制：面板内 mousedown 后位移超过 5px 视为拖选，阻止 click 默认行为与面板外误关
+      let webdavDragStart = null;
+      document.addEventListener('mousedown', function onWebdavDragStart(e) {
+        if (e.button !== 0) { webdavDragStart = null; return; }
+        const t = e.target;
+        webdavDragStart = (t && t.closest && t.closest('#sp_panel, #sp_cover'))
+          ? { x: e.clientX, y: e.clientY }
+          : null;
+      }, true);
+      document.addEventListener('click', function onWebdavDragSuppress(e) {
+        if (!webdavDragStart) return;
+        const dx = e.clientX - webdavDragStart.x;
+        const dy = e.clientY - webdavDragStart.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+        webdavDragStart = null;
+      }, true);
+      // 自动同步开关：变化即保存并提示；开启时立即同步一次（无需再点保存）
+      document.addEventListener('change', function onWebdavAutoSyncChange(e) {
+        const t = e && e.target;
+        if (!t || t.id !== 'sp_webdavAutoSync') return;
+        console.log('[webdav] 自动同步开关变化', { checked: t.checked });
+        saveWebdavConfigFromPanel(false);
+        const cfg = getWebdavConfig();
+        if (t.checked) {
+          if (typeof toast === 'function') toast('已开启自动同步');
+          if (cfg.url) webdavTriggerImmediateSync(cfg);
+        } else {
+          if (typeof toast === 'function') toast('已关闭自动同步');
+        }
+      }, true);
+      document.addEventListener('click', function onWebdavDelegateClick(e) {
+        const t = e && e.target;
+        if (!t || typeof t.closest !== 'function') return;
+        const btn = t.closest('#btn_webdavCheck, #btn_webdavSync, #btn_sp_webdavSave, #btn_webdavTogglePassword');
+        if (!btn || !btn.id) return;
+        console.log('[webdav] 点击', { id: btn.id, at: Date.now() });
+        if (btn.id === 'btn_sp_webdavSave') {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            ensureWebdavConfigInPanel();
+            saveWebdavConfigFromPanel(true);
+          } catch (err) {
+            console.error('[webdav] 保存处理异常', err);
+            setWebdavStatus('保存异常：' + (err && err.message ? err.message : err));
+          }
+          return;
+        }
+        if (btn.id === 'btn_webdavCheck') {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            ensureWebdavConfigInPanel();
+            saveWebdavConfigFromPanel(false);
+            const cfg = getWebdavConfig();
+            if (!cfg.url) {
+              console.warn('[webdav] 检查连接：未填写链接');
+              setWebdavStatus('请先填写 WebDAV 链接');
+              return;
+            }
+            console.log('[webdav] 检查连接开始', { url: cfg.url, username: cfg.username ? '已填' : '未填', password: cfg.password ? '已填' : '未填' });
+            setWebdavStatus('正在检查连接……');
+            checkWebdavConnection(cfg).then((conn) => {
+              console.log('[webdav] 检查连接结果', conn);
+              setWebdavStatus(conn.message);
+              if (typeof toast === 'function') toast(conn.ok ? 'WebDAV ' + conn.message : 'WebDAV 连接失败：' + conn.message);
+            }).catch((err) => {
+              console.error('[webdav] 检查连接异常', err);
+              setWebdavStatus('检查连接异常：' + (err && err.message ? err.message : err));
+              if (typeof toast === 'function') toast('WebDAV 检查连接异常');
+            });
+          } catch (err) {
+            console.error('[webdav] 检查连接处理异常', err);
+            setWebdavStatus('检查连接异常：' + (err && err.message ? err.message : err));
+          }
+          return;
+        }
+        if (btn.id === 'btn_webdavTogglePassword') {
+          e.preventDefault();
+          e.stopPropagation();
+          const input = document.getElementById('sp_webdavPassword');
+          if (input) {
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            btn.textContent = showing ? '显示' : '隐藏';
+            console.log('[webdav] 密码可见性切换', { showing: !showing });
+          }
+          return;
+        }
+        if (btn.id === 'btn_webdavSync') {
+          e.preventDefault();
+          e.stopPropagation();
+          webdavSyncNow().catch((err) => {
+            console.error('[webdav] 手动同步异常', err);
+            setWebdavStatus('同步异常：' + (err && err.message ? err.message : err));
+          });
+        }
+      }, true);
+      // 面板重建后回填已保存配置：聚焦输入框时空值则回填
+      document.addEventListener('focusin', function onWebdavFocusin(e) {
+        const t = e && e.target;
+        if (!t || !t.id) return;
+        if (t.id === 'sp_webdavUrl' || t.id === 'sp_webdavUsername' || t.id === 'sp_webdavPassword') {
+          try { ensureWebdavConfigInPanel(); } catch (err) { console.warn('[webdav] 回填异常', err); }
+        }
+      }, true);
+      // 切回标签页时刷新灰字：其他页面完成同步后，此页面打开状态也能同步显示
+      window.addEventListener('focus', function onWebdavWindowFocus() {
+        try { webdavUpdateLastSyncLabel(); } catch (e) {}
+      });
+      console.log('[webdav] 面板事件绑定完成（原生委托）');
+      return true;
+    } catch (e) {
+      console.error('[webdav] 绑定失败', e);
+      return false;
+    }
+  }
+  // 立即绑定一次即可：原生 document 监听不依赖 jQuery 就绪
+  bindWebdavPanelEvents();
+  // 自动同步：页面 load 后延迟执行，避开启动编排与发言历史回查高峰期
+  window.addEventListener('load', () => {
+    setTimeout(() => { webdavAutoSyncIfEnabled(); }, 4000);
+  });
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   // 注册设置面板依赖到 XDex
@@ -25176,14 +28021,15 @@ function 注册自动保存编辑() {
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     // 串内饼干偏好初始化
     if (cfg.enableCookieSwitch && cfg.enableCookieConfirm) {
-      const _tidMatch = location.pathname.match(/\/t\/(\d{6,8})/);
-      const _initThreadId = _tidMatch ? _tidMatch[1].slice(0, 8) : '';
+      const _tid = PageType.getThreadId(false);
+      const _initThreadId = _tid ? _tid.slice(0, 8) : '';
       if (_initThreadId) {
         initThreadCookiePref(_initThreadId);
         injectCookieCheckSwitch(_initThreadId);
       }
     }
     injectImageViewerButton();                                    //阅图模式入口
+    injectThreadTombstoneMark();                                  //回收站墓碑标识
     enablePaginationDuplication(!!cfg.enablePaginationDuplication); //页码栏拓展为 7 个；开关仅控制是否添加页首页码
     if (cfg.disableWatermark)            disableWatermark();        //关闭图片水印
     if (cfg.updatePreviewCookie)         updatePreviewCookieId();   //预览真实饼干

@@ -594,7 +594,7 @@ function testSuccessfulSubmitPreviewCleanupContract() {
     '<div class="h-threads-info">',
     '<div class="h-threads-content"></div>',
     '<span class="h-threads-info-uid">ID:测试饼干</span>',
-    'No.9999999'
+    'No.42'
   ]) assert(html.includes(fragment), `preview placeholder must retain ${fragment}`);
   assert((html.match(/ID:测试饼干/g) || []).length === 1, 'current cookie ID text must appear exactly once');
   assert(
@@ -691,8 +691,11 @@ function createReplyRefreshHarness(options = {}) {
   const realList = options.realListMissing ? null : { name: 'real-list' };
   const context = {
     trace,
-    console: { log(message) { trace.push(`log:${message}`); }, warn(message) { trace.push(`warn:${message}`); } },
+    Promise,
+    Date,
+    console: { log(message) { trace.push(`log:${message}`); }, warn(message) { trace.push(`warn:${message}`); }, error(message) { trace.push(`error:${message}`); } },
     URL,
+    URLSearchParams,
     location: { href: 'https://example.test/t/1?page=2', origin: 'https://example.test', pathname: '/t/1' },
     document: {
       querySelector() { return null; },
@@ -718,6 +721,10 @@ function createReplyRefreshHarness(options = {}) {
       return Promise.resolve({ text() { trace.push('response.text'); return Promise.resolve('<html>fresh</html>'); } });
     },
     toast(message) { trace.push(`toast:${message}`); },
+    // 新页发现分支现走 showRefreshStatus（受 generation 门控），harness 需补齐两个符号
+    activeGeneration: 0,
+    isCurrentRefreshStatus() { return true; },
+    showRefreshStatus(message) { trace.push(`showRefreshStatus:${message}`); },
     safeGetConfig() { return { name: 'cfg' }; },
     getMaxClonedPageInDOM() { trace.push('getMaxClonedPageInDOM'); return 2; },
     resolveThreadRefreshTargetPage(maxPage, maxCloned, currentPage) {
@@ -743,15 +750,29 @@ function createReplyRefreshHarness(options = {}) {
     prepareAndSyncBottomPagination(doc) { trace.push(`syncPagination:${doc === parsedDocument}`); },
     refreshFilterDisplay(cfg) { trace.push(`refreshFilters:${cfg.name}`); }
   };
-  const declarations = ['getCurrentPage', 'getMaxPageFromPagination', 'parsePaginationPageNum', 'minimalHideEmptyTitleAndEmail', 'refreshRepliesWithSeamlessPaging']
-    .map((name) => extractFunctionDeclarations(script, name)[0]).join('\n');
+  // 提取 PageType 工具源码（被提取函数可能引用它），注入到声明之前
+  const pageTypeSource = (() => {
+    const start = script.indexOf('  const PageType = {');
+    const end = script.indexOf('  function isCurrentRefreshStatus', start);
+    return start >= 0 && end > start ? script.slice(start, end) : '';
+  })();
+  const declarations = [pageTypeSource, 'getCurrentPage', 'getMaxPageFromPagination', 'parsePaginationPageNum', 'minimalHideEmptyTitleAndEmail', 'refreshRepliesWithSeamlessPaging']
+    .map((name) => (name && name.includes('const PageType')) ? name : extractFunctionDeclarations(script, name)[0]).join('\n');
   vm.runInNewContext(`${declarations}\nthis.refresh = refreshRepliesWithSeamlessPaging;`, context);
   return { context, trace, timers };
 }
 
 async function settleReplyRefresh(harness) {
   await new Promise((resolve) => setImmediate(resolve));
-  harness.timers.sort((a, b) => a.delay - b.delay).forEach((timer) => timer.callback());
+  // 循环处理：重试退避会在执行中追加新 timer（如 fetch 失败后的 300/800ms 重试）
+  let guard = 0;
+  while (harness.timers.length > 0 && guard < 100) {
+    harness.timers.sort((a, b) => a.delay - b.delay);
+    const timer = harness.timers.shift();
+    timer.callback();
+    guard += 1;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }
 
 async function testReplyRefreshDifferentialTraceContracts() {
@@ -759,7 +780,7 @@ async function testReplyRefreshDifferentialTraceContracts() {
     { name: 'skip', options: { skip: true }, toast: null, fetch: false },
     { name: 'missing real list', options: { realListMissing: true }, toast: '未找到真实列表，无法刷新回复区', fetch: false },
     { name: 'missing target replies', options: { targetRepliesMissing: true }, toast: '未找到目标回复区', fetch: false },
-    { name: 'fetch failure', options: { fetchFailure: true }, toast: '刷新回复区失败', fetch: true }
+    { name: 'fetch failure', options: { fetchFailure: true }, toast: '刷新回复区失败，可能已有新回复，请手动刷新', fetch: true }
   ];
   for (const testCase of cases) {
     const harness = createReplyRefreshHarness(testCase.options);
@@ -806,12 +827,12 @@ async function testReplyRefreshDifferentialTraceContracts() {
   newPage.context.refresh(() => { newPageDone++; newPage.trace.push('done'); }, { getConfig: () => ({ name: 'cfg' }) });
   await settleReplyRefresh(newPage);
   assert(newPageDone === 1, 'new-page refresh must call done exactly once');
-  const discoveryToast = newPage.trace.indexOf('toast:发现3页，正在加载……');
+  const discoveryToast = newPage.trace.findIndex((e) => e.startsWith('showRefreshStatus:发现'));
   const schedule100 = newPage.trace.indexOf('schedule:100');
   const done = newPage.trace.indexOf('done');
   const enhance = newPage.trace.indexOf('enhance:true:cfg');
   const loadNext = newPage.trace.indexOf('loadNext');
-  assert(discoveryToast !== -1 && discoveryToast < schedule100 && schedule100 < done, 'new-page toast and 100ms scheduling must precede done');
+  assert(discoveryToast !== -1 && discoveryToast < schedule100 && schedule100 < done, 'new-page status toast and 100ms scheduling must precede done');
   assert(done < enhance && enhance < loadNext, 'done, 50ms enhancement and 100ms loadNext order changed');
 }
 

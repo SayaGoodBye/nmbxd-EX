@@ -34,7 +34,20 @@ function testHoverFallbackIsConditional() {
   assert(mouseIndex > supportsIndex, 'mouseenter fallback should be guarded by the :has() support check');
 }
 
+function testHoverFallbackCssDoesNotShareHasSelectorList() {
+
+  const shellStyle = source.slice(source.indexOf('function ensureRightSidebarShellStyle'), source.indexOf('function logRightSidebarDocker'));
+
+  assert(shellStyle.includes('.hld__docker.is-hover .hld__docker-btns>div {'), 'legacy hover fallback must have its own CSS rule');
+
+  assert(!/\.hld__docker\.is-hover \.hld__docker-btns>div,\s*\.hld__docker:has\(/.test(shellStyle), 'legacy hover fallback must not share a selector list with :has()');
+
+}
+
+
+
 function testReplyClickUsesNativeDedupedBinding() {
+
   assert(source.includes('xdexReplyDockBound'), 'REPLY button should use a dataset/native binding guard');
   assert(!source.includes("off('click.xdexReplyDock').on('click.xdexReplyDock'"), 'REPLY button should not use jQuery off/on for the dock click');
 }
@@ -70,9 +83,10 @@ function testReplyControllerIsLazy() {
   assert(replaceBody.includes('ensureRightSidebarReplyController().open()'), 'REPLY click should lazily open the reply controller');
 }
 
-const tests = [
-  testHoverFallbackIsConditional,
-  testReplyClickUsesNativeDedupedBinding,
+const tests = [
+  testHoverFallbackIsConditional,
+  testHoverFallbackCssDoesNotShareHasSelectorList,
+  testReplyClickUsesNativeDedupedBinding,
   testResizeObserverIsCleanedOnClose,
   testDragMoveListenersAreTemporary,
   testReplyControllerIsLazy,
