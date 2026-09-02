@@ -3484,40 +3484,40 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       //鼠标悬浮在具体功能上显示提示
       // ====== 1. 定义功能描述映射表 ======
       const spDescriptions = {
-        sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
-        sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送。',
+        sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表',
+        sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送',
         sp_enablePaginationDuplication: '在串首页添加页码导航栏，并拓展为最长七个页码按钮',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
         sp_hideEmptyTitleEmail: '隐藏帖内无标题、无名氏和版规提示，优化显示效果，减少版面占用',
         sp_enableExternalImagePreview: '直接显示外部图床的图片',
-        sp_enableUpdateCheck: '控制是否自动检查脚本更新；关闭后不会发起远程更新请求，也不会继续安排后续检查。',
+        sp_enableUpdateCheck: '控制是否自动检查脚本更新；关闭后不会发起远程更新请求，也不会继续安排后续检查',
         sp_enableAutoCookieRefresh: '回到X岛页面后自动刷新饼干，以防错饼',
         sp_enableAutoCookieRefreshToast: '自动刷新时显示toast提示，触发频率较高，建议关闭',
         sp_enableSeamlessPaging: '阅读到页面底部时无缝加载下一页并为新页首添加页码提示',
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
-        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中可不在前台。',
+        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中焦点可不在前台',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
-        sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-加粗',
-        sp_threadCookieWhitelistModeEnabled: '只看饼干模式。\n折叠：保持原版只看饼干折叠逻辑；\n隐藏：未命中的回复直接隐藏；\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注。\n可选观众回复的展开/收起。',
-        sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动。',
+        sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-加粗。被标记为主串的引用号可从“拓展引用浮窗”中直接跳转',
+        sp_threadCookieWhitelistModeEnabled: '只看饼干模式\n折叠：保持原版只看饼干折叠逻辑\n隐藏：未命中的回复直接隐藏\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注\n可选观众回复的展开/收起',
+        sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
         sp_updateReplyNumbers: '添加当页内回复编号显示',
         sp_replaceRightSidebar: '增强右侧扩展坞功能，点击REPLY按钮打开回复弹窗，点击非回复弹窗区域或ESC键可关闭回复弹窗，另外支持使用CTRL+ENTER发送消息',
         sp_interceptReplyForm: '拦截回复跳转中间页，使用toast提示发送成功/失败信息',
         sp_interceptReplyFormUnvcode: '不可明说的功能，请参照https://words-away.typeboom.com/说明',
         sp_interceptReplyFormU200B: '优先使用插入零宽空格模式而非unvcode替换模式',
-        sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片。',
-        sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
+        sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片',
+        sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
         sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面，添加标题/作者/E-mail/正文的字数统计与提醒',
         sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则\n折叠：匹配到的串/回复显示为可展开的按钮\n隐藏：匹配到的串/回复完全隐藏',
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
-        sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间。',
+        sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间',
         sp_replyQuicklyOnBoardPage: '为板块页添加快速回复模式，在板块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“板块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
@@ -3526,7 +3526,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
-        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧“打开”可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选。',
+        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧“打开”可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
         sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，保留高亮的同时控制其是否在输入框中自动添加引用号，值班室版块默认不生效',
@@ -9868,6 +9868,11 @@ ${markedSwatchHtml}
           border: 1px solid var(--xdex-qp-border, #ccc); border-radius: 4px; padding: 2px 6px;
           cursor: pointer;
         }
+        .qp-overlay-quote .qp-jump {
+          font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 22%, transparent);
+          border: 1px solid var(--xdex-qp-border, #ccc); border-radius: 4px; padding: 2px 6px;
+          cursor: pointer;
+        }
         .qp-overlay-quote .qp-quote.is-dragging,
         .qp-overlay-quote .qp-quote.is-resizing { cursor: grabbing !important; user-select: none !important; }
         /* 引用浮窗四角拉伸（与回复浮窗一致：角=缩放，边=拖动） */
@@ -10012,7 +10017,31 @@ ${markedSwatchHtml}
         $quote.remove();
         if ($stack.children().length === 0) $overlay.fadeOut(160);
       });
+      // 跳转按钮：引用号被判为 thread(主串) 时插入到“第 N 层”左侧（不限层数）
+      let $jump = null;
+      const refTid = options && options.tid ? String(options.tid).trim() : '';
+      const ensureJumpButton = () => {
+        if (!refTid || $jump) return;
+        const kind = quoteAvailabilityCache && quoteAvailabilityCache[refTid] && quoteAvailabilityCache[refTid].kind;
+        if (kind !== 'thread') return;
+        $jump = $('<button class="qp-jump">跳转</button>').on('click', e => {
+          e.stopPropagation();
+          let url = '';
+          try { url = getLatestThreadHistoryUrl(refTid) || `${location.origin}/t/${refTid}`; } catch (err) { url = `${location.origin}/t/${refTid}`; }
+          window.open(url, '_blank');
+        });
+        $level.before($jump);
+      };
+      // 判定为 thread 时补插：通过全局监听注册表触发，成功即注销
+      const onThreadAvail = (tid) => {
+        if (String(tid) === refTid) {
+          ensureJumpButton();
+          offQuoteAvailThread(refTid, onThreadAvail);
+        }
+      };
       $header.append($level, $back);
+      ensureJumpButton();
+      if (refTid) onQuoteAvailThread(refTid, onThreadAvail);
       $quote.append($header);
       const $content = stripIds($('<div></div>').html(html));
       simplifyQuoteInfoIdLinks($content);
@@ -10075,6 +10104,7 @@ ${markedSwatchHtml}
           options.currentThreadId = window.__xdexPendingQuoteCtxTid;
           window.__xdexPendingQuoteCtxTid = '';
         }
+        options.tid = String(tid);
         showQuote(html, options);
         return true;
       }).catch(err => {
@@ -10239,7 +10269,7 @@ ${markedSwatchHtml}
         try { markCurrentThreadQuoteRefs(refViewEl, ctxTid); } catch (e) {}
       }
       fetchData(tid).then(html => {
-        showQuote(html, { currentThreadId: ctxTid });
+        showQuote(html, { currentThreadId: ctxTid, tid: String(tid) });
         // 兑底：对最上层拓展浮窗内容再标一次，防 options 链路/后处理导致漏标
         setTimeout(() => {
           try {
@@ -10776,6 +10806,19 @@ ${markedSwatchHtml}
 
   const quoteAvailabilityCache = Object.create(null);
   let quoteAvailabilityQueue = null;
+  // 跳转按钮补插监听：key = 引用串号，value = Set<回调>（浮窗打开后注册，判定为 thread 时触发）
+  const quoteJumpListeners = new Map();
+  function onQuoteAvailThread(tid, fn) {
+    const id = String(tid || '');
+    if (!id || typeof fn !== 'function') return;
+    if (!quoteJumpListeners.has(id)) quoteJumpListeners.set(id, new Set());
+    quoteJumpListeners.get(id).add(fn);
+  }
+  function offQuoteAvailThread(tid, fn) {
+    const id = String(tid || '');
+    const set = quoteJumpListeners.get(id);
+    if (set) { set.delete(fn); if (!set.size) quoteJumpListeners.delete(id); }
+  }
   let xdexAvailSummary = { thread: 0, reply: 0, empty: 0, unknown: 0 };
   let xdexAvailSummaryTimer = null;
   function xdexAvailLogSummary() {
@@ -10832,6 +10875,13 @@ ${markedSwatchHtml}
           document.querySelectorAll('font[color="#789922"]').forEach((el) => {
             if (getQuoteRefIdFromText(el.textContent) === tid) applyQuoteAvailabilityStyle(el, kind);
           });
+          // 判定为 thread(主串) 时，通知所有打开该引用浮窗的跳转按钮补插
+          if (kind === 'thread' && quoteJumpListeners && quoteJumpListeners.size) {
+            const set = quoteJumpListeners.get(String(tid));
+            if (set && set.size) {
+              [...set].forEach((fn) => { try { fn(String(tid)); } catch (e) {} });
+            }
+          }
           // 批量汇总：一次扫掠只打一条汇总日志，不逐 id 输出（发送消息后整片新引用号会一次性判定，逐行会刷屏）
           if (xdexAvailSummary[kind] != null) xdexAvailSummary[kind] += 1;
           if (xdexAvailSummaryTimer) return;
