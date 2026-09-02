@@ -9806,8 +9806,8 @@ ${markedSwatchHtml}
       return;
     }
     const cache = Object.create(null);
-    // 防止短时间内重复点击同一引用号导致多重弹窗
-    let lastQuoteTid = null;
+    // 防止短时间内重复点击同一处引用号导致多重弹窗
+    let lastQuoteEl = null;
     let lastQuoteAt = 0;
     const QUOTE_DOUBLE_CLICK_WINDOW = 250;
     // 注入样式（只注入一次）
@@ -9948,6 +9948,7 @@ ${markedSwatchHtml}
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
     const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="red" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path style="fill:none" d="M6 6l12 12"/><path style="fill:none" d="M18 6L6 18"/></svg></div>').appendTo($overlay);
     $closeAll.on('click', () => {
+      $stack.children('.qp-quote').each((_, q) => clearQuoteSourceMark($(q)));
       $stack.empty();
       $overlay.fadeOut(160);
     });
@@ -9963,15 +9964,26 @@ ${markedSwatchHtml}
           $('.qp-quote.is-dragging').length || $('.qp-quote.is-resizing').length ||
           $overlay.data('isDragging')) return;
       // 3) 点击最上层框之外：仅移除最上层
+      clearQuoteSourceMark($top);
       $top.remove();
       if ($stack.children('.qp-quote').length === 0) $overlay.fadeOut(160);
     });
     $(document).on('keydown.qp', e => {
       if (e.key !== 'Escape' || !$overlay.is(':visible')) return;
       const $last = $stack.children('.qp-quote').last();
-      if ($last.length) $last.remove();
+      if ($last.length) { clearQuoteSourceMark($last); $last.remove(); }
       if ($stack.children().length === 0) $overlay.fadeOut(160);
     });
+        // 浮窗关闭时清除源引用元素上的“已打开”标记，允许之后再次点击打开
+    function clearQuoteSourceMark($quote) {
+      try {
+        const el = $quote && $quote[0] && $quote[0].__xdexSourceEl;
+        if (el) {
+          el.__xdexQuoteOpen = false;
+          el.__xdexQuotePending = false;
+        }
+      } catch (e) {}
+    }
     function fetchData(tid) {
       if (cache[tid]) return Promise.resolve(cache[tid]);
       return $.get(`/Home/Forum/ref?id=${tid}`).then(html => (cache[tid] = html));
@@ -10010,10 +10022,13 @@ ${markedSwatchHtml}
         left: '0px',
         zIndex: 1000 + depth
       });
+      // 关联源引用元素：浮窗关闭时据此清除其“已打开”标记
+      if (options && options.sourceEl) $quote[0].__xdexSourceEl = options.sourceEl;
       const $header = $('<div class="qp-header"></div>');
       const $level  = $(`<span class="qp-level">第 ${depth + 1} 层</span>`);
       const $back   = $('<button class="qp-back">返回</button>').on('click', e => {
         e.stopPropagation();
+        clearQuoteSourceMark($quote);
         $quote.remove();
         if ($stack.children().length === 0) $overlay.fadeOut(160);
       });
@@ -10257,11 +10272,17 @@ ${markedSwatchHtml}
       const tid = (this.textContent.match(/\d+/) || [])[0];
       if (!tid) return;
       const now = Date.now();
-      if (lastQuoteTid === tid && now - lastQuoteAt <= QUOTE_DOUBLE_CLICK_WINDOW) {
-        return; // 同一引用号短时间内重复点击，忽略
+      const sourceEl = this;
+      if (lastQuoteEl === sourceEl
+          && (now - lastQuoteAt <= QUOTE_DOUBLE_CLICK_WINDOW
+              || sourceEl.__xdexQuotePending
+              || sourceEl.__xdexQuoteOpen)) {
+        return; // 同一处引用号：请求中/浮窗已开/短时间内重复点击，忽略
       }
-      lastQuoteTid = tid;
+      lastQuoteEl = sourceEl;
       lastQuoteAt = now;
+      sourceEl.__xdexQuotePending = true;
+      sourceEl.__xdexQuoteOpen = false;
       const ctxTid = getRefContextThreadId(this);
       window.__xdexNativeRefCtxTid = ctxTid;
       const refViewEl = document.getElementById('h-ref-view');
@@ -10269,7 +10290,9 @@ ${markedSwatchHtml}
         try { markCurrentThreadQuoteRefs(refViewEl, ctxTid); } catch (e) {}
       }
       fetchData(tid).then(html => {
-        showQuote(html, { currentThreadId: ctxTid, tid: String(tid) });
+        if (sourceEl.__xdexQuotePending) sourceEl.__xdexQuotePending = false;
+        sourceEl.__xdexQuoteOpen = true;
+        showQuote(html, { currentThreadId: ctxTid, tid: String(tid), sourceEl: sourceEl });
         // 兑底：对最上层拓展浮窗内容再标一次，防 options 链路/后处理导致漏标
         setTimeout(() => {
           try {
@@ -10282,6 +10305,9 @@ ${markedSwatchHtml}
             console.log('[xdex] quote overlay marked', { ctx: ctxTid, ref: tid });
           } catch (e) {}
         }, 60);
+      }).catch(() => {
+        // 加载失败：清除 pending，允许之后重试
+        sourceEl.__xdexQuotePending = false;
       });
     });
     // 原生引用浮窗标注（多路兑底）：ctx 来自最近一次 hover/click 的引用号所属串；
