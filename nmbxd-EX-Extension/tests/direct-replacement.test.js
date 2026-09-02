@@ -1614,7 +1614,20 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   await testIntegratedUpdateDebugBridge();
   await testIntegratedPostHistoryDebugBridge();
   await testServiceWorkerInjectsApiUserhashCookie();
-  console.log('direct replacement contract ok');
+  
+function testQuoteAvailabilityContract() {
+  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  assert(upstream.includes('extendQuoteAvailabilityDetection: true'), 'quote availability sub-switch must default enabled');
+  assert(upstream.includes('id="sp_extendQuoteAvailability"'), 'settings panel must expose the availability sub-switch');
+  assert(upstream.includes('sp_extendQuoteAvailability:'), 'settings panel must document the availability sub-switch');
+  assert(upstream.includes('function parseQuoteResponseForAvailability'), 'quote availability parser must exist');
+  assert(upstream.includes('function probeQuoteAvailability'), 'quote availability probe must exist');
+  assert(upstream.includes('function mountQuoteAvailabilityOnRoot'), 'quote availability must be mounted into quote roots');
+  assert(upstream.includes('function createQuoteAvailabilityQueue'), 'quote availability must dedupe probe requests through a shared queue');
+  assert(upstream.includes("parseQuoteResponseForAvailability(String(html || ''), id)"), 'quote popup ref responses must feed the availability cache');
+}
+
+console.log('direct replacement contract ok');
 }()).catch((err) => {
   console.error(err && err.stack ? err.stack : err);
   process.exitCode = 1;

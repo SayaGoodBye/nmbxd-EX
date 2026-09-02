@@ -402,6 +402,7 @@
       enableDraft: true,
       timeDisplayMode: 'relative', // relative | exact
       extendQuote: true, // 拓展引用格式
+      extendQuoteAvailabilityDetection: true, // 检测引用串是否存在
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
@@ -1312,7 +1313,7 @@
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableLinkBlank" class="xdex-switch" role="switch"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableAutoUrlLinkify" class="xdex-switch" role="switch"><label for="sp_enableAutoUrlLinkify"> 自动识别链接</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableQuotePreview" class="xdex-switch" role="switch"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote" class="xdex-switch" role="switch"><label for="sp_extendQuote"> 拓展引用格式</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote" class="xdex-switch" role="switch"><label for="sp_extendQuote"> 拓展引用格式</label><input type="checkbox" id="sp_extendQuoteAvailabilityDetection" class="xdex-switch" role="switch"><label for="sp_extendQuoteAvailabilityDetection"> 可用性检测</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar" class="xdex-switch" role="switch"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck" class="xdex-switch" role="switch"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
@@ -1769,6 +1770,7 @@
         'enableAutoUrlLinkify',
         'enableQuotePreview',
         'extendQuote',
+        'extendQuoteAvailabilityDetection',
         'toggleSidebar',
         'disableAutoQuote'
       ];
@@ -3500,6 +3502,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
+        sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-加粗',
         sp_threadCookieWhitelistModeEnabled: '只看饼干模式。\n折叠：保持原版只看饼干折叠逻辑；\n隐藏：未命中的回复直接隐藏；\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注。\n可选观众回复的展开/收起。',
         sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动。',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
@@ -3679,6 +3682,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableQuotePreview',
         'enableImageHideMode',
         'extendQuote',
+        'extendQuoteAvailabilityDetection',
         'enablePostExpandAll',
         'toggleSidebar',
         'disableAutoQuote'
@@ -10241,7 +10245,10 @@ ${markedSwatchHtml}
           try {
             const quotes = document.querySelectorAll('.qp-overlay-quote .qp-quote');
             const top = quotes[quotes.length - 1];
-            if (top) markCurrentThreadQuoteRefs(top, ctxTid);
+            if (top) {
+              markCurrentThreadQuoteRefs(top, ctxTid);
+              try { refreshQuoteAvailability(top); } catch (e) {}
+            }
             console.log('[xdex] quote overlay marked', { ctx: ctxTid, ref: tid });
           } catch (e) {}
         }, 60);
@@ -10617,6 +10624,235 @@ ${markedSwatchHtml}
     markCurrentThreadQuoteRefs: markCurrentThreadQuoteRefs
   };
 
+  // —— 引用串可用性检测：仅保留当前页面会话结果，不写入 GM 存储 ——
+  function parseQuoteResponseForAvailability(html, tid) {
+    if (html == null || String(html).trim() === '') return { kind: 'empty' };
+    const text = String(html).trim();
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) {}
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.success === false || parsed.error) return { kind: 'reply' };
+      if (parsed.id != null || parsed.content != null || Array.isArray(parsed.Replies)) return { kind: 'thread' };
+    }
+    if (/<!DOCTYPE html>\s*<html[^>]*>\s*<head[\s>]/i.test(text) && !/<(?:body|div|article|main)\b/i.test(text)) return { kind: 'empty' };
+    if (tid && (text.includes('id="' + tid + '"') || text.includes("id='" + tid + "'") || text.includes('data-threads-id="' + tid + '"') || text.includes("data-threads-id='" + tid + "'"))) return { kind: 'thread' };
+    if (/<(?:div|article|section)\b[^>]*(?:class|id)=["'][^"']*(?:h-threads-item|thread)[^"']*["']/i.test(text)) return { kind: 'thread' };
+    return { kind: 'reply' };
+  }
+
+  function createQuoteAvailabilityQueue(options = {}) {
+    const pending = new Set();
+    const inFlight = new Set();
+    const attempts = new Map();
+    const MAX_ATTEMPTS = 3;
+    const fetchFn = options.fetchFn || (() => Promise.reject(new Error('quote availability fetch unavailable')));
+    const cacheGet = options.cacheGet || (() => null);
+    const cacheSet = options.cacheSet || (() => {});
+    const onResult = options.onResult || (() => {});
+    let timer = null;
+    let pumping = false;
+    let pumpTimer = null;
+    // 受限并发 + 请求间隔：一次刷新可能有数百个编号，全量并发会被 CDN 限流（限流错误即 unknown 的来源）
+    const CONCURRENCY = Math.max(1, Number(options.concurrency) || 2);
+    const GAP_MS = Math.max(0, Number(options.gapMs) != null ? Number(options.gapMs) : 250);
+    const delay = options.noDelay ? 0 : (Number(options.delay) || 120);
+    const RETRY_BASE_MS = 1500;
+    const retryLater = (tid) => {
+      const n = (attempts.get(tid) || 0) + 1;
+      attempts.set(tid, n);
+      if (n >= MAX_ATTEMPTS) return false;
+      setTimeout(() => {
+        if (!cacheGet(tid) && !inFlight.has(tid) && !pending.has(tid)) {
+          pending.add(tid);
+          schedule();
+        }
+      }, RETRY_BASE_MS * n);
+      return true;
+    };
+    const drainOne = async (tid) => {
+      inFlight.add(tid);
+      try {
+        const cached = cacheGet(tid);
+        if (cached && cached.kind) {
+          onResult(tid, cached.kind);
+          return;
+        }
+        const response = await fetchFn(tid);
+        const parsed = parseQuoteResponseForAvailability(response && response.html, tid);
+        const result = { kind: parsed.kind, t: Date.now() };
+        // 只缓存明确判定（thread/reply/empty）；失败不缓存，保留后续重试资格
+        cacheSet(tid, result);
+        attempts.delete(tid);
+        onResult(tid, result.kind);
+      } catch (e) {
+        // 请求失败（限流/超时/断网）：不入缓存，退避后自动重试，重试耗尽则本轮放弃
+        const willRetry = retryLater(tid);
+        onResult(tid, 'unknown');
+        if (!willRetry) console.warn('[xdex-availability] 放弃重试', { id: tid });
+      } finally {
+        inFlight.delete(tid);
+      }
+    };
+    const pump = () => {
+      if (pumping) return;
+      pumping = true;
+      const next = () => {
+        const work = [];
+        while (work.length < CONCURRENCY && pending.size) {
+          const id = pending.values().next().value;
+          pending.delete(id);
+          work.push(id);
+        }
+        if (!work.length) {
+          pumping = false;
+          return;
+        }
+        Promise.all(work.map(drainOne)).then(() => {
+          if (pending.size) {
+            pumpTimer = setTimeout(() => { pumpTimer = null; next(); }, GAP_MS);
+          } else {
+            pumping = false;
+          }
+        });
+      };
+      next();
+    };
+    const schedule = () => {
+      if (timer !== null) return;
+      if (options.noDelay) { pump(); return; }
+      timer = setTimeout(() => { timer = null; pump(); }, delay);
+    };
+    return {
+      enqueue(tid) {
+        const id = String(tid || '').trim();
+        if (!/^\d\d\d\d\d\d\d\d$/.test(id) || cacheGet(id) || pending.has(id) || inFlight.has(id)) return false;
+        if ((attempts.get(id) || 0) >= MAX_ATTEMPTS) return false;
+        pending.add(id);
+        schedule();
+        return true;
+      },
+      flushNow() {
+        if (timer !== null) { clearTimeout(timer); timer = null; }
+        if (pumpTimer !== null) { clearTimeout(pumpTimer); pumpTimer = null; }
+        pump();
+        return new Promise((resolve) => {
+          const wait = () => (pending.size || inFlight.size || pumping) ? setTimeout(wait, 0) : resolve();
+          wait();
+        });
+      },
+      pendingSize() { return pending.size + inFlight.size; }
+    };
+  }
+
+  function applyQuoteAvailabilityStyle(el, kind) {
+    if (!el || !el.style) return;
+    const value = kind === 'thread' || kind === 'empty' || kind === 'reply' || kind === 'unknown' ? kind : 'unknown';
+    if (el.dataset) el.dataset.xdexQuoteAvail = value;
+    el.style.fontWeight = value === 'thread' ? 'bold' : '';
+    el.style.opacity = value === 'empty' ? '0.5' : '';
+  }
+
+  // 提取元素文本中的引用编号：仅标准（>>No. / No.）与拓展（独立 8 位数字 / >>8位）格式；
+  // 不含编号的绿色文本（如 ">>如我所见"）返回 null，视为非引用，不判定、不改样式
+  function getQuoteRefIdFromText(text) {
+    const m = String(text || '').match(/(?:>>)?No\.\s?(\d{8})\b|(?:>>)?(?<!\d)(\d{8})(?!\d)/);
+    return m ? (m[1] || m[2]) : null;
+  }
+
+  function probeQuoteAvailability(el, context = {}) {
+    const text = String(el && el.textContent || '');
+    // 仅当文本是标准/拓展引用时才判定；不含引用编号的绿色 font（如 ">>如我所见"）不是引用，直接跳过
+    const tid = getQuoteRefIdFromText(text);
+    if (!tid) return { kind: 'skip', queued: false };
+    const state = context.state || {};
+    if (state.extendQuoteAvailabilityDetection === false || state.extendQuote === false) return { kind: 'unknown', queued: false };
+    const cached = context.cache && context.cache[tid];
+    const kind = cached && cached.kind ? cached.kind : 'unknown';
+    applyQuoteAvailabilityStyle(el, kind);
+    if (cached || !context.queueSet) return { kind, queued: false };
+    context.queueSet(tid);
+    return { kind, queued: true };
+  }
+
+  const quoteAvailabilityCache = Object.create(null);
+  let quoteAvailabilityQueue = null;
+  let xdexAvailSummary = { thread: 0, reply: 0, empty: 0, unknown: 0 };
+  let xdexAvailSummaryTimer = null;
+  function xdexAvailLogSummary() {
+    const s = xdexAvailSummary;
+    const total = s.thread + s.reply + s.empty + s.unknown;
+    if (total <= 0) return;
+    console.log('[xdex-availability] 判定汇总', { thread: s.thread, reply: s.reply, empty: s.empty, unknown: s.unknown });
+    xdexAvailSummary = { thread: 0, reply: 0, empty: 0, unknown: 0 };
+  }
+  function getQuoteAvailabilityState() {
+    try {
+      return Object.assign({}, SettingPanel.defaults, SettingPanel.state || {}, GM_getValue(SettingPanel.key, {}));
+    } catch (e) { return { extendQuote: true, extendQuoteAvailabilityDetection: true }; }
+  }
+  function fetchQuoteAvailability(tid) {
+    const id = encodeURIComponent(tid);
+    const refUrl = `https://api.nmb.best/api/ref?id=${id}`;
+    const threadUrl = `https://api.nmb.best/api/thread?id=${id}&page=1`;
+    const headers = typeof getPostHistoryApiCookieHeaders === 'function'
+      ? getPostHistoryApiCookieHeaders()
+      : null;
+    const readResponse = (resp) => {
+      const raw = resp && (resp.response || resp.responseText || '');
+      if (raw && typeof raw === 'object') return raw;
+      try { return JSON.parse(String(raw || '')); } catch (e) { return null; }
+    };
+    return gmRequest(refUrl, 'text', headers).then((refResp) => {
+      const ref = readResponse(refResp);
+      // ref 存在且非业务失败 → 目标编号确实存在；是否主串由 thread 判定
+      if (!ref || ref.success === false || ref.error) return { html: '', httpStatus: 200 };
+      return gmRequest(threadUrl, 'text', headers).then((threadResp) => {
+        const thread = readResponse(threadResp);
+        if (thread && thread.success === false) return { html: JSON.stringify({ success: false, error: thread.error || 'reply' }), httpStatus: 200 };
+        return { html: JSON.stringify(thread || {}), httpStatus: 200 };
+      }).catch((err) => {
+        // thread 明确 404 → 该编号不是主串，是回复
+        if (err && /HTTP 404\b/.test(String(err.message || err))) {
+          return { html: JSON.stringify({ success: false, error: 'reply' }), httpStatus: 404 };
+        }
+        throw err;
+      });
+    });
+  }
+  function refreshQuoteAvailability(root = document) {
+    const state = getQuoteAvailabilityState();
+    if (state.extendQuoteAvailabilityDetection === false || state.extendQuote === false) return;
+    if (!quoteAvailabilityQueue) {
+      quoteAvailabilityQueue = createQuoteAvailabilityQueue({
+        fetchFn: fetchQuoteAvailability,
+        cacheGet: (tid) => quoteAvailabilityCache[tid],
+        cacheSet: (tid, entry) => { quoteAvailabilityCache[tid] = entry; },
+        onResult: (tid, kind) => {
+          // 仅对真正包含该引用编号的元素应用样式；不含编号的绿色文本不改动
+          document.querySelectorAll('font[color="#789922"]').forEach((el) => {
+            if (getQuoteRefIdFromText(el.textContent) === tid) applyQuoteAvailabilityStyle(el, kind);
+          });
+          // 批量汇总：一次扫掠只打一条汇总日志，不逐 id 输出（发送消息后整片新引用号会一次性判定，逐行会刷屏）
+          if (xdexAvailSummary[kind] != null) xdexAvailSummary[kind] += 1;
+          if (xdexAvailSummaryTimer) return;
+          xdexAvailSummaryTimer = setTimeout(() => {
+            xdexAvailSummaryTimer = null;
+            xdexAvailLogSummary();
+          }, 300);
+        }
+      });
+    }
+    const fonts = [];
+    if (root && root.matches && root.matches('font[color="#789922"]')) fonts.push(root);
+    if (root && root.querySelectorAll) fonts.push(...root.querySelectorAll('font[color="#789922"]'));
+    fonts.forEach((el) => probeQuoteAvailability(el, {
+      state,
+      cache: quoteAvailabilityCache,
+      queueSet: (tid) => quoteAvailabilityQueue.enqueue(tid)
+    }));
+  }
+  window.__xdexQuoteAvailability = { refresh: refreshQuoteAvailability, probe: probeQuoteAvailability };
+
   //引用格式拓展
   function extendQuote(root = document) {
     return startupPerfDebug.measure('extendQuote', () => {
@@ -10652,6 +10888,7 @@ ${markedSwatchHtml}
         // 原生标准引用号（>>No.12345678 已由原站渲染为 <font color="#789922">）会被 walker 跳过，
         // 这里统一补标：引用号 == 当前串号 → 同色下划线
         try { markCurrentThreadQuoteRefs(root, getRefContextThreadId(root)); } catch (e) {}
+      try { refreshQuoteAvailability(root); } catch (e) {}
     });
     function processTextNode(textNode) {
         const text = textNode.nodeValue;
@@ -10718,6 +10955,7 @@ ${markedSwatchHtml}
         }
         return best;
     }
+    try { refreshQuoteAvailability(root); } catch (e) {}
     }, () => startupPerfDebug.summarizeRoot(root));
   }
   function initExtendedContent(root) {
@@ -10772,6 +11010,7 @@ ${markedSwatchHtml}
                 renderHiddenTextContent(refEl);
                 if (typeof extendQuote === 'function') extendQuote(refEl);
                 if (typeof initExtendedContent === 'function') initExtendedContent(refEl);
+                try { refreshQuoteAvailability(refEl); } catch (e) {}
                 const _cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
                 markAllCookies(_cfg.markedGroups || [], refEl);
                 if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
@@ -10787,6 +11026,7 @@ ${markedSwatchHtml}
         quoteEl.addEventListener('mouseenter', quoteEl.__xdexRefHoverHandler, true);
       });
     // —— 新增：处理 [h]...[/h] 隐藏文本 ——
+    try { refreshQuoteAvailability(root || document); } catch (e) {}
     }, () => startupPerfDebug.summarizeRoot(root || document));
   }
 
