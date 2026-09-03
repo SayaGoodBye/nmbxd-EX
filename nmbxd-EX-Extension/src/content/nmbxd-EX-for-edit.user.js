@@ -3502,7 +3502,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
-        sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-加粗。被标记为主串的引用号可从“拓展引用浮窗”中直接跳转',
+        sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-实线（当前串）/虚线（其他串）。被标记为主串的引用号可从“拓展引用浮窗”中直接跳转',
         sp_threadCookieWhitelistModeEnabled: '只看饼干模式\n折叠：保持原版只看饼干折叠逻辑\n隐藏：未命中的回复直接隐藏\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注\n可选观众回复的展开/收起',
         sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
@@ -10626,13 +10626,17 @@ ${markedSwatchHtml}
         if (el.dataset && el.dataset.xdexCurThreadMarkedTid === tids) return;
         const refNum = (String(el.textContent || '').match(/\d+/) || [])[0];
         if (!refNum) return;
-        // underline 贴近引用号文字；颜色继承 font[color=#789922]（与引用号颜色一致）
-        // 回应模式行（实际容器 .h-post-form-grid / .js-reply-mode-row）内的 No.xxxx 不添加横线
-        if (refNum === tids && !(el.closest && el.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row'))) {
-          el.style.textDecoration = 'underline';
-          el.style.textDecorationThickness = '2px';
+        // 不再直接设 underline：统一由 applyQuoteAvailabilityStyle 按 thread 判定设置实线/虚线
+        // xdexCurThreadMarkedTid 保持“已处理”防重复语义；xdexCurThreadRef 仅本串串首打，供样式判定
+        if (el.dataset) {
+          el.dataset.xdexCurThreadMarkedTid = tids;
+          if (refNum === tids) el.dataset.xdexCurThreadRef = tids;
+          else el.dataset.xdexCurThreadRef = '';
+          // 已有 thread 判定时，打标记后立即刷新线型（防 mark 晚于 apply 时本串串首误显虚线）
+          if (el.dataset.xdexQuoteAvail === 'thread') {
+            try { applyQuoteAvailabilityStyle(el, 'thread'); } catch (e) {}
+          }
         }
-        if (el.dataset) el.dataset.xdexCurThreadMarkedTid = tids;
       });
       // 兑底：仅处理正文区（.h-threads-content）内未渲染成 <font> 的裸引用号（如 >>No.xxx），
       // 消息信息区（.h-threads-info / a.h-threads-info-id，如 "No.69299379" 编号链接）一律不改
@@ -10667,12 +10671,14 @@ ${markedSwatchHtml}
             const font = document.createElement('font');
             font.setAttribute('color', '#789922');
             font.textContent = text.slice(start, end);
-            if (refNum === tids) {
-              font.style.textDecoration = 'underline';
-              font.style.textDecorationThickness = '2px';
-              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = tids;
-            } else if (font.dataset) {
+            // 不再直接设 underline：统一由 applyQuoteAvailabilityStyle 按 thread 判定设置实线/虚线
+            if (font.dataset) {
               font.dataset.xdexCurThreadMarkedTid = tids;
+              if (refNum === tids) font.dataset.xdexCurThreadRef = tids;
+              else font.dataset.xdexCurThreadRef = '';
+              if (font.dataset.xdexQuoteAvail === 'thread') {
+                try { applyQuoteAvailabilityStyle(font, 'thread'); } catch (e) {}
+              }
             }
             frag.appendChild(font);
             cursor = end;
@@ -10812,7 +10818,15 @@ ${markedSwatchHtml}
     if (!el || !el.style) return;
     const value = kind === 'thread' || kind === 'empty' || kind === 'reply' || kind === 'unknown' ? kind : 'unknown';
     if (el.dataset) el.dataset.xdexQuoteAvail = value;
-    el.style.fontWeight = value === 'thread' ? 'bold' : '';
+    // 统一不加粗：主串用横线区分；本串串首实线，其他主串虚线
+    el.style.fontWeight = '';
+    el.style.textDecoration = '';
+    el.style.textDecorationThickness = '';
+    if (value === 'thread') {
+      const isCurrentThread = !!(el.dataset && el.dataset.xdexCurThreadRef);
+      el.style.textDecoration = isCurrentThread ? 'underline' : 'underline dashed';
+      el.style.textDecorationThickness = '2px';
+    }
     el.style.opacity = value === 'empty' ? '0.5' : '';
   }
 
@@ -11008,9 +11022,14 @@ ${markedSwatchHtml}
             const refNum = (font.textContent.match(/\d+/) || [])[0];
             const modeTextEl = textNode.parentElement && textNode.parentElement.closest ? textNode.parentElement.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row') : null;
             if (refNum && !modeTextEl && refNum === getRefContextThreadId(textNode.parentElement)) {
-              font.style.textDecoration = 'underline';
-              font.style.textDecorationThickness = '2px';
-              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = refNum;
+              // 不再直接设 underline：统一由 applyQuoteAvailabilityStyle 按 thread 判定设置实线/虚线
+              if (font.dataset) {
+                font.dataset.xdexCurThreadMarkedTid = refNum;
+                font.dataset.xdexCurThreadRef = refNum;
+                if (font.dataset.xdexQuoteAvail === 'thread') {
+                  try { applyQuoteAvailabilityStyle(font, 'thread'); } catch (e) {}
+                }
+              }
             }
             frag.appendChild(font);
             cursor = end;
