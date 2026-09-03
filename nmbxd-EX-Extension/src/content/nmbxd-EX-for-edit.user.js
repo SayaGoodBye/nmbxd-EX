@@ -3497,7 +3497,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableSeamlessPaging: '阅读到页面底部时无缝加载下一页并为新页首添加页码提示',
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
-        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中可不在前台',
+        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中焦点可不在前台',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
@@ -7494,6 +7494,7 @@ ${markedSwatchHtml}
     let lastCheckAt = 0;
     // 所有需要被 window.SeamlessPaging 访问的变量都在此声明
     let loading = false;
+    let forceLoadPending = false; // 手动重载 50ms 定时器待执行标记，防网络慢时重复触发
     let done = false;
     let loadedPages = new Set();
     let reachedLastPageAt = -1;
@@ -8397,6 +8398,11 @@ ${markedSwatchHtml}
           seamlessDebugLog('lastLoadedPage 当前值:', lastLoadedPage);
           seamlessDebugLog('loading 当前值:', loading);
           seamlessDebugLog('loadedPages 内容:', Array.from(loadedPages));
+          // 网络加载中或 50ms 重载定时器已排期：忽略重复触发，避免慢网下同一页被重复加载
+          if (loading || forceLoadPending) {
+            seamlessDebugLog('重复触发翻页：loading 或 forceLoadPending 为 true，忽略');
+            return;
+          }
           // 旧：内联状态回退（已统一到 prepareForceLoadNext；不传 nextPage 时清 lastLoadedPage+1）
           // loadedPages.delete(lastLoadedPage + 1);   // 清除下一页的已加载标记
           // loading = false;                          // 重置加载状态
@@ -8407,7 +8413,9 @@ ${markedSwatchHtml}
           seamlessDebugLog('loading 重置为:', loading);
           seamlessDebugLog('lastCheckAt 重置为:', lastCheckAt);
           seamlessDebugLog('准备在 50ms 后调用 loadNextFunc');
+          forceLoadPending = true;
           setTimeout(() => {
+            forceLoadPending = false;
             seamlessDebugLog('=== setTimeout 内部执行 ===');
             seamlessDebugLog('执行前 loadNextFunc 类型:', typeof loadNextFunc);
             try {

@@ -7494,6 +7494,7 @@ ${markedSwatchHtml}
     let lastCheckAt = 0;
     // 所有需要被 window.SeamlessPaging 访问的变量都在此声明
     let loading = false;
+    let forceLoadPending = false; // 手动重载 50ms 定时器待执行标记，防网络慢时重复触发
     let done = false;
     let loadedPages = new Set();
     let reachedLastPageAt = -1;
@@ -8397,6 +8398,11 @@ ${markedSwatchHtml}
           seamlessDebugLog('lastLoadedPage 当前值:', lastLoadedPage);
           seamlessDebugLog('loading 当前值:', loading);
           seamlessDebugLog('loadedPages 内容:', Array.from(loadedPages));
+          // 网络加载中或 50ms 重载定时器已排期：忽略重复触发，避免慢网下同一页被重复加载
+          if (loading || forceLoadPending) {
+            seamlessDebugLog('重复触发翻页：loading 或 forceLoadPending 为 true，忽略');
+            return;
+          }
           // 旧：内联状态回退（已统一到 prepareForceLoadNext；不传 nextPage 时清 lastLoadedPage+1）
           // loadedPages.delete(lastLoadedPage + 1);   // 清除下一页的已加载标记
           // loading = false;                          // 重置加载状态
@@ -8407,7 +8413,9 @@ ${markedSwatchHtml}
           seamlessDebugLog('loading 重置为:', loading);
           seamlessDebugLog('lastCheckAt 重置为:', lastCheckAt);
           seamlessDebugLog('准备在 50ms 后调用 loadNextFunc');
+          forceLoadPending = true;
           setTimeout(() => {
+            forceLoadPending = false;
             seamlessDebugLog('=== setTimeout 内部执行 ===');
             seamlessDebugLog('执行前 loadNextFunc 类型:', typeof loadNextFunc);
             try {
