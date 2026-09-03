@@ -21597,7 +21597,8 @@ function 注册自动保存编辑() {
       pendingCount: postHistoryLiveRenderPendingCount,
       firstAt: postHistoryLiveRenderFirstAt
     });
-    if (!renderable) {
+    // 与浏览历史一致：模块未打开时不渲染，避免 WebDAV 合并触发全量历史渲染造成可用性检测刷屏
+    if (!active) {
       if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
       postHistoryLiveRenderTimer = 0;
       postHistoryLiveRenderFirstAt = 0;
