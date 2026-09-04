@@ -90,6 +90,25 @@
       return ready && typeof ready.then === 'function' ? ready : Promise.resolve();
   }
   const XDEX_GM_STORAGE_READY = getXDexGmStorageReady();
+  // —— Early 深色防闪变：在页面首帧渲染前打类+注入最小样式（不依赖 SettingPanel/样式表枚举） ——
+  // 早期无法访问后面的函数，故内联一份最小算法（与 xdexDarkColor 同参数，仅覆盖灰阶底/前景核心色）
+  (function earlyCustomDarkTheme() {
+    try {
+      const enabled = !!(GM_getValue('myScriptSettings', {}) || {}).enableCustomDarkTheme;
+      const rootAttr = document.documentElement;
+      const drMode = rootAttr && (rootAttr.getAttribute('data-darkreader-mode') || rootAttr.getAttribute('data-darkreader-scheme'));
+      if (!enabled || (drMode && drMode !== 'off')) return; // DR 激活或未开启 → 不注入
+      if (document.getElementById('xdex-custom-theme')) return;
+      const style = document.createElement('style');
+      style.id = 'xdex-custom-theme';
+      // 早期最小集：底色/正文/菜单底/引用号（核心体验色，直接内联算法结果）
+      style.textContent = ':root.xdex-custom-dark html,:root.xdex-custom-dark body{background-color:#1d1e20!important;color:#e08a8a!important}' +
+        ':root.xdex-custom-dark #h-menu{background-color:#1d1e20!important;color:#e04747!important}' +
+        ':root.xdex-custom-dark font[color="#789922"]{color:#a3bd5f!important}';
+      document.head.appendChild(style);
+      document.documentElement.classList.add('xdex-custom-dark');
+    } catch (e) {}
+  })();
   function scheduleXDexStartup(){
       if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
       const startAfterStorageReady = () => {
@@ -406,7 +425,7 @@
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
-      enableCustomDarkTheme: false, // 自定义深色模式（Dark Reader 激活时不生效）
+      enableCustomDarkTheme: false, // 自定义深色模式
       dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
@@ -1300,7 +1319,15 @@
                   <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
                 <span class="xdex-setting-title-easter-egg" style="font-size:20px; font-weight:bold; cursor:pointer;">X岛-EX</span>
                 <div style="position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:10px;">
-                <label for="sp_enableCustomDarkTheme" style="font-size:12px; color:#999; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="sp_enableCustomDarkTheme" class="xdex-switch" role="switch"> 深色模式</label>
+                <label for="sp_enableCustomDarkTheme" id="sp_dark_toggle_wrap" title="深色模式" style="display:inline-flex; align-items:center; cursor:pointer;">
+                  <input type="checkbox" id="sp_enableCustomDarkTheme" role="switch" style="position:absolute;opacity:0;width:0;height:0;">
+                  <span id="sp_dark_toggle_track" style="display:inline-flex;align-items:center;width:46px;height:24px;border-radius:12px;background:#fff;border:1px solid #ccc;transition:background .35s ease,border-color .35s ease;box-sizing:border-box;">
+                    <span id="sp_dark_toggle_thumb" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);margin-left:3px;transition:transform .35s ease,background .35s ease;">
+                      <svg id="sp_dark_icon_sun" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f39c12" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="4.5" fill="#f39c12" stroke="none"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9L19 19M19 5l-2.1 2.1M7.1 16.9L5 19"/></svg>
+                      <svg id="sp_dark_icon_moon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffd54f" stroke-width="2.2" stroke-linecap="round" style="display:none;"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="#ffd54f" stroke="none"/></svg>
+                    </span>
+                  </span>
+                </label>
                 <a id="sp_version_link" href="javascript:void(0)" style="font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
                 </div>
               </div>
@@ -1797,6 +1824,16 @@
       $(reloadRequiredSettingSelector)
         .off('change.xdexReloadSettingSave')
         .on('change.xdexReloadSettingSave', saveReloadRequiredSettingsImmediately);
+      // 深色开关：切换时先加页面过渡类保证平滑，样式由 syncInputs/save 回调接管
+      $('#sp_enableCustomDarkTheme')
+        .off('change.xdexDarkToggle')
+        .on('change.xdexDarkToggle', function () {
+          try {
+            document.documentElement.classList.add('xdex-theme-anim');
+            syncDarkToggleVisual();
+            setTimeout(() => { try { document.documentElement.classList.remove('xdex-theme-anim'); } catch (e) {} }, 500);
+          } catch (e) {}
+        });
       // 图片隐藏模式：即时切换并即时应用（无需点“应用更改”）
       const applyImageHideModeImmediately = () => {
         const mode = $('#sp_applyImageHideMode').val() || 'default';
@@ -3511,7 +3548,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
         sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-实线（当前串）/虚线（其他串）。被标记为主串的引用号可从“拓展引用浮窗”中直接跳转',
-        sp_enableCustomDarkTheme: '深色模式，优先级低于 Dark Reader 拓展',
+        sp_enableCustomDarkTheme: '深色模式',
         sp_threadCookieWhitelistModeEnabled: '只看饼干模式\n折叠：保持原版只看饼干折叠逻辑\n隐藏：未命中的回复直接隐藏\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注\n可选观众回复的展开/收起',
         sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
@@ -3697,6 +3734,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'disableAutoQuote',
         'enableCustomDarkTheme'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
+      // 深色开关视觉状态：日/月图标 + 轨道底色
+      try { syncDarkToggleVisual(); } catch (e) {}
       // 二次确认饼干联动：快捷切换饼干关闭时禁用
       $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
       // 固定启用项：始终显示为开启
@@ -11693,6 +11732,24 @@ ${markedSwatchHtml}
       return !!SettingPanel.state.enableCustomDarkTheme;
     } catch (e) { return false; }
   }
+  // 深色开关视觉：轨道白/黑、日/月图标切换、滑块位移
+  function syncDarkToggleVisual() {
+    const cb = document.getElementById('sp_enableCustomDarkTheme');
+    const track = document.getElementById('sp_dark_toggle_track');
+    const thumb = document.getElementById('sp_dark_toggle_thumb');
+    const sun = document.getElementById('sp_dark_icon_sun');
+    const moon = document.getElementById('sp_dark_icon_moon');
+    if (!cb || !track || !thumb) return;
+    const on = !!cb.checked;
+    // 深色轨道用淡黑（#3a3a3a），比月亮图标的黑色浅、比滑块底深，保证月亮可读
+    track.style.background = on ? '#3a3a3a' : '#fff';
+    track.style.borderColor = on ? '#555' : '#ccc';
+    thumb.style.background = on ? '#2b2b2b' : '#fff';
+    thumb.style.transform = on ? 'translateX(22px)' : 'translateX(0)';
+    if (sun) sun.style.display = on ? 'none' : '';
+    if (moon) moon.style.display = on ? '' : 'none';
+  }
+  window.__xdexSyncDarkToggleVisual = syncDarkToggleVisual;
   // 整页深色同步：打 xdex-custom-dark 类控制覆盖样式；脚本 UI 沿用 xdex-darkreader-active 暗色规则
   function syncCustomPageTheme() {
     const root = document.documentElement;
@@ -11700,104 +11757,270 @@ ${markedSwatchHtml}
     const on = isCustomDarkActive();
     root.classList.toggle('xdex-custom-dark', on);
     document.documentElement.style.colorScheme = (on || isDarkReaderActive()) ? 'dark' : 'light';
-    ensureCustomDarkThemeStyle();
+    if (on) {
+      refreshCustomDarkThemeStyle();
+      scheduleRefreshCustomDarkTheme(); // 首轮枚举完成后（含 fetch 兜底）再补一次完整表
+    } else {
+      const s = document.getElementById('xdex-custom-theme');
+      if (s) s.textContent = '';
+    }
   }
-  // 整页深色覆盖样式：颜色值取自 Dark Reader 实测映射，仅 DR 未激活时由 xdex-custom-dark 启用
-  function ensureCustomDarkThemeStyle() {
-    if (document.getElementById('xdex-custom-theme')) return;
+  // —— 深色配色算法（方案C）：不维护映射表，按 Dark Reader 规律做 HSL 变换 ——
+  // 规律（由 DR 实测映射反推）：色相保持；亮度反转并压缩（亮→暗乘 0.16~0.22，暗→亮乘 0.85）；
+  // 饱和度乘 0.8；低饱和(S<0.1)统一转 210° 微蓝灰（S≈0.02~0.08）
+  function xdexHexToRgb(hex) {
+    let h = String(hex || '').replace(/^#/, '');
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function xdexRgbToHex(r, g, b) {
+    const c = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+    return '#' + c(r) + c(g) + c(b);
+  }
+  function xdexRgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) return [0, 0, l];
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h;
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+    return [h, s, l];
+  }
+  function xdexHslToRgb(h, s, l) {
+    if (s === 0) { const v = l * 255; return [v, v, v]; }
+    const hue2 = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [hue2(p, q, h + 1 / 3) * 255, hue2(p, q, h) * 255, hue2(p, q, h - 1 / 3) * 255];
+  }
+  // 原色 → 深色主题色：亮变暗、暗变亮、饱和压缩、灰阶转微蓝灰
+  function xdexDarkColor(hex) {
+    const rgb = xdexHexToRgb(hex);
+    if (!rgb) return null;
+    const [h, s, l] = xdexRgbToHsl(rgb[0], rgb[1], rgb[2]);
+    if (l > 0.93) {
+      // 近白底（#ffe/#fff 页面底）→ 一律中性化为深底（DR 实测同样处理）
+      const [r, g, b] = xdexHslToRgb(210 / 360, 0.02, 0.16);
+      return xdexRgbToHex(r, g, b);
+    }
+    if (s < 0.1) {
+      if (l >= 0.5 && l <= 0.78) {
+        // 中灰（#999/#aaa 级）→ 保持中亮，仅转微蓝灰（DR 实测：#999→#a29b92，不反转为深底）
+        const [r, g, b] = xdexHslToRgb(210 / 360, 0.07, Math.min(0.66, l + 0.02));
+        return xdexRgbToHex(r, g, b);
+      }
+      // 其余灰阶 → 统一材料色分级
+      const dark = l < 0.1 ? 0.07 : 0.35;
+      const [r, g, b] = xdexHslToRgb(210 / 360, 0.08, dark);
+      return xdexRgbToHex(r, g, b);
+    }
+    // 亮度反转压缩：亮→暗区，暗→亮区
+    let l2;
+    if (l >= 0.5) l2 = 0.5 - (l - 0.5) * 0.62;   // 0.97→0.19、0.89→0.25、0.73→0.42
+    else l2 = 0.5 + (0.5 - l) * 0.85;             // 0.25→0.69、0.37→0.56、0.43→0.62
+    const s2 = Math.min(1, s * 0.8);
+    const [r, g, b] = xdexHslToRgb(h, s2, l2);
+    return xdexRgbToHex(r, g, b);
+  }
+  // 前景白化：正文类文字不保色相，向白灰收敛（主流深色主题策略，可读性优先）
+  // l2 = 亮度反转后与目标白灰按比例混合；饱和度随混合比例同步衰减
+  function xdexDarkForeground(hex) {
+    const rgb = xdexHexToRgb(hex);
+    if (!rgb) return null;
+    const [h, s, l] = xdexRgbToHsl(rgb[0], rgb[1], rgb[2]);
+    if (l > 0.93 || s < 0.1) return xdexDarkColor(hex); // 底色/灰阶走通用分支
+    let l2 = l >= 0.5 ? 0.5 - (l - 0.5) * 0.62 : 0.5 + (0.5 - l) * 0.85;
+    // 混入 88% 目标白灰 #d8d7d4（L≈0.85, S≈0.02），仅保留 12% 原反转结果（近乎纯白灰，粉调不可见）
+    const mixL = l2 * 0.12 + 0.85 * 0.88;
+    const mixS = s * 0.8 * 0.12;
+    const [r, g, b] = xdexHslToRgb(h, mixS, mixL);
+    return xdexRgbToHex(r, g, b);
+  }
+  // 页面原生样式表来源（与站点实际引用一致；uikit 为 CDN 时走 fetch 兜底）
+  const XDEX_DARK_THEME_SHEET_URLS = [
+    location.origin + '/Public/Css/h.desktop.css',
+    'https://www.nmbxd1.com/Public/Css/h.desktop.css'
+  ];
+  // 从 CSS 文本收集颜色值并生成 :root.xdex-custom-dark 全局反转规则
+  function xdexCollectColorsFromCssText(cssText, colorSet) {
+    if (!cssText) return;
+    const re = /(#[0-9a-fA-F]{3}\b|#[0-9a-fA-F]{6}\b|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*[\d.]+)?\s*\))/g;
+    let m;
+    while ((m = re.exec(cssText))) {
+      const token = m[1];
+      if (token.startsWith('#')) colorSet.add(token.toLowerCase());
+      else {
+        const nums = token.match(/\d+/g);
+        if (nums && nums.length >= 3) {
+          colorSet.add(xdexRgbToHex(+nums[0], +nums[1], +nums[2]).toLowerCase());
+        }
+      }
+    }
+  }
+  // 生成全局色彩反转规则：对页面全部颜色类做类名切换（性能远优于逐选择器覆盖）
+  const xdexDarkCache = new Map();
+  function xdexToDarkCached(hex) {
+    if (!xdexDarkCache.has(hex)) xdexDarkCache.set(hex, xdexDarkColor(hex) || hex);
+    return xdexDarkCache.get(hex);
+  }
+  function buildCustomDarkThemeStyleText(colorSet) {
+    const D = (hex) => xdexToDarkCached(hex);
+    const F = (hex) => xdexDarkForeground(hex) || D(hex); // 前景白化（正文可读性优先）
+    const lines = [
+      '/* generated by xdex custom dark (algorithm-based) */',
+      ':root.xdex-custom-dark { color-scheme: dark; }',
+      // 页面底与正文：正文文字走前景白化（可读性优先），底色走通用反转
+      ':root.xdex-custom-dark html, :root.xdex-custom-dark body { background-color: ' + D('#ffe') + ' !important; color: ' + F('#800000') + ' !important; }',
+      // 左侧菜单（不用白化：保留原反转色彩）
+      ':root.xdex-custom-dark #h-menu { background-color: ' + D('#fff') + ' !important; color: ' + D('#c00') + ' !important; border-right-color: ' + D('#000') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-nav-parent-header, :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-header { color: ' + D('#c00') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-active { background: ' + D('#ea8') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-active a { color: ' + D('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item a { color: ' + D('#07d') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item:hover a { color: ' + D('#059') + ' !important; }',
+      // 底部导航与工具
+      ':root.xdex-custom-dark #h-bottom-nav { background: ' + D('#fff') + ' !important; border-top-color: ' + D('#000') + ' !important; }',
+      ':root.xdex-custom-dark #h-tool .h-tool-btn { background: ' + D('#b00') + ' !important; }',
+      // 正文信息行：标题保色相（功能性），tips/tips 文字白化
+      ':root.xdex-custom-dark #h-content h2.h-title, :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-title { color: ' + F('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
+      ':root.xdex-custom-dark .h-threads-item .h-threads-tips { color: ' + F('#707070') + ' !important; }',
+      // 回复块
+      ':root.xdex-custom-dark .h-threads-item .h-threads-item-replies .h-threads-item-reply .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
+      // 分页
+      ':root.xdex-custom-dark .h-pagination li a, :root.xdex-custom-dark .h-pagination li span { color: ' + D('#07d') + ' !important; background: ' + D('#fff') + ' !important; }',
+      ':root.xdex-custom-dark .h-pagination li:hover a { color: ' + D('#059') + ' !important; }',
+      ':root.xdex-custom-dark .h-pagination li.uk-active a, :root.xdex-custom-dark .h-pagination li.uk-active span { color: ' + F('#800000') + ' !important; background: ' + D('#b00') + ' !important; }',
+      // 引用号
+      ':root.xdex-custom-dark font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
+      // 隐藏文本
+      ':root.xdex-custom-dark .h-hidden-text { background: ' + D('#666') + ' !important; color: transparent !important; }',
+      ':root.xdex-custom-dark .h-hidden-text:hover { background: transparent !important; color: ' + F('#800000') + ' !important; }',
+      // 原生引用浮窗与发帖表单标题栏
+      ':root.xdex-custom-dark #h-ref-view .h-threads-item-ref, :root.xdex-custom-dark #h-ref-view .uk-container { background: ' + D('#f0e0d6') + ' !important; }',
+      ':root.xdex-custom-dark #h-post-form .h-post-form-title { background: ' + D('#ea8') + ' !important; }',
+      // —— 脚本自建 UI 深色（修复覆盖不足）：通用前景/背景反转 ——
+      ':root.xdex-custom-dark .qp-quote { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .qp-header .qp-level, :root.xdex-custom-dark .qp-header .qp-back, :root.xdex-custom-dark .qp-header .qp-jump { color: ' + F('#800000') + ' !important; }',
+      // 颜文字面板
+      ':root.xdex-custom-dark .kaomoji-panel, :root.xdex-custom-dark .kaomoji-popup, :root.xdex-custom-dark .kaomoji-dropdown { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#000') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-panel *, :root.xdex-custom-dark .kaomoji-popup *, :root.xdex-custom-dark .kaomoji-dropdown * { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item:hover, :root.xdex-custom-dark .kaomoji-panel-item:hover { background: ' + D('#ea8') + ' !important; }',
+      // 回复浮窗内的原生片段（饼干名/ID/信息行）：继承正文前景白化
+      ':root.xdex-custom-dark .qp-body .h-threads-info, :root.xdex-custom-dark .qp-body .h-threads-info *, :root.xdex-custom-dark .qp-body .h-threads-content, :root.xdex-custom-dark .qp-body .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-info a, :root.xdex-custom-dark .qp-body .h-threads-content a { color: ' + D('#07d') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body { background: ' + D('#ffe') + ' !important; }',
+      // 常用串菜单（脚本自建侧栏）
+      ':root.xdex-custom-dark .xdex-fav-threads-menu, :root.xdex-custom-dark .xdex-fav-threads-menu * { background-color: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .xdex-fav-threads-menu .h-active, :root.xdex-custom-dark .xdex-fav-threads-menu .h-active * { background: ' + D('#ea8') + ' !important; }',
+      // 饼干切换模块：当前饼干名白色字体（含异常红色状态排除）
+      ':root.xdex-custom-dark #current-cookie-display { color: #d8d7d4 !important; }',
+      ':root.xdex-custom-dark #current-cookie-display[style*="red"], :root.xdex-custom-dark #current-cookie-display[style*="rgb(255, 0, 0)"] { color: #e85248 !important; }',
+      // 折叠占位按钮（发送表单可选项/关键词/饼干屏蔽折叠区通用）
+      ':root.xdex-custom-dark .xdex-placeholder.xdex-generic-toggle, :root.xdex-custom-dark .xdex-placeholder { background: ' + D('#fafafa') + ' !important; color: ' + F('#888') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      // 颜文字选择框：原生 select 亮白 → 深色
+      ':root.xdex-custom-dark #h-emot-select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      ':root.xdex-custom-dark #h-emot-select option { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
+      // 颜文字触发按钮与键盘选中项
+      ':root.xdex-custom-dark .kaomoji-trigger { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item.kaomoji-active { background: ' + D('#e0e0e0') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
+      // 快捷排序下拉
+      ':root.xdex-custom-dark .kaomoji-quick-sort, :root.xdex-custom-dark #h-emot-select ~ select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
+      // 预览区底色与回复块一致（此前偏深）
+      ':root.xdex-custom-dark .h-preview-box, :root.xdex-custom-dark .h-preview-box .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
+      // 页面颜色过渡动画（深浅切换平滑，不突兀）
+      ':root.xdex-custom-dark html, :root.xdex-custom-dark body, :root.xdex-custom-dark #h-menu, :root.xdex-custom-dark .h-threads-item, :root.xdex-custom-dark .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }',
+      'html.xdex-theme-anim, html.xdex-theme-anim body, html.xdex-theme-anim #h-menu, html.xdex-theme-anim #h-content, html.xdex-theme-anim .h-threads-item, html.xdex-theme-anim .h-threads-item *, html.xdex-theme-anim .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }'
+    ];
+    return lines.join('\n');
+  }
+  function ensureCustomDarkThemeStyle(colorSet) {
+    const existing = document.getElementById('xdex-custom-theme');
+    const text = buildCustomDarkThemeStyleText(colorSet || new Set());
+    if (existing) { existing.textContent = text; return existing; }
     const style = document.createElement('style');
     style.id = 'xdex-custom-theme';
-    style.textContent = `
-      /* 页面底色与正文文字 */
-      :root.xdex-custom-dark html,
-      :root.xdex-custom-dark body {
-        background-color: #28292a !important;
-        color: #d8d7d4 !important;
-      }
-      /* 左侧菜单 */
-      :root.xdex-custom-dark #h-menu {
-        background-color: #28292a !important;
-        color: #ec4747 !important;
-        border-right-color: #131313 !important;
-      }
-      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-parent-header,
-      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-header {
-        color: #ec4747 !important;
-      }
-      :root.xdex-custom-dark #h-menu #h-menu-content .h-active {
-        background: #763e22 !important;
-      }
-      :root.xdex-custom-dark #h-menu #h-menu-content .h-active a {
-        color: #d8d7d4 !important;
-      }
-      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item a {
-        color: #3e8eec !important;
-      }
-      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item:hover a {
-        color: #72b8ec !important;
-      }
-      /* 底部导航 */
-      :root.xdex-custom-dark #h-bottom-nav {
-        background: #28292a !important;
-        border-top-color: #131313 !important;
-      }
-      /* 右侧工具按钮 */
-      :root.xdex-custom-dark #h-tool .h-tool-btn {
-        background: #ec1313 !important;
-      }
-      /* 正文标题/标题红 */
-      :root.xdex-custom-dark #h-content h2.h-title,
-      :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-title {
-        color: #e85248 !important;
-      }
-      :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-email {
-        color: #7fddad !important;
-      }
-      :root.xdex-custom-dark .h-threads-item .h-threads-tips {
-        color: #9c958b !important;
-      }
-      /* 回复块底色 */
-      :root.xdex-custom-dark .h-threads-item .h-threads-item-replies .h-threads-item-reply .h-threads-item-reply-main {
-        background: #483327 !important;
-      }
-      /* 分页 */
-      :root.xdex-custom-dark .h-pagination li a,
-      :root.xdex-custom-dark .h-pagination li span {
-        color: #3e8eec !important;
-        background: #28292a !important;
-      }
-      :root.xdex-custom-dark .h-pagination li:hover a {
-        color: #72b8ec !important;
-      }
-      :root.xdex-custom-dark .h-pagination li.uk-active a,
-      :root.xdex-custom-dark .h-pagination li.uk-active span {
-        color: #d8d7d4 !important;
-        background: #ec1313 !important;
-      }
-      /* 引用号（<font color> 属性色需 CSS 覆盖） */
-      :root.xdex-custom-dark font[color="#789922"] {
-        color: #b5d06d !important;
-      }
-      /* 隐藏文本 */
-      :root.xdex-custom-dark .h-hidden-text {
-        background: #555a5c !important;
-        color: #555a5c !important;
-      }
-      :root.xdex-custom-dark .h-hidden-text:hover {
-        background: transparent !important;
-        color: #ec7474 !important;
-      }
-      /* 原生引用浮窗 */
-      :root.xdex-custom-dark #h-ref-view .h-threads-item-ref,
-      :root.xdex-custom-dark #h-ref-view .uk-container {
-        background: #483327 !important;
-      }
-      /* 发帖表单标题栏 */
-      :root.xdex-custom-dark #h-post-form .h-post-form-title {
-        background: #763e22 !important;
-      }
-    `;
+    style.textContent = text;
     document.head.appendChild(style);
+    return style;
+  }
+  // —— 样式表枚举：从页面原生 CSS 收集全部颜色，生成“原色→深色”CSS 变量表 + 通用覆盖 ——
+  function xdexCollectColorsFromStyleSheets(colorSet) {
+    try {
+      for (const sheet of document.styleSheets) {
+        let rules = null;
+        try { rules = sheet.cssRules; } catch (e) { /* 跨域样式表：cssRules 受限，走 fetch 兜底 */ }
+        if (rules) {
+          const drain = (list) => {
+            for (const rule of list) {
+              if (rule.type === 1 /* STYLE_RULE */ && rule.style) {
+                for (let i = 0; i < rule.style.length; i++) {
+                  const prop = rule.style[i];
+                  if (!/color|background|border|outline|shadow|fill|stroke/i.test(prop)) continue;
+                  const val = rule.style.getPropertyValue(prop);
+                  xdexCollectColorsFromCssText(val, colorSet);
+                }
+              } else if (rule.cssRules) {
+                drain(rule.cssRules);
+              }
+            }
+          };
+          drain(rules);
+        } else if (sheet.href && !colorSet.__fetched) {
+          // 跨域表：异步 fetch 后重建样式（不阻塞首次注入）
+          colorSet.__fetched = true;
+          fetch(sheet.href).then((r) => r.text()).then((txt) => {
+            const s2 = new Set();
+            xdexCollectColorsFromCssText(txt, s2);
+            refreshCustomDarkThemeStyle(s2);
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {}
+  }
+  // 生成“颜色变量表 + 按值替换”的通用覆盖：用 CSS 变量把每个原色挂到 :root，
+  // 再通过 attribute/class 无关的全局选择器无法按值匹配，故这里输出【每色一类】的变量表，
+  // 真正的按值替换交给 styleOverridesText（对常见结构性选择器做深色赋值）。
+  function xdexDarkVarsText(colorSet) {
+    const out = [];
+    for (const hex of colorSet) {
+      const dark = xdexToDarkCached(hex);
+      if (!dark || dark === hex) continue;
+      const varName = '--xdex-dark-' + hex.replace('#', '');
+      out.push(varName + ': ' + dark + ';');
+    }
+    return out.length ? ':root.xdex-custom-dark {\n  ' + out.join('\n  ') + '\n}' : '';
+  }
+  let refreshTimer = 0;
+  function refreshCustomDarkThemeStyle(extraColors) {
+    const colorSet = new Set(extraColors || []);
+    xdexCollectColorsFromStyleSheets(colorSet);
+    // 兜底核心色（防止样式表枚举失败时页面全白）
+    ['#ffe', '#fff', '#800000', '#789922', '#f0e0d6', '#07d', '#c00', '#000', '#059', '#ea8', '#999', '#cc1105', '#117743', '#b00', '#707070', '#666'].forEach((c) => colorSet.add(c));
+    const style = ensureCustomDarkThemeStyle(colorSet);
+    const varsText = xdexDarkVarsText(colorSet);
+    style.textContent = buildCustomDarkThemeStyleText(colorSet) + '\n' + varsText;
+  }
+  function scheduleRefreshCustomDarkTheme() {
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = 0;
+      refreshCustomDarkThemeStyle();
+    }, 400);
   }
   function syncQuotePopupTheme() {
     const root = document.documentElement;
@@ -11807,6 +12030,12 @@ ${markedSwatchHtml}
     const uiDark = dark || isCustomDarkActive();
     root.classList.toggle('xdex-darkreader-active', uiDark);
     syncCustomPageTheme();
+    // DR 激活时内联 !important 钉死必须退让：DR 反转后会重写这些属性，脚本钉死即优先级反超
+    if (dark) {
+      document.querySelectorAll('.qp-quote, .qp-body .qp-content-wrap, .qp-body .qp-content-wrap form, .qp-body .qp-content-wrap textarea[name="content"], .qp-reset-btn').forEach((el) => {
+        ['background', 'border-color', 'outline-color', 'box-shadow', 'color'].forEach((p) => { try { el.style.removeProperty(p); } catch (e) {} });
+      });
+    }
     const theme = getReplyOverlayThemeTokens(uiDark);
     // CSS 变量兜底（未打开浮窗时也保持一致）
     root.style.setProperty('--xdex-qp-shell-bg', theme.shellBg);
@@ -11853,7 +12082,8 @@ ${markedSwatchHtml}
     const observer = new MutationObserver(scheduleSync);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'class'],
+      // DR 实际写入含 fr-init-once 与 style 内联变量（实测）→ 必须盯，否则开 DR 后仍浅色
+      attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'fr-init-once', 'style', 'class'],
     });
     window.__xdexDarkReaderThemeObserver = observer;
     return observer;
