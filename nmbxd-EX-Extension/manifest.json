@@ -88,6 +88,7 @@
         "https://nmb-search.166666666.xyz/*"
       ],
       "js": [
+        "src/content/theme-early.js",
         "vendor/jquery-3.6.0.min.js",
         "vendor/apng-js-1.1.5.js",
         "vendor/pako-2.1.0.min.js",

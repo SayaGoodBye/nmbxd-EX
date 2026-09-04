@@ -322,6 +322,9 @@
             const oldValue = memoryStore.get(rawKey);
             const nextValue = cloneValue(value);
             memoryStore.set(rawKey, nextValue);
+            // 回写 localStorage 镜像：theme-early.js（先于 gm-compat 执行）只能同步读镜像，
+            // 不回写则它永远读不到 chrome.storage 里的深色开关 → 首帧无法注入
+            writeLocalStorageMirror(rawKey, nextValue, { publish: false });
                         if (!valuesEqual(oldValue, nextValue)) {
               emitValueChange(rawKey, oldValue, nextValue, true);
             }
