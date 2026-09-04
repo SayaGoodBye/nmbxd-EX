@@ -406,7 +406,8 @@
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
-  dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
+      enableCustomDarkTheme: false, // 自定义深色模式（Dark Reader 激活时不生效）
+      dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
@@ -1298,7 +1299,10 @@
                 <div id="sp_panel_content" class="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;box-sizing:border-box;">
                   <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
                 <span class="xdex-setting-title-easter-egg" style="font-size:20px; font-weight:bold; cursor:pointer;">X岛-EX</span>
-                <a id="sp_version_link" href="javascript:void(0)" style="position:absolute; right:0; top:50%; transform:translateY(-50%); font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
+                <div style="position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:10px;">
+                <label for="sp_enableCustomDarkTheme" style="font-size:12px; color:#999; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="sp_enableCustomDarkTheme" class="xdex-switch" role="switch"> 深色模式</label>
+                <a id="sp_version_link" href="javascript:void(0)" style="font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
+                </div>
               </div>
                   <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label><input type="checkbox" id="sp_enableCookieConfirm" class="xdex-switch" role="switch"><label for="sp_enableCookieConfirm"> 二次确认饼干</label></div>
@@ -1772,7 +1776,8 @@
         'extendQuote',
         'extendQuoteAvailabilityDetection',
         'toggleSidebar',
-        'disableAutoQuote'
+        'disableAutoQuote',
+        'enableCustomDarkTheme'
       ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
@@ -1783,6 +1788,8 @@
         collectReloadRequiredSettingsFromPanel();
         try {
           GM_setValue(this.key, this.state);
+          // 深色模式等即时生效项：保存后立即同步主题（无需刷新页面）
+          if (typeof window.__xdexSyncDarkReaderTheme === 'function') window.__xdexSyncDarkReaderTheme();
           toast('设置已保存，刷新后生效', 900, { queue: false, key: 'settings-saved' });
         } catch (e) {}
       };
@@ -2537,7 +2544,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'extendQuote', 'kaomojiSort', 'toggleSidebar',
         'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
         'replyModeDefault', 'replyExtraDefault', 'blockDisplayMode',
-        'postAfterAction', 'enablePostExpandAll', 'dockDisplayMode', 'disableAutoQuote'
+        'postAfterAction', 'enablePostExpandAll', 'dockDisplayMode', 'disableAutoQuote',
+        'enableCustomDarkTheme'
       ];
       function mergeFavoriteThreads(localItems, importedItems) {
         const local = Array.isArray(localItems) ? spData('normalizeFavoriteThreads', localItems) : [];
@@ -3503,6 +3511,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
         sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-实线（当前串）/虚线（其他串）。被标记为主串的引用号可从“拓展引用浮窗”中直接跳转',
+        sp_enableCustomDarkTheme: '深色模式，优先级低于 Dark Reader 拓展',
         sp_threadCookieWhitelistModeEnabled: '只看饼干模式\n折叠：保持原版只看饼干折叠逻辑\n隐藏：未命中的回复直接隐藏\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注\n可选观众回复的展开/收起',
         sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
@@ -3685,7 +3694,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'extendQuoteAvailabilityDetection',
         'enablePostExpandAll',
         'toggleSidebar',
-        'disableAutoQuote'
+        'disableAutoQuote',
+        'enableCustomDarkTheme'
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
       // 二次确认饼干联动：快捷切换饼干关闭时禁用
       $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
@@ -11676,12 +11686,128 @@ ${markedSwatchHtml}
       resetColor: '#fff',
     };
   }
+  // 自定义深色是否生效：仅当设置开启且 Dark Reader 未激活时
+  function isCustomDarkActive() {
+    try {
+      if (isDarkReaderActive()) return false; // DR 激活 → 由 DR 定色，脚本深色停用
+      return !!SettingPanel.state.enableCustomDarkTheme;
+    } catch (e) { return false; }
+  }
+  // 整页深色同步：打 xdex-custom-dark 类控制覆盖样式；脚本 UI 沿用 xdex-darkreader-active 暗色规则
+  function syncCustomPageTheme() {
+    const root = document.documentElement;
+    if (!root) return;
+    const on = isCustomDarkActive();
+    root.classList.toggle('xdex-custom-dark', on);
+    document.documentElement.style.colorScheme = (on || isDarkReaderActive()) ? 'dark' : 'light';
+    ensureCustomDarkThemeStyle();
+  }
+  // 整页深色覆盖样式：颜色值取自 Dark Reader 实测映射，仅 DR 未激活时由 xdex-custom-dark 启用
+  function ensureCustomDarkThemeStyle() {
+    if (document.getElementById('xdex-custom-theme')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-custom-theme';
+    style.textContent = `
+      /* 页面底色与正文文字 */
+      :root.xdex-custom-dark html,
+      :root.xdex-custom-dark body {
+        background-color: #28292a !important;
+        color: #d8d7d4 !important;
+      }
+      /* 左侧菜单 */
+      :root.xdex-custom-dark #h-menu {
+        background-color: #28292a !important;
+        color: #ec4747 !important;
+        border-right-color: #131313 !important;
+      }
+      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-parent-header,
+      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-header {
+        color: #ec4747 !important;
+      }
+      :root.xdex-custom-dark #h-menu #h-menu-content .h-active {
+        background: #763e22 !important;
+      }
+      :root.xdex-custom-dark #h-menu #h-menu-content .h-active a {
+        color: #d8d7d4 !important;
+      }
+      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item a {
+        color: #3e8eec !important;
+      }
+      :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item:hover a {
+        color: #72b8ec !important;
+      }
+      /* 底部导航 */
+      :root.xdex-custom-dark #h-bottom-nav {
+        background: #28292a !important;
+        border-top-color: #131313 !important;
+      }
+      /* 右侧工具按钮 */
+      :root.xdex-custom-dark #h-tool .h-tool-btn {
+        background: #ec1313 !important;
+      }
+      /* 正文标题/标题红 */
+      :root.xdex-custom-dark #h-content h2.h-title,
+      :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-title {
+        color: #e85248 !important;
+      }
+      :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-email {
+        color: #7fddad !important;
+      }
+      :root.xdex-custom-dark .h-threads-item .h-threads-tips {
+        color: #9c958b !important;
+      }
+      /* 回复块底色 */
+      :root.xdex-custom-dark .h-threads-item .h-threads-item-replies .h-threads-item-reply .h-threads-item-reply-main {
+        background: #483327 !important;
+      }
+      /* 分页 */
+      :root.xdex-custom-dark .h-pagination li a,
+      :root.xdex-custom-dark .h-pagination li span {
+        color: #3e8eec !important;
+        background: #28292a !important;
+      }
+      :root.xdex-custom-dark .h-pagination li:hover a {
+        color: #72b8ec !important;
+      }
+      :root.xdex-custom-dark .h-pagination li.uk-active a,
+      :root.xdex-custom-dark .h-pagination li.uk-active span {
+        color: #d8d7d4 !important;
+        background: #ec1313 !important;
+      }
+      /* 引用号（<font color> 属性色需 CSS 覆盖） */
+      :root.xdex-custom-dark font[color="#789922"] {
+        color: #b5d06d !important;
+      }
+      /* 隐藏文本 */
+      :root.xdex-custom-dark .h-hidden-text {
+        background: #555a5c !important;
+        color: #555a5c !important;
+      }
+      :root.xdex-custom-dark .h-hidden-text:hover {
+        background: transparent !important;
+        color: #ec7474 !important;
+      }
+      /* 原生引用浮窗 */
+      :root.xdex-custom-dark #h-ref-view .h-threads-item-ref,
+      :root.xdex-custom-dark #h-ref-view .uk-container {
+        background: #483327 !important;
+      }
+      /* 发帖表单标题栏 */
+      :root.xdex-custom-dark #h-post-form .h-post-form-title {
+        background: #763e22 !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
   function syncQuotePopupTheme() {
     const root = document.documentElement;
     if (!root) return;
     const dark = isDarkReaderActive();
-    root.classList.toggle('xdex-darkreader-active', dark);
-    const theme = getReplyOverlayThemeTokens(dark);
+    // 脚本 UI 暗色：DR 激活 或 自定义深色开启（复用现有 :root.xdex-darkreader-active 全部暗色规则）
+    const uiDark = dark || isCustomDarkActive();
+    root.classList.toggle('xdex-darkreader-active', uiDark);
+    syncCustomPageTheme();
+    const theme = getReplyOverlayThemeTokens(uiDark);
     // CSS 变量兜底（未打开浮窗时也保持一致）
     root.style.setProperty('--xdex-qp-shell-bg', theme.shellBg);
     root.style.setProperty('--xdex-qp-form-bg', theme.formBg);
