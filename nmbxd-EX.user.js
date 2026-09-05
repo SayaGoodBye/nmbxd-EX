@@ -383,6 +383,9 @@ function xdexEarlyDarkEnabled() {
     return fn.apply(null, args);
   }
   function spUi(name) { return xdexCall('ui', name, Array.prototype.slice.call(arguments, 1)); }
+  // 设置面板按钮 SVG 图标：分组添加（圆圈+加号）/ 保存（软盘）
+  const XDEX_ICON_ADD_GROUP = '<svg class="xdex-icon-add-group" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>';
+  const XDEX_ICON_SAVE = '<svg class="xdex-icon-save" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
   /* --------------------------------------------------
@@ -972,6 +975,24 @@ function xdexEarlyDarkEnabled() {
                           cursor:pointer;
                           color:inherit;
                      }
+                  /* 通用图标按钮（分组添加/保存）：与回收站按钮同款外观 */
+                  .xdex-icon-btn {
+                          display:inline-flex;
+                          align-items:center;
+                          justify-content:center;
+                          width:30px;
+                          height:30px;
+                          padding:0;
+                          border:1px solid var(--xdex-sp-border);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg);
+                          cursor:pointer;
+                          color:inherit;
+                     }
+                  .xdex-icon-btn:hover {
+                          border-color:#2e7d32;
+                          color:#2e7d32;
+                     }
                   .xdex-recycle-btn:hover {
                           border-color:#c62828;
                           color:#c62828;
@@ -1441,9 +1462,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_marked,#btn_group_marked"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>标记饼干</span>
-                    <button id="btn_group_marked" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_marked" class="sp_save xdex-inv" data-id="sp_marked"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_marked" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_marked" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_marked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="marked-inputs-container"></div>
@@ -1454,22 +1474,19 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_blocked,#btn_group_blocked"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>屏蔽饼干</span>
-                    <button id="btn_group_blocked" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_blocked" class="sp_save xdex-inv" data-id="sp_blocked"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_blocked" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_blocked" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_blocked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-inputs-container"></div>
                   </div>
-                </div>
                 <!-- 只看饼干（组，按串号） -->
                   <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_threadCookieWhitelist,#btn_group_threadCookieWhitelist"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>只看饼干</span>
-                    <button id="btn_group_threadCookieWhitelist" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_threadCookieWhitelist" class="sp_save xdex-inv" data-id="sp_threadCookieWhitelist"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_threadCookieWhitelist" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_threadCookieWhitelist" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_threadCookieWhitelist" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="thread-cookie-whitelist-inputs-container"></div>
@@ -1480,9 +1497,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_blockedKeywords,#btn_group_blockedKeywords"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>屏蔽关键词</span>
-                    <button id="btn_group_blockedKeywords" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_blockedKeywords" class="sp_save xdex-inv" data-id="sp_blockedKeywords"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_blockedKeywords" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_blockedKeywords" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_blockedKeywords" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-keyword-inputs-container"></div>
@@ -1494,9 +1510,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_favoriteThreads,#btn_group_favoriteThreads"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>常用串</span>
-                    <button id="btn_group_favoriteThreads" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加常用串</button>
-                    <button id="btn_sp_favoriteThreads" class="sp_save xdex-inv" data-id="sp_favoriteThreads"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_favoriteThreads" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加常用串">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_favoriteThreads" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_favoriteThreads" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="favorite-thread-inputs-container"></div>
@@ -1508,9 +1523,7 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_subscriptionFeeds,#btn_group_subscriptionFeeds"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>我的订阅</span>
-                    <button id="btn_group_subscriptionFeeds" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加订阅号</button>
-                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-inv" data-id="sp_subscriptionFeeds"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="subscription-feed-inputs-container"></div>
@@ -1521,8 +1534,7 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>设置 导入/导出</span>
-                    <button id="btn_sp_importExport" class="sp_save xdex-inv" data-id="sp_importExport"
-                            style="margin-left:auto;padding:2px 8px;">应用</button>
+                    <button id="btn_sp_importExport" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_importExport" style="margin-left:auto;" title="应用">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -1592,8 +1604,7 @@ function xdexEarlyDarkEnabled() {
                       <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
                       <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
                     </div>
-                    <button id="btn_sp_webdavSave" class="sp_save xdex-inv" data-id="sp_webdavSave"
-                            style="padding:2px 8px;">保存</button>
+                    <button id="btn_sp_webdavSave" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_webdavSave" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                       <div style="display:flex;flex-direction:column;gap:6px;">
