@@ -1480,6 +1480,7 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-inputs-container"></div>
                   </div>
+                </div>
                 <!-- 只看饼干（组，按串号） -->
                   <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_threadCookieWhitelist,#btn_group_threadCookieWhitelist"
@@ -1523,7 +1524,7 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_subscriptionFeeds,#btn_group_subscriptionFeeds"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>我的订阅</span>
-                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:auto;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="subscription-feed-inputs-container"></div>
@@ -11960,10 +11961,12 @@ ${markedSwatchHtml}
       // 底部导航与工具
       ':root.xdex-custom-dark #h-bottom-nav { background: ' + D('#fff') + ' !important; border-top-color: ' + D('#000') + ' !important; }',
       ':root.xdex-custom-dark #h-tool .h-tool-btn { background: ' + D('#b00') + ' !important; }',
-      // 正文信息行：标题保色相（功能性），tips/tips 文字白化
-      ':root.xdex-custom-dark #h-content h2.h-title, :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-title { color: ' + F('#cc1105') + ' !important; }',
-      ':root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
-      ':root.xdex-custom-dark .h-threads-item .h-threads-tips { color: ' + F('#707070') + ' !important; }',
+      // 正文信息行：标题/邮箱保色相（功能性红绿）；info 通用通配不再扫掉彩色（红字绿字变灰的根因）
+      ':root.xdex-custom-dark #h-content h2.h-title, :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-title, :root.xdex-custom-dark .h-threads-info .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-email, :root.xdex-custom-dark .h-threads-info .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
+      // SAGE 警示行（uk-text-danger 原生红）保持警示红，不走 tips 灰
+      ':root.xdex-custom-dark .h-threads-item .h-threads-tips.uk-text-danger, :root.xdex-custom-dark .h-threads-tips.uk-text-danger { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .h-threads-item .h-threads-tips, :root.xdex-custom-dark .h-threads-tips { color: ' + F('#707070') + ' !important; }',
       // 回复块
       ':root.xdex-custom-dark .h-threads-item .h-threads-item-replies .h-threads-item-reply .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
       // 分页
@@ -11984,11 +11987,35 @@ ${markedSwatchHtml}
       // 颜文字面板
       ':root.xdex-custom-dark .kaomoji-panel, :root.xdex-custom-dark .kaomoji-popup, :root.xdex-custom-dark .kaomoji-dropdown { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#000') + ' !important; }',
       ':root.xdex-custom-dark .kaomoji-panel *, :root.xdex-custom-dark .kaomoji-popup *, :root.xdex-custom-dark .kaomoji-dropdown * { color: ' + F('#800000') + ' !important; }',
-      ':root.xdex-custom-dark .kaomoji-item:hover, :root.xdex-custom-dark .kaomoji-panel-item:hover { background: ' + D('#ea8') + ' !important; }',
-      // 回复浮窗内的原生片段（饼干名/ID/信息行）：继承正文前景白化
+      // 回复浮窗内的原生片段：默认白化，但功能性彩色（title/email/引用/链接/SAGE）保色相
       ':root.xdex-custom-dark .qp-body .h-threads-info, :root.xdex-custom-dark .qp-body .h-threads-info *, :root.xdex-custom-dark .qp-body .h-threads-content, :root.xdex-custom-dark .qp-body .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-tips.uk-text-danger { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-info a, :root.xdex-custom-dark .qp-body .h-threads-content a { color: ' + D('#07d') + ' !important; }',
       ':root.xdex-custom-dark .qp-body { background: ' + D('#ffe') + ' !important; }',
+      // 预览框（发送前实时预览）：与回复块同底、同内容配色
+      ':root.xdex-custom-dark .h-preview-box, :root.xdex-custom-dark .h-preview-box * { background-color: transparent !important; }',
+      ':root.xdex-custom-dark .h-preview-box { background-color: ' + D('#ffe') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info, :root.xdex-custom-dark .h-preview-box .h-threads-info *, :root.xdex-custom-dark .h-preview-box .h-threads-content, :root.xdex-custom-dark .h-preview-box .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box a { color: ' + D('#07d') + ' !important; }',
+      // 饼干二次确认弹窗（参考颜文字面板做法：整体前景+按钮深色化）
+      ':root.xdex-custom-dark #cookie-confirm-modal { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-modal h3 { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-modal p { color: ' + F('#707070') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-modal p font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-list [data-cookie-id] { color: ' + F('#800000') + ' !important; background-color: ' + D('#fafafa') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-list .h-threads-info-uid { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-actions button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border: 1px solid ' + D('#bbb') + ' !important; border-radius: 6px; cursor: pointer; }',
+      // 设置面板分组输入行（常用串/订阅/只看/关键词）：容器去白底、输入框深底浅字、徽标/删除钮暗底
+      ':root.xdex-custom-dark #favorite-thread-inputs-container > div > div, :root.xdex-custom-dark #subscription-feed-inputs-container > div > div, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container > div > div, :root.xdex-custom-dark #blocked-keyword-inputs-container > div > div { background: ' + D('#fafafa') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      ':root.xdex-custom-dark #favorite-thread-inputs-container input, :root.xdex-custom-dark #subscription-feed-inputs-container input, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container input, :root.xdex-custom-dark #blocked-keyword-inputs-container input, :root.xdex-custom-dark #blocked-keyword-inputs-container select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      ':root.xdex-custom-dark #favorite-thread-inputs-container button, :root.xdex-custom-dark #subscription-feed-inputs-container button, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container button, :root.xdex-custom-dark #blocked-keyword-inputs-container button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      ':root.xdex-custom-dark #favorite-thread-inputs-container span, :root.xdex-custom-dark #subscription-feed-inputs-container span, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container span { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; }',
       // 常用串菜单（脚本自建侧栏）
       ':root.xdex-custom-dark .xdex-fav-threads-menu, :root.xdex-custom-dark .xdex-fav-threads-menu * { background-color: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark .xdex-fav-threads-menu .h-active, :root.xdex-custom-dark .xdex-fav-threads-menu .h-active * { background: ' + D('#ea8') + ' !important; }',
