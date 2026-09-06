@@ -12004,8 +12004,6 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark .qp-body .h-threads-info a, :root.xdex-custom-dark .qp-body .h-threads-content a { color: ' + D('#07d') + ' !important; }',
       ':root.xdex-custom-dark .qp-body { background: ' + D('#ffe') + ' !important; }',
       // 预览框（发送前实时预览）：与回复块同底、同内容配色
-      ':root.xdex-custom-dark .h-preview-box, :root.xdex-custom-dark .h-preview-box * { background-color: transparent !important; }',
-      ':root.xdex-custom-dark .h-preview-box { background-color: ' + D('#ffe') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
@@ -12044,9 +12042,6 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
       // 快捷排序下拉
       ':root.xdex-custom-dark .kaomoji-quick-sort, :root.xdex-custom-dark #h-emot-select ~ select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
-      // 预览区底色与回复块一致（此前偏深）
-      ':root.xdex-custom-dark .h-preview-box, :root.xdex-custom-dark .h-preview-box .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
-      // 页面颜色过渡动画（深浅切换平滑，不突兀）
       ':root.xdex-custom-dark html, :root.xdex-custom-dark body, :root.xdex-custom-dark #h-menu, :root.xdex-custom-dark .h-threads-item, :root.xdex-custom-dark .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }',
       'html.xdex-theme-anim, html.xdex-theme-anim body, html.xdex-theme-anim #h-menu, html.xdex-theme-anim #h-content, html.xdex-theme-anim .h-threads-item, html.xdex-theme-anim .h-threads-item *, html.xdex-theme-anim .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }'
     ];
