@@ -386,9 +386,13 @@ function xdexEarlyDarkEnabled() {
   // 设置面板按钮 SVG 图标：分组添加（圆圈+加号）/ 保存（软盘）
   const XDEX_ICON_ADD_GROUP = '<svg class="xdex-icon-add-group" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>';
   const XDEX_ICON_SAVE = '<svg class="xdex-icon-save" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>';
-  // 密码可见性：睁眼（密码隐藏态）/ 闭眼带斜线（密码显示态）
   const XDEX_ICON_EYE = '<svg class="xdex-icon-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  // 密码可见性：睁眼（密码隐藏态）/ 闭眼带斜线（密码显示态）
   const XDEX_ICON_EYE_OFF = '<svg class="xdex-icon-eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line x1="4" y1="20" x2="20" y2="4"/></svg>';
+  // 导入/导出：文件夹带箭头（export=向上、import=向下）；重置=红色圆形箭头
+  const XDEX_ICON_EXPORT_FILE = '<svg class="xdex-icon-export" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 16v-5M9.5 13.5L12 11l2.5 2.5"/></svg>';
+  const XDEX_ICON_IMPORT_FILE = '<svg class="xdex-icon-import" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5L12 16l2.5-2.5"/></svg>';
+  const XDEX_ICON_RESET = '<svg class="xdex-icon-reset" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path d="M18.5 6.5l-1.3 3.6"/><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
   /* --------------------------------------------------
@@ -1556,12 +1560,11 @@ function xdexEarlyDarkEnabled() {
                 </div>
                 <!-- 使用数据 导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
-                  <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import"
-                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import" style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>使用数据 导入/导出</span>
-                    <button id="btn_sp_fullExport_reset" class="xdex-inv" style="margin-left:auto;padding:2px 8px;color:#c00;">重置所选项目</button>
-                    <button id="btn_sp_fullExport_export" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">导出为文件</button>
-                    <button id="btn_sp_fullExport_import" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">从文件导入</button>
+                    <button id="btn_sp_fullExport_reset" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="重置所选项目">${XDEX_ICON_RESET}</button>
+                    <button id="btn_sp_fullExport_export" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:4px;" title="导出为文件">${XDEX_ICON_EXPORT_FILE}</button>
+                    <button id="btn_sp_fullExport_import" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:4px;" title="从文件导入">${XDEX_ICON_IMPORT_FILE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div style="font-size:12px;color:#666;margin-bottom:6px;">
