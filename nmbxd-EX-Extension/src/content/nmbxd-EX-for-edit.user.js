@@ -393,6 +393,9 @@ function xdexEarlyDarkEnabled() {
   const XDEX_ICON_EXPORT_FILE = '<svg class="xdex-icon-export" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 16v-5M9.5 13.5L12 11l2.5 2.5"/></svg>';
   const XDEX_ICON_IMPORT_FILE = '<svg class="xdex-icon-import" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5L12 16l2.5-2.5"/></svg>';
   const XDEX_ICON_RESET = '<svg class="xdex-icon-reset" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path d="M18.5 6.5l-1.3 3.6"/><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
+  // WebDAV 连接检查（插头）/ 手动同步（双向循环箭头）
+  const XDEX_ICON_PLUG = '<svg class="xdex-icon-plug" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5z"/><path d="M12 16v5"/></svg>';
+  const XDEX_ICON_SYNC = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
   /* --------------------------------------------------
@@ -1605,30 +1608,31 @@ function xdexEarlyDarkEnabled() {
                 </div>
                 <!-- WebDAV 备份/同步 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
-                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave,.xdex-webdav-head-actions"
+                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave,#btn_webdavSync,.xdex-webdav-head-actions"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>WebDAV 备份/同步</span>
                     <span id="sp_webdavLastSyncLabel" style="flex:1;min-width:0;margin:0 8px;text-align:center;color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
-                    <div class="xdex-webdav-head-actions xdex-inv" style="display:flex;align-items:center;gap:4px;margin-left:auto;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
-                      <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
+                    <div class="xdex-webdav-head-actions xdex-inv" style="display:flex;align-items:center;gap:4px;margin-left:0;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
                       <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
+                      <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
                     </div>
-                    <button id="btn_sp_webdavSave" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_webdavSave" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_webdavSync" type="button" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:4px;" title="手动同步">${XDEX_ICON_SYNC}</button>
+                    <button id="btn_sp_webdavSave" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_webdavSave" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
-                      <div style="display:flex;flex-direction:column;gap:6px;">
-                        <input id="sp_webdavUrl" type="text" value="${webdavPanelField('url')}" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
-                        <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                          <input id="sp_webdavUrl" type="text" value="${webdavPanelField('url')}" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                          <button id="btn_webdavCheck" type="button" class="xdex-icon-btn" title="检查连接">${XDEX_ICON_PLUG}</button>
+                        </div>
+                        <div style="display:flex;gap:4px;align-items:center;">
+                          <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                          <span class="xdex-icon-btn" style="opacity:0;pointer-events:none;" aria-hidden="true"></span>
+                        </div>
                         <div style="display:flex;gap:4px;align-items:center;">
                           <input id="sp_webdavPassword" type="password" value="${webdavPanelField('password')}" placeholder="密码" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
                           <button id="btn_webdavTogglePassword" type="button" class="xdex-icon-btn" title="显示密码">${XDEX_ICON_EYE}</button>
                         </div>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                          <button id="btn_webdavCheck" type="button" style="padding:4px 10px;">检查连接</button>
-                          <button id="btn_webdavSync" type="button" style="padding:4px 10px;">手动同步</button>
-                        </div>
-                        <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;"></div>
-                      </div>
+                        <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;margin-top:8px;"></div>
                   </div>
                 </div>
                 </div>
