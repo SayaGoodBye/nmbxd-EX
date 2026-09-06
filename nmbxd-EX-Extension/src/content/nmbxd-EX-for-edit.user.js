@@ -386,6 +386,9 @@ function xdexEarlyDarkEnabled() {
   // 设置面板按钮 SVG 图标：分组添加（圆圈+加号）/ 保存（软盘）
   const XDEX_ICON_ADD_GROUP = '<svg class="xdex-icon-add-group" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>';
   const XDEX_ICON_SAVE = '<svg class="xdex-icon-save" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>';
+  // 密码可见性：睁眼（密码隐藏态）/ 闭眼带斜线（密码显示态）
+  const XDEX_ICON_EYE = '<svg class="xdex-icon-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const XDEX_ICON_EYE_OFF = '<svg class="xdex-icon-eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line x1="4" y1="20" x2="20" y2="4"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
   /* --------------------------------------------------
@@ -993,6 +996,8 @@ function xdexEarlyDarkEnabled() {
                           border-color:#2e7d32;
                           color:#2e7d32;
                      }
+                  /* 图标按钮专用隐藏类：占位透明（与 xdex-inv 布局语义一致，避免折叠/展开高度突变） */
+                  .xdex-btn-hidden { opacity:0; pointer-events:none; }
                   .xdex-recycle-btn:hover {
                           border-color:#c62828;
                           color:#c62828;
@@ -1462,8 +1467,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_marked,#btn_group_marked"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>标记饼干</span>
-                    <button id="btn_group_marked" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
-                    <button id="btn_sp_marked" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_marked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_group_marked" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_marked" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_marked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="marked-inputs-container"></div>
@@ -1474,8 +1479,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_blocked,#btn_group_blocked"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>屏蔽饼干</span>
-                    <button id="btn_group_blocked" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
-                    <button id="btn_sp_blocked" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_blocked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_group_blocked" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_blocked" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_blocked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-inputs-container"></div>
@@ -1486,8 +1491,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_threadCookieWhitelist,#btn_group_threadCookieWhitelist"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>只看饼干</span>
-                    <button id="btn_group_threadCookieWhitelist" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
-                    <button id="btn_sp_threadCookieWhitelist" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_threadCookieWhitelist" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_group_threadCookieWhitelist" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_threadCookieWhitelist" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_threadCookieWhitelist" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="thread-cookie-whitelist-inputs-container"></div>
@@ -1498,8 +1503,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_blockedKeywords,#btn_group_blockedKeywords"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>屏蔽关键词</span>
-                    <button id="btn_group_blockedKeywords" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
-                    <button id="btn_sp_blockedKeywords" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_blockedKeywords" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_group_blockedKeywords" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_blockedKeywords" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_blockedKeywords" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-keyword-inputs-container"></div>
@@ -1511,8 +1516,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_favoriteThreads,#btn_group_favoriteThreads"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>常用串</span>
-                    <button id="btn_group_favoriteThreads" class="xdex-inv xdex-icon-btn" style="margin-left:auto;" title="添加常用串">${XDEX_ICON_ADD_GROUP}</button>
-                    <button id="btn_sp_favoriteThreads" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_favoriteThreads" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_group_favoriteThreads" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加常用串">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_favoriteThreads" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_favoriteThreads" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="favorite-thread-inputs-container"></div>
@@ -1524,7 +1529,7 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_subscriptionFeeds,#btn_group_subscriptionFeeds"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>我的订阅</span>
-                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:auto;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:auto;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="subscription-feed-inputs-container"></div>
@@ -1535,7 +1540,7 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>设置 导入/导出</span>
-                    <button id="btn_sp_importExport" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_importExport" style="margin-left:auto;" title="应用">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_sp_importExport" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_importExport" style="margin-left:auto;" title="应用">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -1605,7 +1610,7 @@ function xdexEarlyDarkEnabled() {
                       <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
                       <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
                     </div>
-                    <button id="btn_sp_webdavSave" class="sp_save xdex-inv xdex-icon-btn" data-id="sp_webdavSave" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_sp_webdavSave" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_webdavSave" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                       <div style="display:flex;flex-direction:column;gap:6px;">
@@ -1613,7 +1618,7 @@ function xdexEarlyDarkEnabled() {
                         <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
                         <div style="display:flex;gap:4px;align-items:center;">
                           <input id="sp_webdavPassword" type="password" value="${webdavPanelField('password')}" placeholder="密码" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
-                          <button id="btn_webdavTogglePassword" type="button" style="padding:4px 8px;flex:0 0 auto;">显示</button>
+                          <button id="btn_webdavTogglePassword" type="button" class="xdex-icon-btn" title="显示密码">${XDEX_ICON_EYE}</button>
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;">
                           <button id="btn_webdavCheck" type="button" style="padding:4px 10px;">检查连接</button>
@@ -1819,7 +1824,11 @@ function xdexEarlyDarkEnabled() {
         const $head = $(this);
         $head.next('.sp_fold_body').slideToggle(150);
         const btns = ($head.data('btn') || '').split(',');
-        btns.forEach(sel => $(sel).toggleClass('xdex-inv'));
+        btns.forEach(sel => {
+          const $el = $(sel);
+          // 图标按钮用 xdex-btn-hidden（display:none），文本按钮沿用 xdex-inv（透明热区）
+          $el.toggleClass($el.hasClass('xdex-icon-btn') ? 'xdex-btn-hidden' : 'xdex-inv');
+        });
       });
       // 控件交互独立于折叠: 阻止冒泡到 .sp_fold_head
       $('#sp_webdavAutoSync, label[for="sp_webdavAutoSync"], #btn_sp_webdavSave').off('click.xdex-webdav-fold-guard').on('click.xdex-webdav-fold-guard', function (e) {
@@ -3293,7 +3302,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         SettingPanel.__pendingImport = merged;
         // 显示保存按钮
-        $('#btn_sp_importExport').removeClass('xdex-inv');
+        $('#btn_sp_importExport').removeClass('xdex-btn-hidden');
         toast('格式正确，请点击[应用]');
       }
       // 从剪贴板导入
@@ -3352,7 +3361,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           GM_setValue(SettingPanel.key, SettingPanel.__pendingImport);
           SettingPanel.state = SettingPanel.__pendingImport;
           delete SettingPanel.__pendingImport;
-          $('#btn_sp_importExport').addClass('xdex-inv');
+          $('#btn_sp_importExport').addClass('xdex-btn-hidden');
           toast('配置已导入，即将刷新');
           setTimeout(() => location.reload(), 800);
         } else {
@@ -12011,11 +12020,13 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark #cookie-confirm-list [data-cookie-id] { color: ' + F('#800000') + ' !important; background-color: ' + D('#fafafa') + ' !important; }',
       ':root.xdex-custom-dark #cookie-confirm-list .h-threads-info-uid { color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark #cookie-confirm-actions button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border: 1px solid ' + D('#bbb') + ' !important; border-radius: 6px; cursor: pointer; }',
-      // 设置面板分组输入行（常用串/订阅/只看/关键词）：容器去白底、输入框深底浅字、徽标/删除钮暗底
-      ':root.xdex-custom-dark #favorite-thread-inputs-container > div > div, :root.xdex-custom-dark #subscription-feed-inputs-container > div > div, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container > div > div, :root.xdex-custom-dark #blocked-keyword-inputs-container > div > div { background: ' + D('#fafafa') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
-      ':root.xdex-custom-dark #favorite-thread-inputs-container input, :root.xdex-custom-dark #subscription-feed-inputs-container input, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container input, :root.xdex-custom-dark #blocked-keyword-inputs-container input, :root.xdex-custom-dark #blocked-keyword-inputs-container select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
-      ':root.xdex-custom-dark #favorite-thread-inputs-container button, :root.xdex-custom-dark #subscription-feed-inputs-container button, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container button, :root.xdex-custom-dark #blocked-keyword-inputs-container button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
-      ':root.xdex-custom-dark #favorite-thread-inputs-container span, :root.xdex-custom-dark #subscription-feed-inputs-container span, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container span { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; }',
+      // 设置面板分组输入行（标记/屏蔽/只看/常用串/订阅/关键词）：容器去白底、输入框深底浅字、徽标/删除钮暗底
+      ':root.xdex-custom-dark #marked-inputs-container > div > div, :root.xdex-custom-dark #blocked-inputs-container > div > div, :root.xdex-custom-dark #favorite-thread-inputs-container > div > div, :root.xdex-custom-dark #subscription-feed-inputs-container > div > div, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container > div > div, :root.xdex-custom-dark #blocked-keyword-inputs-container > div > div { background: ' + D('#fafafa') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      // input 深底浅字，但排除 xdex-switch（正则开关保红/蓝语义）
+      ':root.xdex-custom-dark #marked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #favorite-thread-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #subscription-feed-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      // button 深底浅字，但排除 marked-color-swatch（保持用户选定的标记色）
+      ':root.xdex-custom-dark #marked-inputs-container button:not(.marked-color-swatch), :root.xdex-custom-dark #blocked-inputs-container button, :root.xdex-custom-dark #favorite-thread-inputs-container button, :root.xdex-custom-dark #subscription-feed-inputs-container button, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container button, :root.xdex-custom-dark #blocked-keyword-inputs-container button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      ':root.xdex-custom-dark #marked-inputs-container span, :root.xdex-custom-dark #blocked-inputs-container span, :root.xdex-custom-dark #favorite-thread-inputs-container span, :root.xdex-custom-dark #subscription-feed-inputs-container span, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container span, :root.xdex-custom-dark #blocked-keyword-inputs-container span { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; }',
       // 常用串菜单（脚本自建侧栏）
       ':root.xdex-custom-dark .xdex-fav-threads-menu, :root.xdex-custom-dark .xdex-fav-threads-menu * { background-color: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark .xdex-fav-threads-menu .h-active, :root.xdex-custom-dark .xdex-fav-threads-menu .h-active * { background: ' + D('#ea8') + ' !important; }',
@@ -25703,7 +25714,7 @@ function 注册自动保存编辑() {
         const $body = $fold.children('.sp_fold_body');
         if (!$body.is(':visible')) {
           $body.slideDown(150);
-          $('#btn_sp_favoriteThreads,#btn_group_favoriteThreads').removeClass('xdex-inv');
+          $('#btn_sp_favoriteThreads,#btn_group_favoriteThreads').removeClass('xdex-btn-hidden');
         }
         if ($fold[0]) $fold[0].scrollIntoView({ block: 'center' });
         if (options.addEmptyGroup) {
@@ -28685,7 +28696,9 @@ function 注册自动保存编辑() {
           if (input) {
             const showing = input.type === 'text';
             input.type = showing ? 'password' : 'text';
-            btn.textContent = showing ? '显示' : '隐藏';
+            // 图标切换：密码显示 → 闭眼（点击后隐藏）；密码隐藏 → 睁眼（点击后显示）
+            btn.innerHTML = showing ? XDEX_ICON_EYE : XDEX_ICON_EYE_OFF;
+            btn.title = showing ? '显示密码' : '隐藏密码';
             console.log('[webdav] 密码可见性切换', { showing: !showing });
           }
           return;
