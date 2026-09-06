@@ -12047,6 +12047,8 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark .kaomoji-trigger { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
       ':root.xdex-custom-dark .kaomoji-item.kaomoji-active { background: ' + D('#e0e0e0') + ' !important; }',
       ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
+      // 悬浮底色：压过浅色源的 #f2f2f2，用深色中灰 + 白化前景
+      ':root.xdex-custom-dark .kaomoji-item:hover { background: ' + D('#e0e0e0') + ' !important; }',
       // 快捷排序下拉
       ':root.xdex-custom-dark .kaomoji-quick-sort, :root.xdex-custom-dark #h-emot-select ~ select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark html, :root.xdex-custom-dark body, :root.xdex-custom-dark #h-menu, :root.xdex-custom-dark .h-threads-item, :root.xdex-custom-dark .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }',
