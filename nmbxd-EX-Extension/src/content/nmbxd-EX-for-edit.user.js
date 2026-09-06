@@ -6149,7 +6149,7 @@ ${markedSwatchHtml}
           </div>
           <button id="apply-cookie" class="uk-button uk-button-default" style="display:none;">应用</button>
           <div style="margin-left:auto;flex:0 0 auto;display:flex;align-items:center;">
-            <button id="refresh-cookie" class="uk-button uk-button-default" style="min-width:1em;text-align:center;">刷新</button>
+            <button id="refresh-cookie" class="xdex-icon-btn" title="刷新饼干列表" style="min-width:1em;text-align:center;">${XDEX_ICON_SYNC}</button>
           </div>
         </div>
       </div>`);
@@ -11904,8 +11904,8 @@ ${markedSwatchHtml}
         const [r, g, b] = xdexHslToRgb(210 / 360, 0.07, Math.min(0.66, l + 0.02));
         return xdexRgbToHex(r, g, b);
       }
-      // 其余灰阶 → 统一材料色分级
-      const dark = l < 0.1 ? 0.07 : 0.35;
+      // 其余灰阶 → 按原亮度提亮为蓝灰（DR 映射规律：#707070→#9c958b 是提亮而非压暗）
+      const dark = l < 0.1 ? 0.07 : (l < 0.3 ? 0.35 : Math.min(0.72, l + 0.22));
       const [r, g, b] = xdexHslToRgb(210 / 360, 0.08, dark);
       return xdexRgbToHex(r, g, b);
     }
@@ -12049,7 +12049,9 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
       // 悬浮底色：压过浅色源的 #f2f2f2，用深色中灰 + 白化前景
       ':root.xdex-custom-dark .kaomoji-item:hover { background: ' + D('#e0e0e0') + ' !important; }',
-      // 快捷排序下拉
+      // 回应省略提示（warn_txt2）：站点原生 .warn_txt2 直接命中子元素，需单独白化（容器继承管不到）
+      ':root.xdex-custom-dark .warn_txt2 { color: ' + F('#707070') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark .kaomoji-quick-sort, :root.xdex-custom-dark #h-emot-select ~ select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark html, :root.xdex-custom-dark body, :root.xdex-custom-dark #h-menu, :root.xdex-custom-dark .h-threads-item, :root.xdex-custom-dark .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }',
       'html.xdex-theme-anim, html.xdex-theme-anim body, html.xdex-theme-anim #h-menu, html.xdex-theme-anim #h-content, html.xdex-theme-anim .h-threads-item, html.xdex-theme-anim .h-threads-item *, html.xdex-theme-anim .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }'
