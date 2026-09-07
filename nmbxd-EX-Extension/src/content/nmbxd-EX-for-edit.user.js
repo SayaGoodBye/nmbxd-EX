@@ -131,6 +131,29 @@ function xdexEarlyDarkEnabled() {
           scriptHandler: scriptHandler || 'unknown'
       };
   }
+  (function earlyIconBtnStyle() {
+    try {
+      if (document.getElementById('xdex-icon-btn-global')) return;
+      const style = document.createElement('style');
+      style.id = 'xdex-icon-btn-global';
+      style.textContent =
+        '.xdex-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid var(--xdex-sp-border,#bfa58f);border-radius:8px;background:var(--xdex-sp-panel-bg,#F0E0D6);cursor:pointer;color:inherit;box-sizing:border-box;}' +
+        '.xdex-icon-btn:hover{border-color:#2e7d32 !important;color:#2e7d32 !important;}' +
+        '.xdex-icon-btn:active{border-color:#1b5e20 !important;color:#1b5e20 !important;}' +
+        '.xdex-icon-btn svg{display:block;}' +
+        ':root.xdex-custom-dark .xdex-icon-btn,:root.xdex-darkreader-active .xdex-icon-btn{background:#2b2c2d;border-color:#555;color:#d9d0d0;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info .h-threads-info-title{color:#e85248 !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-item-reply-main{background:transparent !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info *,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content *{color:#d9d0d0 !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-tips.uk-text-danger{color:#e85248 !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote font[color="#789922"]{color:#b5d06d !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote a{color:#3e8eec !important;}' +
+        ':root.xdex-custom-dark .kaomoji-item:hover{background:#3a3d40 !important;}' +
+        ':root.xdex-custom-dark .kaomoji-item.kaomoji-active{background:#3a3d40 !important;}';
+      (document.head || document.documentElement).appendChild(style);
+      console.log('[xdex-theme-early] icon-btn global style injected');
+    } catch (e) {}
+  })();
   function shouldExitForXDexSingleton(runtimeInfo){
       const root = document.documentElement;
       const owner = root && root.dataset ? root.dataset[XDEX_SINGLETON_OWNER_DATASET_KEY] : '';
@@ -169,8 +192,8 @@ function xdexEarlyDarkEnabled() {
       });
   }
   function startXDexRuntime(){
-  cat_version();
-  console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
+      cat_version();
+      console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
   function gmRequest(url, responseType = 'text', headers = null) {
     return new Promise((resolve, reject) => {
       const request = {
@@ -993,11 +1016,17 @@ function xdexEarlyDarkEnabled() {
                           width:30px;
                           height:30px;
                           padding:0;
-                          border:1px solid var(--xdex-sp-border);
+                          border:1px solid var(--xdex-sp-border, #bfa58f);
                           border-radius:8px;
-                          background:var(--xdex-sp-panel-bg);
+                          background:var(--xdex-sp-panel-bg, #F0E0D6);
                           cursor:pointer;
                           color:inherit;
+                     }
+                  :root.xdex-custom-dark .xdex-icon-btn,
+                  :root.xdex-darkreader-active .xdex-icon-btn {
+                          background:#2b2c2d;
+                          border-color:#555;
+                          color:#d9d0d0;
                      }
                   .xdex-icon-btn:hover {
                           border-color:#2e7d32;
@@ -8016,44 +8045,29 @@ ${markedSwatchHtml}
         if (overlayOpen || overlayQuoteOpen) {
           btn.style.display = 'none';
         } else {
-          btn.style.display = 'block';
+          // 显示时统一写 flex + 居中内联（覆盖任何 display:block 残留）
+          btn.style.display = 'flex';
+          btn.style.alignItems = 'center';
+          btn.style.justifyContent = 'center';
         }
-      }
-      function observeSeamlessRefreshOverlays(btn) {
-        const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
-        overlays.forEach(el => {
-          if (!el) return;
-          const obs = new MutationObserver(() => {
-            updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
-          });
-          obs.observe(el, { attributes: true, attributeFilter: ['style'] });
-        });
       }
       function ensureSeamlessRefreshButtonNode() {
         let btn = document.getElementById('seamless-refresh-btn');
         if (btn) return btn;
         btn = document.createElement('div');
         btn.id = 'seamless-refresh-btn';
-        btn.className = 'qp-reset-btn seamless-refresh-btn';
+        btn.className = 'qp-reset-btn seamless-refresh-btn xdex-icon-btn';
         btn.title = '手动检查回复更新';
         btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
-        // --- 固定位置样式 ---
+        // --- 固定位置样式（外观走 xdex-icon-btn，内联仅定位与显隐） ---
         btn.style.position = 'fixed';
         btn.style.right = '12px';
         btn.style.bottom = '60px';
-        btn.style.fontSize = '20px';
-        btn.style.lineHeight = '1';
-        btn.style.color = '#fff';
-        btn.style.background = 'rgba(0,0,0,.6)';
-        btn.style.padding = '6px 12px';
-        btn.style.borderRadius = '6px';
-        btn.style.cursor = 'pointer';
         // 层级置于拓展坞（.hld__docker z-index:9998）之上：串内页两者位置可能重叠；下行为 10000，勿再被覆盖
         btn.style.zIndex = '10000';
-        btn.style.userSelect = 'none';
         btn.style.display = 'none';   // 默认不显示
         document.body.appendChild(btn);
-        // 点击触发“局部刷新 → 若有下一页则无缝翻页”
+        // 点击触发"局部刷新 → 若有下一页则无缝翻页"
         btn.addEventListener('click', () => {
           try {
             const refreshGeneration = beginRefreshStatus();
@@ -8067,6 +8081,17 @@ ${markedSwatchHtml}
           } catch (e) {
             console.warn('刷新按钮触发失败:', e);
           }
+        });
+        return btn;
+      }
+      function observeSeamlessRefreshOverlays(btn) {
+        const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
+        overlays.forEach(el => {
+          if (!el) return;
+          const obs = new MutationObserver(() => {
+            updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
+          });
+          obs.observe(el, { attributes: true, attributeFilter: ['style'] });
         });
         return btn;
       }
@@ -9956,10 +9981,16 @@ ${markedSwatchHtml}
         }
         .qp-close-all {
           position: fixed; right: 12px; bottom: 12px;
-          font-size: 20px; line-height: 1;
-          color: #fff; background: rgba(0,0,0,.6);
-          padding: 6px 12px; border-radius: 6px; cursor: pointer; z-index: 10000;
+          width: 30px; height: 30px; padding: 0;
+          display: inline-flex; align-items: center; justify-content: center;
+          background: var(--xdex-qp-reset-bg, rgba(0,0,0,.6));
+          border: 1px solid var(--xdex-qp-reset-border, rgba(255,255,255,.35)); border-radius: 8px; cursor: pointer; z-index: 10000;
           user-select: none;
+          color: var(--xdex-qp-reset-color, #fff);
+        }
+        .qp-close-all:hover {
+          border-color: #2e7d32 !important;
+          color: #2e7d32 !important;
         }
         .qp-overlay-quote .qp-quote {
           position: absolute;
@@ -12045,10 +12076,10 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark #h-emot-select option { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
       // 颜文字触发按钮与键盘选中项
       ':root.xdex-custom-dark .kaomoji-trigger { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
-      ':root.xdex-custom-dark .kaomoji-item.kaomoji-active { background: ' + D('#e0e0e0') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item.kaomoji-active { background: #3a3d40 !important; }',
       ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
       // 悬浮底色：压过浅色源的 #f2f2f2，用深色中灰 + 白化前景
-      ':root.xdex-custom-dark .kaomoji-item:hover { background: ' + D('#e0e0e0') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item:hover { background: #3a3d40 !important; }',
       // 回应省略提示（warn_txt2）：站点原生 .warn_txt2 直接命中子元素，需单独白化（容器继承管不到）
       ':root.xdex-custom-dark .warn_txt2 { color: ' + F('#707070') + ' !important; }',
       ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
@@ -12170,7 +12201,7 @@ ${markedSwatchHtml}
     document.querySelectorAll('.qp-body .qp-content-wrap textarea[name="content"]').forEach((el) => {
       el.style.setProperty('background', theme.textareaBg, 'important');
     });
-    document.querySelectorAll('.qp-reset-btn').forEach((el) => {
+    document.querySelectorAll('.qp-reset-btn, .qp-close-all').forEach((el) => {
       el.style.setProperty('background', theme.resetBg, 'important');
       el.style.setProperty('color', theme.resetColor, 'important');
     });
@@ -12332,19 +12363,17 @@ ${markedSwatchHtml}
           .qp-body {
             flex: 0 0 auto; /* 贴内容高度，达上限后由 .qp-quote 整体滚动 */
             min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: visible;
           }
           /* 归位按钮 */
           .qp-reset-btn {
             position: fixed; right: 12px; bottom: 12px;
-            font-size: 20px; line-height: 1;
+            width: 30px; height: 30px; padding: 0;
+            display: none;
+            align-items: center; justify-content: center;
             color: var(--xdex-qp-reset-color); background: var(--xdex-qp-reset-bg);
-            padding: 6px 12px; border-radius: 6px; cursor: pointer;
+            border: 1px solid rgba(255,255,255,.35); border-radius: 8px; cursor: pointer;
             z-index: 9001; /* 比 overlay 高 */
             user-select: none;
-            display: none;
           }
           .qp-body .qp-content-wrap {
             display: flex;
@@ -12495,7 +12524,7 @@ ${markedSwatchHtml}
                       <div class="qp-drag-edge right"></div>
                       <div class="qp-resize-corner nw" data-dir="nw"></div>
                       <div class="qp-resize-corner ne" data-dir="ne"></div>
-                      <div class="qp-resize-corner sw" data-dir="sw"></div>
+              <div class="qp-reset-btn xdex-icon-btn" title="回复浮窗归位"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
                       <div class="qp-resize-corner se" data-dir="se"></div>
                       <div class="qp-body"></div>
                   </div>
@@ -13229,7 +13258,11 @@ ${markedSwatchHtml}
       scheduleReplyPanelAutoFit(ov);
       // 显示归位按钮
       const resetBtn = ov.querySelector('.qp-reset-btn');
-      if (resetBtn) resetBtn.style.display = 'block';
+      if (resetBtn) {
+        resetBtn.style.display = 'flex';
+        resetBtn.style.alignItems = 'center';
+        resetBtn.style.justifyContent = 'center';
+      }
       const ta = ov.querySelector('textarea[name="content"]');
 
       if (ta) {
