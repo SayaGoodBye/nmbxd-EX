@@ -6845,7 +6845,7 @@ ${markedSwatchHtml}
                   <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
                   </span> -->
-                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
+                  <a class="h-threads-info-id" style="cursor: default;">No.42</a>
                 </div>
                 <div class="h-threads-content"></div>
               </div>
@@ -12039,6 +12039,11 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark .h-threads-item .h-threads-tips, :root.xdex-custom-dark .h-threads-tips { color: ' + F('#707070') + ' !important; }',
       // 回复块
       ':root.xdex-custom-dark .h-threads-item .h-threads-item-replies .h-threads-item-reply .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
+      // 信息行链接与正文链接（No.xxx/举报/回应/订阅/外部链接）：uikit 全局 a 色 #1e87f0 落在深底上偏暗，
+      // 统一提亮至与分页/浮窗一致的亮蓝（DR 级观感）
+      ':root.xdex-custom-dark .h-threads-item .h-threads-info a, :root.xdex-custom-dark .h-threads-content a { color: ' + D('#07d') + ' !important; }',
+      // PO主标记（uk-text-primary，uikit 主题蓝）：同样提亮
+      ':root.xdex-custom-dark .h-threads-item .uk-text-primary { color: ' + D('#07d') + ' !important; }',
       // 分页
       ':root.xdex-custom-dark .h-pagination li a, :root.xdex-custom-dark .h-pagination li span { color: ' + D('#07d') + ' !important; background: ' + D('#fff') + ' !important; }',
       ':root.xdex-custom-dark .h-pagination li:hover a { color: ' + D('#059') + ' !important; }',
@@ -12064,14 +12069,16 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark .qp-body .h-threads-tips.uk-text-danger { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-info a, :root.xdex-custom-dark .qp-body .h-threads-content a { color: ' + D('#07d') + ' !important; }',
       ':root.xdex-custom-dark .qp-body { background: ' + D('#ffe') + ' !important; }',
-      // 预览框（发送前实时预览）：与回复块同底、同内容配色
+      // 预览框（发送前实时预览）：与回复块完全同构 —— 本体兜底深棕底+浅字，
+      // info/content 白化后跟保色规则（链接/PO主/引用绿），特异性白化规则更高
+      ':root.xdex-custom-dark .h-preview-box { background: ' + D('#f0e0d6') + ' !important; color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info, :root.xdex-custom-dark .h-preview-box .h-threads-info *, :root.xdex-custom-dark .h-preview-box .h-threads-content, :root.xdex-custom-dark .h-preview-box .h-threads-content * { color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
-      ':root.xdex-custom-dark .h-preview-box a { color: ' + D('#07d') + ' !important; }',
-      // 饼干二次确认弹窗（参考颜文字面板做法：整体前景+按钮深色化）
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info a, :root.xdex-custom-dark .h-preview-box .h-threads-content a { color: ' + D('#07d') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .uk-text-primary { color: ' + D('#07d') + ' !important; }',
       ':root.xdex-custom-dark #cookie-confirm-modal { color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark #cookie-confirm-modal h3 { color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark #cookie-confirm-modal p { color: ' + F('#707070') + ' !important; }',
@@ -13581,7 +13588,7 @@ ${markedSwatchHtml}
                     <!-- <span class="h-threads-info-report-btn">
                       [<a href="/f/值班室" target="_blank">举报</a>]
                     </span> -->
-                    <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
+                    <a class="h-threads-info-id" style="cursor: default;">No.42</a>
                   </div>
                   <div class="h-threads-content"></div>
                 </div>
@@ -18048,8 +18055,10 @@ function 注册自动保存编辑() {
       }, () => ({ textLength: 正文框 && 正文框.val ? String(正文框.val() || '').length : 0 }));
     }
     function isPreviewPlaceholderInfoId(anchor) {
-      const text = anchor && anchor.textContent ? anchor.textContent.trim() : '';
-      return text === 'No.9999999' && !!(anchor && anchor.closest && anchor.closest('.h-preview-box'));
+      if (!anchor || !anchor.closest || !anchor.closest('.h-preview-box')) return false;
+      // 占位链接特征：无 href（模板刻意去掉 href 使其不可点击）或旧的伪协议 href
+      const href = anchor.getAttribute('href') || '';
+      return !href || /(^|\/)?:javascript:;?$/.test(href);
     }
     // 点击 No.xxxx 插入引用（保持原先光标与选择区逻辑）
     function 注册追记引用串号() {
@@ -18835,7 +18844,7 @@ function 注册自动保存编辑() {
                             <!-- <span class="h-threads-info-report-btn">
                               [<a href="/f/值班室" target="_blank">举报</a>]
                             </span> -->
-                            <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
+                            <a class="h-threads-info-id" style="cursor: default;">No.42</a>
                           </div>
                           <div class="h-threads-content">
                           </div>
