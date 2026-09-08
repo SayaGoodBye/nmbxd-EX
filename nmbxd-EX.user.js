@@ -2899,13 +2899,26 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           if (remoteItem && localItem) {
             const impNewer = (Number(remoteItem.lastVisitedAt) || 0) >= (Number(localItem.lastVisitedAt) || 0);
             const newer = impNewer ? remoteItem : localItem;
+            // page = 最近查看页(允许回退): 双端语义取 lastVisitedAt 较新一端的 page, 不取 max(max 会抹掉本地的主动回翻)
+            const mergedPage = Math.max(1, Number(newer.page) || 1);
+            const mergedMaxVp = Math.max(Number(localItem.maxVisitedPage) || 0, Number(remoteItem.maxVisitedPage) || 0, mergedPage);
+            // url/lastKnownPage 禁止被 ...remoteItem 的过期快照覆盖(曾产生 page=97/url=?page=86 的矛盾记录):
+            // url 与 mergedPage 同步(最近查看页), lastKnownPage 只取 max —— 保证写入存储的记录字段自洽
+            const mergedLastKp = Math.max(Number(localItem.lastKnownPage) || 0, Number(remoteItem.lastKnownPage) || 0, mergedMaxVp || 0);
+            const mergedUrl = buildThreadHistoryPageUrl(
+              localItem.mode || remoteItem.mode,
+              localItem.threadId || remoteItem.threadId,
+              mergedPage
+            );
             mergedItem = {
               ...localItem,
               ...remoteItem,
               firstVisitedAt: Math.min(Number(localItem.firstVisitedAt) || Infinity, Number(remoteItem.firstVisitedAt) || Infinity),
               lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(remoteItem.lastVisitedAt) || 0),
-              page: Math.max(Number(localItem.page) || 0, Number(remoteItem.page) || 0),
-              maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(remoteItem.maxVisitedPage) || 0),
+              page: mergedPage,
+              maxVisitedPage: mergedMaxVp,
+              lastKnownPage: mergedLastKp,
+              url: mergedUrl,
               visitCount: mergedCount,
               lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : remoteItem.lastScrollY),
               title: (newer.title || '').trim() ? newer.title : (localItem.title || remoteItem.title),
@@ -21744,6 +21757,24 @@ function 注册自动保存编辑() {
       if (!idx || Number(idx.lastVisitedAt) !== Number(item.lastVisitedAt)) {
         store.index[key] = buildThreadHistoryIndexEntry(item);
       }
+      // 页码一致性自愈: 修复 page=97/maxVisitedPage=97/url=?page=86/lastKnownPage=86 类自相矛盾的存量脏数据
+      // (WebDAV 裸展开或过时快照钳制的产物)。不变量: 串页数只增不减 → maxVisitedPage/lastKnownPage 只允许抬升
+      {
+        const pageNum = Math.max(1, Number(item.page) || 1);
+        const maxVp = Math.max(pageNum, Number(item.maxVisitedPage) || 0);
+        const lastKp = Number(item.lastKnownPage) || 0;
+        let urlPage = 0;
+        if (item.url) {
+          const pu = parseThreadHistoryUrl(item.url);
+          urlPage = (pu && pu.page) || 0;
+        }
+        if (Number(item.maxVisitedPage) !== maxVp || (lastKp && lastKp < maxVp) || (urlPage && urlPage !== pageNum)) {
+          item.maxVisitedPage = maxVp;
+          if (!lastKp || lastKp < maxVp) item.lastKnownPage = maxVp;
+          // url 永远跟随 page(最近查看页): 双向脱钩都按 page 重建
+          if (!item.url || (urlPage && urlPage !== pageNum)) item.url = buildThreadHistoryPageUrl(item.mode, item.threadId, pageNum);
+        }
+      }
       if (!seen.has(key)) {
         seen.add(key);
         store.order.push(key);
@@ -23044,41 +23075,53 @@ function 注册自动保存编辑() {
   }
   function getThreadHistoryPaginationBounds(root = document) {
     const paginations = Array.from((root || document).querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
-    const pagination = paginations.length ? paginations[paginations.length - 1] : null;
-    if (!pagination) return null;
-    const items = Array.from(pagination.querySelectorAll('li'));
-    const elements = Array.from(pagination.querySelectorAll('a, span'));
-    const parsedLinks = elements
-      .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
-      .filter(Boolean);
-    const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
-    const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
-    const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
-    const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
-    const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
-    const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
-    const numericPages = elements
-      .map(parseThreadHistoryPageNumberFromElement)
-      .filter(num => num > 0);
-    let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
-    if (!lastPage && nextItem && !nextHasLink) {
-      lastPage = activePage || Math.max(0, ...numericPages);
+    if (!paginations.length) return null;
+    // 无缝翻页会给每页追加一个克隆分页栏；HTTP 缓存可能返回旧页面 → 某些栏的"末页"过时偏小。
+    // 真实总页数 >= 任何栏显示的末页 → 跨所有栏取最大值，免疫缓存旧栏把 page/lastKnownPage 钢制回退
+    let best = null;
+    for (const pagination of paginations) {
+      const items = Array.from(pagination.querySelectorAll('li'));
+      const elements = Array.from(pagination.querySelectorAll('a, span'));
+      const parsedLinks = elements
+        .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
+        .filter(Boolean);
+      const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
+      const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
+      const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
+      const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
+      const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
+      const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
+      const numericPages = elements
+        .map(parseThreadHistoryPageNumberFromElement)
+        .filter(num => num > 0);
+      let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
+      if (!lastPage && nextItem && !nextHasLink) {
+        lastPage = activePage || Math.max(0, ...numericPages);
+      }
+      if (!lastPage) continue;
+      const candidate = {
+        lastPage,
+        activePage,
+        threadId: parsedIdentity && parsedIdentity.threadId || '',
+        mode: parsedIdentity && parsedIdentity.mode || '',
+        source: lastPageLink ? 'last-link' : 'disabled-next'
+      };
+      if (!best || lastPage > best.lastPage) best = candidate;
     }
-    if (!lastPage) return null;
-    return {
-      lastPage,
-      activePage,
-      threadId: parsedIdentity && parsedIdentity.threadId || '',
-      mode: parsedIdentity && parsedIdentity.mode || '',
-      source: lastPageLink ? 'last-link' : 'disabled-next'
-    };
+    return best;
   }
-  function applyThreadHistoryPageBounds(record, root = document) {
+  function applyThreadHistoryPageBounds(record, root = document, knownMaxPage = 0) {
     if (!record || !record.threadId) return record;
     const bounds = getThreadHistoryPaginationBounds(root);
     if (!bounds || !bounds.lastPage) return record;
     if (bounds.threadId && bounds.threadId !== String(record.threadId)) return record;
     if (bounds.mode && record.mode && bounds.mode !== record.mode) return record;
+    // ── 过时快照写入闸门 ──
+    // 串页数只增不减。分页栏快照末页 < 已确认进度(真实访问过的更后页) → 分页栏来自旧缓存
+    // (整页 HTTP 缓存/无缝翻页克隆的旧栏), 据此钳制会把 page/maxVisitedPage/url 打回旧页码。
+    // 拒绝本次快照的一切降级写入; 快照末页 ≥ 已知进度时才有资格参与钳制。
+    const knownMax = Math.max(Number(knownMaxPage) || 0, 0);
+    if (knownMax > 1 && bounds.lastPage < knownMax) return record;
     const parsedUrl = record.url ? parseThreadHistoryUrl(record.url) : null;
     const page = Math.max(1, Number(record.page || (parsedUrl && parsedUrl.page)) || 1);
     const boundedPage = Math.min(page, bounds.lastPage);
@@ -23086,7 +23129,7 @@ function 注册自动保存编辑() {
     const next = Object.assign({}, record, {
       page: boundedPage,
       maxVisitedPage: Math.min(Math.max(Number(record.maxVisitedPage) || boundedPage, boundedPage), bounds.lastPage),
-      lastKnownPage: bounds.lastPage
+      lastKnownPage: Math.max(Number(record.lastKnownPage) || 0, bounds.lastPage)
     });
     if (page > bounds.lastPage || existingUrlPage > bounds.lastPage) {
       next.url = buildThreadHistoryPageUrl(next.mode, next.threadId, boundedPage);
@@ -23447,25 +23490,27 @@ function 注册自动保存编辑() {
     const countVisit = options.countVisit !== false;
     const touchVisitedAt = countVisit || options.touchVisitedAt === true;
     const store = getThreadHistoryStore();
-    nextRecord = applyThreadHistoryPageBounds(nextRecord);
+    // 写前校验: 以存量进度为信任下限。过时分页快照(lastPage < 已到过的最远页)在 bounds 闸门被整条拒绝,
+    // 不会再把 page/maxVisitedPage/url 打回旧页码
     const key = nextRecord.key || getThreadHistoryKey(nextRecord.mode, nextRecord.threadId);
     const old = store.items[key] || {};
+    const knownMax = Math.max(Number(old.maxVisitedPage) || 0, Number(old.page) || 0);
+    nextRecord = applyThreadHistoryPageBounds(nextRecord, document, knownMax);
+    // maxVisitedPage 单调只升不降(lastKnownPage 钳制在闸门之后仅剩抬升作用)
     const maxVisitedPage = Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1);
-    const boundedMaxVisitedPage = nextRecord.lastKnownPage ? Math.min(maxVisitedPage, Number(nextRecord.lastKnownPage) || maxVisitedPage) : maxVisitedPage;
     const mergedBase = Object.assign({}, old, nextRecord);
-    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase), {
+    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase, document, knownMax), {
       key,
       firstVisitedAt: old.firstVisitedAt || now,
       lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
       visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
-      maxVisitedPage: boundedMaxVisitedPage,
+      maxVisitedPage,
       cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
     });
     store.items[key] = merged;
-    store.index[key] = buildThreadHistoryIndexEntry(merged);
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
     const saved = setThreadHistoryStore(store);
-    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: merged });
+    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: JSON.parse(JSON.stringify({ page: merged.page, maxVisitedPage: merged.maxVisitedPage, lastKnownPage: merged.lastKnownPage, url: merged.url, visitCount: merged.visitCount })) });
     // 同步常用串菜单中对应串的链接
     try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
     return saved;
@@ -23478,16 +23523,17 @@ function 注册自动保存编辑() {
     const item = store.items[key];
     if (!item) return store;
     const now = Date.now();
+    // 写前校验: 以存量进度为信任下限, 过时分页快照不得降级写入; lastKnownPage/maxVisitedPage 单调只升
+    const knownMax = Math.max(Number(item.maxVisitedPage) || 0, Number(item.page) || 0);
+    // page = 最近查看页, 如实记录当前所在页(允许主动回退到更低页码); maxVisitedPage 不受回翻影响
     const bounded = applyThreadHistoryPageBounds(Object.assign({}, item, {
-      page: Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1),
+      page: Number(options.page || parsed.page) || 1,
       url: options.url || parsed.url
-    }));
+    }), document, knownMax);
     item.page = bounded.page;
-    item.url = bounded.url;
-    item.maxVisitedPage = bounded.lastKnownPage
-      ? Math.min(Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1), Number(bounded.lastKnownPage) || Number(item.page) || 1)
-      : Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
-    if (bounded.lastKnownPage) item.lastKnownPage = bounded.lastKnownPage;
+    item.url = bounded.url || item.url;
+    item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
+    if (bounded.lastKnownPage && Number(bounded.lastKnownPage) > (Number(item.lastKnownPage) || 0)) item.lastKnownPage = bounded.lastKnownPage;
     item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
     if (options.touchVisitedAt) item.lastVisitedAt = now;
     store.index[key] = buildThreadHistoryIndexEntry(item);
@@ -23807,6 +23853,11 @@ function 注册自动保存编辑() {
     return `https://image.nmb.best/${path}/${encodedFile}`;
   }
   function buildThreadHistoryItemUrl(item) {
+    // 消费一致性: 不信任持久化的 item.url(可能被旧快照/裸展开污染, 出现 page=97/url=?page=86 的矛盾)。
+    // 链接指向最近查看页(item.page, 允许低于 maxVisitedPage 的主动回翻); 仅当无法重建时才回退 item.url
+    if (item && item.page && item.threadId) {
+      return buildThreadHistoryPageUrl(item.mode, item.threadId, item.page);
+    }
     if (item && item.url) return item.url;
     const threadId = item && item.threadId ? item.threadId : '';
     const page = item && item.page ? item.page : 1;
@@ -26051,7 +26102,7 @@ function 注册自动保存编辑() {
     menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
     menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
   }
-  // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，保持链接指向最远访问页）
+  // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，指向最近查看页，允许低于最远访问页）
   function syncFavoriteThreadsLinks() {
     const links = document.querySelectorAll('#xdex-favorite-threads-menu a[data-thread-id], #sp_panel_footer a[data-thread-id]');
     if (!links.length) return;
@@ -26063,7 +26114,7 @@ function 注册自动保存编辑() {
         const normal = store.items[getThreadHistoryKey('normal', tid)];
         const item = normal || store.items[getThreadHistoryKey('po', tid)];
         if (item) {
-          const page = item.maxVisitedPage || item.page || 1;
+          const page = item.page || 1;
           link.href = buildThreadHistoryPageUrl(item.mode, tid, page);
         } else {
           link.href = buildThreadHistoryPageUrl('normal', tid, 1);
