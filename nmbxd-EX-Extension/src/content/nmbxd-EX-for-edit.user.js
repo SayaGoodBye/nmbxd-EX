@@ -9989,8 +9989,18 @@ ${markedSwatchHtml}
           color: var(--xdex-qp-reset-color, #fff);
         }
         .qp-close-all:hover {
+          border-color: #c00 !important;
+          color: #c00 !important;
+        }
+        /* 两个刷新钮（归位/局部刷新）：悬浮边框与 svg 图标同步变绿 */
+        .qp-reset-btn.xdex-icon-btn:hover,
+        .seamless-refresh-btn.xdex-icon-btn:hover {
           border-color: #2e7d32 !important;
           color: #2e7d32 !important;
+        }
+        .qp-reset-btn.xdex-icon-btn:hover svg,
+        .seamless-refresh-btn.xdex-icon-btn:hover svg {
+          stroke: #2e7d32 !important;
         }
         .qp-overlay-quote .qp-quote {
           position: absolute;
@@ -12202,8 +12212,11 @@ ${markedSwatchHtml}
       el.style.setProperty('background', theme.textareaBg, 'important');
     });
     document.querySelectorAll('.qp-reset-btn, .qp-close-all').forEach((el) => {
-      el.style.setProperty('background', theme.resetBg, 'important');
-      el.style.setProperty('color', theme.resetColor, 'important');
+      // 写 CSS 变量而非内联 color/background：内联 !important 会压过样式表 hover 规则，
+      // 导致悬浮时只有边框变绿、svg(currentColor) 不变色
+      el.style.setProperty('--xdex-qp-reset-bg', theme.resetBg);
+      el.style.setProperty('--xdex-qp-reset-color', theme.resetColor);
+      el.style.setProperty('--xdex-qp-reset-border', theme.resetBg);
     });
     document.querySelectorAll('.qp-body .qp-content-wrap .h-preview-box, .qp-body .qp-content-wrap .h-preview-box .h-threads-item, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main').forEach((el) => {
       el.style.setProperty('background', theme.previewBg, 'important');
