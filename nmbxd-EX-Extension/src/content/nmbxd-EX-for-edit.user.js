@@ -1731,7 +1731,7 @@ function xdexEarlyDarkEnabled() {
                       <button type="button" data-post-history-type="reply" class="active">我的回复</button>
                     </div>
                     <div class="xdex-posts-add-row" style="display:flex;gap:6px;margin-bottom:8px;">
-                      <input id="sp_posts_manual_add_input" type="search" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <input id="sp_posts_manual_add_input" type="search" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);">
                       <button id="sp_posts_manual_add_btn" type="button" style="padding:4px 10px;font-size:13px;">手动添加</button>
                     </div>
                     <div id="sp_posts_results"></div>
@@ -1758,7 +1758,7 @@ function xdexEarlyDarkEnabled() {
                       <button id="sp_feeds_page_jump" type="button" style="padding:4px 8px;">跳转</button>
                     </div>
                     <div style="display:flex;gap:6px;margin-bottom:8px;">
-                      <input id="sp_feeds_bulk_add_input" type="search" placeholder="输入串号，多个用逗号分隔，如 67024789,66994128" autocomplete="off" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <input id="sp_feeds_bulk_add_input" type="search" placeholder="输入串号，多个用逗号分隔，如 67024789,66994128" autocomplete="off" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);">
                       <button id="sp_feeds_bulk_add_btn" type="button" style="padding:4px 10px;font-size:13px;">批量添加</button>
                       <button id="sp_feeds_export_clipboard" type="button" style="padding:4px 10px;font-size:13px;">导出串号</button>
                     </div>
