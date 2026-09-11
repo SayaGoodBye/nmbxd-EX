@@ -26307,7 +26307,8 @@ function 注册自动保存编辑() {
         padding: 6px 8px;
         cursor: pointer;
         font-size: 13px;
-        color: var(--foreground, #333);
+        /* --foreground 未定义会恒取 #333，深色下与 #2b2c2d 底同暗不可见；改为继承面板前景（与选择框本体一致） */
+        color: inherit;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
       .xdex-feed-option:hover { background: #F0E0D6; }
