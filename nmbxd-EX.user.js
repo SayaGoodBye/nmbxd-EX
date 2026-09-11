@@ -138,9 +138,18 @@ function xdexEarlyDarkEnabled() {
       style.id = 'xdex-icon-btn-global';
       style.textContent =
         '.xdex-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid var(--xdex-sp-border,#bfa58f);border-radius:8px;background:var(--xdex-sp-panel-bg,#F0E0D6);cursor:pointer;color:inherit;box-sizing:border-box;}' +
-        '.xdex-icon-btn:hover{border-color:#2e7d32 !important;color:#2e7d32 !important;}' +
-        '.xdex-icon-btn:active{border-color:#1b5e20 !important;color:#1b5e20 !important;}' +
+        '.xdex-icon-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-icon-btn:active{border-color:#00b386 !important;color:#00b386 !important;}' +
         '.xdex-icon-btn svg{display:block;}' +
+        '.xdex-clear-image-btn:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
+        '#btn_sp_fullExport_reset:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
+        '.xdex-reply-mode-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid var(--xdex-sp-border,#bfa58f);border-radius:8px;background:var(--xdex-sp-panel-bg,#F0E0D6);cursor:pointer;color:inherit;box-sizing:border-box;flex:0 0 auto;}' +
+        '.xdex-reply-mode-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-reply-mode-btn svg{display:block;}' +
+        ':root.xdex-custom-dark .xdex-reply-mode-btn,:root.xdex-darkreader-active .xdex-reply-mode-btn{background:#2b2c2d;border-color:#5a4d42;color:#d9d0d0;}' +
+        ':root.xdex-custom-dark .xdex-reply-mode-btn:hover,:root.xdex-darkreader-active .xdex-reply-mode-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-reply-mode-btn.js-reset:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
+        ':root.xdex-custom-dark .xdex-reply-mode-btn.js-reset:hover,:root.xdex-darkreader-active .xdex-reply-mode-btn.js-reset:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
         ':root.xdex-custom-dark .xdex-icon-btn,:root.xdex-darkreader-active .xdex-icon-btn{background:#2b2c2d;border-color:#555;color:#d9d0d0;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info .h-threads-info-title{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-item-reply-main{background:transparent !important;}' +
@@ -415,7 +424,7 @@ function xdexEarlyDarkEnabled() {
   // 导入/导出：文件夹带箭头（export=向上、import=向下）；重置=红色圆形箭头
   const XDEX_ICON_EXPORT_FILE = '<svg class="xdex-icon-export" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 16v-5M9.5 13.5L12 11l2.5 2.5"/></svg>';
   const XDEX_ICON_IMPORT_FILE = '<svg class="xdex-icon-import" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5L12 16l2.5-2.5"/></svg>';
-  const XDEX_ICON_RESET = '<svg class="xdex-icon-reset" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path d="M18.5 6.5l-1.3 3.6"/><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
+  const XDEX_ICON_RESET = '<svg class="xdex-icon-reset" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EE0000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path d="M18.5 6.5l-1.3 3.6"/><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
   // WebDAV 连接检查（插头）/ 手动同步（双向循环箭头）
   const XDEX_ICON_PLUG = '<svg class="xdex-icon-plug" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5z"/><path d="M12 16v5"/></svg>';
   const XDEX_ICON_SYNC = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
@@ -1029,14 +1038,14 @@ function xdexEarlyDarkEnabled() {
                           color:#d9d0d0;
                      }
                   .xdex-icon-btn:hover {
-                          border-color:#2e7d32;
-                          color:#2e7d32;
+                          border-color:#00ffcc;
+                          color:#00ffcc;
                      }
                   /* 图标按钮专用隐藏类：占位透明（与 xdex-inv 布局语义一致，避免折叠/展开高度突变） */
                   .xdex-btn-hidden { opacity:0; pointer-events:none; }
                   .xdex-recycle-btn:hover {
-                          border-color:#c62828;
-                          color:#c62828;
+                          border-color:#EE0000;
+                          color:#EE0000;
                      }
                   .xdex-recycle-badge {
                           position:absolute;
@@ -1046,7 +1055,7 @@ function xdexEarlyDarkEnabled() {
                           height:16px;
                           padding:0 4px;
                           border-radius:999px;
-                          background:#c62828;
+                          background:#EE0000;
                           color:#fff;
                           font-size:10px;
                           line-height:16px;
@@ -1126,8 +1135,8 @@ function xdexEarlyDarkEnabled() {
                      }
                   .xdex-history-tombstone-mark:hover,
                   .xdex-post-history-tombstone-mark:hover {
-                          color:#c62828;
-                          border-color:#c62828;
+                          color:#EE0000;
+                          border-color:#EE0000;
                      }
                   .xdex-recycle-sort {
                           padding:4px 6px;
@@ -1182,9 +1191,9 @@ function xdexEarlyDarkEnabled() {
                           justify-content:center;
                           border-radius:4px;
                      }
-                  .xdex-recycle-icon-btn:hover { color:#c62828; }
-                  .xdex-recycle-item-restore:hover { color:#2e7d32; }
-                  .xdex-recycle-item-purge:hover { color:#c62828; }
+                  .xdex-recycle-icon-btn:hover { color:#EE0000; }
+                  .xdex-recycle-item-restore:hover { color:#00ffcc; }
+                  .xdex-recycle-item-purge:hover { color:#EE0000; }
                   .xdex-recycle-item-actions {
                           display:flex;
                           gap:6px;
@@ -1201,12 +1210,12 @@ function xdexEarlyDarkEnabled() {
                           font-size:12px;
                      }
                   .xdex-recycle-item-btn.xdex-recycle-item-restore:hover {
-                          border-color:#2e7d32;
-                          color:#2e7d32;
+                          border-color:#00ffcc;
+                          color:#00ffcc;
                      }
                   .xdex-recycle-item-btn.xdex-recycle-item-purge:hover {
-                          border-color:#c62828;
-                          color:#c62828;
+                          border-color:#EE0000;
+                          color:#EE0000;
                      }
                    .xdex-history-item {
                            display:block !important;
@@ -10002,18 +10011,18 @@ ${markedSwatchHtml}
           color: var(--xdex-qp-reset-color, #fff);
         }
         .qp-close-all:hover {
-          border-color: #c00 !important;
-          color: #c00 !important;
+          border-color: #EE0000 !important;
+          color: #EE0000 !important;
         }
         /* 两个刷新钮（归位/局部刷新）：悬浮边框与 svg 图标同步变绿 */
         .qp-reset-btn.xdex-icon-btn:hover,
         .seamless-refresh-btn.xdex-icon-btn:hover {
-          border-color: #2e7d32 !important;
-          color: #2e7d32 !important;
+          border-color: #00ffcc !important;
+          color: #00ffcc !important;
         }
         .qp-reset-btn.xdex-icon-btn:hover svg,
         .seamless-refresh-btn.xdex-icon-btn:hover svg {
-          stroke: #2e7d32 !important;
+          stroke: #00ffcc !important;
         }
         .qp-overlay-quote .qp-quote {
           position: absolute;
@@ -18161,13 +18170,7 @@ function 注册自动保存编辑() {
           let $btn = $form.find('.xdex-clear-image-btn');
           if (hasFile) {
               if (!$btn.length) {
-                  $btn = $('<button type="button" class="xdex-clear-image-btn" title="清除图片">').html(XDEX_SVG_X);
-                  $btn.css({
-                      fontSize: '16px',
-                      lineHeight: '1',
-                      padding: '2px 6px',
-                      cursor: 'pointer'
-                  });
+                  $btn = $('<button type="button" class="xdex-clear-image-btn xdex-icon-btn" title="清除图片">').html(XDEX_SVG_X_ICON);
                   $file.after($btn);
                   $btn.on('click', function (e) {
                     e.stopPropagation();
@@ -18580,7 +18583,7 @@ function 注册自动保存编辑() {
                 <span class="xdex-cookie-check-area" style="display:flex;align-items:center;gap:4px;flex-shrink:0;"></span>
                 <div class="reply-mode-toggle" style="display:flex;flex-direction:row;align-items:center;gap:6px;">
                   <span class="js-reply-extra" style="display:none;display:inline-flex;align-items:center;"></span>
-                  <button type="button" class="js-toggle-mode" style="display:inline-flex;flex:0 0 auto;align-items:center;width:auto;padding:2px 8px;font-size:13px;cursor:pointer;">切换</button>
+                  <button type="button" class="js-toggle-mode xdex-reply-mode-btn" title="当前为&quot;回复&quot;模式，点击切换为&quot;发串&quot;模式">${XDEX_SVG_SWITCH}</button>
                 </div>
               </div>
             </div>
@@ -18707,7 +18710,7 @@ function 注册自动保存编辑() {
             <span class="xdex-cookie-check-area" style="display:flex;align-items:center;gap:4px;flex-shrink:0;"></span>
             <div class="reply-mode-toggle" style="display:flex;flex-direction:row;align-items:center;gap:6px;">
               <span class="js-reply-extra" style="display:none;display:inline-flex;align-items:center;"></span>
-              <button type="button" class="js-toggle-mode" style="display:inline-flex;flex:0 0 auto;align-items:center;width:auto;padding:2px 8px;font-size:13px;cursor:pointer;">切换</button>
+              <button type="button" class="js-toggle-mode xdex-reply-mode-btn" title="当前为&quot;回复&quot;模式，点击切换为&quot;发串&quot;模式">${XDEX_SVG_SWITCH}</button>
             </div>
           </div>
         </div>
@@ -18792,7 +18795,7 @@ function 注册自动保存编辑() {
           // 包裹容器
           const $wrapper = $('<div class="xdex-file-wrapper" style="display:flex;align-items:center;justify-content:space-between;width:100%;"></div>');
           // “×”按钮
-          const $btnReset = $('<button type="button" class="js-reset" style="margin-right:6px;display:inline-flex;align-items:center;">').html(XDEX_SVG_X);
+          const $btnReset = $('<button type="button" class="js-reset xdex-reply-mode-btn" title="重置回复目标" style="margin-right:6px;">').html(XDEX_SVG_X_ICON);
           $btnReset.on('click', function(){
             // 重置 hidden 值
             $formPost.find('input[name="resto"]').val('20011114');
@@ -18861,15 +18864,15 @@ function 注册自动保存编辑() {
             toast('已重置');
           });
           // “临时/连续”按钮
-          const $btnExtra = $('<button type="button" class="js-extra" data-extra="临时" style="display:inline-flex; flex:0 0 auto; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">临时</button>');
+          const $btnExtra = $('<button type="button" class="js-extra xdex-reply-mode-btn" data-extra="临时" title=\'当前为"临时"回复模式，点击切换为"连续"回复模式\'>').html(XDEX_SVG_STOPWATCH);
           $btnExtra.on('click', function(){
             const cur = $(this).attr('data-extra');
             if (cur === '临时') {
-              $(this).attr('data-extra','连续').text('连续');
+              $(this).attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
               window.replyModeState = { mode: '回复', extra: '连续' };
               toast('已切换到 连续 回复模式');
             } else {
-              $(this).attr('data-extra','临时').text('临时');
+              $(this).attr('data-extra','临时').html(XDEX_SVG_STOPWATCH).attr('title','当前为"临时"回复模式，点击切换为"连续"回复模式');
               window.replyModeState = { mode: '回复', extra: '临时' };
               toast('已切换到 临时 回复模式');
             }
@@ -18886,6 +18889,12 @@ function 注册自动保存编辑() {
           toast('已切换到 回复 模式');
         }
       }
+      // 同步“切换”按钮悬浮提示（setMode 所有路径统一出口）
+      {
+        const modeName = window.replyModeState.mode === '发串' ? '发串' : '回复';
+        const nextName = modeName === '发串' ? '回复' : '发串';
+        $row.find('.js-toggle-mode').attr('title', '当前为"' + modeName + '"模式，点击切换为"' + nextName + '"模式');
+      }
       emitReplyModeChange();
     }
     // 绑定模式按钮（原先存在的行为）
@@ -18897,7 +18906,7 @@ function 注册自动保存编辑() {
       if (SettingPanel.state.replyExtraDefault === '连续') {
         // 模拟点击一次“临时/连续”按钮，或者直接设置
         window.replyModeState.extra = '连续';
-        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+        $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     } else if (PageType.isSpecialBoard()) {
       // 值班室/测试版块强制发串模式，方便快速举报/测试（不修改设置项，用户仍可手动切换回复模式)
@@ -18916,14 +18925,14 @@ function 注册自动保存编辑() {
       }
       if (SettingPanel.state.replyExtraDefault === '连续') {
         window.replyModeState.extra = '连续';
-        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+        $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     } else {
       setMode(SettingPanel.state.replyModeDefault, {silent: true});
       // extra 模式
       if (SettingPanel.state.replyExtraDefault === '连续') {
         window.replyModeState.extra = '连续';
-        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+        $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     }
     // 切换按钮逻辑（若存在切换按钮）
@@ -24104,6 +24113,11 @@ function 注册自动保存编辑() {
   // ===== 共享 SVG 图标（统一视觉，替代字符"×"等占位） =====
   const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  // 回复模式行按钮图标（16px，与刷新饼干等 xdex-icon-btn 图标同尺寸）
+  const XDEX_SVG_X_ICON = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
+  const XDEX_SVG_STOPWATCH = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13.6" r="7.4"></circle><path d="M12 13.6V9.8"></path><path d="M9.2 2.4h5.6"></path><path d="M12 2.4v3.8"></path><path d="M17.9 8.2l1.7-1.7"></path></svg>';
+  const XDEX_SVG_INFINITY = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z"></path></svg>';
+  const XDEX_SVG_SWITCH = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-5 5"></path><path d="M21 8H5"></path><path d="m8 21-5-5 5-5"></path><path d="M3 16h16"></path></svg>';
   const XDEX_SVG_RESTORE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"></path><path d="M18.5 6.5l-1.3 3.6"></path><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"></path></svg>';
   const XDEX_SVG_PURGE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
   // 剩余时间略写: 24 小时内显示小时数, 超过显示天数
@@ -26146,6 +26160,9 @@ function 注册自动保存编辑() {
         margin-left: 1px;
       }
       .xdex-sub-ex-btn:hover { text-decoration: underline; }
+      /* 深色模式：信息行链接提亮规则(!important)会盖掉品牌色，这里以同特异性+后源顺序夺回 */
+      :root.xdex-custom-dark .h-threads-item .h-threads-info a.xdex-sub-ex-btn { color: #00FFCC !important; }
+      :root.xdex-custom-dark .h-threads-item .h-threads-info a.xdex-sub-ex-btn .xdex-sidebar-ex-badge { color: #66CCFF !important; }
       .xdex-feed-selector-display {
         display: flex; align-items: center; gap: 6px;
         padding: 6px 8px;
