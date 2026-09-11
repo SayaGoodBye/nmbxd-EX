@@ -161,6 +161,8 @@ function xdexEarlyDarkEnabled() {
         '@keyframes xdex-icon-sync-spin{to{transform:rotate(360deg)}}' +
         '.xdex-icon-loading .xdex-icon-sync{animation:xdex-icon-sync-spin .8s linear infinite}' +
         '.xdex-board-refresh-btn:disabled{opacity:.55;cursor:default}' +
+        '.xdex-edit-default-btn{display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:none;cursor:pointer;color:inherit;flex-shrink:0;vertical-align:middle;margin-right:2px;}' +
+        '.xdex-edit-default-btn:hover{color:#00ffcc !important;}' +
         ':root.xdex-custom-dark .kaomoji-item.kaomoji-active{background:#3a3d40 !important;}';
       (document.head || document.documentElement).appendChild(style);
       console.log('[xdex-theme-early] icon-btn global style injected');
@@ -431,6 +433,7 @@ function xdexEarlyDarkEnabled() {
   // WebDAV 连接检查（插头）/ 手动同步（双向循环箭头）
   const XDEX_ICON_PLUG = '<svg class="xdex-icon-plug" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5z"/><path d="M12 16v5"/></svg>';
   const XDEX_ICON_SYNC = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
+  const XDEX_ICON_GEAR = '<svg class="xdex-icon-gear" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
   const XDEX_ICON_CHEVRON_DOWN = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
   const XDEX_ICON_CHEVRON_LEFT = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
   // 展开/收起按钮视觉：当前展开→向下箭头；当前收起→向左箭头；图标用 currentColor 与常规图标同色
@@ -26758,7 +26761,7 @@ function 注册自动保存编辑() {
     }
     const pref = getThreadCookiePref(threadId);
     const isEnabled = !!pref;
-    area.innerHTML = '<button type="button" class="xdex-edit-default-btn" style="visibility:' + (isEnabled ? 'visible' : 'hidden') + ';pointer-events:' + (isEnabled ? 'auto' : 'none') + ';font-size:11px;padding:1px 4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">修改默认</button>' +
+    area.innerHTML = '<button type="button" class="xdex-edit-default-btn" title="修改默认饼干" style="visibility:' + (isEnabled ? 'visible' : 'hidden') + ';pointer-events:' + (isEnabled ? 'auto' : 'none') + ';">' + XDEX_ICON_GEAR + '</button>' +
       '<input type="checkbox" class="xdex-switch xdex-cookie-check-sw" role="switch"' + (isEnabled ? ' checked' : '') + '>' +
       '<label style="font-size:11px;cursor:pointer;white-space:nowrap;">饼干偏好</label>';
     const switchEl = area.querySelector('.xdex-cookie-check-sw');
