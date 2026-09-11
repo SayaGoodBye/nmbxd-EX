@@ -158,6 +158,9 @@ function xdexEarlyDarkEnabled() {
         ':root.xdex-custom-dark .qp-overlay-quote font[color="#789922"]{color:#b5d06d !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote a{color:#3e8eec !important;}' +
         ':root.xdex-custom-dark .kaomoji-item:hover{background:#3a3d40 !important;}' +
+        '@keyframes xdex-icon-sync-spin{to{transform:rotate(360deg)}}' +
+        '.xdex-icon-loading .xdex-icon-sync{animation:xdex-icon-sync-spin .8s linear infinite}' +
+        '.xdex-board-refresh-btn:disabled{opacity:.55;cursor:default}' +
         ':root.xdex-custom-dark .kaomoji-item.kaomoji-active{background:#3a3d40 !important;}';
       (document.head || document.documentElement).appendChild(style);
       console.log('[xdex-theme-early] icon-btn global style injected');
@@ -428,6 +431,14 @@ function xdexEarlyDarkEnabled() {
   // WebDAV 连接检查（插头）/ 手动同步（双向循环箭头）
   const XDEX_ICON_PLUG = '<svg class="xdex-icon-plug" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5z"/><path d="M12 16v5"/></svg>';
   const XDEX_ICON_SYNC = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
+  const XDEX_ICON_CHEVRON_DOWN = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  const XDEX_ICON_CHEVRON_LEFT = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+  // 展开/收起按钮视觉：当前展开→向下箭头；当前收起→向左箭头；图标用 currentColor 与常规图标同色
+  function setPostExpandToggleVisual(btn, expanded) {
+    if (!btn) return;
+    btn.innerHTML = expanded ? XDEX_ICON_CHEVRON_DOWN : XDEX_ICON_CHEVRON_LEFT;
+    btn.title = expanded ? '点击收起' : '点击展开';
+  }
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
   /* --------------------------------------------------
@@ -6256,7 +6267,9 @@ ${markedSwatchHtml}
       e.preventDefault();
       // 用户手动点击“刷新”：若未登录，则作为“手动弹出”强制提示，不受“不再提醒”影响
       window.__loginPromptShown = false;
-      refreshCookies(null, true, { manualPrompt: true });
+      const _rcBtn = e.currentTarget;
+      if (_rcBtn) _rcBtn.classList.add('xdex-icon-loading');
+      refreshCookies(() => { if (_rcBtn) _rcBtn.classList.remove('xdex-icon-loading'); }, true, { manualPrompt: true });
     });
   }
 
@@ -8080,7 +8093,8 @@ ${markedSwatchHtml}
         btn.id = 'seamless-refresh-btn';
         btn.className = 'qp-reset-btn seamless-refresh-btn xdex-icon-btn';
         btn.title = '手动检查回复更新';
-        btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
+        // btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
+        btn.innerHTML = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
         // --- 固定位置样式（外观走 xdex-icon-btn，内联仅定位与显隐） ---
         btn.style.position = 'fixed';
         btn.style.right = '12px';
@@ -8092,15 +8106,17 @@ ${markedSwatchHtml}
         // 点击触发"局部刷新 → 若有下一页则无缝翻页"
         btn.addEventListener('click', () => {
           try {
+            btn.classList.add('xdex-icon-loading');
             const refreshGeneration = beginRefreshStatus();
             showRefreshStatus("正在刷新……", 1500);
             // 旧：内联 hasNext/last 分支（已抽到 handleSeamlessRefreshCheckResult）
             refreshRepliesAndCheckNext(
-              (result) => handleSeamlessRefreshCheckResult(result, refreshGeneration),
+              (result) => { btn.classList.remove('xdex-icon-loading'); handleSeamlessRefreshCheckResult(result, refreshGeneration); },
               { showResultToast: false },
               refreshGeneration
             );
           } catch (e) {
+            btn.classList.remove('xdex-icon-loading');
             console.warn('刷新按钮触发失败:', e);
           }
         });
@@ -19064,14 +19080,24 @@ function 注册自动保存编辑() {
     function bindBoardQuickReplyRefresh() {
       document.addEventListener('tempReplySuccess', handleBoardQuickReplyRefresh);
       document.addEventListener('contReplySuccess', handleBoardQuickReplyRefresh);
+      document.addEventListener('xdexBoardThreadRefresh', handleBoardQuickReplyRefresh);
+      // 按钮触发的刷新：同串并发去重（回复后的自动增量不受影响）
+      const _boardRefreshInflight = new Set();
       // === v3: API 拉取末页+倒数第二页，位置感知增量合并，滚动位置保持 ===
       function handleBoardQuickReplyRefresh(e) {
         // 只在 板块页 或 时间线 页生效
         if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
+        const btn = (e.detail && e.detail.btn) || null;
+        const fromButton = !!(e.detail && e.detail.fromButton);
         const tid = e.detail?.tid || currentReplyTid;
         if (!tid) {
           toast('订阅失败：未识别到当前串号');
           return;
+        }
+        if (fromButton) {
+          if (_boardRefreshInflight.has(String(tid))) return;
+          _boardRefreshInflight.add(String(tid));
+          if (btn) { btn.disabled = true; btn.classList.add('xdex-icon-loading'); }
         }
         const cfg2 = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
           ? SettingPanel.state : null;
@@ -19142,7 +19168,7 @@ function 注册自动保存编辑() {
               // 无回复区串：页面从未展示过回复；排除 PO 主帖（Replies[0].id === tid）后即为新增回复
               newReplies = tailReplies.filter(r => r && Number(r.id) !== Number(tid));
             }
-            if (!newReplies.length) return;
+            if (!newReplies.length) { if (fromButton) toast('已是最新回复'); return; }
             // Step 5: 保存滚动位置（插入前）
             const scrollEl = document.scrollingElement || document.documentElement;
             const scrollTopBefore = scrollEl.scrollTop;
@@ -19210,12 +19236,16 @@ function 注册自动保存编辑() {
               try { if (cfg2) refreshFilterDisplay(cfg2); } catch (err) {}
               try { if (typeof enablePostExpand === 'function') enablePostExpand(document); } catch (err) {}
             }, 50);
+            if (fromButton) toast('已更新 ' + newReplies.length + ' 条回复');
             if (e.type === 'tempReplySuccess') currentReplyTid = null;
           } catch (err) {
             console.warn('[board-quick-reply] API refresh failed', err);
             toast('刷新板块串失败');
           }
-        })();
+        })().finally(() => {
+          if (btn) { btn.disabled = false; btn.classList.remove('xdex-icon-loading'); }
+          if (fromButton) _boardRefreshInflight.delete(String(tid));
+        });
       }
       // 构建 API 回复的 DOM 节点（匹配页面原生 .h-threads-item-reply 结构）
       function buildApiReplyNode(reply, threadId, opUserHash) {
@@ -19280,6 +19310,49 @@ function 注册自动保存编辑() {
     // 统一调用
     bindReplyQuoteLinks();
     bindBoardQuickReplyRefresh();
+    bindBoardThreadRefreshButtons(document);
+  }
+  // tag 15 子功能：板块页/时间线串卡片「获取最新回复」按钮
+  // 复用 handleBoardQuickReplyRefresh 的增量刷新；放在展开/收起按钮(.js-toggle-mode)之后
+  function bindBoardThreadRefreshButtons(root) {
+    if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
+    const scanRoot = (root && typeof root.querySelectorAll === 'function') ? root : document;
+    const items = [];
+    if (scanRoot.classList && scanRoot.classList.contains('h-threads-item-index')) items.push(scanRoot);
+    scanRoot.querySelectorAll('.h-threads-item-index').forEach(it => { if (items.indexOf(it) < 0) items.push(it); });
+    items.forEach(item => {
+      const infoBar = item.querySelector('.h-threads-info');
+      if (!infoBar) return;
+      let tid = item.getAttribute('data-threads-id');
+      if (!tid) {
+        const idEl = infoBar.querySelector('.h-threads-info-id');
+        const m = idEl && (idEl.textContent || '').match(/\d+/);
+        if (m) tid = m[0];
+      }
+      if (!tid) return;
+      let btn = infoBar.querySelector(':scope > .xdex-board-refresh-btn');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'xdex-icon-btn xdex-board-refresh-btn';
+        btn.title = '获取最新回复';
+        btn.style.cssText = 'min-width:1em;text-align:center;margin-left:4px;vertical-align:middle;';
+        btn.setAttribute('data-tid', tid);
+        btn.innerHTML = XDEX_ICON_SYNC;
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          const t = btn.getAttribute('data-tid');
+          if (!t) return;
+          document.dispatchEvent(new CustomEvent('xdexBoardThreadRefresh', { detail: { tid: t, fromButton: true, btn: btn } }));
+        });
+        infoBar.appendChild(btn);
+      } else {
+        btn.setAttribute('data-tid', tid);
+      }
+      // 定位到展开/收起按钮之前（本按钮加载更快，置于左侧；enablePostExpand 可能晚于本函数执行，故每次重排）
+      const toggle = infoBar.querySelector(':scope > .js-toggle-mode');
+      if (toggle && toggle.previousElementSibling !== btn) toggle.insertAdjacentElement('beforebegin', btn);
+    });
   }
   // === 通用：确保某个元素被折叠（幂等） ===
   function ensureCollapsed($elem, hint) {
@@ -19527,7 +19600,7 @@ function 注册自动保存编辑() {
         }
         // 触发收起
         const btn = lastExpandedItem.querySelector('.h-threads-info .js-toggle-mode');
-        if (btn) btn.textContent = '展开';
+        if (btn) setPostExpandToggleVisual(btn, false);
         collapseWithoutShift(lastExpandedItem);
         lastExpandedItem = null;
         return;
@@ -19565,7 +19638,7 @@ function 注册自动保存编辑() {
       }
       if (target && !target.classList.contains('xdex-post-expand-collapsed')) {
         const btn = target.querySelector('.h-threads-info .js-toggle-mode');
-        if (btn) btn.textContent = '展开';
+        if (btn) setPostExpandToggleVisual(btn, false);
         target.classList.add('xdex-post-expand-collapsed');
         collapseWithoutShift(target);
       }
@@ -19584,9 +19657,9 @@ function 注册自动保存编辑() {
       if (infoBar.querySelector('.js-toggle-mode')) return;
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'js-toggle-mode';
-      btn.style.cssText = 'display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;';
-      btn.textContent = expandAllMode && !item.classList.contains('xdex-post-expand-collapsed') ? '收起' : '展开';
+      btn.className = 'js-toggle-mode xdex-icon-btn';
+      btn.style.cssText = 'min-width:1em;text-align:center;vertical-align:middle;margin-left:4px;';
+      setPostExpandToggleVisual(btn, expandAllMode && !item.classList.contains('xdex-post-expand-collapsed'));
       btn.addEventListener('click', e => {
         e.stopPropagation();
         const isAllMode = document.documentElement.classList.contains('xdex-post-expand-all');
@@ -19594,10 +19667,10 @@ function 注册自动保存编辑() {
           const willExpand = item.classList.contains('xdex-post-expand-collapsed');
           if (willExpand) {
             item.classList.remove('xdex-post-expand-collapsed');
-            btn.textContent = '收起';
+            setPostExpandToggleVisual(btn, true);
             lastExpandedItem = item;
           } else {
-            btn.textContent = '展开';
+            setPostExpandToggleVisual(btn, false);
             item.classList.add('xdex-post-expand-collapsed');
             collapseWithoutShift(item);
             if (lastExpandedItem === item) lastExpandedItem = null;
@@ -19607,10 +19680,10 @@ function 注册自动保存编辑() {
         const willExpand = !item.classList.contains('expanded');
         if (willExpand) {
           item.classList.add('expanded');
-          btn.textContent = '收起';
+          setPostExpandToggleVisual(btn, true);
           lastExpandedItem = item;
         } else {
-          btn.textContent = '展开';
+          setPostExpandToggleVisual(btn, false);
           collapseWithoutShift(item);
           if (lastExpandedItem === item) lastExpandedItem = null;
         }
@@ -28835,10 +28908,11 @@ function 注册自动保存编辑() {
         if (btn.id === 'btn_webdavSync') {
           e.preventDefault();
           e.stopPropagation();
+          btn.classList.add('xdex-icon-loading');
           webdavSyncNow().catch((err) => {
             console.error('[webdav] 手动同步异常', err);
             setWebdavStatus('同步异常：' + (err && err.message ? err.message : err));
-          });
+          }).finally(() => { btn.classList.remove('xdex-icon-loading'); });
         }
       }, true);
       // 面板重建后回填已保存配置：聚焦输入框时空值则回填
@@ -29021,7 +29095,7 @@ function 注册自动保存编辑() {
       { label: 'startup.batch1.enableHDImage', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImage(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.applyImageHideMode', run: () => { if (cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.highlightPO', run: () => highlightPO(), meta: () => startupPerfDebug.summarizeRoot(document) },
-      { label: 'startup.batch1.enablePostExpand', run: () => enablePostExpand(document), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch1.enablePostExpand', run: () => { enablePostExpand(document); try { bindBoardThreadRefreshButtons(document); } catch (e) {} }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.refreshFilterDisplay', run: () => refreshFilterDisplay(cfg), meta: () => startupPerfDebug.summarizeRoot(document) }
     ], 0, 'batch1-layout-filter-image');
     deferStartupSteps([
@@ -29103,7 +29177,7 @@ function 注册自动保存编辑() {
           const end = Math.min(idx + 12, threads.length);
           for (; idx < end; idx++) {
             const btn = threads[idx].querySelector('.h-threads-info .js-toggle-mode');
-            if (btn) btn.textContent = '收起';
+            if (btn) setPostExpandToggleVisual(btn, true);
           }
           if (idx < threads.length) requestAnimationFrame(updateButtons);
         };
@@ -29117,7 +29191,7 @@ function 注册自动保存编辑() {
           const d = delayIdx++ * 45; // 45ms 间隔（经验值）
           setTimeout(() => {
             const btn = item.querySelector('.h-threads-info .js-toggle-mode');
-            if (btn) btn.textContent = '展开';
+            if (btn) setPostExpandToggleVisual(btn, false);
             if (!shouldCollapse) return;
             try { collapseWithoutShift(item); } catch (err) { // 防守
               try { item.classList.remove('expanded'); } catch(e){}
