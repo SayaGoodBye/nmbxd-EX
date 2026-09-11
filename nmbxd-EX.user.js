@@ -163,6 +163,7 @@ function xdexEarlyDarkEnabled() {
         '.xdex-board-refresh-btn:disabled{opacity:.55;cursor:default}' +
         '.xdex-edit-default-btn{display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:none;cursor:pointer;color:inherit;flex-shrink:0;vertical-align:middle;margin-right:2px;}' +
         '.xdex-edit-default-btn:hover{color:#00ffcc !important;}' +
+        '#xdex-image-viewer.xdex-iv-no-sep .xv-page-separator{display:none !important;}' +
         ':root.xdex-custom-dark .kaomoji-item.kaomoji-active{background:#3a3d40 !important;}';
       (document.head || document.documentElement).appendChild(style);
       console.log('[xdex-theme-early] icon-btn global style injected');
@@ -442,6 +443,7 @@ function xdexEarlyDarkEnabled() {
     btn.innerHTML = expanded ? XDEX_ICON_CHEVRON_DOWN : XDEX_ICON_CHEVRON_LEFT;
     btn.title = expanded ? '点击收起' : '点击展开';
   }
+  const XDEX_ICON_IMAGE = '<svg class="xdex-icon-image" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
   /* --------------------------------------------------
@@ -513,6 +515,7 @@ function xdexEarlyDarkEnabled() {
       enableImageContextMenu: true,
       enableImageHideMode: true, // 图片隐藏/无图模式
       applyImageHideMode: 'default', // default | blur | noimage | tips
+      imageViewerSeparators: true, // 阅图模式：显示页码分隔线与“第N页”标识
       enableDraft: true,
       timeDisplayMode: 'relative', // relative | exact
       extendQuote: true, // 拓展引用格式
@@ -728,6 +731,7 @@ function xdexEarlyDarkEnabled() {
           try { renderFavoriteThreadsMenu(); } catch (e) {}
           try { refreshFilterDisplay(this.state); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
+          try { if (typeof applyImageViewerSeparatorSetting === 'function') applyImageViewerSeparatorSetting(); } catch (e) {}
         }
       });
     },
@@ -1496,7 +1500,7 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><button type="button" id="sp_openImageViewer" style="height:24px;padding:0 8px;margin-left:4px;cursor:pointer;">打开</button></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
             </div>
               <div style="margin-top:12px;">
@@ -1975,6 +1979,17 @@ function xdexEarlyDarkEnabled() {
       $('#sp_dockDisplayMode').off('change').on('change', applyDockDisplayModeImmediately);
       $('#sp_enableImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       $('#sp_applyImageHideMode').off('change').on('change', applyImageHideModeImmediately);
+      // 阅图模式分隔线：即时切换并即时应用（无需点“应用更改”）
+      const applyImageViewerSeparatorsImmediately = () => {
+        const on = $('#sp_imageViewerSeparators').is(':checked');
+        this.state.imageViewerSeparators = on;
+        try { GM_setValue(this.key, this.state); } catch (e) {}
+        if (typeof applyImageViewerSeparatorSetting === 'function') {
+          applyImageViewerSeparatorSetting(on);
+        }
+        toast(on ? '已开启分隔线' : '已关闭分隔线', 900, { queue: false, key: 'image-viewer-separators' });
+      };
+      $('#sp_imageViewerSeparators').off('change').on('change', applyImageViewerSeparatorsImmediately);
       // 设置面板内打开阅图：串内页可用；无图模式下右上角按钮隐藏时的备选入口
       $('#sp_openImageViewer').off('click').on('click', (e) => {
         e.preventDefault();
@@ -2695,7 +2710,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableAutoSeamlessPaging', 'enableHDImageAndLayoutFix',
         'enableLinkBlank', 'enableAutoUrlLinkify', 'enableQuotePreview',
         'enableUpdateCheck', 'enableImageContextMenu', 'enableImageHideMode',
-        'applyImageHideMode', 'enableDraft', 'timeDisplayMode',
+        'applyImageHideMode', 'imageViewerSeparators', 'enableDraft', 'timeDisplayMode',
         'extendQuote', 'kaomojiSort', 'toggleSidebar',
         'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
         'replyModeDefault', 'replyExtraDefault', 'blockDisplayMode',
@@ -3566,6 +3581,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
         this.state.dockDisplayMode = $('#sp_dockDisplayMode').val() || 'hover';
         this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
+        this.state.imageViewerSeparators = $('#sp_imageViewerSeparators').is(':checked');
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
         this.state.timeDisplayMode = ($('#sp_timeDisplayMode').val() === 'exact') ? 'exact' : 'relative';
@@ -3703,7 +3719,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
-        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧“打开”可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
+        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧图标按钮可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
+        sp_imageViewerSeparators: '在各页图片之间显示红色分隔线与“第N页”页码标识；关闭以获得更纯净的阅图体验',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
         sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，保留高亮的同时控制其是否在输入框中自动添加引用号，值班室版块默认不生效',
@@ -3858,6 +3875,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableAutoUrlLinkify',
         'enableQuotePreview',
         'enableImageHideMode',
+        'imageViewerSeparators',
         'extendQuote',
         'extendQuoteAvailabilityDetection',
         'enablePostExpandAll',
@@ -27050,6 +27068,18 @@ function 注册自动保存编辑() {
     `;
     (document.head || document.documentElement).appendChild(style);
   }
+  // 阅图模式「分隔线」子设置：控制页码分隔线与“第N页”标识的显示（跨页面实时同步）
+  function applyImageViewerSeparatorSetting(enabled) {
+    let on = enabled;
+    if (typeof on !== 'boolean') {
+      try {
+        on = !(typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state && SettingPanel.state.imageViewerSeparators === false);
+      } catch (e) { on = true; }
+    }
+    const overlay = document.getElementById('xdex-image-viewer');
+    if (!overlay) return;
+    overlay.classList.toggle('xdex-iv-no-sep', !on);
+  }
   function getCurrentImageHideModeForViewerBtn() {
     const live = window.__xdexImageHideMode;
     if (live && live !== 'none') return live;
@@ -27330,6 +27360,7 @@ function 注册自动保存编辑() {
       </div>
     `;
     document.body.appendChild(overlay);
+    try { applyImageViewerSeparatorSetting(); } catch (e) {}
     // 拦截滚轮和触摸，防止穿透到原页面
     overlay.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
     overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
@@ -27424,7 +27455,7 @@ function 注册自动保存编辑() {
     if (!colHeights || colHeights.length < 2) {
       const minH = colHeights && colHeights.length ? Math.min(...colHeights) : 0;
       sep.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);width:' + totalW + 'px;top:' + minH + 'px;pointer-events:none;z-index:2;text-align:center;';
-      sep.innerHTML = '<span style="display:inline-block;background:var(--background,#111);color:#e53935;font-size:12px;font-weight:600;padding:2px 8px;">第' + pageNum + '页</span>';
+      sep.innerHTML = '<span style="display:inline-block;background:var(--background,#111);color:#EE0000;font-size:12px;font-weight:600;padding:2px 8px;">第' + pageNum + '页</span>';
       return sep;
     }
     const maxH = Math.max(...colHeights);
@@ -27447,7 +27478,7 @@ function 注册自动保存编辑() {
     const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
     polyline.setAttribute('points', points.join(' '));
     polyline.setAttribute('fill', 'none');
-    polyline.setAttribute('stroke', '#e53935');
+    polyline.setAttribute('stroke', '#EE0000');
     polyline.setAttribute('stroke-width', '2');
     polyline.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.appendChild(polyline);
@@ -27476,7 +27507,7 @@ function 注册自动保存编辑() {
       }
     }
     const label = document.createElement('span');
-    label.style.cssText = 'position:absolute;left:50%;top:' + Math.round(labelY) + 'px;transform:translate(-50%,-50%);background:var(--background,#111);color:#e53935;font-size:12px;font-weight:600;padding:0 8px;white-space:nowrap;z-index:1;';
+    label.style.cssText = 'position:absolute;left:50%;top:' + Math.round(labelY) + 'px;transform:translate(-50%,-50%);background:var(--background,#111);color:#EE0000;font-size:12px;font-weight:600;padding:0 8px;white-space:nowrap;z-index:1;';
     label.textContent = '第' + pageNum + '页';
     sep.appendChild(label);
     // 绝对定位：top = 最矮列高度
