@@ -752,6 +752,11 @@ function xdexEarlyDarkEnabled() {
                       --xdex-sp-footer-bg: #2b2c2d;
                       --xdex-sp-border: #4b4d50;
                       --xdex-sp-shadow: rgba(0,0,0,0.55);
+                      /* shadcn 风格 token：脚本内从未定义，导致 42 处 var() 恒取 fallback。
+                         深色下面板底色已是 #2b2c2d，而 fallback 的 #333/#666 深字压深底不可读；
+                         仅在深色类下补定义，light 模式继续走原 fallback（行为零变化） */
+                      --foreground: #d9d0d0;
+                      --muted-foreground: #9a9a9a;
                   }
                   .xdex-inv {opacity:0;pointer-events:none;}
                   #sp_panel {
@@ -1321,6 +1326,19 @@ function xdexEarlyDarkEnabled() {
                             z-index:1;
                             color:#800000;
                        }
+                    /* 深色：历史卡片圆钮（删除/墓碑）与导入预览块走面板 token，浅色模式保持原样 */
+                    :root.xdex-darkreader-active .xdex-history-delete,
+                    :root.xdex-darkreader-active .xdex-post-history-delete,
+                    :root.xdex-darkreader-active .xdex-history-tombstone-mark,
+                    :root.xdex-darkreader-active .xdex-post-history-tombstone-mark {
+                        background: var(--xdex-sp-fold-bg);
+                        color: var(--foreground);
+                    }
+                    /* 该元素背景/边框写在内联 style 上，必须 !important 才能压过 */
+                    :root.xdex-darkreader-active #sp_fullExport_import_preview {
+                        background: var(--xdex-sp-panel-bg) !important;
+                        border-color: var(--xdex-sp-border) !important;
+                    }
                     .xdex-history-footer {
                            display:flex;
                            align-items:center;
@@ -3536,7 +3554,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const $preview = $('#sp_fullExport_import_preview').empty().show();
         const meta = data.meta || {};
         const summary = data.summary || {};
-        let html = '<div style="font-size:12px;color:#333;">';
+        let html = '<div style="font-size:12px;color:var(--foreground, #333);">';
         html += `<div>来源版本: ${meta.scriptVersion || '?'} | 导出时间: ${meta.exportedAt ? new Date(meta.exportedAt).toLocaleString() : '?'}</div>`;
         html += '<div style="margin-top:4px;">包含数据:</div><ul style="margin:2px 0;padding-left:20px;">';
         if (summary.threadHistoryCount) html += `<li>浏览历史: ${summary.threadHistoryCount} 条</li>`;
@@ -3547,7 +3565,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (summary.webdavConfig) html += '<li>WebDAV 配置（覆盖导入）</li>';
         if (data.selection && data.selection.settings) html += '<li>设置配置（合并导入）</li>';
         html += '</ul>';
-        html += '<div style="color:#666;margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
+        html += '<div style="color:var(--muted-foreground, #666);margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
         html += '</div>';
         const $btn = $('<button style="margin-top:6px;padding:4px 10px;">应用导入</button>');
         $btn.on('click', () => {
@@ -12147,6 +12165,14 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark #current-cookie-display[style*="red"], :root.xdex-custom-dark #current-cookie-display[style*="rgb(255, 0, 0)"] { color: #e85248 !important; }',
       // 折叠占位按钮（发送表单可选项/关键词/饼干屏蔽折叠区通用）
       ':root.xdex-custom-dark .xdex-placeholder.xdex-generic-toggle, :root.xdex-custom-dark .xdex-placeholder { background: ' + D('#fafafa') + ' !important; color: ' + F('#888') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      // 外部图床图片预览折叠容器（.injected-image-container / .iic-*）：内联浅灰系，深色下整块刺眼
+      ':root.xdex-custom-dark .injected-image-container { background: ' + D('#f9f9f9') + ' !important; border-color: ' + D('#ddd') + ' !important; }',
+      ':root.xdex-custom-dark .iic-header { background: ' + D('#f2f2f2') + ' !important; border-bottom-color: ' + D('#e6e6e6') + ' !important; }',
+      ':root.xdex-custom-dark .iic-title { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .iic-footer { background: ' + D('#f9f9f9') + ' !important; border-top-color: ' + D('#eee') + ' !important; }',
+      ':root.xdex-custom-dark .iic-more-btn-top, :root.xdex-custom-dark .iic-toggle-btn, :root.xdex-custom-dark .iic-more-btn-bottom { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#ccc') + ' !important; }',
+      ':root.xdex-custom-dark .iic-body img { border-color: ' + D('#ccc') + ' !important; }',
+      ':root.xdex-custom-dark .iic-body > div { color: ' + F('#707070') + ' !important; }',
       // 颜文字选择框：原生 select 亮白 → 深色
       ':root.xdex-custom-dark #h-emot-select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
       ':root.xdex-custom-dark #h-emot-select option { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
@@ -27352,7 +27378,7 @@ function 注册自动保存编辑() {
     overlay.innerHTML = `
       <div class="xv-header" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
         <span class="xv-header-info" style="color:var(--foreground,#ccc);font-size:13px;">串号 ${ImageViewer.threadId} · 正在加载…</span>
-        <div style="display:flex;gap:6px;align-items:center;"><button class="xv-upward-btn" style="padding:4px 10px;background:var(--muted-foreground,#666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;opacity:0.6;" title="开启向上翻页">▲</button><button class="xv-close-btn" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button></div>
+        <div style="display:flex;gap:6px;align-items:center;"><button class="xv-upward-btn" style="padding:4px 10px;background:#666;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;opacity:0.6;" title="开启向上翻页">▲</button><button class="xv-close-btn" style="padding:4px 10px;background:var(--destructive,#EE0000);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button></div>
       </div>
       <div class="xv-grid-scroll" style="flex:1;overflow-y:auto;overflow-anchor:none;padding:12px;">
         <div class="xv-masonry-upward" style="display:flex;gap:8px;align-items:flex-end;justify-content:center;position:relative;width:100%;"></div>
@@ -27401,7 +27427,7 @@ function 注册自动保存编辑() {
           loadPrevGridPages();
         } else {
           upwardBtn.style.opacity = '0.6';
-          upwardBtn.style.background = 'var(--muted-foreground,#666)';
+          upwardBtn.style.background = '#666';
           upwardBtn.title = '开启向上翻页';
           toast('已关闭向上翻页');
         }
@@ -27673,7 +27699,7 @@ function 注册自动保存编辑() {
       const upwardBtn = document.querySelector(".xv-upward-btn");
       if (upwardBtn) {
         upwardBtn.style.opacity = "0.4";
-        upwardBtn.style.background = "var(--muted-foreground,#444)";
+        upwardBtn.style.background = "#444";
         upwardBtn.title = "已到第1页";
         upwardBtn.disabled = true;
       }
@@ -27760,7 +27786,7 @@ function 注册自动保存编辑() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
         <button class="xv-back-btn" style="padding:4px 10px;background:var(--primary,#006666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">返回瀑布流</button>
         <span style="color:var(--foreground,#ccc);font-size:13px;">${ImageViewer.currentDetailIndex + 1} / ${ImageViewer.gridImages.length} · No.${img.id} · 第${img.page}页 · 第${img.pageIdx}/${ImageViewer.gridImages.reduce((m, g) => g.page === img.page && g.pageIdx > m ? g.pageIdx : m, 0)}张</span>
-        <button class="xv-close-btn2" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
+        <button class="xv-close-btn2" style="padding:4px 10px;background:var(--destructive,#EE0000);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
       </div>
       <div style="display:flex;flex:1;overflow:hidden;">
         <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
