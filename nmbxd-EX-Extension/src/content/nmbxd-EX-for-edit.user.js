@@ -6884,15 +6884,24 @@ ${markedSwatchHtml}
       }
     }, true);
   }
-  function buildEnhanceIslandPreviewHtml() {
+  const PREVIEW_ID_POOL = ['0712','0711','0412','1002','1210','0520','1105','0217','0831','1227','1227','0130','0812','1126','0722','0119','0520','0630','0210','1110','1227'];
+  let previewPlaceholderId = null;
+  function getPreviewPlaceholderId(reuse) {
+    // reuse=true(早期注入与正式绑定):复用同一编号,避免替换时视觉割裂;reuse=false(发送后重建/重置):重新随机
+    if (!reuse || !previewPlaceholderId) {
+      previewPlaceholderId = PREVIEW_ID_POOL[Math.floor(Math.random() * PREVIEW_ID_POOL.length)];
+    }
+    return previewPlaceholderId;
+  }
+  function buildEnhanceIslandPreviewHtml(early) {
     // 从 cookie-switcher 里取当前饼干
     const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
     const cookieText = cookieDisplay ? cookieDisplay.textContent.trim() : '--';
     return `
-      <div class="h-preview-box" data-xdex-early-preview="1">
+      <div class="h-preview-box"${early ? ' data-xdex-early-preview="1"' : ''}>
         <div class="h-threads-item">
           <div class="h-threads-item-replies">
-            <div class="h-threads-item-reply">
+            <div class="h-threads-item-reply" style="width:100%">
               <div class="h-threads-item-reply-main">
                 <div class="h-threads-img-box">
                   <div class="h-threads-img-tool uk-animation-slide-top">
@@ -6911,7 +6920,7 @@ ${markedSwatchHtml}
                   <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
                   </span> -->
-                  <a class="h-threads-info-id" style="cursor: default;">No.42</a>
+                  <a class="h-threads-info-id" style="cursor: default;">No.${getPreviewPlaceholderId(early)}</a>
                 </div>
                 <div class="h-threads-content"></div>
               </div>
@@ -6942,7 +6951,7 @@ ${markedSwatchHtml}
       || document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
       || document.querySelector('form[action="/Home/Forum/doPostThread.html"]');
     if (!form || !form.parentNode) return false;
-    form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml());
+    form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml(true));
     const previewEl = form.nextElementSibling && form.nextElementSibling.classList?.contains('h-preview-box')
       ? form.nextElementSibling
       : document.querySelector('.h-preview-box');
@@ -9164,6 +9173,8 @@ ${markedSwatchHtml}
       expandMsgWidthIfImageExists(msgMain) {
         const imgBox = msgMain.querySelector('.h-threads-img-box');
         if (!imgBox) return; // 没有图片则跳过
+        // 预览框为空壳预览，不参与未激活加宽；否则早期注入时冻结的 px 与正式预览框重算值不一致，替换时会看到宽度跳变
+        if (msgMain.closest('.h-preview-box')) return;
         // ☆ 新增：检查是否已经扩展过，如果已扩展则跳过
         if (msgMain.__imageWidthExpanded === true) return;
         // 如果图片未激活
@@ -13642,37 +13653,7 @@ ${markedSwatchHtml}
       const cur = getCurrentCookie();
       const cookieText = cur ? cur.name : '--';
       // 先放一个占位 ID，等刷新完成后再更新
-      previewBox.innerHTML = `
-        <div class="h-preview-box">
-          <div class="h-threads-item">
-            <div class="h-threads-item-replies">
-              <div class="h-threads-item-reply">
-                <div class="h-threads-item-reply-main">
-                  <div class="h-threads-img-box">
-                    <div class="h-threads-img-tool uk-animation-slide-top">
-                      <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                      <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
-                      <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
-                      <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
-                    </div>
-                    <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
-                  </div>
-                  <div class="h-threads-info">
-                    <span class="h-threads-info-title"></span>
-                    <span class="h-threads-info-email"></span>
-                    <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
-                    <span class="h-threads-info-uid">ID:${cookieText}</span>
-                    <!-- <span class="h-threads-info-report-btn">
-                      [<a href="/f/值班室" target="_blank">举报</a>]
-                    </span> -->
-                    <a class="h-threads-info-id" style="cursor: default;">No.42</a>
-                  </div>
-                  <div class="h-threads-content"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          </div>`;
+      previewBox.innerHTML = buildEnhanceIslandPreviewHtml(false);
       if (typeof enableHDImage === 'function') {
         enableHDImage(previewBox);
       }
@@ -17764,7 +17745,7 @@ ${markedSwatchHtml}
     const isDraftEnabled = () => getDraftEnabledNow();
     let draftAutosaveBound = false;
     // 预览区域 DOM
-    const previewHtml = buildEnhanceIslandPreviewHtml();
+    const previewHtml = buildEnhanceIslandPreviewHtml(true);
     //previewBox.outerHTML = previewHtml;
     // 引用插入函数（与原脚本一致）
     function enhanceNode(root) {
@@ -18892,38 +18873,7 @@ function 注册自动保存编辑() {
               // 获取当前饼干
               const cur = getCurrentCookie();
               const cookieText = cur ? cur.name : '--';
-                previewBox.innerHTML = `
-                <div class="h-preview-box">
-                  <div class="h-threads-item">
-                    <div class="h-threads-item-replies">
-                      <div class="h-threads-item-reply">
-                        <div class="h-threads-item-reply-main">
-                          <div class="h-threads-img-box">
-                            <div class="h-threads-img-tool uk-animation-slide-top">
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                              <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
-                            </div>
-                            <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
-                          </div>
-                          <div class="h-threads-info">
-                            <span class="h-threads-info-title"></span>
-                            <span class="h-threads-info-email"></span>
-                            <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
-                            <span class="h-threads-info-uid">ID:${cookieText}</span>
-                            <!-- <span class="h-threads-info-report-btn">
-                              [<a href="/f/值班室" target="_blank">举报</a>]
-                            </span> -->
-                            <a class="h-threads-info-id" style="cursor: default;">No.42</a>
-                          </div>
-                          <div class="h-threads-content">
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  </div>`;
+                previewBox.innerHTML = buildEnhanceIslandPreviewHtml(false);
               if (typeof enableHDImage === 'function') {
                 enableHDImage(previewBox);
               }
