@@ -1442,6 +1442,9 @@ function xdexEarlyDarkEnabled() {
           .xdex-switch:checked { background:#66CCFF; border-color:#7da6bf; }
           input.xdex-switch.fixed-on:checked:disabled { background:#00FFCC; border-color:#00b894; }
           .xdex-switch:checked::before { transform:translateX(16px); }
+          /* 饼干偏好开关圆圈：当前饼干命中本串偏好→深青(#006666)，未命中→红(#EE0000)；未开启偏好不着色 */
+          .xdex-cookie-check-sw.xdex-cookie-pref-match::before { background:#006666; }
+          .xdex-cookie-check-sw.xdex-cookie-pref-mismatch::before { background:#EE0000; }
           .xdex-switch:focus-visible { outline:2px solid #cc1105; outline-offset:2px; }
           .xdex-switch:disabled { opacity:1; cursor:default; }
         </style>
@@ -5532,6 +5535,8 @@ ${markedSwatchHtml}
       });
   }
   function updateCurrentCookieDisplay(cur){
+    // 当前饼干变化 → 同步串内偏好开关圆圈着色（置于 $d 守卫之前，各入口均可刷新）
+    try { if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState(); } catch (e) {}
     const $d = $('#current-cookie-display');
     if(!$d.length) return;
     if(cookieListUnavailableState){
@@ -26735,6 +26740,33 @@ function 注册自动保存编辑() {
     if (!cookieList || !hash) return null;
     return Object.values(cookieList).find(c => abbreviateName(c.name || '') === hash) || null;
   }
+  // 当前饼干是否命中本串偏好：未开启偏好返回 null，命中 true，未命中 false
+  function isCookieMatchingThreadPref(threadId) {
+    const pref = getThreadCookiePref(threadId);
+    if (!pref || !pref.hash) return null;
+    const cur = getCurrentCookie();
+    if (!cur) return false;
+    return abbreviateName(cur.name || '') === String(pref.hash);
+  }
+  // 依据判定结果给开关圆圈加/去着色类并同步 tooltip；仅作视觉反馈，不改变任何发送逻辑
+  function refreshCookiePrefSwitchState() {
+    document.querySelectorAll('.xdex-cookie-check-sw').forEach(sw => {
+      const tid = sw.dataset ? (sw.dataset.threadId || '') : '';
+      const matched = tid ? isCookieMatchingThreadPref(tid) : null;
+      sw.classList.toggle('xdex-cookie-pref-match', matched === true);
+      sw.classList.toggle('xdex-cookie-pref-mismatch', matched === false);
+      if (matched === true) {
+        sw.title = '当前饼干即为默认饼干';
+      } else if (matched === false) {
+        const prefHash = String((getThreadCookiePref(tid) || {}).hash || '');
+        const prefCookie = findCookieByHash(getCookiesList(), prefHash);
+        const prefName = (prefCookie ? abbreviateName(prefCookie.name || '') : prefHash) || '未设置';
+        sw.title = '当前饼干非默认饼干，默认饼干为' + prefName;
+      } else {
+        sw.removeAttribute('title');
+      }
+    });
+  }
   // ── PO 主饼干检测 ──
   function detectPOCookieHash() {
     // 直接从 PO 的 uid 文本提取 hash（如 "ID:z19vISg" → "z19vISg"）
@@ -26807,7 +26839,7 @@ function 注册自动保存编辑() {
     const pref = getThreadCookiePref(threadId);
     const isEnabled = !!pref;
     area.innerHTML = '<button type="button" class="xdex-edit-default-btn" title="修改默认饼干" style="visibility:' + (isEnabled ? 'visible' : 'hidden') + ';pointer-events:' + (isEnabled ? 'auto' : 'none') + ';">' + XDEX_ICON_GEAR + '</button>' +
-      '<input type="checkbox" class="xdex-switch xdex-cookie-check-sw" role="switch"' + (isEnabled ? ' checked' : '') + '>' +
+      '<input type="checkbox" class="xdex-switch xdex-cookie-check-sw" role="switch" data-thread-id="' + threadId + '"' + (isEnabled ? ' checked' : '') + '>' +
       '<label style="font-size:11px;cursor:pointer;white-space:nowrap;">饼干偏好</label>';
     const switchEl = area.querySelector('.xdex-cookie-check-sw');
     const editBtn = area.querySelector('.xdex-edit-default-btn');
@@ -26828,6 +26860,7 @@ function 注册自动保存编辑() {
         editBtn.style.visibility = 'hidden';
         editBtn.style.pointerEvents = 'none';
       }
+      refreshCookiePrefSwitchState();
     });
     editBtn.addEventListener('click', () => {
       showCookieConfirmDialog(threadId, (selectedHash) => {
@@ -26835,8 +26868,11 @@ function 注册自动保存编辑() {
         const _c = findCookieByHash(getCookiesList(), selectedHash);
         const _n = _c ? abbreviateName(_c.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim() : selectedHash;
         toast('已将 ' + _n + ' 设为本串默认饼干');
+        refreshCookiePrefSwitchState();
       }, () => {}, { mode: 'setDefault' });
     });
+    // 注入/重建后立即按当前饼干与偏好的一致性着色
+    refreshCookiePrefSwitchState();
   }
 
   /* --------------------------------------------------
