@@ -3259,20 +3259,20 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             // WebDAV：基于基线计算独立贡献，不直接累加
             const baselines = getWebdavHistoryBaselines();
             merged = mergeThreadHistoryStoreWebdav(local, normalizeThreadHistoryStore(payload.threadHistory), baselines);
-            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+            merged = setThreadHistoryStore(merged);
             saveWebdavHistoryBaselinesFromStore(merged, baselines);
             mode = 'webdav-delta';
           } else {
             // 本地导入导出：浏览次数累加
             merged = mergeThreadHistoryStore(local, payload.threadHistory);
-            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+            merged = setThreadHistoryStore(merged);
           }
           report.threadHistory = { mode, count: Object.keys(merged.items || {}).length };
         }
         if (payload.postHistory) {
           const local = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
-          const merged = mergePostHistoryStore(local, payload.postHistory);
-          GM_setValue(POST_HISTORY_STORAGE_KEY, merged);
+          const merged = setPostHistoryStore(mergePostHistoryStore(local, payload.postHistory));
+          // 经 setter 写入:同步刷新归一化缓存并广播变更
           report.postHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
         }
         // 草稿暂为纯本地数据: WebDAV 下载侧跳过导入, 远端旧草稿不再回流
@@ -3503,8 +3503,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (!window.confirm(`确定要清除以下项目的全部内容吗？\n\n${parts.join('、')}\n\n清除后页面将自动刷新。`)) return;
         try {
           if (selection.settings) GM_setValue(SettingPanel.key, {});
-          if (selection.threadHistory) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(null));
-          if (selection.postHistory) GM_setValue(POST_HISTORY_STORAGE_KEY, normalizePostHistoryStore(null));
+          if (selection.threadHistory) setThreadHistoryStore(null);
+          if (selection.postHistory) setPostHistoryStore(null);
           if (selection.drafts) {
             getDraftRegistry().forEach((key) => { try { GM_deleteValue(key); } catch (_) {} });
             saveDraftRegistry([]);
@@ -21615,6 +21615,7 @@ function 注册自动保存编辑() {
   const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
   const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
   const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
+  const HISTORY_SEARCH_INPUT_DEBOUNCE_MS = 300;
   const POST_HISTORY_STORAGE_KEY = 'xdex_post_history';
   const POST_HISTORY_STORE_VERSION = 1;
   // const POST_HISTORY_LIMIT = 500;
@@ -21846,8 +21847,8 @@ function 注册自动保存编辑() {
     Object.keys(store.items).forEach(key => {
       const item = store.items[key];
       const idx = store.index[key];
-      // 失步自愈: index.lastVisitedAt 与 item 不一致(历史合并缺陷的存量脏数据)时重建
-      if (!idx || Number(idx.lastVisitedAt) !== Number(item.lastVisitedAt)) {
+      // 失步自愈:指纹覆盖 searchText 与谓词来源字段,任一变更即重建;存量无 fp 的索引首次读取补齐
+      if (!idx || idx.fp !== threadHistoryIndexFingerprint(item)) {
         store.index[key] = buildThreadHistoryIndexEntry(item);
       }
       // 页码一致性自愈: 修复 page=97/maxVisitedPage=97/url=?page=86/lastKnownPage=86 类自相矛盾的存量脏数据
@@ -21888,16 +21889,24 @@ function 注册自动保存编辑() {
     }
     return store;
   }
+  // 归一化结果记忆化:检索随输入触发,写入远少于读取;缓存由 setThreadHistoryStore 与跨标签变更监听失效
+  let threadHistoryStoreCache = null;
+  function invalidateThreadHistoryStoreCache() { threadHistoryStoreCache = null; }
   function getThreadHistoryStore() {
+    if (threadHistoryStoreCache) return threadHistoryStoreCache;
+    let store;
     try {
-      return normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+      store = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
     } catch (e) {
-      return createDefaultThreadHistoryStore();
+      store = createDefaultThreadHistoryStore();
     }
+    threadHistoryStoreCache = store;
+    return store;
   }
   function setThreadHistoryStore(store) {
     const normalized = normalizeThreadHistoryStore(store);
     GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
+    threadHistoryStoreCache = normalized;
     notifyThreadHistoryStoreChanged('local-write', false);
     return normalized;
   }
@@ -21954,6 +21963,7 @@ function 注册自动保存编辑() {
     if (typeof GM_addValueChangeListener === 'function') {
       try {
         GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          invalidateThreadHistoryStoreCache();
           scheduleThreadHistoryLiveRender('gm-value-change', remote);
           syncFavoriteThreadsLinks();
         });
@@ -21971,6 +21981,7 @@ function 注册自动保存编辑() {
       version: POST_HISTORY_STORE_VERSION,
       // limit: POST_HISTORY_LIMIT,
       items: {},
+      index: {},
       tombstones: {},
       order: []
     };
@@ -22126,11 +22137,36 @@ function 注册自动保存编辑() {
     postHistoryDebugState.last = null;
     return postHistoryDebugState;
   };
+  // 检索索引指纹:仅拼接短标量字段,成本远低于构建 searchText(含全文);指纹一致即复用旧索引
+  function postHistoryIndexFingerprint(item) {
+    return [
+      item.id, item.postId, item.resto, item.threadId, item.fid, item.forumName,
+      item.title, item.name, item.email, item.userHash, item.status, item.type,
+      item.page, item.url, item.sourceUrl, item.imageFile, item.imageImg, item.imageExt,
+      item.contentHash, (item.contentText || '').length, (item.contentRaw || '').length
+    ].join('\u0001');
+  }
+  // 发言历史检索索引:与浏览历史同构,把检索期字符串拼接与正则判定前移到写入期
+  function buildPostHistoryIndexEntry(item) {
+    return {
+      fp: postHistoryIndexFingerprint(item),
+      searchText: buildPostHistorySearchText(item),
+      forumText: getPostHistoryForumSearchText(item),
+      type: item.type,
+      status: item.status,
+      fid: item.fid,
+      hasImage: !!item.imageFile,
+      isGif: /\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || '')),
+      hasZeroWidth: ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))
+    };
+  }
   function normalizePostHistoryStore(rawStore) {
     const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
     store.version = POST_HISTORY_STORE_VERSION;
     // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    // 检索索引:存量数据无此字段,首次读取即补齐(派生数据,旧版本代码忽略不影响)
+    store.index = store.index && typeof store.index === 'object' ? store.index : {};
     // 墓碑: 与浏览历史同构。TTL 到期降级 purged; purged 超安全期清除; revivedAt 标记超期清除
     store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
     {
@@ -22170,11 +22206,14 @@ function 注册自动保存编辑() {
       item.contentHash = item.contentHash || hashPostHistoryText(item.contentText);
       item.page = Math.max(0, Number(item.page) || 0);
       store.items[key] = item;
+      const idx = store.index[key];
+      if (!idx || idx.fp !== postHistoryIndexFingerprint(item)) store.index[key] = buildPostHistoryIndexEntry(item);
       if (!seen.has(key)) {
         seen.add(key);
         store.order.push(key);
       }
     });
+    Object.keys(store.index).forEach(key => { if (!store.items[key]) delete store.index[key]; });
     store.order.sort((a, b) => {
       const av = Number(store.items[a] && store.items[a].submittedAt) || 0;
       const bv = Number(store.items[b] && store.items[b].submittedAt) || 0;
@@ -22206,12 +22245,19 @@ function 注册自动保存编辑() {
     }
     return store;
   }
+  // 同浏览历史:归一化结果记忆化,失效点在 setPostHistoryStore 与跨标签变更监听
+  let postHistoryStoreCache = null;
+  function invalidatePostHistoryStoreCache() { postHistoryStoreCache = null; }
   function getPostHistoryStore() {
+    if (postHistoryStoreCache) return postHistoryStoreCache;
+    let store;
     try {
-      return normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+      store = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
     } catch (e) {
-      return createDefaultPostHistoryStore();
+      store = createDefaultPostHistoryStore();
     }
+    postHistoryStoreCache = store;
+    return store;
   }
   function isPostHistoryPanelOpen() {
     const cover = document.getElementById('sp_cover');
@@ -22266,6 +22312,7 @@ function 注册自动保存编辑() {
   function setPostHistoryStore(store) {
     const normalized = normalizePostHistoryStore(store);
     GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
+    postHistoryStoreCache = normalized;
     notifyPostHistoryStoreChanged('local-write', false);
     return normalized;
   }
@@ -22275,6 +22322,7 @@ function 注册自动保存编辑() {
     if (typeof GM_addValueChangeListener === 'function') {
       try {
         GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          invalidatePostHistoryStoreCache();
           schedulePostHistoryLiveRender('gm-value-change', remote);
         });
       } catch (e) {
@@ -22457,27 +22505,28 @@ function 注册自动保存编辑() {
   function searchPostHistory(query, type) {
     const store = getPostHistoryStore();
     const tombs = store.tombstones || {};
+    const index = store.index || {};
     const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
     const { filters, tokens } = parsePostHistorySearchQuery(query);
     return (store.order || [])
-      .map(key => ({ key, item: store.items[key] }))
-      .filter(result => {
-        // 回收站压制: 未复活墓碑的条目不在主列表显示
-        const tomb = tombs[result.key];
-        // 仅"无删除后新记录"的纯墓碑才隐藏; 重新添加/更新会重建 items 影子条目并带标识显示
-        if (tomb && !tomb.revivedAt && !store.items[result.key]) return false;
-        const item = result.item || {};
-        if (normalizePostHistoryType(item.type) !== selectedType) return false;
-        if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
-        if (filters.fidFilters.length && !filters.fidFilters.includes(normalizePostHistoryFid(item.fid))) return false;
-        if (filters.forumFilters.length && !filters.forumFilters.every(value => getPostHistoryForumSearchText(item).includes(value))) return false;
-        if (filters.hasImage && !item.imageFile) return false;
-        if (filters.isGif && !/\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || ''))) return false;
-        if (filters.hasZeroWidth && !ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))) return false;
+      .filter(key => {
+        const entry = index[key];
+        const item = store.items[key];
+        if (!entry || !item) return false;
+        // 回收站压制: 仅"无删除后新记录"的纯墓碑才隐藏; 重新添加/更新会重建 items 影子条目并带标识显示
+        const tomb = tombs[key];
+        if (tomb && !tomb.revivedAt && !item) return false;
+        if (entry.type !== selectedType) return false;
+        if (filters.statusFilters.length && !filters.statusFilters.includes(entry.status)) return false;
+        if (filters.fidFilters.length && !filters.fidFilters.includes(entry.fid)) return false;
+        if (filters.forumFilters.length && !filters.forumFilters.every(value => entry.forumText.includes(value))) return false;
+        if (filters.hasImage && !entry.hasImage) return false;
+        if (filters.isGif && !entry.isGif) return false;
+        if (filters.hasZeroWidth && !entry.hasZeroWidth) return false;
         if (filters.fieldFilters.length && !filters.fieldFilters.every(filter => getPostHistorySearchFieldText(item, filter.field).includes(filter.value))) return false;
-        const text = buildPostHistorySearchText(item);
-        return tokens.every(token => text.includes(token));
-      });
+        return tokens.every(token => entry.searchText.includes(token));
+      })
+      .map(key => ({ key, item: store.items[key] }));
   }
   function parsePostHistorySearchQuery(query) {
     const filters = { statusFilters: [], fidFilters: [], forumFilters: [], fieldFilters: [], hasImage: false, isGif: false, hasZeroWidth: false };
@@ -23552,6 +23601,17 @@ function 注册自动保存编辑() {
             lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
     };
   }
+  // 索引指纹:覆盖 searchText 与全部布尔谓词的来源字段;仅短标量拼接,远廉于重建 searchText
+  function threadHistoryIndexFingerprint(item) {
+    const flags = (item && item.contentFlags) || {};
+    return [
+      item && item.threadId, item && item.mode, item && item.title, item && item.author,
+      item && item.cookieId, String(item && (item.contentText || item.excerpt) || '').length,
+      item && item.imageFile, flags.hasZeroWidth ? 1 : 0, flags.hasVisibleText ? 1 : 0,
+      flags.hasWhitespaceOnly ? 1 : 0, item && item.sageHtml ? 1 : 0,
+      Number(item && item.lastVisitedAt) || 0
+    ].join('\u0001');
+  }
   function buildThreadHistoryIndexEntry(item) {
     const contentFlags = item && item.contentFlags ? item.contentFlags : {};
     const imageFile = String(item && item.imageFile || '');
@@ -23561,6 +23621,7 @@ function 注册自动保存编辑() {
     const excerptText = String(item && (item.contentText || item.excerpt) || '').toLowerCase();
     const threadIdText = String(item && item.threadId || '');
     return {
+      fp: threadHistoryIndexFingerprint(item),
       searchText: [threadIdText, titleText, authorText, cookieIdText, excerptText].join(' ').toLowerCase(),
       threadIdText,
       titleText,
@@ -23786,14 +23847,13 @@ function 注册自动保存编辑() {
     });
     return { filters, tokens };
   }
-  function scoreThreadHistoryIndexEntry(entry, tokens) {
+  function scoreThreadHistoryIndexEntry(entry, numericTokens) {
     let score = Number(entry.lastVisitedAt) || 0;
-    tokens.forEach(token => {
-      if (/^\d{1,8}$/.test(token)) {
-        if (entry.threadIdText === token) score += 1000000000000000;
-        else if (entry.threadIdText.includes(token)) score += 500000000000000;
-      }
-    });
+    for (let i = 0; i < numericTokens.length; i++) {
+      const token = numericTokens[i];
+      if (entry.threadIdText === token) score += 1000000000000000;
+      else if (entry.threadIdText.includes(token)) score += 500000000000000;
+    }
     return score;
   }
   function getThreadHistorySortValue(item, field) {
@@ -23802,18 +23862,25 @@ function 注册自动保存编辑() {
     if (field === 'maxVisitedPage') return Number(item.maxVisitedPage || item.page) || 0;
     return Number(item.lastVisitedAt) || 0;
   }
-  function compareThreadHistoryResults(a, b, sortMode, tokens) {
+  function compareThreadHistoryResults(a, b, sortMode, numericTokens) {
     const itemA = a.item || {};
     const itemB = b.item || {};
     if (sortMode === 'last-asc') return getThreadHistorySortValue(itemA, 'lastVisitedAt') - getThreadHistorySortValue(itemB, 'lastVisitedAt');
     if (sortMode === 'visits-desc') return getThreadHistorySortValue(itemB, 'visitCount') - getThreadHistorySortValue(itemA, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
     if (sortMode === 'visits-asc') return getThreadHistorySortValue(itemA, 'visitCount') - getThreadHistorySortValue(itemB, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
     if (sortMode === 'page-desc') return getThreadHistorySortValue(itemB, 'maxVisitedPage') - getThreadHistorySortValue(itemA, 'maxVisitedPage') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
-    return scoreThreadHistoryIndexEntry(b.index, tokens) - scoreThreadHistoryIndexEntry(a.index, tokens);
+    // 分数已在检索期预计算;兜底按需再算
+    const scoreA = a.score != null ? a.score : scoreThreadHistoryIndexEntry(a.index, numericTokens || []);
+    const scoreB = b.score != null ? b.score : scoreThreadHistoryIndexEntry(b.index, numericTokens || []);
+    return scoreB - scoreA;
   }
   function searchThreadHistory(query, storeInput, sortMode) {
-    const store = normalizeThreadHistoryStore(storeInput || getThreadHistoryStore());
+    // 默认走记忆化缓存:仅显式传入 storeInput 时才归一化,避免每次检索重复归一化 + 重复排序
+    const store = storeInput ? normalizeThreadHistoryStore(storeInput) : getThreadHistoryStore();
     const { filters, tokens } = parseThreadHistorySearchQuery(query);
+    // 数字 token 判定外提一次:原先在比较器内每次比较都跑正则(约 2·m·log m·tokens 次)
+    const numericTokens = tokens.filter(token => /^\d{1,8}$/.test(token));
+    const useScoreSort = !sortMode || sortMode === 'last-desc';
     return (store.order || [])
       .filter(key => {
         const entry = store.index[key];
@@ -23829,8 +23896,11 @@ function 注册自动保存编辑() {
         if (filters.isSage && !entry.isSage) return false;
         return tokens.every(token => entry.searchText.includes(token));
       })
-      .map(key => ({ key, item: store.items[key], index: store.index[key] }))
-      .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', tokens));
+      .map(key => {
+        const index = store.index[key];
+        return { key, item: store.items[key], index, score: useScoreSort ? scoreThreadHistoryIndexEntry(index, numericTokens) : 0 };
+      })
+      .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', numericTokens));
   }
   let threadHistoryScrollTrackingInstalled = false;
   function installThreadHistoryScrollTracking() {
@@ -24508,10 +24578,38 @@ function 注册自动保存编辑() {
     $('body').append($m);
     try { $m.find('#xdex-clear-history-warning-cancel')[0].focus(); } catch (e) {}
   }
+  // 检索输入统一绑定:拼音等输入法合成期间不检索,合成结束或停止输入后延迟一次,
+  // 避免半截关键词反复触发全表扫描;回车立即检索并取消在途定时器
+  function bindHistorySearchInput(selector, render, namespace) {
+    const el = $(selector)[0];
+    if (!el) return;
+    if (el.__xdexSearchTimer) { clearTimeout(el.__xdexSearchTimer); el.__xdexSearchTimer = 0; }
+    const schedule = (value) => {
+      if (el.__xdexSearchTimer) clearTimeout(el.__xdexSearchTimer);
+      el.__xdexSearchTimer = setTimeout(() => {
+        el.__xdexSearchTimer = 0;
+        if (document.contains(el)) render(value);
+      }, HISTORY_SEARCH_INPUT_DEBOUNCE_MS);
+    };
+    $(el)
+      .off('.' + namespace)
+      .on('compositionstart.' + namespace, () => { el.__xdexSearchComposing = true; })
+      .on('compositionend.' + namespace, (e) => {
+        el.__xdexSearchComposing = false;
+        schedule(e.target.value || '');
+      })
+      .on('input.' + namespace, function () {
+        if (el.__xdexSearchComposing) return;
+        schedule(this.value || '');
+      })
+      .on('keydown.' + namespace, function (e) {
+        if (e.key !== 'Enter') return;
+        if (el.__xdexSearchTimer) { clearTimeout(el.__xdexSearchTimer); el.__xdexSearchTimer = 0; }
+        render(this.value || '');
+      });
+  }
   function bindThreadHistoryModuleEvents() {
-    $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
-      renderThreadHistoryModule(this.value || '');
-    });
+    bindHistorySearchInput('#sp_history_search', renderThreadHistoryModule, 'xdex-history');
     $('#sp_history_sort').off('change.xdex-history').on('change.xdex-history', function () {
       renderThreadHistoryModule();
     });
@@ -25614,9 +25712,7 @@ function 注册自动保存编辑() {
     renderPostHistoryModule();
   }
   function bindPostHistoryModuleEvents() {
-    $('#sp_posts_search').off('input.xdex-post-history').on('input.xdex-post-history', function () {
-      renderPostHistoryModule(this.value || '');
-    });
+    bindHistorySearchInput('#sp_posts_search', renderPostHistoryModule, 'xdex-post-history');
     $('#sp_posts_type_buttons').off('click.xdex-post-history', '[data-post-history-type]').on('click.xdex-post-history', '[data-post-history-type]', function (e) {
       e.preventDefault();
       setPostHistoryType(this.dataset.postHistoryType || 'thread');
@@ -28742,7 +28838,7 @@ function 注册自动保存编辑() {
       if (!pushOk) {
         // 回滚浏览历史存储与基线到合并前：本地与云端重新解耦，下轮 delta = 本地 − 旧基线 仍完整可算
         try {
-          if (thStoreBeforeMerge !== null) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(thStoreBeforeMerge));
+          if (thStoreBeforeMerge !== null) setThreadHistoryStore(thStoreBeforeMerge);
           if (kaoStoreBeforeMerge !== null) GM_setValue('kaomojiUsageStats', kaoStoreBeforeMerge);
           GM_setValue('xdex_webdav_history_baselines', thBaselineBeforeMerge || {});
         } catch (e) {
