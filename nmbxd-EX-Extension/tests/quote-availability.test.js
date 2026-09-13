@@ -9,34 +9,53 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+// 跳过字符串/模板串/行注释/块注释/正则字面量,对 open 处的开括号做配对,返回匹配的闭括号下标
+function skipStringLiteral(src, from, q) {
+  for (let i = from + 1; i < src.length; i += 1) {
+    const ch = src[i];
+    if (ch === '\\') { i += 1; continue; }
+    if (ch === q) return i;
+  }
+  return src.length;
+}
+
+// '/' 是否开启正则字面量:前一个非空白字符为运算符/定界符时视为正则起点,否则是除法
+function regexAllowed(src, k) {
+  let p = k - 1;
+  while (p >= 0 && /\s/.test(src[p])) p -= 1;
+  if (p < 0) return true;
+  return ['=', '(', ',', ':', '?', '&', '|', '!', '[', '{', ';'].indexOf(src[p]) !== -1 ||
+    /return$/.test(src.slice(Math.max(0, p - 6), p + 1));
+}
+
+function skipToMatching(src, open, closer) {
+  const opener = src[open];
+  let depth = 0;
+  for (let i = open; i < src.length; i += 1) {
+    const ch = src[i];
+    const next = src[i + 1];
+    if (ch === '/' && next === '/') { i = src.indexOf('\n', i); if (i === -1) return -1; continue; }
+    if (ch === '/' && next === '*') { i = src.indexOf('*/', i); if (i === -1) return -1; continue; }
+    if (ch === '"' || ch === "'" || ch === '`' || (ch === '/' && regexAllowed(src, i))) { i = skipStringLiteral(src, i, ch); continue; }
+    if (ch === opener) depth += 1;
+    else if (ch === closer) { depth -= 1; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// 先跳过参数列表再取函数体:默认参数对象(如 options = {})的 '{' 不能被当作函数体起点
 function extractFunction(name) {
   const start = source.indexOf(`function ${name}`);
   assert(start !== -1, `${name} must exist`);
-  const bodyStart = source.indexOf('{', start);
+  const openParen = source.indexOf('(', start);
+  assert(openParen !== -1, `${name} params must exist`);
+  const closeParen = skipToMatching(source, openParen, ')');
+  assert(closeParen !== -1, `${name} params not closed`);
+  const bodyStart = source.indexOf('{', closeParen + 1);
   assert(bodyStart !== -1, `${name} body must exist`);
-  let depth = 0;
-  let quote = '';
-  let escaped = false;
-  let lineComment = false;
-  let blockComment = false;
-  for (let i = bodyStart; i < source.length; i += 1) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (lineComment) { if (ch === '\n') lineComment = false; continue; }
-    if (blockComment) { if (ch === '*' && next === '/') { blockComment = false; i += 1; } continue; }
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (ch === '\\') escaped = true;
-      else if (ch === quote) quote = '';
-      continue;
-    }
-    if (ch === '/' && next === '/') { lineComment = true; i += 1; continue; }
-    if (ch === '/' && next === '*') { blockComment = true; i += 1; continue; }
-    if (ch === '`' || ch === '"' || ch === "'") { quote = ch; continue; }
-    if (ch === '{') depth += 1;
-    else if (ch === '}' && --depth === 0) return source.slice(start, i + 1);
-  }
-  throw new Error(`${name} body not closed`);
+  const bodyEnd = skipToMatching(source, bodyStart, '}');
+  assert(bodyEnd !== -1, `${name} body not closed`);
+  return source.slice(start, bodyEnd + 1);
 }
 
 function extractExpression(name) {
@@ -64,6 +83,7 @@ const probe = extractFunction('probeQuoteAvailability');
 const parse = extractFunction('parseQuoteResponseForAvailability');
 const queue = extractFunction('createQuoteAvailabilityQueue');
 const styleMark = extractFunction('applyQuoteAvailabilityStyle');
+const refId = extractFunction('getQuoteRefIdFromText');
 
 const ctx = {
   console,
@@ -79,22 +99,22 @@ const ctx = {
 ctx.globalThis = ctx;
 vm.createContext(ctx);
 ctx.fetch = () => Promise.resolve({ ok: true, text: () => Promise.resolve('') });
-vm.runInNewContext(`${queue}\n${styleMark}\n${probe}\n${parse}\nthis.probeQuoteAvailability = probeQuoteAvailability; this.parseQuoteResponseForAvailability = parseQuoteResponseForAvailability; this.createQuoteAvailabilityQueue = createQuoteAvailabilityQueue; this.applyQuoteAvailabilityStyle = applyQuoteAvailabilityStyle;`, ctx, { filename: 'extract.js' });
+vm.runInNewContext(`${refId}\n${queue}\n${styleMark}\n${probe}\n${parse}\nthis.probeQuoteAvailability = probeQuoteAvailability; this.parseQuoteResponseForAvailability = parseQuoteResponseForAvailability; this.createQuoteAvailabilityQueue = createQuoteAvailabilityQueue; this.applyQuoteAvailabilityStyle = applyQuoteAvailabilityStyle; this.getQuoteRefIdFromText = getQuoteRefIdFromText;`, ctx, { filename: 'extract.js' });
 
 const probeQuoteAvailability = ctx.probeQuoteAvailability; const parseQuoteResponseForAvailability = ctx.parseQuoteResponseForAvailability; const createQuoteAvailabilityQueue = ctx.createQuoteAvailabilityQueue; const applyQuoteAvailabilityStyle = ctx.applyQuoteAvailabilityStyle;
 
 const tests = [
-  function emptyTextRendersEmpty() {
+  function emptyTextIsSkipped() {
     const font = makeStubFont('');
     const out = probeQuoteAvailability(font, { state: { extendQuoteAvailabilityDetection: true, extendQuote: true }, cache: {}, queueSet: () => {} });
-    assert(out.kind === 'empty', 'empty text should be classified as empty');
+    assert(out.kind === 'skip', 'text without a quote id must be skipped, not judged');
     assert(!out.queued, 'empty text should not queue a network probe');
   },
 
-  function invalidTextRendersEmpty() {
+  function invalidTextIsSkipped() {
     const font = makeStubFont('no number here');
     const out = probeQuoteAvailability(font, { state: { extendQuoteAvailabilityDetection: true, extendQuote: true }, cache: {}, queueSet: () => {} });
-    assert(out.kind === 'empty', 'text with no digits should be empty');
+    assert(out.kind === 'skip', 'text with no digits must be skipped as non-quote');
     assert(!out.queued, 'invalid text should not queue a probe');
   },
 
@@ -133,7 +153,8 @@ const tests = [
   },
 
   function parseHtmlWithoutItemRendersReply() {
-    const html = '<div class="h-threads-content">no main item here</div>';
+    // 夹具不得含 h-threads-* 类名:源码宽分支会把任意 h-threads-* 容器判为 thread 页
+    const html = '<div class="page-body">no main item here</div>';
     const r = parseQuoteResponseForAvailability(html, '50000001');
     assert(r.kind === 'reply', '200 ok but no main item should be reply');
   },
@@ -203,15 +224,23 @@ const tests = [
     });
   },
 
-  function styleMarksThreadBoldAndEmptyFaded() {
+  function styleMarksQuoteAvailabilityKinds() {
     const font = makeStubFont('No.69349845');
     font.style = {};
+    // 主串 + 本串串首 → 实线
+    font.dataset.xdexCurThreadRef = '1';
     applyQuoteAvailabilityStyle(font, 'thread');
-    assert(font.dataset.xdexQuoteAvail === 'thread' && font.style.fontWeight === 'bold', 'thread must be bold-marked');
+    assert(font.dataset.xdexQuoteAvail === 'thread' && font.style.textDecoration === 'underline' && font.style.textDecorationThickness === '2px', 'current-thread main quote must be solid-underlined');
+    // 主串 + 非本串串首 → 虚线
+    delete font.dataset.xdexCurThreadRef;
+    applyQuoteAvailabilityStyle(font, 'thread');
+    assert(font.style.textDecoration === 'underline dashed', 'other main quote must be dashed-underlined');
+    // 统一不加粗
+    assert(font.style.fontWeight === '', 'thread must not be bold anymore');
     applyQuoteAvailabilityStyle(font, 'empty');
-    assert(font.dataset.xdexQuoteAvail === 'empty' && font.style.opacity === '0.5', 'empty must be faded');
+    assert(font.dataset.xdexQuoteAvail === 'empty' && font.style.opacity === '0.5' && font.style.textDecoration === '', 'empty must be faded without underline');
     applyQuoteAvailabilityStyle(font, 'unknown');
-    assert(font.style.fontWeight === '' && font.style.opacity === '', 'unknown must reset styles');
+    assert(font.style.fontWeight === '' && font.style.opacity === '' && font.style.textDecoration === '', 'unknown must reset styles');
   },
 
 ];
