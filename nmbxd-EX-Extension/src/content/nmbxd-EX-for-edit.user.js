@@ -8677,12 +8677,19 @@ ${markedSwatchHtml}
   };
   // 新逻辑，启用高清图片链接和布局修正
   const hdImageLazyLoader = (() => {
-    // 基础/动态预热距离（px）：随滚动速度拉长，慢速浏览时尽量在进视窗前完成原图
-    const MIN_ROOT_MARGIN_Y = 600;
-    const BASE_ROOT_MARGIN_Y = 600;
-    const MAX_ROOT_MARGIN_Y = 2400;
-    const LOOKAHEAD_SEC = 1.25;
-    const MARGIN_HYSTERESIS_PX = 100;
+    // 预热距离固定为最大值：rootMargin 只能在重建 IntersectionObserver 时更改，过去按滚动速度动态调窗
+    // 会在滚动中高频 disconnect() + 全文档重新 observe（掉帧主因之一）。远近优先改由 measureImage 的
+    // 距离排序承担，不再靠改观察窗实现。
+    const ROOT_MARGIN_Y = 2400;
+    // 速度采样最小窗（ms）：nowTs() 为亚毫秒分辨率，同毫秒内 dt 若被钳成 1ms 会把瞬时速度放大上千倍，
+    // 使匀速滚动也被判成急加速。固定采样窗兼作速度上限。
+    const SCROLL_SPEED_SAMPLE_MS = 100;
+    // 【已停用·注释保留】动态预热窗常量（改固定窗以消除观察器重建风暴）
+    // const MIN_ROOT_MARGIN_Y = 600;
+    // const BASE_ROOT_MARGIN_Y = 600;
+    // const MAX_ROOT_MARGIN_Y = 2400;
+    // const LOOKAHEAD_SEC = 1.25;
+    // const MARGIN_HYSTERESIS_PX = 100;
     // 非 GIF 原图并发上限；至少预留 1 槽给滚动方向前方，避免视口内大图占满导致下方不预热
     const MAX_CONCURRENT = 3;
     const RESERVE_AHEAD_SLOTS = 1;
@@ -8693,7 +8700,7 @@ ${markedSwatchHtml}
     let lastScrollTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     let scrollDirection = 1;
     let scrollSpeed = 0; // px/s，EMA
-    let currentRootMarginY = BASE_ROOT_MARGIN_Y;
+    let currentRootMarginY = ROOT_MARGIN_Y; // 固定窗；保留字段供 getStats 观察（恒定即证明无重建）
     let activeLoads = 0;
     let activeVisibleLoads = 0;
     let activeAheadLoads = 0;
@@ -8712,54 +8719,77 @@ ${markedSwatchHtml}
     function nowTs() {
       return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     }
-    function getDesiredRootMarginY() {
-      const fromSpeed = Math.round(scrollSpeed * LOOKAHEAD_SEC);
-      return Math.min(MAX_ROOT_MARGIN_Y, Math.max(MIN_ROOT_MARGIN_Y, BASE_ROOT_MARGIN_Y + fromSpeed));
-    }
+    // 【已停用·注释保留】动态窗计算（依赖已停用的速度查表，见 getDesiredRootMarginY）
+    // function getDesiredRootMarginY() {
+    //   const fromSpeed = Math.round(scrollSpeed * LOOKAHEAD_SEC);
+    //   return Math.min(MAX_ROOT_MARGIN_Y, Math.max(MIN_ROOT_MARGIN_Y, BASE_ROOT_MARGIN_Y + fromSpeed));
+    // }
     function updateScrollMetrics(currentY) {
       const ts = nowTs();
-      const dt = Math.max(1, ts - lastScrollTs);
       const dy = currentY - lastScrollY;
       if (dy > 0) scrollDirection = 1;
       else if (dy < 0) scrollDirection = -1;
+      // 方向每次都更新；速度只在跨过最小采样窗时更新，位移自上次提交点累计。
+      // 原实现每事件都算并把 dt 钳到 1ms，同毫秒内的多个事件会算出上千倍虚高速度。
+      const dt = ts - lastScrollTs;
+      if (dt < SCROLL_SPEED_SAMPLE_MS) return;
       const instSpeed = Math.abs(dy) / dt * 1000;
-      // 指数滑动：兼顾瞬时加速与稳定巡航
       scrollSpeed = scrollSpeed * 0.7 + instSpeed * 0.3;
       lastScrollY = currentY;
       lastScrollTs = ts;
     }
-    function classifyImage(img) {
+    // 一次 rect 读取同时得出分类与优先级（原 classifyImage + getImagePriority 的合并，逻辑逐条照搬）
+    function measureImage(img, vh) {
       const rect = img.getBoundingClientRect();
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-      const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
-      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
-      const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
-      if (isVisible) return 'visible';
-      if (aheadDistance >= 0) return 'ahead';
-      if (behindDistance > 0) return 'behind';
-      return 'visible';
+      const aheadDistance = scrollDirection >= 0 ? rect.top - vh : -rect.bottom;
+      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - vh;
+      const isVisible = rect.bottom >= 0 && rect.top <= vh;
+      const kind = isVisible ? 'visible' : (aheadDistance >= 0 ? 'ahead' : (behindDistance > 0 ? 'behind' : 'visible'));
+      const imgCenter = rect.top + rect.height / 2;
+      const viewportCenter = vh / 2;
+      let priority;
+      if (isVisible) priority = Math.abs(imgCenter - viewportCenter);
+      else if (aheadDistance >= 0) priority = 10000 + aheadDistance;
+      else if (behindDistance > 0) priority = (behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000) + behindDistance;
+      else priority = 200000 + Math.abs(imgCenter - viewportCenter);
+      return { kind, priority };
     }
-    function queueHasKind(kind) {
+    // 单次遍历产出分类、优先级与 visible/ahead 计数，供本轮 processQueue 全程复用；
+    // 取代原“排序逐项回查 rect + 每个候选扫全队列”的 O(N²) 布局读取
+    function measureQueue() {
+      const meta = new Map();
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      let aheadCount = 0;
+      let visibleCount = 0;
       for (let i = 0; i < queue.length; i++) {
         const img = queue[i];
         if (!img || !img.isConnected) continue;
-        if (classifyImage(img) === kind) return true;
+        const m = measureImage(img, vh);
+        meta.set(img, m);
+        if (m.kind === 'ahead') aheadCount++;
+        else if (m.kind === 'visible') visibleCount++;
       }
-      return false;
+      return { meta, aheadCount, visibleCount };
     }
-    function canStartNonGif(kind) {
+    function getSnapPriority(snap, img) {
+      const m = snap.meta.get(img);
+      return m ? m.priority : 0;
+    }
+    function getSnapKind(snap, img) {
+      const m = snap.meta.get(img);
+      return m ? m.kind : 'visible';
+    }
+    function canStartNonGif(kind, snap) {
       const free = MAX_CONCURRENT - activeLoads;
       if (free <= 0) return false;
-      const aheadWaiting = kind === 'ahead' || queueHasKind('ahead');
+      if (kind === 'ahead') return true;
       if (kind === 'visible') {
         // 前方仍有待加载时，不为视口内请求吃光最后 RESERVE 个槽
-        if (!aheadWaiting) return true;
+        if (!snap.aheadCount) return true;
         return (free - 1) >= RESERVE_AHEAD_SLOTS || activeAheadLoads > 0;
       }
-      if (kind === 'ahead') return true;
       // behind：仅当没有 visible/ahead 候选时才填空
-      if (queueHasKind('visible') || queueHasKind('ahead')) return false;
-      return true;
+      return !snap.visibleCount && !snap.aheadCount;
     }
     function noteLoadStart(kind) {
       activeLoads++;
@@ -8774,33 +8804,40 @@ ${markedSwatchHtml}
       else if (kind === 'ahead') activeAheadLoads = Math.max(0, activeAheadLoads - 1);
       else activeBehindLoads = Math.max(0, activeBehindLoads - 1);
     }
-    function reobservePendingImages() {
-      const io = ensureObserver();
-      if (!io) return;
-      document.querySelectorAll('img[data-xdex-hd-src]').forEach((img) => {
-        if (!img || !img.isConnected) return;
-        if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
-        try { io.observe(img); } catch (e) {}
-      });
-    }
-    function syncObserverMargin(force) {
-      const desired = getDesiredRootMarginY();
-      if (!force && Math.abs(desired - currentRootMarginY) < MARGIN_HYSTERESIS_PX) return;
-      if (!force && desired === currentRootMarginY) return;
-      currentRootMarginY = desired;
-      if (observer) {
-        try { observer.disconnect(); } catch (e) {}
-        observer = null;
-      }
-      reobservePendingImages();
+    // 【已停用·注释保留】观察器重建链：desired 窗改固定 ROOT_MARGIN_Y 后不再需要。
+    // 原实现在滚动中高频 disconnect() + 全文档 querySelectorAll + 逐个 observe + 新建 IO。
+    // function reobservePendingImages() {
+    //   const io = ensureObserver();
+    //   if (!io) return;
+    //   document.querySelectorAll('img[data-xdex-hd-src]').forEach((img) => {
+    //     if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
+    //     io.observe(img);
+    //   });
+    // }
+    // function syncObserverMargin(force) {
+    //   const desired = getDesiredRootMarginY();
+    //   if (!force && Math.abs(desired - currentRootMarginY) < MARGIN_HYSTERESIS_PX) return;
+    //   if (!force && desired === currentRootMarginY) return;
+    //   currentRootMarginY = desired;
+    //   if (observer) {
+    //     try { observer.disconnect(); } catch (e) {}
+    //     observer = null;
+    //   }
+    //   reobservePendingImages();
+    // }
+    let scrollFrameId = 0;
+    function onScrollFrame() {
+      const currentY = window.scrollY || window.pageYOffset || 0;
+      updateScrollMetrics(currentY);
+      processQueue();
     }
     function bindScrollListener() {
       if (scrollListenerBound) return;
       window.addEventListener('scroll', () => {
-        const currentY = window.scrollY || window.pageYOffset || 0;
-        updateScrollMetrics(currentY);
-        syncObserverMargin(false);
-        processQueue();
+        // 一帧只处理一次：滚动事件每秒可达数十个，逐事件处理的结果会被后一次覆盖，纯浪费
+        if (scrollFrameId) return;
+        if (typeof requestAnimationFrame !== 'function') { onScrollFrame(); return; }
+        scrollFrameId = requestAnimationFrame(() => { scrollFrameId = 0; onScrollFrame(); });
       }, { passive: true });
       scrollListenerBound = true;
     }
@@ -8808,15 +8845,18 @@ ${markedSwatchHtml}
       if (observer) return observer;
       if (typeof IntersectionObserver !== 'function') return null;
       observer = new IntersectionObserver(entries => {
+        // 整批入队后只处理一次：逐张 enqueue 会让每张图都触发一整套测量+排序
+        let added = false;
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
           const img = entry.target;
-          enqueue(img);
+          if (enqueue(img, true)) added = true;
           try { observer.unobserve(img); } catch (e) {}
         });
+        if (added) processQueue();
       }, {
         root: null,
-        rootMargin: `${currentRootMarginY}px 0px`,
+        rootMargin: `${ROOT_MARGIN_Y}px 0px`,
         threshold: 0.01
       });
       return observer;
@@ -8841,25 +8881,22 @@ ${markedSwatchHtml}
       }
       return imgs;
     }
-    function getImagePriority(img) {
-      const rect = img.getBoundingClientRect();
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-      const viewportCenter = viewportHeight / 2;
-      const imgCenter = rect.top + rect.height / 2;
-      const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
-      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
-      const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
-      const isAhead = aheadDistance >= 0;
-      const isBehind = behindDistance > 0;
-      // 分数越小越优先：视口内 > 滚动前方（近到远）> 后方
-      if (isVisible) return Math.abs(imgCenter - viewportCenter);
-      if (isAhead) return 10000 + aheadDistance;
-      if (isBehind) {
-        const farBehindPenalty = behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000;
-        return farBehindPenalty + behindDistance;
-      }
-      return 200000 + Math.abs(imgCenter - viewportCenter);
-    }
+    // 【已停用·注释保留】优先级计算已并入 measureImage（同一次 rect 读取同时给出分类与优先级）
+    // function getImagePriority(img) {
+    //   const rect = img.getBoundingClientRect();
+    //   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    //   const viewportCenter = viewportHeight / 2;
+    //   const imgCenter = rect.top + rect.height / 2;
+    //   const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
+    //   const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
+    //   const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
+    //   const isAhead = aheadDistance >= 0;
+    //   const isBehind = behindDistance > 0;
+    //   if (isVisible) return Math.abs(imgCenter - viewportCenter);
+    //   if (isAhead) return 10000 + aheadDistance;
+    //   if (isBehind) return (behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000) + behindDistance;
+    //   return 200000 + Math.abs(imgCenter - viewportCenter);
+    // }
     function processQueue() {
       if (queue.length === 0) return;
       // GIF：不占非 GIF 并发槽，直接开载
@@ -8875,7 +8912,9 @@ ${markedSwatchHtml}
         }
       }
       if (queue.length === 0) return;
-      queue.sort((a, b) => getImagePriority(a) - getImagePriority(b));
+      // 单次测量：分类、优先级与 ahead/visible 计数一次算完，本轮全程复用
+      const snap = measureQueue();
+      queue.sort((a, b) => getSnapPriority(snap, a) - getSnapPriority(snap, b));
       // 多轮挑选：跳过暂时因 reserve 不能启动的项，继续尝试后方合适项
       let guard = queue.length + 2;
       while (activeLoads < MAX_CONCURRENT && queue.length > 0 && guard-- > 0) {
@@ -8908,8 +8947,8 @@ ${markedSwatchHtml}
             started = true;
             break;
           }
-          const kind = classifyImage(img);
-          if (!canStartNonGif(kind)) continue;
+          const kind = getSnapKind(snap, img);
+          if (!canStartNonGif(kind, snap)) continue;
           queue.splice(i, 1);
           queued.delete(img);
           noteLoadStart(kind);
@@ -8933,23 +8972,25 @@ ${markedSwatchHtml}
         if (!started) break;
       }
     }
-    function enqueue(img) {
-      if (!img || img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
-      if (!img.dataset.xdexHdSrc) return;
+    function enqueue(img, deferProcess) {
+      if (!img || img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return false;
+      if (!img.dataset.xdexHdSrc) return false;
       // GIF 直接加载，不进限速队列
       if (isGifUrl(img.dataset.xdexHdSrc)) {
         load(img, img.dataset.xdexHdSrc);
-        return;
+        return false;
       }
-      if (!queued.has(img)) {
+      const added = !queued.has(img);
+      if (added) {
         queued.add(img);
         queue.push(img);
       }
-      processQueue();
+      // deferProcess=true 时由调用方在整批入队后统一处理一次
+      if (!deferProcess) processQueue();
+      return added;
     }
     function observe(root) {
       bindScrollListener();
-      syncObserverMargin(false);
       const io = ensureObserver();
       if (!io) return;
       collect(root).forEach(img => {
@@ -18424,10 +18465,12 @@ function 注册自动保存编辑() {
         if (!timeStr) return;
         const date = new Date(timeStr);
         if (Number.isNaN(date.getTime())) return;
-        target.attr('data-xdex-original-time', timeStr);
-        target.attr('title', timeStr);
+        // 写前先比较：相对时间实际一分钟才变一次，无条件写 attr/text 会让每 5s 的全量遍历把整页版面弄脏，
+        // 紧接着的 rect 读取就退化成强制同步重排（表现为每 5s 一次可感知微顿）
+        if (target.attr('data-xdex-original-time') !== timeStr) target.attr('data-xdex-original-time', timeStr);
+        if (target.attr('title') !== timeStr) target.attr('title', timeStr);
         const friendlyTime = getFriendlyTime(timeStr);
-        target.text(friendlyTime);
+        if (target.text() !== friendlyTime) target.text(friendlyTime);
       });
     }
     function getTimeDisplayMode() {
@@ -18445,7 +18488,7 @@ function 注册自动保存编辑() {
       targets.each(function () {
         const target = $(this);
         const timeStr = target.attr('data-xdex-original-time') || target.attr('title');
-        if (timeStr) target.text(timeStr);
+        if (timeStr && target.text() !== timeStr) target.text(timeStr); // 同样写前比较，避免无变化的整页脏化
       });
     }
     function applyTimeDisplayMode(root = document) {
