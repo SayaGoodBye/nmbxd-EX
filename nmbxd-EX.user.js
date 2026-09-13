@@ -10549,6 +10549,8 @@ ${markedSwatchHtml}
       fetchData(tid).then(html => {
         if (sourceEl.__xdexQuotePending) sourceEl.__xdexQuotePending = false;
         sourceEl.__xdexQuoteOpen = true;
+        // 与悬浮同源：点击拿到的 ref 原文同样可用于实时定论/优先判定
+        if (!settleQuoteRefAsEmpty(tid, html)) prioritizeQuoteProbe(tid);
         showQuote(html, { currentThreadId: ctxTid, tid: String(tid), sourceEl: sourceEl });
         // 兑底：对最上层拓展浮窗内容再标一次，防 options 链路/后处理导致漏标
         setTimeout(() => {
@@ -10944,6 +10946,16 @@ ${markedSwatchHtml}
   };
 
   // —— 引用串可用性检测：仅保留当前页面会话结果，不写入 GM 存储 ——
+  // 「已删/不存在」的标准响应不是 DOCTYPE 裸页，而是服务端照常渲染的 h-threads-item 空字段骨架：
+  // data-threads-id 为空、No. 锚文本无编号、ID: 无饼干、正文为空。二者含义不同，不可混用。
+  function isQuoteRefDeletedSkeleton(html) {
+    if (typeof html !== 'string' || !html) return false;
+    // 编号锚为空：活帖浮窗必然带 No.<数字>，此处只剩 “No.”
+    const emptyNoAnchor = /<a\b[^>]*h-threads-info-id[^>]*>\s*No\.\s*<\/a>/i.test(html);
+    // 容器存在但串号为空
+    const emptyThreadsId = /data-threads-id\s*=\s*["']\s*["']/i.test(html);
+    return emptyNoAnchor && emptyThreadsId;
+  }
   function parseQuoteResponseForAvailability(html, tid) {
     if (html == null || String(html).trim() === '') return { kind: 'empty' };
     const text = String(html).trim();
@@ -10955,7 +10967,12 @@ ${markedSwatchHtml}
     }
     if (/<!DOCTYPE html>\s*<html[^>]*>\s*<head[\s>]/i.test(text) && !/<(?:body|div|article|main)\b/i.test(text)) return { kind: 'empty' };
     if (tid && (text.includes('id="' + tid + '"') || text.includes("id='" + tid + "'") || text.includes('data-threads-id="' + tid + '"') || text.includes("data-threads-id='" + tid + "'"))) return { kind: 'thread' };
-    if (/<(?:div|article|section)\b[^>]*(?:class|id)=["'][^"']*(?:h-threads-item|thread)[^"']*["']/i.test(text)) return { kind: 'thread' };
+    // 【已停用·注释保留】类名 token 分支无法区分“主串存在”与“已删”：服务端对不存在的编号照样渲染
+    // <div class="h-threads-item">，只是字段全空。实测删串响应即含该容器，无论宽分支还是收紧后的
+    // token 分支都会误判为 thread（进而误插跳转按钮）。ref 原文只能用来判存在性，不能判主串。
+    // if (/(?:class|id)=["'](?:[^"']*\s)?h-threads-item(?:-index)?(?:\s[^"']*)?["']/i.test(text)) return { kind: 'thread' };
+    // 已删骨架优先于兜底的 reply 结论
+    if (isQuoteRefDeletedSkeleton(text)) return { kind: 'empty' };
     return { kind: 'reply' };
   }
 
@@ -10969,12 +10986,14 @@ ${markedSwatchHtml}
     const cacheSet = options.cacheSet || (() => {});
     const onResult = options.onResult || (() => {});
     let timer = null;
-    let pumping = false;
-    let pumpTimer = null;
-    // 受限并发 + 请求间隔：一次刷新可能有数百个编号，全量并发会被 CDN 限流（限流错误即 unknown 的来源）
+    let activeWorkers = 0;
+    // 受限并发：一次刷新可能有数百个编号，全量并发会被 CDN 限流（限流错误即 unknown 的来源）
+    // 并发数是实际的限流手段；GAP_MS 为单个 worker 相邻两次请求间的最小间隔，默认关闭，需要时由调用方显式传 gapMs
+    // 判定必须用 Number.isFinite：Number(undefined) 是 NaN，而 `NaN != null` 恒为 true，会让默认分支变成死代码
     const CONCURRENCY = Math.max(1, Number(options.concurrency) || 2);
-    const GAP_MS = Math.max(0, Number(options.gapMs) != null ? Number(options.gapMs) : 250);
+    const GAP_MS = Number.isFinite(Number(options.gapMs)) ? Math.max(0, Number(options.gapMs)) : 0;
     const delay = options.noDelay ? 0 : (Number(options.delay) || 120);
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const RETRY_BASE_MS = 1500;
     const retryLater = (tid) => {
       const n = (attempts.get(tid) || 0) + 1;
@@ -11012,29 +11031,28 @@ ${markedSwatchHtml}
         inFlight.delete(tid);
       }
     };
-    const pump = () => {
-      if (pumping) return;
-      pumping = true;
-      const next = () => {
-        const work = [];
-        while (work.length < CONCURRENCY && pending.size) {
-          const id = pending.values().next().value;
-          pending.delete(id);
-          work.push(id);
-        }
-        if (!work.length) {
-          pumping = false;
-          return;
-        }
-        Promise.all(work.map(drainOne)).then(() => {
-          if (pending.size) {
-            pumpTimer = setTimeout(() => { pumpTimer = null; next(); }, GAP_MS);
-          } else {
-            pumping = false;
+    // 常驻 worker：谁空了谁取下一个编号，消除“凑满一批 → 等最慢的一个 → 整批空等”的头部阻塞
+    // 峰值在途请求数仍严格等于 CONCURRENCY，不增加任何 CDN 压力
+    const startWorker = () => {
+      activeWorkers++;
+      const run = async () => {
+        try {
+          while (pending.size) {
+            const id = pending.values().next().value;
+            pending.delete(id);
+            await drainOne(id);
+            if (GAP_MS && pending.size) await sleep(GAP_MS);
           }
-        });
+        } finally {
+          activeWorkers--;
+        }
+        // 退出与入队存在竞态：仍有待办则补位，避免任务搁置到下一次 schedule
+        if (pending.size && activeWorkers < CONCURRENCY) startWorker();
       };
-      next();
+      run();
+    };
+    const pump = () => {
+      while (activeWorkers < CONCURRENCY && pending.size) startWorker();
     };
     const schedule = () => {
       if (timer !== null) return;
@@ -11042,20 +11060,39 @@ ${markedSwatchHtml}
       timer = setTimeout(() => { timer = null; pump(); }, delay);
     };
     return {
-      enqueue(tid) {
+      // opts.priority：用户正在查看的编号提到队首，不排在数百个后台编号之后
+      enqueue(tid, opts) {
         const id = String(tid || '').trim();
-        if (!/^\d\d\d\d\d\d\d\d$/.test(id) || cacheGet(id) || pending.has(id) || inFlight.has(id)) return false;
+        if (!/^\d\d\d\d\d\d\d\d$/.test(id) || cacheGet(id) || inFlight.has(id)) return false;
         if ((attempts.get(id) || 0) >= MAX_ATTEMPTS) return false;
-        pending.add(id);
+        const priority = !!(opts && opts.priority);
+        if (pending.has(id)) {
+          if (!priority) return false;
+          pending.delete(id);
+        }
+        if (priority) {
+          const rest = Array.from(pending);
+          pending.clear();
+          pending.add(id);
+          rest.forEach((x) => pending.add(x));
+        } else {
+          pending.add(id);
+        }
         schedule();
         return true;
       },
+      // 已凭悬浮/点击的 ref 原文实时定论的编号：撤掉尚未发出的探测，省掉 api/ref+api/thread
+      drop(tid) {
+        const id = String(tid || '').trim();
+        const had = pending.delete(id);
+        if (had) attempts.delete(id);
+        return had;
+      },
       flushNow() {
         if (timer !== null) { clearTimeout(timer); timer = null; }
-        if (pumpTimer !== null) { clearTimeout(pumpTimer); pumpTimer = null; }
         pump();
         return new Promise((resolve) => {
-          const wait = () => (pending.size || inFlight.size || pumping) ? setTimeout(wait, 0) : resolve();
+          const wait = () => (pending.size || inFlight.size || activeWorkers) ? setTimeout(wait, 0) : resolve();
           wait();
         });
       },
@@ -11159,43 +11196,103 @@ ${markedSwatchHtml}
       });
     });
   }
+  // 判定结果统一出口：样式回填、跳转按钮补插、汇总日志。队列回调与悬浮/点击实时回填共用
+  function applyQuoteAvailabilityResult(tid, kind) {
+    // 仅对真正包含该引用编号的元素应用样式；不含编号的绿色文本不改动
+    document.querySelectorAll('font[color="#789922"]').forEach((el) => {
+      if (getQuoteRefIdFromText(el.textContent) === tid) applyQuoteAvailabilityStyle(el, kind);
+    });
+    // 判定为 thread(主串) 时，通知所有打开该引用浮窗的跳转按钮补插
+    if (kind === 'thread' && quoteJumpListeners && quoteJumpListeners.size) {
+      const set = quoteJumpListeners.get(String(tid));
+      if (set && set.size) {
+        [...set].forEach((fn) => { try { fn(String(tid)); } catch (e) {} });
+      }
+    }
+    // 批量汇总：一次扫掠只打一条汇总日志，不逐 id 输出（发送消息后整片新引用号会一次性判定，逐行会刷屏）
+    if (xdexAvailSummary[kind] != null) xdexAvailSummary[kind] += 1;
+    if (xdexAvailSummaryTimer) return;
+    xdexAvailSummaryTimer = setTimeout(() => {
+      xdexAvailSummaryTimer = null;
+      xdexAvailLogSummary();
+    }, 300);
+  }
+  function getQuoteAvailabilityQueue() {
+    if (quoteAvailabilityQueue) return quoteAvailabilityQueue;
+    quoteAvailabilityQueue = createQuoteAvailabilityQueue({
+      fetchFn: fetchQuoteAvailability,
+      cacheGet: (tid) => quoteAvailabilityCache[tid],
+      cacheSet: (tid, entry) => { quoteAvailabilityCache[tid] = entry; },
+      onResult: applyQuoteAvailabilityResult
+    });
+    return quoteAvailabilityQueue;
+  }
+  // 悬浮/点击路径自己会打 /Home/Forum/ref，命中“已删骨架”即得到实时可用性结论，
+  // 据此直接定论并撤掉尚未发出的探测，省掉后台的 api/ref + api/thread 两次重复请求
+  // 【已停用·注释保留】DOCTYPE 裸页对应“请求没返回可渲染内容”（登录跳转/错误页/被拦），与“已删”是两件事，
+  // 不作为删串判据；悬浮路径原有的“不渲染浮窗”早退仍按该标记执行。
+  const QUOTE_REF_EMPTY_MARK = '<!DOCTYPE html><html><head>';
+  // 悬浮/点击回填与优先探测同样受开关约束：检测关闭时不得建队、不得改样式
+  function isQuoteAvailabilityEnabled() {
+    const state = getQuoteAvailabilityState();
+    return state.extendQuoteAvailabilityDetection !== false && state.extendQuote !== false;
+  }
+  function settleQuoteRefAsEmpty(tid, html) {
+    const id = String(tid || '').trim();
+    if (!/^\d{8}$/.test(id)) return false;
+    // 【已停用·注释保留】旧判据把 DOCTYPE 裸页当“已删”，实际打不到标准删串响应（它是空字段骨架，无 DOCTYPE）
+    // if (typeof html !== 'string' || html.indexOf(QUOTE_REF_EMPTY_MARK) < 0) return false;
+    if (!isQuoteRefDeletedSkeleton(html)) return false;
+    if (!isQuoteAvailabilityEnabled()) return false;
+    if (!quoteAvailabilityCache[id] || !quoteAvailabilityCache[id].kind) {
+      quoteAvailabilityCache[id] = { kind: 'empty', t: Date.now() };
+    }
+    if (quoteAvailabilityQueue) quoteAvailabilityQueue.drop(id);
+    applyQuoteAvailabilityResult(id, 'empty');
+    return true;
+  }
+  // 用户正在查看的编号提到队首，不必排在数百个后台编号之后
+  function prioritizeQuoteProbe(tid) {
+    const id = String(tid || '').trim();
+    if (!/^\d{8}$/.test(id)) return;
+    if (!isQuoteAvailabilityEnabled()) return;
+    if (quoteAvailabilityCache[id] && quoteAvailabilityCache[id].kind) return;
+    getQuoteAvailabilityQueue().enqueue(id, { priority: true });
+  }
+  // 视口门控：只对进入视口（含预读边距）的引用号入队，使探测进度跟随阅读位置，
+  // 而不是页面一打开就按 DOM 顺序排队数百个编号、用户读到哪都还没轮到哪
+  const QUOTE_PROBE_ROOT_MARGIN = '200px';
+  let quoteProbeObserver = null;
+  function observeQuoteProbe(el, tid) {
+    const id = String(tid || '').trim();
+    if (!/^\d{8}$/.test(id)) return;
+    if (typeof IntersectionObserver !== 'function') { getQuoteAvailabilityQueue().enqueue(id); return; }
+    if (!quoteProbeObserver) {
+      quoteProbeObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const waiting = entry.target.__xdexQuoteProbeTid;
+          delete entry.target.__xdexQuoteProbeTid;
+          quoteProbeObserver.unobserve(entry.target);
+          if (waiting) getQuoteAvailabilityQueue().enqueue(waiting);
+        });
+      }, { rootMargin: QUOTE_PROBE_ROOT_MARGIN });
+    }
+    if (el.__xdexQuoteProbeTid === id) return; // 已在观察同一编号，避免重复 observe
+    el.__xdexQuoteProbeTid = id;
+    quoteProbeObserver.observe(el);
+  }
   function refreshQuoteAvailability(root = document) {
     const state = getQuoteAvailabilityState();
     if (state.extendQuoteAvailabilityDetection === false || state.extendQuote === false) return;
-    if (!quoteAvailabilityQueue) {
-      quoteAvailabilityQueue = createQuoteAvailabilityQueue({
-        fetchFn: fetchQuoteAvailability,
-        cacheGet: (tid) => quoteAvailabilityCache[tid],
-        cacheSet: (tid, entry) => { quoteAvailabilityCache[tid] = entry; },
-        onResult: (tid, kind) => {
-          // 仅对真正包含该引用编号的元素应用样式；不含编号的绿色文本不改动
-          document.querySelectorAll('font[color="#789922"]').forEach((el) => {
-            if (getQuoteRefIdFromText(el.textContent) === tid) applyQuoteAvailabilityStyle(el, kind);
-          });
-          // 判定为 thread(主串) 时，通知所有打开该引用浮窗的跳转按钮补插
-          if (kind === 'thread' && quoteJumpListeners && quoteJumpListeners.size) {
-            const set = quoteJumpListeners.get(String(tid));
-            if (set && set.size) {
-              [...set].forEach((fn) => { try { fn(String(tid)); } catch (e) {} });
-            }
-          }
-          // 批量汇总：一次扫掠只打一条汇总日志，不逐 id 输出（发送消息后整片新引用号会一次性判定，逐行会刷屏）
-          if (xdexAvailSummary[kind] != null) xdexAvailSummary[kind] += 1;
-          if (xdexAvailSummaryTimer) return;
-          xdexAvailSummaryTimer = setTimeout(() => {
-            xdexAvailSummaryTimer = null;
-            xdexAvailLogSummary();
-          }, 300);
-        }
-      });
-    }
+    getQuoteAvailabilityQueue();
     const fonts = [];
     if (root && root.matches && root.matches('font[color="#789922"]')) fonts.push(root);
     if (root && root.querySelectorAll) fonts.push(...root.querySelectorAll('font[color="#789922"]'));
     fonts.forEach((el) => probeQuoteAvailability(el, {
       state,
       cache: quoteAvailabilityCache,
-      queueSet: (tid) => quoteAvailabilityQueue.enqueue(tid)
+      queueSet: (tid) => observeQuoteProbe(el, tid)
     }));
   }
   window.__xdexQuoteAvailability = { refresh: refreshQuoteAvailability, probe: probeQuoteAvailability };
@@ -11349,6 +11446,8 @@ ${markedSwatchHtml}
           $.get('/Home/Forum/ref?id=' + tid)
             .done(function (data) {
               if (seq !== window.__xdexRefViewRequestSeq) return;
+              // 空壳即实时可用性结论：直接定论并撤掉后台探测；否则把该编号提到队首优先判定
+              if (!settleQuoteRefAsEmpty(tid, data)) prioritizeQuoteProbe(tid);
               if (data.indexOf('<!DOCTYPE html><html><head>') >= 0) return;
               $rv.html(data).css({
                 top: $(quoteEl).offset().top,

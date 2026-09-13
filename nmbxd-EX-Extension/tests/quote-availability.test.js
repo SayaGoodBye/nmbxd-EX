@@ -9,6 +9,15 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function waitFor(cond, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    const tick = () => cond() ? resolve()
+      : (Date.now() - t0 > (timeoutMs || 5000) ? reject(new Error('waitFor timeout')) : setTimeout(tick, 50));
+    tick();
+  });
+}
+
 // 跳过字符串/模板串/行注释/块注释/正则字面量,对 open 处的开括号做配对,返回匹配的闭括号下标
 function skipStringLiteral(src, from, q) {
   for (let i = from + 1; i < src.length; i += 1) {
@@ -84,24 +93,28 @@ const parse = extractFunction('parseQuoteResponseForAvailability');
 const queue = extractFunction('createQuoteAvailabilityQueue');
 const styleMark = extractFunction('applyQuoteAvailabilityStyle');
 const refId = extractFunction('getQuoteRefIdFromText');
+const deleted = extractFunction('isQuoteRefDeletedSkeleton');
 
+const warns = [];
 const ctx = {
-  console,
+  // 源码 warn 的第二参是对象（{ id: tid }），必须序列化后才能断言到编号
+  console: { log: console.log, error: console.error, warn: (...a) => warns.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')) },
   Math,
   Date,
   JSON,
   Number,
   Promise,
-  setTimeout: (fn, ms) => { if (ctx.__t) clearTimeout(ctx.__t); ctx.__t = setTimeout(fn, ms); return ctx.__t; },
+  // 必须透传真实定时器：单槽桩会让每个新 setTimeout 掐掉上一个，flushNow 的轮询链与 retryLater 互相覆盖导致永不 resolve
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (id) => clearTimeout(id),
   fetch: () => Promise.resolve({ ok: true, text: () => Promise.resolve('') })
 };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
 ctx.fetch = () => Promise.resolve({ ok: true, text: () => Promise.resolve('') });
-vm.runInNewContext(`${refId}\n${queue}\n${styleMark}\n${probe}\n${parse}\nthis.probeQuoteAvailability = probeQuoteAvailability; this.parseQuoteResponseForAvailability = parseQuoteResponseForAvailability; this.createQuoteAvailabilityQueue = createQuoteAvailabilityQueue; this.applyQuoteAvailabilityStyle = applyQuoteAvailabilityStyle; this.getQuoteRefIdFromText = getQuoteRefIdFromText;`, ctx, { filename: 'extract.js' });
+vm.runInNewContext(`${refId}\n${deleted}\n${queue}\n${styleMark}\n${probe}\n${parse}\nthis.probeQuoteAvailability = probeQuoteAvailability; this.parseQuoteResponseForAvailability = parseQuoteResponseForAvailability; this.createQuoteAvailabilityQueue = createQuoteAvailabilityQueue; this.applyQuoteAvailabilityStyle = applyQuoteAvailabilityStyle; this.getQuoteRefIdFromText = getQuoteRefIdFromText; this.isQuoteRefDeletedSkeleton = isQuoteRefDeletedSkeleton;`, ctx, { filename: 'extract.js' });
 
-const probeQuoteAvailability = ctx.probeQuoteAvailability; const parseQuoteResponseForAvailability = ctx.parseQuoteResponseForAvailability; const createQuoteAvailabilityQueue = ctx.createQuoteAvailabilityQueue; const applyQuoteAvailabilityStyle = ctx.applyQuoteAvailabilityStyle;
+const probeQuoteAvailability = ctx.probeQuoteAvailability; const parseQuoteResponseForAvailability = ctx.parseQuoteResponseForAvailability; const createQuoteAvailabilityQueue = ctx.createQuoteAvailabilityQueue; const applyQuoteAvailabilityStyle = ctx.applyQuoteAvailabilityStyle; const isQuoteRefDeletedSkeleton = ctx.isQuoteRefDeletedSkeleton;
 
 const tests = [
   function emptyTextIsSkipped() {
@@ -142,9 +155,10 @@ const tests = [
   },
 
   function parseOkThread() {
-    const html = '<div class="h-threads-content"><div class="h-threads-item" id="item_69349845"></div></div>';
-    const r = parseQuoteResponseForAvailability(html);
-    assert(r.kind === 'thread', 'ok html containing the requested id should be a thread');
+    // 类名判据已停用：主串只能由与 tid 绑定的标记判定
+    const html = '<div class="h-threads-content"><div class="h-threads-item" data-threads-id="69349845"></div></div>';
+    assert(parseQuoteResponseForAvailability(html, '69349845').kind === 'thread', 'tid 绑定的 data-threads-id 应判 thread');
+    assert(parseQuoteResponseForAvailability(html).kind === 'reply', '不传 tid 时类名不再判 thread，退回 reply');
   },
 
   function parseEmptyRendersEmpty() {
@@ -194,7 +208,8 @@ const tests = [
     let cached = null;
     const results = [];
     const q = createQuoteAvailabilityQueue({
-      fetchFn: (tid) => Promise.resolve({ ok: true, html: '<div class="h-threads-content"><div class="h-threads-item" id="item_' + tid + '"></div></div>', httpStatus: 200 }),
+      // 生产路径 fetchQuoteAvailability 回传的是 JSON.stringify(thread)，这里对齐真实形态
+      fetchFn: (tid) => Promise.resolve({ ok: true, html: '{"id":"' + tid + '","content":"x"}', httpStatus: 200 }),
       cacheSet: (tid, entry) => { cached = { tid, entry }; },
       cacheGet: () => null,
       onResult: (tid, kind) => { results.push([tid, kind]); },
@@ -208,8 +223,9 @@ const tests = [
     });
   },
 
-  function queueFlushKeepsNetworkErrorAsUnknown() {
+  async function queueNetworkErrorRetriesThenGivesUp() {
     const results = [];
+    const before = warns.length;
     const q = createQuoteAvailabilityQueue({
       fetchFn: () => Promise.reject(new Error('network down')),
       cacheSet: () => {},
@@ -218,10 +234,14 @@ const tests = [
       noDelay: true
     });
     q.enqueue('33333333');
-    return q.flushNow().then(() => {
-      assert(results.length === 1 && results[0][1] === 'unknown', 'network error should remain unknown');
-      assert(q.pendingSize() === 0, 'network error must still drain pending queue');
-    });
+    await q.flushNow();
+    assert(results.length === 1 && results[0][1] === 'unknown', '首次网络失败应报 unknown 且不入缓存');
+    assert(q.pendingSize() === 0, '单次失败后队列应排空(重试另起定时器)');
+    // 重试预算：MAX_ATTEMPTS=3 → 共 3 次 unknown，之后放弃并告警一次
+    await waitFor(() => warns.slice(before).some((w) => w.includes('33333333')), 8000);
+    assert(results.length === 3, '重试应耗尽到 MAX_ATTEMPTS=3, got ' + results.length);
+    assert(results.every((r) => r[1] === 'unknown'), '每次尝试都应报 unknown');
+    assert(warns.slice(before).filter((w) => w.includes('33333333')).length === 1, '放弃重试只应告警一次');
   },
 
   function styleMarksQuoteAvailabilityKinds() {
@@ -243,7 +263,143 @@ const tests = [
     assert(font.style.fontWeight === '' && font.style.opacity === '' && font.style.textDecoration === '', 'unknown must reset styles');
   },
 
+  // ── 类名判据停用后：只有与 tid 绑定的标记能判主串，容器类名一律退回 reply ──
+  function parseThreadNeedsTidBinding() {
+    const kind = (html, tid) => parseQuoteResponseForAvailability(html, tid).kind;
+    // 与 tid 绑定的标记 → thread
+    assert(kind('<div data-threads-id="69349845"></div>', '69349845') === 'thread', 'tid 绑定的 data-threads-id 判 thread');
+    assert(kind('<div id="69349845"></div>', '69349845') === 'thread', 'tid 绑定的 id 判 thread');
+    // 仅类名、无 tid 绑定 → 不再判 thread
+    assert(kind('<div class="h-threads-item">x</div>', '69349845') === 'reply', '裸 h-threads-item 类名不得判 thread');
+    assert(kind('<div class="h-threads-item-index">x</div>', '69349845') === 'reply', 'h-threads-item-index 类名不得判 thread');
+    assert(kind('<div class="h-threads-content">x</div>', '69349845') === 'reply', 'h-threads-content 不得判 thread');
+  },
+
+  // ── 已删串：服务端照常渲染 h-threads-item 容器，只是字段全空，必须先判 empty 否则被误判 thread ──
+  function parseDeletedSkeletonAsEmpty() {
+    const deleted = '<div class="h-threads-item"><div data-threads-id="" class="h-threads-item-reply h-threads-item-ref"><div class="h-threads-item-reply-main"><div class="h-threads-info"><a href="/t/?r=&amp;scrollInto=true" class="h-threads-info-id">No.</a></div><div class="h-threads-content"> </div></div></div></div>';
+    assert(isQuoteRefDeletedSkeleton(deleted) === true, '空字段骨架应识别为已删');
+    // 即便带 tid 且 tid 不出现在文中，类名分支已停用，这里靠已删判据先返回 empty
+    assert(parseQuoteResponseForAvailability(deleted, '6187238').kind === 'empty', '已删骨架判 empty');
+    // 活帖骨架：No.<数字> + data-threads-id 非空 → 不算已删
+    const live = '<div class="h-threads-item"><div data-threads-id="6187238" class="h-threads-item-reply"><a href="/t/6187238" class="h-threads-info-id">No.6187238</a><div class="h-threads-content">正文</div></div></div>';
+    assert(isQuoteRefDeletedSkeleton(live) === false, '活帖不得判为已删');
+    // 只有 No. 空、但 data-threads-id 有值 → 不满足双判据，不误判为已删
+    assert(isQuoteRefDeletedSkeleton('<div data-threads-id="11111111"><a class="h-threads-info-id">No.</a></div>') === false, '单判据不足以定已删');
+    // 只有 data-threads-id 空、但 No. 带数字 → 同样不误判
+    assert(isQuoteRefDeletedSkeleton('<div data-threads-id=""><a class="h-threads-info-id">No.6187238</a></div>') === false, '单判据不足以定已删');
+  },
+
+  // ── 队列 API：priority 提到队首，drop 撤销未发出的探测 ──
+  async function queuePriorityMovesToHead() {
+    const order = [];
+    const q = createQuoteAvailabilityQueue({
+      fetchFn: (tid) => { order.push(tid); return new Promise((res) => setTimeout(() => res({ ok: true, html: '{"id":"' + tid + '"}', httpStatus: 200 }), 0)); },
+      cacheGet: () => null, cacheSet: () => {}, onResult: () => {}, noDelay: true, concurrency: 1
+    });
+    q.enqueue('50000001');
+    q.enqueue('50000002');
+    q.enqueue('50000003');
+    q.enqueue('50000004', { priority: true }); // 用户正在查看
+    await q.flushNow();
+    assert(order[0] === '50000001', '已在途/已取走的第一个不变，后续按优先级重排: ' + order.join(','));
+    assert(order[1] === '50000004', 'priority 编号应紧随其后: ' + order.join(','));
+    assert(order.join(',') === '50000001,50000004,50000002,50000003', '实际顺序: ' + order.join(','));
+  },
+
+  async function queueDropCancelsPendingProbe() {
+    let calls = 0;
+    const q = createQuoteAvailabilityQueue({
+      fetchFn: (tid) => { calls += 1; return Promise.resolve({ ok: true, html: '{"id":"' + tid + '"}', httpStatus: 200 }); },
+      cacheGet: () => null, cacheSet: () => {}, onResult: () => {}, noDelay: true, concurrency: 1
+    });
+    q.enqueue('60000001');
+    q.enqueue('60000002');
+    assert(q.drop('60000002') === true, '未发出的排队项应可撤销');
+    await q.flushNow();
+    assert(calls === 1, '被 drop 的编号不应再请求, got ' + calls);
+    assert(q.drop('60000001') === false, '已完成的编号 drop 应返回 false');
+  },
+
+  // ── 常驻 worker 池不变量(取代原“凑一批→等最慢的一个→整批空等”的批次泵) ──
+  async function queueNeverExceedsConcurrency() {
+    let inFlight = 0, peak = 0, started = 0;
+    const release = [];
+    const q = createQuoteAvailabilityQueue({
+      fetchFn: () => {
+        started += 1; inFlight += 1; peak = Math.max(peak, inFlight);
+        return new Promise((res) => release.push(() => { inFlight -= 1; res({ ok: true, html: '{"id":"11111111"}', httpStatus: 200 }); }));
+      },
+      cacheGet: () => null, cacheSet: () => {}, onResult: () => {}, noDelay: true, concurrency: 2
+    });
+    for (let i = 0; i < 8; i += 1) q.enqueue('1111111' + i);
+    assert(peak <= 2, '峰值在途请求数不得超过 concurrency, got ' + peak);
+    assert(started === 2, '首批应只发出 concurrency 个, got ' + started);
+    while (release.length) {
+      release.shift()();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert(peak <= 2, '补位过程中峰值仍受控, got ' + peak);
+    assert(started === 8, '全部编号最终都应被请求, got ' + started);
+    assert(q.pendingSize() === 0, '队列应排空');
+  },
+
+  async function queueRefillsSlotWithoutWaitingForSlowRequest() {
+    const settle = new Map();
+    const started = [];
+    const q = createQuoteAvailabilityQueue({
+      fetchFn: (tid) => {
+        started.push(tid);
+        return new Promise((res) => settle.set(tid, () => res({ ok: true, html: '{"id":"' + tid + '"}', httpStatus: 200 })));
+      },
+      cacheGet: () => null, cacheSet: () => {}, onResult: () => {}, noDelay: true, concurrency: 2
+    });
+    q.enqueue('20000001'); // 慢请求：占住一个槽位不放
+    q.enqueue('20000002'); // 快请求
+    q.enqueue('20000003');
+    assert(started.length === 2, '应只有 2 个在途, got ' + started.join(','));
+    settle.get('20000002')(); // 快的那个先完成
+    await new Promise((r) => setTimeout(r, 0));
+    assert(started.indexOf('20000003') !== -1,
+      '空闲槽位必须立刻补位，不能等慢请求（批次模型会整批空等）: ' + started.join(','));
+    settle.get('20000001')(); settle.get('20000003')();
+    await new Promise((r) => setTimeout(r, 0));
+    assert(q.pendingSize() === 0, '队列应排空');
+  },
+
+  // ── GAP_MS 语义：缺省不引入任何节奏；显式传入必须真正生效 ──
+  async function queueDefaultHasNoPacingStall() {
+    const q = createQuoteAvailabilityQueue({
+      fetchFn: async () => ({ ok: true, html: '{"id":"41111111"}', httpStatus: 200 }),
+      cacheGet: () => null, cacheSet: () => {}, onResult: () => {}, noDelay: true, concurrency: 1
+    });
+    ['41111111', '42222222', '43333333', '44444444'].forEach((id) => q.enqueue(id));
+    const t0 = Date.now();
+    await q.flushNow();
+    const elapsed = Date.now() - t0;
+    assert(elapsed < 200, '不传 gapMs 时不得引入间隔(锁定“默认不节流”这一决定), elapsed=' + elapsed);
+  },
+
+  async function queueHonorsExplicitGapMs() {
+    let calls = 0;
+    const q = createQuoteAvailabilityQueue({
+      fetchFn: async () => { calls += 1; return { ok: true, html: '{"id":"31111111"}', httpStatus: 200 }; },
+      cacheGet: () => null, cacheSet: () => {}, onResult: () => {}, noDelay: true, concurrency: 1, gapMs: 40
+    });
+    ['31111111', '32222222', '33333333'].forEach((id) => q.enqueue(id));
+    const t0 = Date.now();
+    await q.flushNow();
+    const elapsed = Date.now() - t0;
+    assert(calls === 3, '三个编号都应被请求, got ' + calls);
+    assert(elapsed >= 70, '显式 gapMs 必须真正节流(原 !=null 判定下 Number(undefined) 为 NaN 会让默认分支成死代码), elapsed=' + elapsed);
+  },
 ];
 
-for (const t of tests) t();
-console.log('quote availability core ok');
+// 异步用例必须串行 await，否则其中的断言失败只会变成未处理拒绝而被漏过
+(async () => {
+  for (const t of tests) await t();
+  console.log('quote availability core ok');
+})().catch((e) => {
+  console.error('FAIL: ' + (e && e.message ? e.message : e));
+  process.exitCode = 1;
+});
