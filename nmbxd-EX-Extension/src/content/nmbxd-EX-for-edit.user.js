@@ -15934,6 +15934,7 @@ ${markedSwatchHtml}
               toast('本串默认饼干已失效，请重新选择');
               showCookieConfirmDialog(_threadId, (selectedHash) => {
                 setThreadCookiePref(_threadId, selectedHash);
+                if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
                 _doSend();
               }, () => { unlockSubmit(form); }, { mode: 'setDefault' });
               return;
@@ -15948,6 +15949,7 @@ ${markedSwatchHtml}
             // 不匹配 → 弹窗，预选偏好饼干
             showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
               if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
+              if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
               _doSend();
             }, () => { unlockSubmit(form); }, { preselectHash: _pref.hash });
             return;
@@ -18966,9 +18968,9 @@ function 注册自动保存编辑() {
           if (typeof initContent === 'function') { try { initContent(root); } catch(e){} }
           //if (typeof autoHideRefView === 'function') { try { autoHideRefView(root); } catch(e){} }
           toast('已自动填充回复串号，请确认无误后再发送');
-          // 串号变化 → 更新饼干偏好开关
-          if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(pendingReplyParams.tid);
+          // 串号变化 → 先解析偏好再重建开关，避免开关渲染与偏好脱节
           if (typeof initThreadCookiePref === 'function') initThreadCookiePref(pendingReplyParams.tid);
+          if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(pendingReplyParams.tid);
           pendingReplyParams = null; // 用过一次就清空
           autofilled = true;
         } else {
@@ -19165,9 +19167,9 @@ function 注册自动保存编辑() {
                 `<font color="#789922" data-darkreader-inline-color="" style="--darkreader-inline-color: var(--darkreader-text-789922, #aec66f);">No.${tid}</font>`
               );
 
-              // 串号变化 → 更新饼干偏好开关
-              if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(tid);
+              // 串号变化 → 先解析偏好再重建开关，避免开关渲染与偏好脱节
               if (typeof initThreadCookiePref === 'function') initThreadCookiePref(tid);
+              if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(tid);
 
               const root = $replyModeText[0];
               if (typeof initExtendedContent === 'function') { try { initExtendedContent(root); } catch(e){} }
@@ -23195,7 +23197,7 @@ function 注册自动保存编辑() {
     updatePostHistoryRecord(localId, update);
     // 新串发布成功 → 自动写入串内饼干偏好
     if (type === 'thread' && update.userHash) {
-      try { setThreadCookiePref(id, update.userHash); } catch (e) {}
+      try { setThreadCookiePref(id, update.userHash); if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState(); } catch (e) {}
     }
     const resolver = postHistoryConfirmationMap.get(localId);
     if (!imageFile) {
@@ -26786,6 +26788,8 @@ function 注册自动保存编辑() {
           }
           toast('已清除当前串的偏好饼干');
         }
+        // 手动设置或清除默认饼干后，同步外部开关状态与圆圈着色
+        if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
         updateOkButton();
       });
       $list.append($item);
@@ -26940,13 +26944,23 @@ function 注册自动保存编辑() {
   function refreshCookiePrefSwitchState() {
     document.querySelectorAll('.xdex-cookie-check-sw').forEach(sw => {
       const tid = sw.dataset ? (sw.dataset.threadId || '') : '';
-      const matched = tid ? isCookieMatchingThreadPref(tid) : null;
+      const pref = tid ? getThreadCookiePref(tid) : null;
+      const enabled = !!(pref && pref.hash);
+      // 开关状态与齿轮可见性同步自实际偏好：未开启偏好（开关关闭）时圆圈恒为白色、无提示
+      if (sw.checked !== enabled) sw.checked = enabled;
+      const area = sw.closest ? sw.closest('.xdex-cookie-check-area') : null;
+      const editBtn = area ? area.querySelector('.xdex-edit-default-btn') : null;
+      if (editBtn) {
+        editBtn.style.visibility = enabled ? 'visible' : 'hidden';
+        editBtn.style.pointerEvents = enabled ? 'auto' : 'none';
+      }
+      const matched = enabled ? isCookieMatchingThreadPref(tid) : null;
       sw.classList.toggle('xdex-cookie-pref-match', matched === true);
       sw.classList.toggle('xdex-cookie-pref-mismatch', matched === false);
       if (matched === true) {
         sw.title = '当前饼干即为默认饼干';
       } else if (matched === false) {
-        const prefHash = String((getThreadCookiePref(tid) || {}).hash || '');
+        const prefHash = String((pref || {}).hash || '');
         const prefCookie = findCookieByHash(getCookiesList(), prefHash);
         const prefName = (prefCookie ? abbreviateName(prefCookie.name || '') : prefHash) || '未设置';
         sw.title = '当前饼干非默认饼干，默认饼干为' + prefName;
@@ -26994,10 +27008,10 @@ function 注册自动保存编辑() {
     }
     const poHash = detectPOCookieHash();
     console.log('[cookie-pref] init threadId=' + threadId + ' poHash=' + poHash);
-    if (poHash) { setThreadCookiePref(threadId, poHash); return; }
+    if (poHash) { setThreadCookiePref(threadId, poHash); refreshCookiePrefSwitchState(); return; }
     const histHash = detectHistoryCookieHash(threadId);
     console.log('[cookie-pref] init threadId=' + threadId + ' histHash=' + histHash);
-    if (histHash) { setThreadCookiePref(threadId, histHash); return; }
+    if (histHash) { setThreadCookiePref(threadId, histHash); refreshCookiePrefSwitchState(); return; }
   }
   // ── 注入"饼干偏好"开关到回应模式行 ──
 
