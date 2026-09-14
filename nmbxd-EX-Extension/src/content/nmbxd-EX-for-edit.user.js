@@ -1,4 +1,4 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
 // @version      4.0.0
@@ -1954,6 +1954,13 @@ function xdexEarlyDarkEnabled() {
         // 固定启用：不受面板勾选状态影响
         this.state.enableImageHideMode = true;
       };
+      // 设置写入失败会造成内存与持久化状态失步且完全无感知；留一次告警痕迹
+      // 标志挂 window：本方法可被多次执行，局部变量会随每次重开面板而复位
+      const warnSettingSaveFailed = (where, e) => {
+        if (window.__xdexSettingSaveWarned) return;
+        window.__xdexSettingSaveWarned = true;
+        console.warn('[X岛-EX] 设置写入失败，刷新后该设置可能丢失（' + where + '）', e);
+      };
       const saveReloadRequiredSettingsImmediately = () => {
         collectReloadRequiredSettingsFromPanel();
         try {
@@ -1961,7 +1968,7 @@ function xdexEarlyDarkEnabled() {
           // 深色模式等即时生效项：保存后立即同步主题（无需刷新页面）
           if (typeof window.__xdexSyncDarkReaderTheme === 'function') window.__xdexSyncDarkReaderTheme();
           toast('设置已保存，刷新后生效', 900, { queue: false, key: 'settings-saved' });
-        } catch (e) {}
+        } catch (e) { warnSettingSaveFailed('需刷新项即时保存', e); }
       };
       const reloadRequiredSettingSelector = reloadRequiredSettingKeys.map(k => '#sp_' + k).join(',');
       $(reloadRequiredSettingSelector)
@@ -1983,7 +1990,7 @@ function xdexEarlyDarkEnabled() {
         // 固定启用，仅切换具体模式
         this.state.enableImageHideMode = true;
         this.state.applyImageHideMode = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('图片隐藏模式', e); }
         if (typeof applyImageHideMode === 'function') {
           applyImageHideMode(mode, document);
         }
@@ -1992,7 +1999,7 @@ function xdexEarlyDarkEnabled() {
       const applyDockDisplayModeImmediately = () => {
         const mode = $('#sp_dockDisplayMode').val() || 'hover';
         this.state.dockDisplayMode = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('扩展坞显示模式', e); }
         if (typeof applyDockDisplayMode === 'function') {
           applyDockDisplayMode(mode);
         }
@@ -2004,7 +2011,7 @@ function xdexEarlyDarkEnabled() {
       const applyImageViewerSeparatorsImmediately = () => {
         const on = $('#sp_imageViewerSeparators').is(':checked');
         this.state.imageViewerSeparators = on;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('阅图分隔线', e); }
         if (typeof applyImageViewerSeparatorSetting === 'function') {
           applyImageViewerSeparatorSetting(on);
         }
@@ -2025,14 +2032,14 @@ function xdexEarlyDarkEnabled() {
       const applyBlockDisplayModeImmediately = () => {
         const mode = $('#sp_blockDisplayMode').val() || 'fold';
         this.state.blockDisplayMode = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('屏蔽显示模式', e); }
         refreshFilterDisplay(this.state);
       };
       $('#sp_blockDisplayMode').off('change').on('change', applyBlockDisplayModeImmediately);
       const applyThreadCookieWhitelistDisplayModeImmediately = () => {
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('串内饼干白名单显示模式', e); }
         refreshFilterDisplay(this.state);
       };
       $('#sp_threadCookieWhitelistDisplayMode').off('change').on('change', applyThreadCookieWhitelistDisplayModeImmediately);
@@ -2041,7 +2048,7 @@ function xdexEarlyDarkEnabled() {
       const applyKaomojiSortImmediately = () => {
         const mode = $('#sp_kaomojiSort').val() || 'default';
         this.state.kaomojiSort = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('颜文字排序', e); }
         // 与颜文字按钮右侧的快捷下拉实时同步
         $('.sp_kaomojiSort_copy').val(mode);
         document.querySelectorAll('#h-emot-select').forEach(sel => {
@@ -8909,6 +8916,13 @@ ${markedSwatchHtml}
     //   if (isBehind) return (behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000) + behindDistance;
     //   return 200000 + Math.abs(imgCenter - viewportCenter);
     // }
+    // 图片完成回调会在同一批任务里多次触发，每次都跑一轮 measureQueue（N 次 rect 读取）。
+    // 合并到下一个宏任务只跑一轮；用 setTimeout 而非 rAF：后台标签页 rAF 不触发会卡住整个队列
+    let queueScheduleId = 0;
+    function scheduleProcessQueue() {
+      if (queueScheduleId) return;
+      queueScheduleId = setTimeout(() => { queueScheduleId = 0; processQueue(); }, 0);
+    }
     function processQueue() {
       if (queue.length === 0) return;
       // GIF：不占非 GIF 并发槽，直接开载
@@ -8972,7 +8986,7 @@ ${markedSwatchHtml}
             const k = loadingKindMap.get(img) || kind;
             loadingKindMap.delete(img);
             noteLoadEnd(k);
-            processQueue();
+            scheduleProcessQueue();
           };
           img.addEventListener('load', finish, { once: true });
           img.addEventListener('error', finish, { once: true });
@@ -9862,10 +9876,17 @@ ${markedSwatchHtml}
     // 监听窗口大小改变
     if (root === document && !enableHDImageAndLayoutFix.__resizeHandlerBound) {
       window.addEventListener('resize', () => {
-        handleImageLayout.handleGeneralElements(document);
-        document.querySelectorAll('.h-threads-img-box.h-active').forEach(imgBox => {
-          handleImageLayout.handleActiveImageBox(imgBox, true);
-        });
+        // 一帧只处理一次：拖动窗口时 resize 每秒可触发数十次，每次都全文档处理图片布局
+        const run = () => {
+          enableHDImageAndLayoutFix.__resizeFrameId = 0;
+          handleImageLayout.handleGeneralElements(document);
+          document.querySelectorAll('.h-threads-img-box.h-active').forEach(imgBox => {
+            handleImageLayout.handleActiveImageBox(imgBox, true);
+          });
+        };
+        if (enableHDImageAndLayoutFix.__resizeFrameId) return;
+        if (typeof requestAnimationFrame !== 'function') { run(); return; }
+        enableHDImageAndLayoutFix.__resizeFrameId = requestAnimationFrame(run);
       });
       enableHDImageAndLayoutFix.__resizeHandlerBound = true;
     }
@@ -17191,7 +17212,9 @@ ${markedSwatchHtml}
               const targetW = getPanelTargetWidth();
               const maxW = Math.max(ITEM_W, window.innerWidth - margin * 2);
               const finalW = Math.min(targetW, maxW);
-              panel.style.width = `${Math.round(finalW)}px`;
+              // 写入会脏化布局，紧随其后的 getBoundingClientRect 就退化成强制同步重排；值未变则不写
+              const nextW = `${Math.round(finalW)}px`;
+              if (panel.style.width !== nextW) panel.style.width = nextW;
               // 若当前不可见，临时显示用于测量
               const wasHidden = (panel.style.display === 'none' || panel.style.display === '');
               if (wasHidden) {
@@ -17214,8 +17237,10 @@ ${markedSwatchHtml}
               if (top + panelH > window.innerHeight - margin) {
                   top = Math.max(margin, window.innerHeight - margin - panelH);
               }
-              panel.style.left = `${Math.round(left)}px`;
-              panel.style.top = `${Math.round(top)}px`;
+              const nextLeft = `${Math.round(left)}px`;
+              const nextTop = `${Math.round(top)}px`;
+              if (panel.style.left !== nextLeft) panel.style.left = nextLeft;
+              if (panel.style.top !== nextTop) panel.style.top = nextTop;
               if (wasHidden) {
                 panel.style.visibility = '';
               }
