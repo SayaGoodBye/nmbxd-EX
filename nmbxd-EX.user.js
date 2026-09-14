@@ -8179,6 +8179,10 @@ ${markedSwatchHtml}
         const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
         overlays.forEach(el => {
           if (!el) return;
+          // 同一元素只挂一次：浮窗为常驻单例，重复调用不应叠加属性观察器；
+          // 浮窗若为新建元素则无此标记，仍会被观察，保留「晚出现的浮窗也能被挂上」的行为
+          if (el.__xdexSeamlessOverlayObserved) return;
+          el.__xdexSeamlessOverlayObserved = true;
           const obs = new MutationObserver(() => {
             updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
@@ -8186,37 +8190,45 @@ ${markedSwatchHtml}
         });
         return btn;
       }
+      // body 级与分页栏级观察器都提为共享单例：原实现每次调用都各自新建且从不 disconnect，
+      // 数量随「刷新按钮点击 + 每次末页判定」线性累积，使每次 DOM 变更的固定开销成倍放大
+      let seamlessGlobalObserver = null;
+      let seamlessPagObserver = null;
+      let seamlessPagObserverTarget = null;
       // 兼容旧调用名；内部完成按钮创建 + overlay/分页监听
       function addRefreshButtonIfNeeded() {
         // 旧：整段内联在 loadNext 旁（Phase3-3 拆为显示/监听辅助 + 共用结果处理）
         const btn = ensureSeamlessRefreshButtonNode();
         // --- 始终监听页面最底部的分页栏 ---
-        let currentObserver = null;
         function observeBottomPagination() {
           const pag = getSeamlessBottomPagination();
           if (!pag) return;
           // 先更新一次显示状态
           updateSeamlessRefreshBtnDisplay(btn, pag);
+          // 同一分页栏复用现有观察器，避免每次 DOM 变更都 disconnect + 重建
+          if (seamlessPagObserver && seamlessPagObserverTarget === pag) return;
           // 如果已有旧的 observer，先断开
-          if (currentObserver) {
-            currentObserver.disconnect();
+          if (seamlessPagObserver) {
+            seamlessPagObserver.disconnect();
           }
           // 新建 observer 监听底部分页栏的变化
-          currentObserver = new MutationObserver(() => {
+          seamlessPagObserver = new MutationObserver(() => {
             updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
-          currentObserver.observe(pag, { childList: true, subtree: true });
+          seamlessPagObserver.observe(pag, { childList: true, subtree: true });
+          seamlessPagObserverTarget = pag;
         }
         // 初始绑定
         observeSeamlessRefreshOverlays(btn);
         // 初始监听一次
         observeBottomPagination();
-        // 每次 DOM 可能插入新分页栏时，重新绑定监听
-        // 注意：每次 addRefreshButtonIfNeeded 调用都会再挂一个 body observer（与旧行为一致）
-        const globalObserver = new MutationObserver(() => {
-          observeBottomPagination();
-        });
-        globalObserver.observe(document.body, { childList: true, subtree: true });
+        // 每次 DOM 可能插入新分页栏时，重新绑定监听（只挂一次，回调内复用同一分页栏观察器逻辑）
+        if (!seamlessGlobalObserver) {
+          seamlessGlobalObserver = new MutationObserver(() => {
+            observeBottomPagination();
+          });
+          seamlessGlobalObserver.observe(document.body, { childList: true, subtree: true });
+        }
       }
       // 串内页加载
       async function loadNext(refreshGeneration) {
