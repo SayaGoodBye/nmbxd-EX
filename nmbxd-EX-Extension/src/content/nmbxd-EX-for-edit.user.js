@@ -1,4 +1,4 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
 // @version      4.0.0
@@ -18972,8 +18972,7 @@ function 注册自动保存编辑() {
       $row.find('.js-reply-mode-text').text(boardBaseName ? (boardBaseName + '-发串') : '板块-发串');
         window.replyModeState = { mode: '发串', extra: null };
         // 发串模式不需要饼干偏好
-        const _area = document.querySelector('.xdex-cookie-check-area');
-        if (_area) _area.innerHTML = '';
+        clearCookieCheckSwitch();
 
         if (!silent) {
           toast('已切换到 发串 模式');
@@ -19018,6 +19017,8 @@ function 注册自动保存编辑() {
           if (!isTimeline) {
             $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
           }
+          // 无串上下文（切回回复模式但未指定串）：开关同样不得残留上一串状态
+          clearCookieCheckSwitch();
         }
         // 插入“临时/连续”按钮（若尚未插入）
         const $extra = $row.find('.reply-mode-toggle .js-reply-extra');
@@ -19039,8 +19040,7 @@ function 注册自动保存编辑() {
               $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
             }
             // 重置饼干偏好开关
-            const checkArea = document.querySelector('.xdex-cookie-check-area');
-            if (checkArea) checkArea.innerHTML = '';
+            clearCookieCheckSwitch();
 
             // **清空正文 textarea**
             $formPost.find('textarea.h-post-form-textarea').val('');
@@ -19154,6 +19154,8 @@ function 注册自动保存编辑() {
           ? (timelineNameMap[timelineId] || '时间线')
           : (boardBaseName || '板块');
         $('.js-reply-mode-row .js-reply-mode-text').text(`${displayName}-快速回复`);
+        // 串上下文已清除，饼干偏好开关必须一并清空：否则残留上一串的默认饼干状态与齿轮
+        clearCookieCheckSwitch();
         // 广播“临时回复发送成功”
         document.dispatchEvent(new CustomEvent('tempReplySuccess', {
           detail: { key: e.detail?.key, tid: e.detail?.tid }
@@ -27052,6 +27054,12 @@ function 注册自动保存编辑() {
   }
   // ── 注入"饼干偏好"开关到回应模式行 ──
 
+  // 清空饼干偏好开关区域：无串上下文时不应残留上一个串的开关/齿轮/圆圈着色状态
+  // 四处共用——发串模式、回复模式无串上下文、重置按钮、临时模式回复成功（漏一处即出现状态残留）
+  function clearCookieCheckSwitch() {
+    const area = document.querySelector('.xdex-cookie-check-area');
+    if (area) area.innerHTML = '';
+  }
   function injectCookieCheckSwitch(threadId) {
     // 注入到 .xdex-cookie-check-area（串内页和板块页共用）
     let area = document.querySelector('.xdex-cookie-check-area');
