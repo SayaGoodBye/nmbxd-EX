@@ -7562,6 +7562,10 @@ ${markedSwatchHtml}
       try { if (typeof initContent === 'function') initContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
       try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
+      // 板块页/时间线串卡片「获取最新回复」按钮：与 enablePostExpand 同为逐卡片注入，必须随每次追加重应用
+      // （原先只有启动时两处一次性 document 扫描，导致无缝翻页新增卡片无按钮）
+      // 置于 enablePostExpand 之后，使 .js-toggle-mode 已存在、本按钮可正确排到其左侧
+      try { if (typeof bindBoardThreadRefreshButtons === 'function') bindBoardThreadRefreshButtons(root); } catch (e) {}
       // if (typeof preventContentOverflow === 'function') {
       //   try { preventContentOverflow(document); } catch (e) {}
       // }
