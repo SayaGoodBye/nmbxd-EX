@@ -148,6 +148,46 @@ test('M2: 几何未变时 positionPanel 不重复写入 style', () => {
   assert(writes.length > first, '窗口尺寸变化后应重新写入宽度');
 });
 
+// ─────────────── 饼干偏好开关：串上下文清理不变量 ───────────────
+test('清开关函数会移除区域内全部节点并容忍区域缺失', () => {
+  const code = `${extractFunction('clearCookieCheckSwitch')}\nthis.clear = clearCookieCheckSwitch;`;
+  // 有区域
+  const area = { innerHTML: '<input><span>gear</span>' };
+  const sb1 = { document: { querySelector: s => (s === '.xdex-cookie-check-area' ? area : null) } };
+  vm.createContext(sb1);
+  vm.runInNewContext(code, sb1, { filename: 'clear.js' });
+  sb1.clear();
+  assert(area.innerHTML === '', `区域内容应被清空, got ${JSON.stringify(area.innerHTML)}`);
+  // 无区域（串内页尚未创建时不得抛错）
+  const sb2 = { document: { querySelector: () => null } };
+  vm.createContext(sb2);
+  vm.runInNewContext(code, sb2, { filename: 'clear2.js' });
+  let threw = false;
+  try { sb2.clear(); } catch (e) { threw = true; }
+  assert(!threw, '区域不存在时不应抛错');
+});
+
+test('不变量：每个重置串上下文处都必须同时清饼干偏好开关', () => {
+  const lines = source.split('\n');
+  // resto 被重置为占位值 = 串上下文已清除
+  const resetSites = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/val\(['"]20011114['"]\)/.test(lines[i])) resetSites.push(i + 1);
+  }
+  assert(resetSites.length >= 3, `应覆盖全部重置点, got ${resetSites.length} @ ${resetSites.join(',')}`);
+  const WINDOW = 20;
+  // 重置点后 20 行内必须出现清开关调用
+  const missing = resetSites.filter(ln => {
+    const upto = Math.min(lines.length, ln - 1 + WINDOW);
+    for (let k = ln - 1; k < upto; k += 1) {
+      if (/clearCookieCheckSwitch\(\)/.test(lines[k])) return false;
+    }
+    return true;
+  });
+  assert(missing.length === 0,
+    `以下重置串上下文处漏清开关，会残留上一串的默认饼干状态：L${missing.join(', L')}`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { fn(); console.log('ok   ' + name); }
