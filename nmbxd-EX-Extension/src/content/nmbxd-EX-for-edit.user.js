@@ -1,7 +1,7 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      4.0.0
+// @version      4.1.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -37,7 +37,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    新增：\n1.新增WebDAV同步设置，支持手动/自动同步。\n2.新增回收站，浏览历史/发言历史删除后可保留30天或直接删除。\n3.在QwQnt框架下搭配QwQnt-nmbxd插件，可在QQNT端浏览X岛。\n\n优化：\n1.部分图标优化。\n2.拓展坞支持固定/隐藏两种模式，并添加上/下一个串按钮，可在版块页中更快跳过长串。\n3.颜文字面板中，焦点中的颜文字可以使用键盘按键C复制。\n4.为串内与当前串号相同的引用号添加下划线标记。\n\n修复：\n1.修复浏览历史上限固定为500的问题。\n2.修复页面回复满后发送新回复后没有自动打开新一页的问题。\n3.修复在版块页快速回复暂无回复的串时未能实现增量更新的问题。\n
+// @changelog    ### 新增\n\n - 添加自定义深/浅色模式。\n - 实现引用号可用性检测功能拓展，已失效引用：浅色；本串引用号：实线；其他主串引用号：虚线。\n - 为添加板块页「获取最新回复」按钮，在回复场景下也可手动触发增量刷新。\n - 添加阅图模式「分隔线」开关，关闭后获得无割裂的纯净阅图体验。\n\n ### 优化\n\n - 拓展引用浮窗中添加主串的跳转按钮。\n - 统一当前的图标UI。\n - “饼干偏好”按钮提示作用饼干是否为当前串默认饼干。\n - 浏览历史/发言历史检索性能优化。\n ### 修复\n\n - 修复浏览记录与常用串链接构造中最近查看页、最远访问页、已知总页数之间的逻辑矛盾，解决 WebDAV 同步后浏览历史页码回退问题。\n - 修复连续点击同一引用号导致的多层拓展引用浮窗出现的问题。\n - 修复无缝翻页时偶现的加载多次同一页的问题。\n - 修复在 WebDAV 同步后由于发言历史自动渲染导致的引用号可用性检测被持续触发的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -57,6 +57,61 @@
 // @downloadURL https://scriptcat.org/scripts/code/6289/X%E5%B2%9B-EX.user.js
 // @updateURL https://scriptcat.org/scripts/code/6289/X%E5%B2%9B-EX.meta.js
 
+/* ==XDEX-EARLY-THEME-START== （独立于主 IIFE：首帧前即执行，不依赖 jQuery/GM 存储就绪） */
+const XDEX_DARK_SESSION_KEY = 'xdexCustomDarkEnabled';
+function xdexEarlyDarkEnabled() {
+  try {
+    const session = sessionStorage.getItem(XDEX_DARK_SESSION_KEY);
+    if (session === 'true') return true;
+    if (session === 'false') return false;
+  } catch (e) {}
+  try {
+    return (GM_getValue('myScriptSettings', {}) || {}).enableCustomDarkTheme === 'dark';
+  } catch (e) { return false; }
+}
+(function earlyCustomDarkTheme() {
+  try {
+    const boot = () => {
+      try {
+        const rootEl = document.documentElement;
+        if (!rootEl) return;
+        const drMode = rootEl.getAttribute('data-darkreader-mode') || rootEl.getAttribute('data-darkreader-scheme');
+        if (drMode && drMode !== 'off') return;
+        const extMarked = rootEl.classList.contains('xdex-custom-dark');
+        if (!extMarked && !xdexEarlyDarkEnabled()) return;
+        rootEl.classList.add('xdex-custom-dark');
+        if (!document.getElementById('xdex-custom-theme')) {
+          const style = document.createElement('style');
+          style.id = 'xdex-custom-theme';
+                      style.textContent = 'html.xdex-custom-dark,html.xdex-custom-dark body{background-color:#28292a!important;color:#d9d0d0!important}' +
+              ':root.xdex-custom-dark #h-content,:root.xdex-custom-dark #h-content *,:root.xdex-custom-dark .h-threads-item,:root.xdex-custom-dark .h-threads-item *,:root.xdex-custom-dark .h-threads-item-reply-main,:root.xdex-custom-dark .h-preview-box,:root.xdex-custom-dark .h-preview-box *,:root.xdex-custom-dark #h-menu,:root.xdex-custom-dark #h-menu *,:root.xdex-custom-dark #h-bottom-nav,:root.xdex-custom-dark .qp-quote,:root.xdex-custom-dark .qp-quote *,:root.xdex-custom-dark #h-ref-view,:root.xdex-custom-dark #h-ref-view *,:root.xdex-custom-dark .kaomoji-panel,:root.xdex-custom-dark .kaomoji-panel *,:root.xdex-custom-dark .h-post-form,:root.xdex-custom-dark .h-post-form *,:root.xdex-custom-dark .xdex-post-history-thread,:root.xdex-custom-dark .xdex-post-history-thread *{background-color:#28292a!important;color:#d9d0d0!important}' +
+              ':root.xdex-custom-dark #h-menu{background-color:#28292a!important;color:#e04747!important}' +
+              ':root.xdex-custom-dark font[color="#789922"]{color:#b5d06d!important}';
+          const mount = document.head || rootEl || document;
+          mount.appendChild(style);
+          if (!document.head) {
+            const headObserver = new MutationObserver(() => {
+              if (document.head) {
+                headObserver.disconnect();
+                if (style.isConnected) document.head.appendChild(style);
+              }
+            });
+            headObserver.observe(rootEl, { childList: true });
+          }
+        }
+      } catch (e) {}
+    };
+    if (!document.documentElement) {
+      const rootMo = new MutationObserver(() => {
+        if (document.documentElement) { rootMo.disconnect(); boot(); }
+      });
+      rootMo.observe(document, { childList: true, subtree: true });
+      return;
+    }
+    boot();
+  } catch (e) {}
+})();
+/* ==XDEX-EARLY-THEME-END== */
 (function($){
   'use strict';
   /* --------------------------------------------------
@@ -76,6 +131,44 @@
           scriptHandler: scriptHandler || 'unknown'
       };
   }
+  (function earlyIconBtnStyle() {
+    try {
+      if (document.getElementById('xdex-icon-btn-global')) return;
+      const style = document.createElement('style');
+      style.id = 'xdex-icon-btn-global';
+      style.textContent =
+        '.xdex-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid var(--xdex-sp-border,#bfa58f);border-radius:8px;background:var(--xdex-sp-panel-bg,#F0E0D6);cursor:pointer;color:inherit;box-sizing:border-box;}' +
+        '.xdex-icon-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-icon-btn:active{border-color:#00b386 !important;color:#00b386 !important;}' +
+        '.xdex-icon-btn svg{display:block;}' +
+        '.xdex-clear-image-btn:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
+        '#btn_sp_fullExport_reset:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
+        '.xdex-reply-mode-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid var(--xdex-sp-border,#bfa58f);border-radius:8px;background:var(--xdex-sp-panel-bg,#F0E0D6);cursor:pointer;color:inherit;box-sizing:border-box;flex:0 0 auto;}' +
+        '.xdex-reply-mode-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-reply-mode-btn svg{display:block;}' +
+        ':root.xdex-custom-dark .xdex-reply-mode-btn,:root.xdex-darkreader-active .xdex-reply-mode-btn{background:#2b2c2d;border-color:#5a4d42;color:#d9d0d0;}' +
+        ':root.xdex-custom-dark .xdex-reply-mode-btn:hover,:root.xdex-darkreader-active .xdex-reply-mode-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-reply-mode-btn.js-reset:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
+        ':root.xdex-custom-dark .xdex-reply-mode-btn.js-reset:hover,:root.xdex-darkreader-active .xdex-reply-mode-btn.js-reset:hover{border-color:#EE0000 !important;color:#EE0000 !important;}' +
+        ':root.xdex-custom-dark .xdex-icon-btn,:root.xdex-darkreader-active .xdex-icon-btn{background:#2b2c2d;border-color:#555;color:#d9d0d0;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info .h-threads-info-title{color:#e85248 !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-item-reply-main{background:transparent !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info *,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content *{color:#d9d0d0 !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-tips.uk-text-danger{color:#e85248 !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote font[color="#789922"]{color:#b5d06d !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote a{color:#3e8eec !important;}' +
+        ':root.xdex-custom-dark .kaomoji-item:hover{background:#3a3d40 !important;}' +
+        '@keyframes xdex-icon-sync-spin{to{transform:rotate(360deg)}}' +
+        '.xdex-icon-loading .xdex-icon-sync{animation:xdex-icon-sync-spin .8s linear infinite}' +
+        '.xdex-board-refresh-btn:disabled{opacity:.55;cursor:default}' +
+        '.xdex-edit-default-btn{display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:none;cursor:pointer;color:inherit;flex-shrink:0;vertical-align:middle;margin-right:2px;}' +
+        '.xdex-edit-default-btn:hover{color:#00ffcc !important;}' +
+        '#xdex-image-viewer.xdex-iv-no-sep .xv-page-separator{display:none !important;}' +
+        ':root.xdex-custom-dark .kaomoji-item.kaomoji-active{background:#3a3d40 !important;}';
+      (document.head || document.documentElement).appendChild(style);
+      console.log('[xdex-theme-early] icon-btn global style injected');
+    } catch (e) {}
+  })();
   function shouldExitForXDexSingleton(runtimeInfo){
       const root = document.documentElement;
       const owner = root && root.dataset ? root.dataset[XDEX_SINGLETON_OWNER_DATASET_KEY] : '';
@@ -114,8 +207,8 @@
       });
   }
   function startXDexRuntime(){
-  cat_version();
-  console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
+      cat_version();
+      console.log('[runtime]:', XDEX_RUNTIME.kind, XDEX_RUNTIME);
   function gmRequest(url, responseType = 'text', headers = null) {
     return new Promise((resolve, reject) => {
       const request = {
@@ -328,6 +421,29 @@
     return fn.apply(null, args);
   }
   function spUi(name) { return xdexCall('ui', name, Array.prototype.slice.call(arguments, 1)); }
+  // 设置面板按钮 SVG 图标：分组添加（圆圈+加号）/ 保存（软盘）
+  const XDEX_ICON_ADD_GROUP = '<svg class="xdex-icon-add-group" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>';
+  const XDEX_ICON_SAVE = '<svg class="xdex-icon-save" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>';
+  const XDEX_ICON_EYE = '<svg class="xdex-icon-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  // 密码可见性：睁眼（密码隐藏态）/ 闭眼带斜线（密码显示态）
+  const XDEX_ICON_EYE_OFF = '<svg class="xdex-icon-eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line x1="4" y1="20" x2="20" y2="4"/></svg>';
+  // 导入/导出：文件夹带箭头（export=向上、import=向下）；重置=红色圆形箭头
+  const XDEX_ICON_EXPORT_FILE = '<svg class="xdex-icon-export" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 16v-5M9.5 13.5L12 11l2.5 2.5"/></svg>';
+  const XDEX_ICON_IMPORT_FILE = '<svg class="xdex-icon-import" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5L12 16l2.5-2.5"/></svg>';
+  const XDEX_ICON_RESET = '<svg class="xdex-icon-reset" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EE0000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path d="M18.5 6.5l-1.3 3.6"/><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
+  // WebDAV 连接检查（插头）/ 手动同步（双向循环箭头）
+  const XDEX_ICON_PLUG = '<svg class="xdex-icon-plug" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5z"/><path d="M12 16v5"/></svg>';
+  const XDEX_ICON_SYNC = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
+  const XDEX_ICON_GEAR = '<svg class="xdex-icon-gear" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+  const XDEX_ICON_CHEVRON_DOWN = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  const XDEX_ICON_CHEVRON_LEFT = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+  // 展开/收起按钮视觉：当前展开→向下箭头；当前收起→向左箭头；图标用 currentColor 与常规图标同色
+  function setPostExpandToggleVisual(btn, expanded) {
+    if (!btn) return;
+    btn.innerHTML = expanded ? XDEX_ICON_CHEVRON_DOWN : XDEX_ICON_CHEVRON_LEFT;
+    btn.title = expanded ? '点击收起' : '点击展开';
+  }
+  const XDEX_ICON_IMAGE = '<svg class="xdex-icon-image" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
   /* --------------------------------------------------
@@ -399,13 +515,16 @@
       enableImageContextMenu: true,
       enableImageHideMode: true, // 图片隐藏/无图模式
       applyImageHideMode: 'default', // default | blur | noimage | tips
+      imageViewerSeparators: true, // 阅图模式：显示页码分隔线与“第N页”标识
       enableDraft: true,
       timeDisplayMode: 'relative', // relative | exact
       extendQuote: true, // 拓展引用格式
+      extendQuoteAvailabilityDetection: true, // 检测引用串是否存在
       enablePostExpandAll: true, // 默认展开板块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
-  dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
+      enableCustomDarkTheme: 'light', // 自定义深色模式：light=浅色 / dark=深色
+      dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
       postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
       disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
@@ -612,6 +731,7 @@
           try { renderFavoriteThreadsMenu(); } catch (e) {}
           try { refreshFilterDisplay(this.state); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
+          try { if (typeof applyImageViewerSeparatorSetting === 'function') applyImageViewerSeparatorSetting(); } catch (e) {}
         }
       });
     },
@@ -632,6 +752,11 @@
                       --xdex-sp-footer-bg: #2b2c2d;
                       --xdex-sp-border: #4b4d50;
                       --xdex-sp-shadow: rgba(0,0,0,0.55);
+                      /* shadcn 风格 token：脚本内从未定义，导致 42 处 var() 恒取 fallback。
+                         深色下面板底色已是 #2b2c2d，而 fallback 的 #333/#666 深字压深底不可读；
+                         仅在深色类下补定义，light 模式继续走原 fallback（行为零变化） */
+                      --foreground: #d9d0d0;
+                      --muted-foreground: #9a9a9a;
                   }
                   .xdex-inv {opacity:0;pointer-events:none;}
                   #sp_panel {
@@ -915,9 +1040,35 @@
                           cursor:pointer;
                           color:inherit;
                      }
+                  /* 通用图标按钮（分组添加/保存）：与回收站按钮同款外观 */
+                  .xdex-icon-btn {
+                          display:inline-flex;
+                          align-items:center;
+                          justify-content:center;
+                          width:30px;
+                          height:30px;
+                          padding:0;
+                          border:1px solid var(--xdex-sp-border, #bfa58f);
+                          border-radius:8px;
+                          background:var(--xdex-sp-panel-bg, #F0E0D6);
+                          cursor:pointer;
+                          color:inherit;
+                     }
+                  :root.xdex-custom-dark .xdex-icon-btn,
+                  :root.xdex-darkreader-active .xdex-icon-btn {
+                          background:#2b2c2d;
+                          border-color:#555;
+                          color:#d9d0d0;
+                     }
+                  .xdex-icon-btn:hover {
+                          border-color:#00ffcc;
+                          color:#00ffcc;
+                     }
+                  /* 图标按钮专用隐藏类：占位透明（与 xdex-inv 布局语义一致，避免折叠/展开高度突变） */
+                  .xdex-btn-hidden { opacity:0; pointer-events:none; }
                   .xdex-recycle-btn:hover {
-                          border-color:#c62828;
-                          color:#c62828;
+                          border-color:#EE0000;
+                          color:#EE0000;
                      }
                   .xdex-recycle-badge {
                           position:absolute;
@@ -927,7 +1078,7 @@
                           height:16px;
                           padding:0 4px;
                           border-radius:999px;
-                          background:#c62828;
+                          background:#EE0000;
                           color:#fff;
                           font-size:10px;
                           line-height:16px;
@@ -1007,8 +1158,8 @@
                      }
                   .xdex-history-tombstone-mark:hover,
                   .xdex-post-history-tombstone-mark:hover {
-                          color:#c62828;
-                          border-color:#c62828;
+                          color:#EE0000;
+                          border-color:#EE0000;
                      }
                   .xdex-recycle-sort {
                           padding:4px 6px;
@@ -1063,9 +1214,9 @@
                           justify-content:center;
                           border-radius:4px;
                      }
-                  .xdex-recycle-icon-btn:hover { color:#c62828; }
-                  .xdex-recycle-item-restore:hover { color:#2e7d32; }
-                  .xdex-recycle-item-purge:hover { color:#c62828; }
+                  .xdex-recycle-icon-btn:hover { color:#EE0000; }
+                  .xdex-recycle-item-restore:hover { color:#00ffcc; }
+                  .xdex-recycle-item-purge:hover { color:#EE0000; }
                   .xdex-recycle-item-actions {
                           display:flex;
                           gap:6px;
@@ -1082,12 +1233,12 @@
                           font-size:12px;
                      }
                   .xdex-recycle-item-btn.xdex-recycle-item-restore:hover {
-                          border-color:#2e7d32;
-                          color:#2e7d32;
+                          border-color:#00ffcc;
+                          color:#00ffcc;
                      }
                   .xdex-recycle-item-btn.xdex-recycle-item-purge:hover {
-                          border-color:#c62828;
-                          color:#c62828;
+                          border-color:#EE0000;
+                          color:#EE0000;
                      }
                    .xdex-history-item {
                            display:block !important;
@@ -1175,6 +1326,19 @@
                             z-index:1;
                             color:#800000;
                        }
+                    /* 深色：历史卡片圆钮（删除/墓碑）与导入预览块走面板 token，浅色模式保持原样 */
+                    :root.xdex-darkreader-active .xdex-history-delete,
+                    :root.xdex-darkreader-active .xdex-post-history-delete,
+                    :root.xdex-darkreader-active .xdex-history-tombstone-mark,
+                    :root.xdex-darkreader-active .xdex-post-history-tombstone-mark {
+                        background: var(--xdex-sp-fold-bg);
+                        color: var(--foreground);
+                    }
+                    /* 该元素背景/边框写在内联 style 上，必须 !important 才能压过 */
+                    :root.xdex-darkreader-active #sp_fullExport_import_preview {
+                        background: var(--xdex-sp-panel-bg) !important;
+                        border-color: var(--xdex-sp-border) !important;
+                    }
                     .xdex-history-footer {
                            display:flex;
                            align-items:center;
@@ -1278,6 +1442,9 @@
           .xdex-switch:checked { background:#66CCFF; border-color:#7da6bf; }
           input.xdex-switch.fixed-on:checked:disabled { background:#00FFCC; border-color:#00b894; }
           .xdex-switch:checked::before { transform:translateX(16px); }
+          /* 饼干偏好开关圆圈：当前饼干命中本串偏好→深青(#006666)，未命中→红(#EE0000)；未开启偏好不着色 */
+          .xdex-cookie-check-sw.xdex-cookie-pref-match::before { background:#006666; }
+          .xdex-cookie-check-sw.xdex-cookie-pref-mismatch::before { background:#EE0000; }
           .xdex-switch:focus-visible { outline:2px solid #cc1105; outline-offset:2px; }
           .xdex-switch:disabled { opacity:1; cursor:default; }
         </style>
@@ -1297,7 +1464,18 @@
                 <div id="sp_panel_content" class="sp_panel_content" style="padding:18px;overflow-y:auto;flex:1;min-height:300px;box-sizing:border-box;">
                   <div id="sp_panel_title" style="margin:0 0 10px; position:relative; text-align:center;">
                 <span class="xdex-setting-title-easter-egg" style="font-size:20px; font-weight:bold; cursor:pointer;">X岛-EX</span>
-                <a id="sp_version_link" href="javascript:void(0)" style="position:absolute; right:0; top:50%; transform:translateY(-50%); font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
+                <div style="position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:10px;">
+                <label for="sp_enableCustomDarkTheme" id="sp_dark_toggle_wrap" title="深色模式" style="display:inline-flex; align-items:center; cursor:pointer;">
+                  <input type="checkbox" id="sp_enableCustomDarkTheme" role="switch" style="position:absolute;opacity:0;width:0;height:0;">
+                  <span id="sp_dark_toggle_track" style="display:inline-flex;align-items:center;width:46px;height:24px;border-radius:12px;background:#fff;border:1px solid #ccc;transition:background .35s ease,border-color .35s ease;box-sizing:border-box;">
+                    <span id="sp_dark_toggle_thumb" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);margin-left:3px;transition:transform .35s ease,background .35s ease;">
+                      <svg id="sp_dark_icon_sun" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f39c12" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="4.5" fill="#f39c12" stroke="none"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9L19 19M19 5l-2.1 2.1M7.1 16.9L5 19"/></svg>
+                      <svg id="sp_dark_icon_moon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffd54f" stroke-width="2.2" stroke-linecap="round" style="display:none;"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="#ffd54f" stroke="none"/></svg>
+                    </span>
+                  </span>
+                </label>
+                <a id="sp_version_link" href="javascript:void(0)" style="font-size:12px; color:#999; text-decoration:underline;">v2.1.0.1</a>
+                </div>
               </div>
                   <div id="sp_checkbox_container" style="display:flex;flex-wrap:wrap;">
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableCookieSwitch" class="xdex-switch" role="switch"><label for="sp_enableCookieSwitch"> 快捷切换饼干</label><input type="checkbox" id="sp_enableCookieConfirm" class="xdex-switch" role="switch"><label for="sp_enableCookieConfirm"> 二次确认饼干</label></div>
@@ -1312,7 +1490,7 @@
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableLinkBlank" class="xdex-switch" role="switch"><label for="sp_enableLinkBlank"> 新标签打开串</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableAutoUrlLinkify" class="xdex-switch" role="switch"><label for="sp_enableAutoUrlLinkify"> 自动识别链接</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableQuotePreview" class="xdex-switch" role="switch"><label for="sp_enableQuotePreview"> 优化引用弹窗</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote" class="xdex-switch" role="switch"><label for="sp_extendQuote"> 拓展引用格式</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote" class="xdex-switch" role="switch"><label for="sp_extendQuote"> 拓展引用格式</label><input type="checkbox" id="sp_extendQuoteAvailabilityDetection" class="xdex-switch" role="switch"><label for="sp_extendQuoteAvailabilityDetection"> 可用性检测</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar" class="xdex-switch" role="switch"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck" class="xdex-switch" role="switch"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
@@ -1343,7 +1521,7 @@
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><button type="button" id="sp_openImageViewer" style="height:24px;padding:0 8px;margin-left:4px;cursor:pointer;">打开</button></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
             </div>
               <div style="margin-top:12px;">
@@ -1373,9 +1551,8 @@
                   <div class="sp_fold_head" data-btn="#btn_sp_marked,#btn_group_marked"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>标记饼干</span>
-                    <button id="btn_group_marked" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_marked" class="sp_save xdex-inv" data-id="sp_marked"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_marked" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_marked" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_marked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="marked-inputs-container"></div>
@@ -1386,9 +1563,8 @@
                   <div class="sp_fold_head" data-btn="#btn_sp_blocked,#btn_group_blocked"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>屏蔽饼干</span>
-                    <button id="btn_group_blocked" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_blocked" class="sp_save xdex-inv" data-id="sp_blocked"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_blocked" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_blocked" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_blocked" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-inputs-container"></div>
@@ -1399,9 +1575,8 @@
                   <div class="sp_fold_head" data-btn="#btn_sp_threadCookieWhitelist,#btn_group_threadCookieWhitelist"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>只看饼干</span>
-                    <button id="btn_group_threadCookieWhitelist" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_threadCookieWhitelist" class="sp_save xdex-inv" data-id="sp_threadCookieWhitelist"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_threadCookieWhitelist" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_threadCookieWhitelist" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_threadCookieWhitelist" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="thread-cookie-whitelist-inputs-container"></div>
@@ -1412,9 +1587,8 @@
                   <div class="sp_fold_head" data-btn="#btn_sp_blockedKeywords,#btn_group_blockedKeywords"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>屏蔽关键词</span>
-                    <button id="btn_group_blockedKeywords" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加分组</button>
-                    <button id="btn_sp_blockedKeywords" class="sp_save xdex-inv" data-id="sp_blockedKeywords"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_blockedKeywords" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加分组">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_blockedKeywords" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_blockedKeywords" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="blocked-keyword-inputs-container"></div>
@@ -1426,9 +1600,8 @@
                   <div class="sp_fold_head" data-btn="#btn_sp_favoriteThreads,#btn_group_favoriteThreads"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>常用串</span>
-                    <button id="btn_group_favoriteThreads" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加常用串</button>
-                    <button id="btn_sp_favoriteThreads" class="sp_save xdex-inv" data-id="sp_favoriteThreads"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_group_favoriteThreads" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加常用串">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_favoriteThreads" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_favoriteThreads" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="favorite-thread-inputs-container"></div>
@@ -1440,9 +1613,7 @@
                   <div class="sp_fold_head" data-btn="#btn_sp_subscriptionFeeds,#btn_group_subscriptionFeeds"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>我的订阅</span>
-                    <button id="btn_group_subscriptionFeeds" class="xdex-inv" style="margin-left:auto;padding:2px 8px;">添加订阅号</button>
-                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-inv" data-id="sp_subscriptionFeeds"
-                            style="margin-left:4px;padding:2px 8px;">保存</button>
+                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:auto;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="subscription-feed-inputs-container"></div>
@@ -1453,8 +1624,7 @@
                   <div class="sp_fold_head" data-btn="#btn_sp_importExport"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>设置 导入/导出</span>
-                    <button id="btn_sp_importExport" class="sp_save xdex-inv" data-id="sp_importExport"
-                            style="margin-left:auto;padding:2px 8px;">应用</button>
+                    <button id="btn_sp_importExport" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_importExport" style="margin-left:auto;" title="应用">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -1470,12 +1640,11 @@
                 </div>
                 <!-- 使用数据 导入/导出 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
-                  <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import"
-                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_fullExport_reset,#btn_sp_fullExport_export,#btn_sp_fullExport_import" style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>使用数据 导入/导出</span>
-                    <button id="btn_sp_fullExport_reset" class="xdex-inv" style="margin-left:auto;padding:2px 8px;color:#c00;">重置所选项目</button>
-                    <button id="btn_sp_fullExport_export" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">导出为文件</button>
-                    <button id="btn_sp_fullExport_import" class="xdex-inv" style="margin-left:4px;padding:2px 8px;">从文件导入</button>
+                    <button id="btn_sp_fullExport_reset" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="重置所选项目">${XDEX_ICON_RESET}</button>
+                    <button id="btn_sp_fullExport_export" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:4px;" title="导出为文件">${XDEX_ICON_EXPORT_FILE}</button>
+                    <button id="btn_sp_fullExport_import" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:4px;" title="从文件导入">${XDEX_ICON_IMPORT_FILE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div style="font-size:12px;color:#666;margin-bottom:6px;">
@@ -1516,31 +1685,31 @@
                 </div>
                 <!-- WebDAV 备份/同步 -->
                 <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
-                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave,.xdex-webdav-head-actions"
+                  <div class="sp_fold_head" data-btn="#btn_sp_webdavSave,#btn_webdavSync,.xdex-webdav-head-actions"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>WebDAV 备份/同步</span>
                     <span id="sp_webdavLastSyncLabel" style="flex:1;min-width:0;margin:0 8px;text-align:center;color:#666;font-size:12px;">${webdavPanelField('lastSync')}</span>
-                    <div class="xdex-webdav-head-actions xdex-inv" style="display:flex;align-items:center;gap:4px;margin-left:auto;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
-                      <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
+                    <div class="xdex-webdav-head-actions xdex-inv" style="display:flex;align-items:center;gap:4px;margin-left:0;" title="自动同步策略：&#10;· 所有页面共享一个计时器，约1小时触发一次&#10;· 到点没有页面同步时，打开新页面会立即补一次&#10;· 点击手动同步后计时器会重置&#10;· 开启开关后立即同步一次（60秒内不重复，内容无变化也不重复）&#10;&#10;同步策略：&#10;· 远端较新则下载合并&#10;· 设置冲突时自动保留更合理的版本（本地为默认则采用远端，已个性化则保留本地）&#10;· WebDAV 配置不随同步覆盖">
                       <label for="sp_webdavAutoSync" style="font-size:12px;">自动同步</label>
+                      <input type="checkbox" id="sp_webdavAutoSync" class="xdex-switch" role="switch" ${webdavPanelField('autoSync')}>
                     </div>
-                    <button id="btn_sp_webdavSave" class="sp_save xdex-inv" data-id="sp_webdavSave"
-                            style="padding:2px 8px;">保存</button>
+                    <button id="btn_webdavSync" type="button" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:4px;" title="手动同步">${XDEX_ICON_SYNC}</button>
+                    <button id="btn_sp_webdavSave" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_webdavSave" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
-                      <div style="display:flex;flex-direction:column;gap:6px;">
-                        <input id="sp_webdavUrl" type="text" value="${webdavPanelField('url')}" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
-                        <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                          <input id="sp_webdavUrl" type="text" value="${webdavPanelField('url')}" placeholder="WebDAV 链接（目录，如 https://dav.jianguoyun.com/dav/xdex）" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                          <button id="btn_webdavCheck" type="button" class="xdex-icon-btn" title="检查连接">${XDEX_ICON_PLUG}</button>
+                        </div>
+                        <div style="display:flex;gap:4px;align-items:center;">
+                          <input id="sp_webdavUsername" type="text" value="${webdavPanelField('username')}" placeholder="账户" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
+                          <span class="xdex-icon-btn" style="opacity:0;pointer-events:none;" aria-hidden="true"></span>
+                        </div>
                         <div style="display:flex;gap:4px;align-items:center;">
                           <input id="sp_webdavPassword" type="password" value="${webdavPanelField('password')}" placeholder="密码" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;">
-                          <button id="btn_webdavTogglePassword" type="button" style="padding:4px 8px;flex:0 0 auto;">显示</button>
+                          <button id="btn_webdavTogglePassword" type="button" class="xdex-icon-btn" title="显示密码">${XDEX_ICON_EYE}</button>
                         </div>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                          <button id="btn_webdavCheck" type="button" style="padding:4px 10px;">检查连接</button>
-                          <button id="btn_webdavSync" type="button" style="padding:4px 10px;">手动同步</button>
-                        </div>
-                        <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;"></div>
-                      </div>
+                        <div id="sp_webdavStatus" style="font-size:12px;color:#666;white-space:pre-wrap;margin-top:8px;"></div>
                   </div>
                 </div>
                 </div>
@@ -1610,7 +1779,7 @@
                       <button type="button" data-post-history-type="reply" class="active">我的回复</button>
                     </div>
                     <div class="xdex-posts-add-row" style="display:flex;gap:6px;margin-bottom:8px;">
-                      <input id="sp_posts_manual_add_input" type="search" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <input id="sp_posts_manual_add_input" type="search" placeholder="No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);">
                       <button id="sp_posts_manual_add_btn" type="button" style="padding:4px 10px;font-size:13px;">手动添加</button>
                     </div>
                     <div id="sp_posts_results"></div>
@@ -1637,7 +1806,7 @@
                       <button id="sp_feeds_page_jump" type="button" style="padding:4px 8px;">跳转</button>
                     </div>
                     <div style="display:flex;gap:6px;margin-bottom:8px;">
-                      <input id="sp_feeds_bulk_add_input" type="search" placeholder="输入串号，多个用逗号分隔，如 67024789,66994128" autocomplete="off" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);color:var(--foreground, #333);">
+                      <input id="sp_feeds_bulk_add_input" type="search" placeholder="输入串号，多个用逗号分隔，如 67024789,66994128" autocomplete="off" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--xdex-sp-border, #ccc);border-radius:6px;background:var(--xdex-sp-panel-bg, #fff);">
                       <button id="sp_feeds_bulk_add_btn" type="button" style="padding:4px 10px;font-size:13px;">批量添加</button>
                       <button id="sp_feeds_export_clipboard" type="button" style="padding:4px 10px;font-size:13px;">导出串号</button>
                     </div>
@@ -1739,7 +1908,11 @@
         const $head = $(this);
         $head.next('.sp_fold_body').slideToggle(150);
         const btns = ($head.data('btn') || '').split(',');
-        btns.forEach(sel => $(sel).toggleClass('xdex-inv'));
+        btns.forEach(sel => {
+          const $el = $(sel);
+          // 图标按钮用 xdex-btn-hidden（display:none），文本按钮沿用 xdex-inv（透明热区）
+          $el.toggleClass($el.hasClass('xdex-icon-btn') ? 'xdex-btn-hidden' : 'xdex-inv');
+        });
       });
       // 控件交互独立于折叠: 阻止冒泡到 .sp_fold_head
       $('#sp_webdavAutoSync, label[for="sp_webdavAutoSync"], #btn_sp_webdavSave').off('click.xdex-webdav-fold-guard').on('click.xdex-webdav-fold-guard', function (e) {
@@ -1769,32 +1942,55 @@
         'enableAutoUrlLinkify',
         'enableQuotePreview',
         'extendQuote',
+        'extendQuoteAvailabilityDetection',
         'toggleSidebar',
-        'disableAutoQuote'
+        'disableAutoQuote',
+        'enableCustomDarkTheme'
       ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
+        // 深色模式：布尔开关 → light/dark 语义值
+        this.state.enableCustomDarkTheme = $('#sp_enableCustomDarkTheme').is(':checked') ? 'dark' : 'light';
         // 固定启用：不受面板勾选状态影响
         this.state.enableImageHideMode = true;
+      };
+      // 设置写入失败会造成内存与持久化状态失步且完全无感知；留一次告警痕迹
+      // 标志挂 window：本方法可被多次执行，局部变量会随每次重开面板而复位
+      const warnSettingSaveFailed = (where, e) => {
+        if (window.__xdexSettingSaveWarned) return;
+        window.__xdexSettingSaveWarned = true;
+        console.warn('[X岛-EX] 设置写入失败，刷新后该设置可能丢失（' + where + '）', e);
       };
       const saveReloadRequiredSettingsImmediately = () => {
         collectReloadRequiredSettingsFromPanel();
         try {
           GM_setValue(this.key, this.state);
+          // 深色模式等即时生效项：保存后立即同步主题（无需刷新页面）
+          if (typeof window.__xdexSyncDarkReaderTheme === 'function') window.__xdexSyncDarkReaderTheme();
           toast('设置已保存，刷新后生效', 900, { queue: false, key: 'settings-saved' });
-        } catch (e) {}
+        } catch (e) { warnSettingSaveFailed('需刷新项即时保存', e); }
       };
       const reloadRequiredSettingSelector = reloadRequiredSettingKeys.map(k => '#sp_' + k).join(',');
       $(reloadRequiredSettingSelector)
         .off('change.xdexReloadSettingSave')
         .on('change.xdexReloadSettingSave', saveReloadRequiredSettingsImmediately);
+      // 深色开关：切换时先加页面过渡类保证平滑，样式由 syncInputs/save 回调接管
+      $('#sp_enableCustomDarkTheme')
+        .off('change.xdexDarkToggle')
+        .on('change.xdexDarkToggle', function () {
+          try {
+            document.documentElement.classList.add('xdex-theme-anim');
+            syncDarkToggleVisual();
+            setTimeout(() => { try { document.documentElement.classList.remove('xdex-theme-anim'); } catch (e) {} }, 500);
+          } catch (e) {}
+        });
       // 图片隐藏模式：即时切换并即时应用（无需点“应用更改”）
       const applyImageHideModeImmediately = () => {
         const mode = $('#sp_applyImageHideMode').val() || 'default';
         // 固定启用，仅切换具体模式
         this.state.enableImageHideMode = true;
         this.state.applyImageHideMode = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('图片隐藏模式', e); }
         if (typeof applyImageHideMode === 'function') {
           applyImageHideMode(mode, document);
         }
@@ -1803,7 +1999,7 @@
       const applyDockDisplayModeImmediately = () => {
         const mode = $('#sp_dockDisplayMode').val() || 'hover';
         this.state.dockDisplayMode = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('扩展坞显示模式', e); }
         if (typeof applyDockDisplayMode === 'function') {
           applyDockDisplayMode(mode);
         }
@@ -1811,6 +2007,17 @@
       $('#sp_dockDisplayMode').off('change').on('change', applyDockDisplayModeImmediately);
       $('#sp_enableImageHideMode').off('change').on('change', applyImageHideModeImmediately);
       $('#sp_applyImageHideMode').off('change').on('change', applyImageHideModeImmediately);
+      // 阅图模式分隔线：即时切换并即时应用（无需点“应用更改”）
+      const applyImageViewerSeparatorsImmediately = () => {
+        const on = $('#sp_imageViewerSeparators').is(':checked');
+        this.state.imageViewerSeparators = on;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('阅图分隔线', e); }
+        if (typeof applyImageViewerSeparatorSetting === 'function') {
+          applyImageViewerSeparatorSetting(on);
+        }
+        toast(on ? '已开启分隔线' : '已关闭分隔线', 900, { queue: false, key: 'image-viewer-separators' });
+      };
+      $('#sp_imageViewerSeparators').off('change').on('change', applyImageViewerSeparatorsImmediately);
       // 设置面板内打开阅图：串内页可用；无图模式下右上角按钮隐藏时的备选入口
       $('#sp_openImageViewer').off('click').on('click', (e) => {
         e.preventDefault();
@@ -1825,14 +2032,14 @@
       const applyBlockDisplayModeImmediately = () => {
         const mode = $('#sp_blockDisplayMode').val() || 'fold';
         this.state.blockDisplayMode = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('屏蔽显示模式', e); }
         refreshFilterDisplay(this.state);
       };
       $('#sp_blockDisplayMode').off('change').on('change', applyBlockDisplayModeImmediately);
       const applyThreadCookieWhitelistDisplayModeImmediately = () => {
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('串内饼干白名单显示模式', e); }
         refreshFilterDisplay(this.state);
       };
       $('#sp_threadCookieWhitelistDisplayMode').off('change').on('change', applyThreadCookieWhitelistDisplayModeImmediately);
@@ -1841,7 +2048,7 @@
       const applyKaomojiSortImmediately = () => {
         const mode = $('#sp_kaomojiSort').val() || 'default';
         this.state.kaomojiSort = mode;
-        try { GM_setValue(this.key, this.state); } catch (e) {}
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('颜文字排序', e); }
         // 与颜文字按钮右侧的快捷下拉实时同步
         $('.sp_kaomojiSort_copy').val(mode);
         document.querySelectorAll('#h-emot-select').forEach(sel => {
@@ -2531,11 +2738,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableAutoSeamlessPaging', 'enableHDImageAndLayoutFix',
         'enableLinkBlank', 'enableAutoUrlLinkify', 'enableQuotePreview',
         'enableUpdateCheck', 'enableImageContextMenu', 'enableImageHideMode',
-        'applyImageHideMode', 'enableDraft', 'timeDisplayMode',
+        'applyImageHideMode', 'imageViewerSeparators', 'enableDraft', 'timeDisplayMode',
         'extendQuote', 'kaomojiSort', 'toggleSidebar',
         'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
         'replyModeDefault', 'replyExtraDefault', 'blockDisplayMode',
-        'postAfterAction', 'enablePostExpandAll', 'dockDisplayMode', 'disableAutoQuote'
+        'postAfterAction', 'enablePostExpandAll', 'dockDisplayMode', 'disableAutoQuote',
+        'enableCustomDarkTheme'
       ];
       function mergeFavoriteThreads(localItems, importedItems) {
         const local = Array.isArray(localItems) ? spData('normalizeFavoriteThreads', localItems) : [];
@@ -2757,13 +2965,26 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           if (remoteItem && localItem) {
             const impNewer = (Number(remoteItem.lastVisitedAt) || 0) >= (Number(localItem.lastVisitedAt) || 0);
             const newer = impNewer ? remoteItem : localItem;
+            // page = 最近查看页(允许回退): 双端语义取 lastVisitedAt 较新一端的 page, 不取 max(max 会抹掉本地的主动回翻)
+            const mergedPage = Math.max(1, Number(newer.page) || 1);
+            const mergedMaxVp = Math.max(Number(localItem.maxVisitedPage) || 0, Number(remoteItem.maxVisitedPage) || 0, mergedPage);
+            // url/lastKnownPage 禁止被 ...remoteItem 的过期快照覆盖(曾产生 page=97/url=?page=86 的矛盾记录):
+            // url 与 mergedPage 同步(最近查看页), lastKnownPage 只取 max —— 保证写入存储的记录字段自洽
+            const mergedLastKp = Math.max(Number(localItem.lastKnownPage) || 0, Number(remoteItem.lastKnownPage) || 0, mergedMaxVp || 0);
+            const mergedUrl = buildThreadHistoryPageUrl(
+              localItem.mode || remoteItem.mode,
+              localItem.threadId || remoteItem.threadId,
+              mergedPage
+            );
             mergedItem = {
               ...localItem,
               ...remoteItem,
               firstVisitedAt: Math.min(Number(localItem.firstVisitedAt) || Infinity, Number(remoteItem.firstVisitedAt) || Infinity),
               lastVisitedAt: Math.max(Number(localItem.lastVisitedAt) || 0, Number(remoteItem.lastVisitedAt) || 0),
-              page: Math.max(Number(localItem.page) || 0, Number(remoteItem.page) || 0),
-              maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(remoteItem.maxVisitedPage) || 0),
+              page: mergedPage,
+              maxVisitedPage: mergedMaxVp,
+              lastKnownPage: mergedLastKp,
+              url: mergedUrl,
               visitCount: mergedCount,
               lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : remoteItem.lastScrollY),
               title: (newer.title || '').trim() ? newer.title : (localItem.title || remoteItem.title),
@@ -3045,20 +3266,20 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             // WebDAV：基于基线计算独立贡献，不直接累加
             const baselines = getWebdavHistoryBaselines();
             merged = mergeThreadHistoryStoreWebdav(local, normalizeThreadHistoryStore(payload.threadHistory), baselines);
-            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+            merged = setThreadHistoryStore(merged);
             saveWebdavHistoryBaselinesFromStore(merged, baselines);
             mode = 'webdav-delta';
           } else {
             // 本地导入导出：浏览次数累加
             merged = mergeThreadHistoryStore(local, payload.threadHistory);
-            GM_setValue(THREAD_HISTORY_STORAGE_KEY, merged);
+            merged = setThreadHistoryStore(merged);
           }
           report.threadHistory = { mode, count: Object.keys(merged.items || {}).length };
         }
         if (payload.postHistory) {
           const local = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
-          const merged = mergePostHistoryStore(local, payload.postHistory);
-          GM_setValue(POST_HISTORY_STORAGE_KEY, merged);
+          const merged = setPostHistoryStore(mergePostHistoryStore(local, payload.postHistory));
+          // 经 setter 写入:同步刷新归一化缓存并广播变更
           report.postHistory = { mode: 'merge', count: Object.keys(merged.items || {}).length };
         }
         // 草稿暂为纯本地数据: WebDAV 下载侧跳过导入, 远端旧草稿不再回流
@@ -3196,7 +3417,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         SettingPanel.__pendingImport = merged;
         // 显示保存按钮
-        $('#btn_sp_importExport').removeClass('xdex-inv');
+        $('#btn_sp_importExport').removeClass('xdex-btn-hidden');
         toast('格式正确，请点击[应用]');
       }
       // 从剪贴板导入
@@ -3255,7 +3476,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           GM_setValue(SettingPanel.key, SettingPanel.__pendingImport);
           SettingPanel.state = SettingPanel.__pendingImport;
           delete SettingPanel.__pendingImport;
-          $('#btn_sp_importExport').addClass('xdex-inv');
+          $('#btn_sp_importExport').addClass('xdex-btn-hidden');
           toast('配置已导入，即将刷新');
           setTimeout(() => location.reload(), 800);
         } else {
@@ -3289,8 +3510,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (!window.confirm(`确定要清除以下项目的全部内容吗？\n\n${parts.join('、')}\n\n清除后页面将自动刷新。`)) return;
         try {
           if (selection.settings) GM_setValue(SettingPanel.key, {});
-          if (selection.threadHistory) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(null));
-          if (selection.postHistory) GM_setValue(POST_HISTORY_STORAGE_KEY, normalizePostHistoryStore(null));
+          if (selection.threadHistory) setThreadHistoryStore(null);
+          if (selection.postHistory) setPostHistoryStore(null);
           if (selection.drafts) {
             getDraftRegistry().forEach((key) => { try { GM_deleteValue(key); } catch (_) {} });
             saveDraftRegistry([]);
@@ -3343,7 +3564,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const $preview = $('#sp_fullExport_import_preview').empty().show();
         const meta = data.meta || {};
         const summary = data.summary || {};
-        let html = '<div style="font-size:12px;color:#333;">';
+        let html = '<div style="font-size:12px;color:var(--foreground, #333);">';
         html += `<div>来源版本: ${meta.scriptVersion || '?'} | 导出时间: ${meta.exportedAt ? new Date(meta.exportedAt).toLocaleString() : '?'}</div>`;
         html += '<div style="margin-top:4px;">包含数据:</div><ul style="margin:2px 0;padding-left:20px;">';
         if (summary.threadHistoryCount) html += `<li>浏览历史: ${summary.threadHistoryCount} 条</li>`;
@@ -3354,7 +3575,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (summary.webdavConfig) html += '<li>WebDAV 配置（覆盖导入）</li>';
         if (data.selection && data.selection.settings) html += '<li>设置配置（合并导入）</li>';
         html += '</ul>';
-        html += '<div style="color:#666;margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
+        html += '<div style="color:var(--muted-foreground, #666);margin-top:4px;">导入策略: 设置合并、历史合并、草稿冲突时导入端覆盖、颜文字累加</div>';
         html += '</div>';
         const $btn = $('<button style="margin-top:6px;padding:4px 10px;">应用导入</button>');
         $btn.on('click', () => {
@@ -3388,6 +3609,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         this.state.kaomojiSort = $('#sp_kaomojiSort').val() || 'default';
         this.state.dockDisplayMode = $('#sp_dockDisplayMode').val() || 'hover';
         this.state.applyImageHideMode = $('#sp_applyImageHideMode').val() || 'default';
+        this.state.imageViewerSeparators = $('#sp_imageViewerSeparators').is(':checked');
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
         this.state.timeDisplayMode = ($('#sp_timeDisplayMode').val() === 'exact') ? 'exact' : 'relative';
@@ -3482,39 +3704,41 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       //鼠标悬浮在具体功能上显示提示
       // ====== 1. 定义功能描述映射表 ======
       const spDescriptions = {
-        sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表。',
-        sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送。',
+        sp_enableCookieSwitch: '发帖框上方添加饼干切换器，单击即可快速切换饼干。使用前可单击“刷新”以获取当前登陆账户最新饼干列表',
+        sp_enableCookieConfirm: '发送前弹窗显示当前串内各饼干的使用情况，可切换饼干后再发送',
         sp_enablePaginationDuplication: '在串首页添加页码导航栏，并拓展为最长七个页码按钮',
         sp_disableWatermark: '取消发图默认勾选的水印选项',
         sp_updatePreviewCookie: '为“增强X岛匿名版”添加的预览框显示真实饼干',
         sp_hideEmptyTitleEmail: '隐藏帖内无标题、无名氏和版规提示，优化显示效果，减少版面占用',
         sp_enableExternalImagePreview: '直接显示外部图床的图片',
-        sp_enableUpdateCheck: '控制是否自动检查脚本更新；关闭后不会发起远程更新请求，也不会继续安排后续检查。',
+        sp_enableUpdateCheck: '控制是否自动检查脚本更新；关闭后不会发起远程更新请求，也不会继续安排后续检查',
         sp_enableAutoCookieRefresh: '回到X岛页面后自动刷新饼干，以防错饼',
         sp_enableAutoCookieRefreshToast: '自动刷新时显示toast提示，触发频率较高，建议关闭',
         sp_enableSeamlessPaging: '阅读到页面底部时无缝加载下一页并为新页首添加页码提示',
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
-        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中可不在前台。',
+        sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中焦点可不在前台',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
         sp_extendQuote: '拓展引用格式，支持除“>>No.66994128”标准引用格式外的引用，例如“>>66994128”、“66994128”、“No.66994128”，同样支持“优化引用弹窗”',
-        sp_threadCookieWhitelistModeEnabled: '只看饼干模式。\n折叠：保持原版只看饼干折叠逻辑；\n隐藏：未命中的回复直接隐藏；\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注。\n可选观众回复的展开/收起。',
-        sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动。',
+        sp_extendQuoteAvailabilityDetection: '检测引用号对应的串或回复是否存在以及属于什么类型：恢复-默认；不存在-变淡；主串-实线（当前串）/虚线（其他串）。被标记为主串的引用号可从“拓展引用浮窗”中直接跳转',
+        sp_enableCustomDarkTheme: '深色模式（light=浅色 / dark=深色）',
+        sp_threadCookieWhitelistModeEnabled: '只看饼干模式\n折叠：保持原版只看饼干折叠逻辑\n隐藏：未命中的回复直接隐藏\n分栏：重点回复保留在主阅读流，观众回复进入侧栏批注\n可选观众回复的展开/收起',
+        sp_poAnnotationSideDisplayMode: '分栏模式下观众回复栏的显示状态。展开：完整展开；收起：默认高度不超过对应主回复高度，超出部分滚动',
         sp_toggleSidebar: '来自acVMxuv的自动收起右侧扩展坞侧边栏，鼠标悬停时展开显示',
         sp_updateReplyNumbers: '添加当页内回复编号显示',
         sp_replaceRightSidebar: '增强右侧扩展坞功能，点击REPLY按钮打开回复弹窗，点击非回复弹窗区域或ESC键可关闭回复弹窗，另外支持使用CTRL+ENTER发送消息',
         sp_interceptReplyForm: '拦截回复跳转中间页，使用toast提示发送成功/失败信息',
         sp_interceptReplyFormUnvcode: '不可明说的功能，请参照https://words-away.typeboom.com/说明',
         sp_interceptReplyFormU200B: '优先使用插入零宽空格模式而非unvcode替换模式',
-        sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片。',
-        sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）。',
+        sp_interceptReplyFormAutoCompress: '自动压缩>2048KB的图片',
+        sp_kaomojiEnhancer: '拓展颜文字功能，添加更多颜文字（部分来自蓝岛）,优化选择颜文字弹窗，选择颜文字后可插入光标所在处。支持排序：默认（原顺序）/常用（使用次数高优先）/最近（最近使用优先，未使用保持默认顺序）',
         sp_highlightPO: '为回复添加Po主标志，PO主回复编号使用角标显示',
         sp_enhancePostFormLayout: '优化发串/回复表单布局，将“送出”按钮移至颜文字栏目，折叠“标题”“E-mail”“名称”等不常用项目，节省版面，添加标题/作者/E-mail/正文的字数统计与提醒',
         sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则\n折叠：匹配到的串/回复显示为可展开的按钮\n隐藏：匹配到的串/回复完全隐藏',
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
-        sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间。',
+        sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间',
         sp_replyQuicklyOnBoardPage: '为板块页添加快速回复模式，在板块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“板块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
         sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
@@ -3523,7 +3747,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
-        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧“打开”可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选。',
+        sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧图标按钮可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
+        sp_imageViewerSeparators: '在各页图片之间显示红色分隔线与“第N页”页码标识；关闭以获得更纯净的阅图体验',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
         sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，保留高亮的同时控制其是否在输入框中自动添加引用号，值班室版块默认不生效',
@@ -3678,11 +3903,16 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableAutoUrlLinkify',
         'enableQuotePreview',
         'enableImageHideMode',
+        'imageViewerSeparators',
         'extendQuote',
+        'extendQuoteAvailabilityDetection',
         'enablePostExpandAll',
         'toggleSidebar',
-        'disableAutoQuote'
+        'disableAutoQuote',
       ].forEach(k=> $('#sp_'+k).prop('checked', this.state[k]));
+      $('#sp_enableCustomDarkTheme').prop('checked', this.state.enableCustomDarkTheme === 'dark');
+      // 深色开关视觉状态：日/月图标 + 轨道底色
+      try { syncDarkToggleVisual(); } catch (e) {}
       // 二次确认饼干联动：快捷切换饼干关闭时禁用
       $('#sp_enableCookieConfirm').prop('disabled', !this.state.enableCookieSwitch);
       // 固定启用项：始终显示为开启
@@ -5312,6 +5542,8 @@ ${markedSwatchHtml}
       });
   }
   function updateCurrentCookieDisplay(cur){
+    // 当前饼干变化 → 同步串内偏好开关圆圈着色（置于 $d 守卫之前，各入口均可刷新）
+    try { if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState(); } catch (e) {}
     const $d = $('#current-cookie-display');
     if(!$d.length) return;
     if(cookieListUnavailableState){
@@ -6030,7 +6262,7 @@ ${markedSwatchHtml}
           </div>
           <button id="apply-cookie" class="uk-button uk-button-default" style="display:none;">应用</button>
           <div style="margin-left:auto;flex:0 0 auto;display:flex;align-items:center;">
-            <button id="refresh-cookie" class="uk-button uk-button-default" style="min-width:1em;text-align:center;">刷新</button>
+            <button id="refresh-cookie" class="xdex-icon-btn" title="刷新饼干列表" style="min-width:1em;text-align:center;">${XDEX_ICON_SYNC}</button>
           </div>
         </div>
       </div>`);
@@ -6086,7 +6318,9 @@ ${markedSwatchHtml}
       e.preventDefault();
       // 用户手动点击“刷新”：若未登录，则作为“手动弹出”强制提示，不受“不再提醒”影响
       window.__loginPromptShown = false;
-      refreshCookies(null, true, { manualPrompt: true });
+      const _rcBtn = e.currentTarget;
+      if (_rcBtn) _rcBtn.classList.add('xdex-icon-loading');
+      refreshCookies(() => { if (_rcBtn) _rcBtn.classList.remove('xdex-icon-loading'); }, true, { manualPrompt: true });
     });
   }
 
@@ -6657,15 +6891,24 @@ ${markedSwatchHtml}
       }
     }, true);
   }
-  function buildEnhanceIslandPreviewHtml() {
+  const PREVIEW_ID_POOL = ['0712','0711','0412','1002','1210','0520','1105','0217','0831','1227','1227','0130','0812','1126','0722','0119','0520','0630','0210','1110','1227'];
+  let previewPlaceholderId = null;
+  function getPreviewPlaceholderId(reuse) {
+    // reuse=true(早期注入与正式绑定):复用同一编号,避免替换时视觉割裂;reuse=false(发送后重建/重置):重新随机
+    if (!reuse || !previewPlaceholderId) {
+      previewPlaceholderId = PREVIEW_ID_POOL[Math.floor(Math.random() * PREVIEW_ID_POOL.length)];
+    }
+    return previewPlaceholderId;
+  }
+  function buildEnhanceIslandPreviewHtml(early) {
     // 从 cookie-switcher 里取当前饼干
     const cookieDisplay = document.querySelector('#h-post-form #current-cookie-display');
     const cookieText = cookieDisplay ? cookieDisplay.textContent.trim() : '--';
     return `
-      <div class="h-preview-box" data-xdex-early-preview="1">
+      <div class="h-preview-box"${early ? ' data-xdex-early-preview="1"' : ''}>
         <div class="h-threads-item">
           <div class="h-threads-item-replies">
-            <div class="h-threads-item-reply">
+            <div class="h-threads-item-reply" style="width:100%">
               <div class="h-threads-item-reply-main">
                 <div class="h-threads-img-box">
                   <div class="h-threads-img-tool uk-animation-slide-top">
@@ -6684,7 +6927,7 @@ ${markedSwatchHtml}
                   <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
                   </span> -->
-                  <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
+                  <a class="h-threads-info-id" style="cursor: default;">No.${getPreviewPlaceholderId(early)}</a>
                 </div>
                 <div class="h-threads-content"></div>
               </div>
@@ -6715,7 +6958,7 @@ ${markedSwatchHtml}
       || document.querySelector('form[action="/Home/Forum/doReplyThread.html"]')
       || document.querySelector('form[action="/Home/Forum/doPostThread.html"]');
     if (!form || !form.parentNode) return false;
-    form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml());
+    form.insertAdjacentHTML('afterend', buildEnhanceIslandPreviewHtml(true));
     const previewEl = form.nextElementSibling && form.nextElementSibling.classList?.contains('h-preview-box')
       ? form.nextElementSibling
       : document.querySelector('.h-preview-box');
@@ -7490,6 +7733,7 @@ ${markedSwatchHtml}
     let lastCheckAt = 0;
     // 所有需要被 window.SeamlessPaging 访问的变量都在此声明
     let loading = false;
+    let forceLoadPending = false; // 手动重载 50ms 定时器待执行标记，防网络慢时重复触发
     let done = false;
     let loadedPages = new Set();
     let reachedLastPageAt = -1;
@@ -7896,91 +8140,102 @@ ${markedSwatchHtml}
         if (overlayOpen || overlayQuoteOpen) {
           btn.style.display = 'none';
         } else {
-          btn.style.display = 'block';
+          // 显示时统一写 flex + 居中内联（覆盖任何 display:block 残留）
+          btn.style.display = 'flex';
+          btn.style.alignItems = 'center';
+          btn.style.justifyContent = 'center';
         }
-      }
-      function observeSeamlessRefreshOverlays(btn) {
-        const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
-        overlays.forEach(el => {
-          if (!el) return;
-          const obs = new MutationObserver(() => {
-            updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
-          });
-          obs.observe(el, { attributes: true, attributeFilter: ['style'] });
-        });
       }
       function ensureSeamlessRefreshButtonNode() {
         let btn = document.getElementById('seamless-refresh-btn');
         if (btn) return btn;
         btn = document.createElement('div');
         btn.id = 'seamless-refresh-btn';
-        btn.className = 'qp-reset-btn seamless-refresh-btn';
+        btn.className = 'qp-reset-btn seamless-refresh-btn xdex-icon-btn';
         btn.title = '手动检查回复更新';
-        btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
-        // --- 固定位置样式 ---
+        // btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg>';
+        btn.innerHTML = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
+        // --- 固定位置样式（外观走 xdex-icon-btn，内联仅定位与显隐） ---
         btn.style.position = 'fixed';
         btn.style.right = '12px';
         btn.style.bottom = '60px';
-        btn.style.fontSize = '20px';
-        btn.style.lineHeight = '1';
-        btn.style.color = '#fff';
-        btn.style.background = 'rgba(0,0,0,.6)';
-        btn.style.padding = '6px 12px';
-        btn.style.borderRadius = '6px';
-        btn.style.cursor = 'pointer';
         // 层级置于拓展坞（.hld__docker z-index:9998）之上：串内页两者位置可能重叠；下行为 10000，勿再被覆盖
         btn.style.zIndex = '10000';
-        btn.style.userSelect = 'none';
         btn.style.display = 'none';   // 默认不显示
         document.body.appendChild(btn);
-        // 点击触发“局部刷新 → 若有下一页则无缝翻页”
+        // 点击触发"局部刷新 → 若有下一页则无缝翻页"
         btn.addEventListener('click', () => {
           try {
+            btn.classList.add('xdex-icon-loading');
             const refreshGeneration = beginRefreshStatus();
             showRefreshStatus("正在刷新……", 1500);
             // 旧：内联 hasNext/last 分支（已抽到 handleSeamlessRefreshCheckResult）
             refreshRepliesAndCheckNext(
-              (result) => handleSeamlessRefreshCheckResult(result, refreshGeneration),
+              (result) => { btn.classList.remove('xdex-icon-loading'); handleSeamlessRefreshCheckResult(result, refreshGeneration); },
               { showResultToast: false },
               refreshGeneration
             );
           } catch (e) {
+            btn.classList.remove('xdex-icon-loading');
             console.warn('刷新按钮触发失败:', e);
           }
         });
         return btn;
       }
+      function observeSeamlessRefreshOverlays(btn) {
+        const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
+        overlays.forEach(el => {
+          if (!el) return;
+          // 同一元素只挂一次：浮窗为常驻单例，重复调用不应叠加属性观察器；
+          // 浮窗若为新建元素则无此标记，仍会被观察，保留「晚出现的浮窗也能被挂上」的行为
+          if (el.__xdexSeamlessOverlayObserved) return;
+          el.__xdexSeamlessOverlayObserved = true;
+          const obs = new MutationObserver(() => {
+            updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
+          });
+          obs.observe(el, { attributes: true, attributeFilter: ['style'] });
+        });
+        return btn;
+      }
+      // body 级与分页栏级观察器都提为共享单例：原实现每次调用都各自新建且从不 disconnect，
+      // 数量随「刷新按钮点击 + 每次末页判定」线性累积，使每次 DOM 变更的固定开销成倍放大
+      let seamlessGlobalObserver = null;
+      let seamlessPagObserver = null;
+      let seamlessPagObserverTarget = null;
       // 兼容旧调用名；内部完成按钮创建 + overlay/分页监听
       function addRefreshButtonIfNeeded() {
         // 旧：整段内联在 loadNext 旁（Phase3-3 拆为显示/监听辅助 + 共用结果处理）
         const btn = ensureSeamlessRefreshButtonNode();
         // --- 始终监听页面最底部的分页栏 ---
-        let currentObserver = null;
         function observeBottomPagination() {
           const pag = getSeamlessBottomPagination();
           if (!pag) return;
           // 先更新一次显示状态
           updateSeamlessRefreshBtnDisplay(btn, pag);
+          // 同一分页栏复用现有观察器，避免每次 DOM 变更都 disconnect + 重建
+          if (seamlessPagObserver && seamlessPagObserverTarget === pag) return;
           // 如果已有旧的 observer，先断开
-          if (currentObserver) {
-            currentObserver.disconnect();
+          if (seamlessPagObserver) {
+            seamlessPagObserver.disconnect();
           }
           // 新建 observer 监听底部分页栏的变化
-          currentObserver = new MutationObserver(() => {
+          seamlessPagObserver = new MutationObserver(() => {
             updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
-          currentObserver.observe(pag, { childList: true, subtree: true });
+          seamlessPagObserver.observe(pag, { childList: true, subtree: true });
+          seamlessPagObserverTarget = pag;
         }
         // 初始绑定
         observeSeamlessRefreshOverlays(btn);
         // 初始监听一次
         observeBottomPagination();
-        // 每次 DOM 可能插入新分页栏时，重新绑定监听
-        // 注意：每次 addRefreshButtonIfNeeded 调用都会再挂一个 body observer（与旧行为一致）
-        const globalObserver = new MutationObserver(() => {
-          observeBottomPagination();
-        });
-        globalObserver.observe(document.body, { childList: true, subtree: true });
+        // 每次 DOM 可能插入新分页栏时，重新绑定监听（只挂一次，回调内复用同一分页栏观察器逻辑）
+        if (!seamlessGlobalObserver) {
+          seamlessGlobalObserver = new MutationObserver(() => {
+            observeBottomPagination();
+          });
+          seamlessGlobalObserver.observe(document.body, { childList: true, subtree: true });
+        }
       }
       // 串内页加载
       async function loadNext(refreshGeneration) {
@@ -8393,6 +8648,11 @@ ${markedSwatchHtml}
           seamlessDebugLog('lastLoadedPage 当前值:', lastLoadedPage);
           seamlessDebugLog('loading 当前值:', loading);
           seamlessDebugLog('loadedPages 内容:', Array.from(loadedPages));
+          // 网络加载中或 50ms 重载定时器已排期：忽略重复触发，避免慢网下同一页被重复加载
+          if (loading || forceLoadPending) {
+            seamlessDebugLog('重复触发翻页：loading 或 forceLoadPending 为 true，忽略');
+            return;
+          }
           // 旧：内联状态回退（已统一到 prepareForceLoadNext；不传 nextPage 时清 lastLoadedPage+1）
           // loadedPages.delete(lastLoadedPage + 1);   // 清除下一页的已加载标记
           // loading = false;                          // 重置加载状态
@@ -8403,7 +8663,9 @@ ${markedSwatchHtml}
           seamlessDebugLog('loading 重置为:', loading);
           seamlessDebugLog('lastCheckAt 重置为:', lastCheckAt);
           seamlessDebugLog('准备在 50ms 后调用 loadNextFunc');
+          forceLoadPending = true;
           setTimeout(() => {
+            forceLoadPending = false;
             seamlessDebugLog('=== setTimeout 内部执行 ===');
             seamlessDebugLog('执行前 loadNextFunc 类型:', typeof loadNextFunc);
             try {
@@ -8434,12 +8696,19 @@ ${markedSwatchHtml}
   };
   // 新逻辑，启用高清图片链接和布局修正
   const hdImageLazyLoader = (() => {
-    // 基础/动态预热距离（px）：随滚动速度拉长，慢速浏览时尽量在进视窗前完成原图
-    const MIN_ROOT_MARGIN_Y = 600;
-    const BASE_ROOT_MARGIN_Y = 600;
-    const MAX_ROOT_MARGIN_Y = 2400;
-    const LOOKAHEAD_SEC = 1.25;
-    const MARGIN_HYSTERESIS_PX = 100;
+    // 预热距离固定为最大值：rootMargin 只能在重建 IntersectionObserver 时更改，过去按滚动速度动态调窗
+    // 会在滚动中高频 disconnect() + 全文档重新 observe（掉帧主因之一）。远近优先改由 measureImage 的
+    // 距离排序承担，不再靠改观察窗实现。
+    const ROOT_MARGIN_Y = 2400;
+    // 速度采样最小窗（ms）：nowTs() 为亚毫秒分辨率，同毫秒内 dt 若被钳成 1ms 会把瞬时速度放大上千倍，
+    // 使匀速滚动也被判成急加速。固定采样窗兼作速度上限。
+    const SCROLL_SPEED_SAMPLE_MS = 100;
+    // 【已停用·注释保留】动态预热窗常量（改固定窗以消除观察器重建风暴）
+    // const MIN_ROOT_MARGIN_Y = 600;
+    // const BASE_ROOT_MARGIN_Y = 600;
+    // const MAX_ROOT_MARGIN_Y = 2400;
+    // const LOOKAHEAD_SEC = 1.25;
+    // const MARGIN_HYSTERESIS_PX = 100;
     // 非 GIF 原图并发上限；至少预留 1 槽给滚动方向前方，避免视口内大图占满导致下方不预热
     const MAX_CONCURRENT = 3;
     const RESERVE_AHEAD_SLOTS = 1;
@@ -8450,7 +8719,7 @@ ${markedSwatchHtml}
     let lastScrollTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     let scrollDirection = 1;
     let scrollSpeed = 0; // px/s，EMA
-    let currentRootMarginY = BASE_ROOT_MARGIN_Y;
+    let currentRootMarginY = ROOT_MARGIN_Y; // 固定窗；保留字段供 getStats 观察（恒定即证明无重建）
     let activeLoads = 0;
     let activeVisibleLoads = 0;
     let activeAheadLoads = 0;
@@ -8469,54 +8738,77 @@ ${markedSwatchHtml}
     function nowTs() {
       return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     }
-    function getDesiredRootMarginY() {
-      const fromSpeed = Math.round(scrollSpeed * LOOKAHEAD_SEC);
-      return Math.min(MAX_ROOT_MARGIN_Y, Math.max(MIN_ROOT_MARGIN_Y, BASE_ROOT_MARGIN_Y + fromSpeed));
-    }
+    // 【已停用·注释保留】动态窗计算（依赖已停用的速度查表，见 getDesiredRootMarginY）
+    // function getDesiredRootMarginY() {
+    //   const fromSpeed = Math.round(scrollSpeed * LOOKAHEAD_SEC);
+    //   return Math.min(MAX_ROOT_MARGIN_Y, Math.max(MIN_ROOT_MARGIN_Y, BASE_ROOT_MARGIN_Y + fromSpeed));
+    // }
     function updateScrollMetrics(currentY) {
       const ts = nowTs();
-      const dt = Math.max(1, ts - lastScrollTs);
       const dy = currentY - lastScrollY;
       if (dy > 0) scrollDirection = 1;
       else if (dy < 0) scrollDirection = -1;
+      // 方向每次都更新；速度只在跨过最小采样窗时更新，位移自上次提交点累计。
+      // 原实现每事件都算并把 dt 钳到 1ms，同毫秒内的多个事件会算出上千倍虚高速度。
+      const dt = ts - lastScrollTs;
+      if (dt < SCROLL_SPEED_SAMPLE_MS) return;
       const instSpeed = Math.abs(dy) / dt * 1000;
-      // 指数滑动：兼顾瞬时加速与稳定巡航
       scrollSpeed = scrollSpeed * 0.7 + instSpeed * 0.3;
       lastScrollY = currentY;
       lastScrollTs = ts;
     }
-    function classifyImage(img) {
+    // 一次 rect 读取同时得出分类与优先级（原 classifyImage + getImagePriority 的合并，逻辑逐条照搬）
+    function measureImage(img, vh) {
       const rect = img.getBoundingClientRect();
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-      const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
-      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
-      const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
-      if (isVisible) return 'visible';
-      if (aheadDistance >= 0) return 'ahead';
-      if (behindDistance > 0) return 'behind';
-      return 'visible';
+      const aheadDistance = scrollDirection >= 0 ? rect.top - vh : -rect.bottom;
+      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - vh;
+      const isVisible = rect.bottom >= 0 && rect.top <= vh;
+      const kind = isVisible ? 'visible' : (aheadDistance >= 0 ? 'ahead' : (behindDistance > 0 ? 'behind' : 'visible'));
+      const imgCenter = rect.top + rect.height / 2;
+      const viewportCenter = vh / 2;
+      let priority;
+      if (isVisible) priority = Math.abs(imgCenter - viewportCenter);
+      else if (aheadDistance >= 0) priority = 10000 + aheadDistance;
+      else if (behindDistance > 0) priority = (behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000) + behindDistance;
+      else priority = 200000 + Math.abs(imgCenter - viewportCenter);
+      return { kind, priority };
     }
-    function queueHasKind(kind) {
+    // 单次遍历产出分类、优先级与 visible/ahead 计数，供本轮 processQueue 全程复用；
+    // 取代原“排序逐项回查 rect + 每个候选扫全队列”的 O(N²) 布局读取
+    function measureQueue() {
+      const meta = new Map();
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      let aheadCount = 0;
+      let visibleCount = 0;
       for (let i = 0; i < queue.length; i++) {
         const img = queue[i];
         if (!img || !img.isConnected) continue;
-        if (classifyImage(img) === kind) return true;
+        const m = measureImage(img, vh);
+        meta.set(img, m);
+        if (m.kind === 'ahead') aheadCount++;
+        else if (m.kind === 'visible') visibleCount++;
       }
-      return false;
+      return { meta, aheadCount, visibleCount };
     }
-    function canStartNonGif(kind) {
+    function getSnapPriority(snap, img) {
+      const m = snap.meta.get(img);
+      return m ? m.priority : 0;
+    }
+    function getSnapKind(snap, img) {
+      const m = snap.meta.get(img);
+      return m ? m.kind : 'visible';
+    }
+    function canStartNonGif(kind, snap) {
       const free = MAX_CONCURRENT - activeLoads;
       if (free <= 0) return false;
-      const aheadWaiting = kind === 'ahead' || queueHasKind('ahead');
+      if (kind === 'ahead') return true;
       if (kind === 'visible') {
         // 前方仍有待加载时，不为视口内请求吃光最后 RESERVE 个槽
-        if (!aheadWaiting) return true;
+        if (!snap.aheadCount) return true;
         return (free - 1) >= RESERVE_AHEAD_SLOTS || activeAheadLoads > 0;
       }
-      if (kind === 'ahead') return true;
       // behind：仅当没有 visible/ahead 候选时才填空
-      if (queueHasKind('visible') || queueHasKind('ahead')) return false;
-      return true;
+      return !snap.visibleCount && !snap.aheadCount;
     }
     function noteLoadStart(kind) {
       activeLoads++;
@@ -8531,33 +8823,40 @@ ${markedSwatchHtml}
       else if (kind === 'ahead') activeAheadLoads = Math.max(0, activeAheadLoads - 1);
       else activeBehindLoads = Math.max(0, activeBehindLoads - 1);
     }
-    function reobservePendingImages() {
-      const io = ensureObserver();
-      if (!io) return;
-      document.querySelectorAll('img[data-xdex-hd-src]').forEach((img) => {
-        if (!img || !img.isConnected) return;
-        if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
-        try { io.observe(img); } catch (e) {}
-      });
-    }
-    function syncObserverMargin(force) {
-      const desired = getDesiredRootMarginY();
-      if (!force && Math.abs(desired - currentRootMarginY) < MARGIN_HYSTERESIS_PX) return;
-      if (!force && desired === currentRootMarginY) return;
-      currentRootMarginY = desired;
-      if (observer) {
-        try { observer.disconnect(); } catch (e) {}
-        observer = null;
-      }
-      reobservePendingImages();
+    // 【已停用·注释保留】观察器重建链：desired 窗改固定 ROOT_MARGIN_Y 后不再需要。
+    // 原实现在滚动中高频 disconnect() + 全文档 querySelectorAll + 逐个 observe + 新建 IO。
+    // function reobservePendingImages() {
+    //   const io = ensureObserver();
+    //   if (!io) return;
+    //   document.querySelectorAll('img[data-xdex-hd-src]').forEach((img) => {
+    //     if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
+    //     io.observe(img);
+    //   });
+    // }
+    // function syncObserverMargin(force) {
+    //   const desired = getDesiredRootMarginY();
+    //   if (!force && Math.abs(desired - currentRootMarginY) < MARGIN_HYSTERESIS_PX) return;
+    //   if (!force && desired === currentRootMarginY) return;
+    //   currentRootMarginY = desired;
+    //   if (observer) {
+    //     try { observer.disconnect(); } catch (e) {}
+    //     observer = null;
+    //   }
+    //   reobservePendingImages();
+    // }
+    let scrollFrameId = 0;
+    function onScrollFrame() {
+      const currentY = window.scrollY || window.pageYOffset || 0;
+      updateScrollMetrics(currentY);
+      processQueue();
     }
     function bindScrollListener() {
       if (scrollListenerBound) return;
       window.addEventListener('scroll', () => {
-        const currentY = window.scrollY || window.pageYOffset || 0;
-        updateScrollMetrics(currentY);
-        syncObserverMargin(false);
-        processQueue();
+        // 一帧只处理一次：滚动事件每秒可达数十个，逐事件处理的结果会被后一次覆盖，纯浪费
+        if (scrollFrameId) return;
+        if (typeof requestAnimationFrame !== 'function') { onScrollFrame(); return; }
+        scrollFrameId = requestAnimationFrame(() => { scrollFrameId = 0; onScrollFrame(); });
       }, { passive: true });
       scrollListenerBound = true;
     }
@@ -8565,15 +8864,18 @@ ${markedSwatchHtml}
       if (observer) return observer;
       if (typeof IntersectionObserver !== 'function') return null;
       observer = new IntersectionObserver(entries => {
+        // 整批入队后只处理一次：逐张 enqueue 会让每张图都触发一整套测量+排序
+        let added = false;
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
           const img = entry.target;
-          enqueue(img);
+          if (enqueue(img, true)) added = true;
           try { observer.unobserve(img); } catch (e) {}
         });
+        if (added) processQueue();
       }, {
         root: null,
-        rootMargin: `${currentRootMarginY}px 0px`,
+        rootMargin: `${ROOT_MARGIN_Y}px 0px`,
         threshold: 0.01
       });
       return observer;
@@ -8598,24 +8900,28 @@ ${markedSwatchHtml}
       }
       return imgs;
     }
-    function getImagePriority(img) {
-      const rect = img.getBoundingClientRect();
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-      const viewportCenter = viewportHeight / 2;
-      const imgCenter = rect.top + rect.height / 2;
-      const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
-      const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
-      const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
-      const isAhead = aheadDistance >= 0;
-      const isBehind = behindDistance > 0;
-      // 分数越小越优先：视口内 > 滚动前方（近到远）> 后方
-      if (isVisible) return Math.abs(imgCenter - viewportCenter);
-      if (isAhead) return 10000 + aheadDistance;
-      if (isBehind) {
-        const farBehindPenalty = behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000;
-        return farBehindPenalty + behindDistance;
-      }
-      return 200000 + Math.abs(imgCenter - viewportCenter);
+    // 【已停用·注释保留】优先级计算已并入 measureImage（同一次 rect 读取同时给出分类与优先级）
+    // function getImagePriority(img) {
+    //   const rect = img.getBoundingClientRect();
+    //   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    //   const viewportCenter = viewportHeight / 2;
+    //   const imgCenter = rect.top + rect.height / 2;
+    //   const aheadDistance = scrollDirection >= 0 ? rect.top - viewportHeight : -rect.bottom;
+    //   const behindDistance = scrollDirection >= 0 ? -rect.bottom : rect.top - viewportHeight;
+    //   const isVisible = rect.bottom >= 0 && rect.top <= viewportHeight;
+    //   const isAhead = aheadDistance >= 0;
+    //   const isBehind = behindDistance > 0;
+    //   if (isVisible) return Math.abs(imgCenter - viewportCenter);
+    //   if (isAhead) return 10000 + aheadDistance;
+    //   if (isBehind) return (behindDistance > BEHIND_PENALTY_DISTANCE ? 1000000 : 100000) + behindDistance;
+    //   return 200000 + Math.abs(imgCenter - viewportCenter);
+    // }
+    // 图片完成回调会在同一批任务里多次触发，每次都跑一轮 measureQueue（N 次 rect 读取）。
+    // 合并到下一个宏任务只跑一轮；用 setTimeout 而非 rAF：后台标签页 rAF 不触发会卡住整个队列
+    let queueScheduleId = 0;
+    function scheduleProcessQueue() {
+      if (queueScheduleId) return;
+      queueScheduleId = setTimeout(() => { queueScheduleId = 0; processQueue(); }, 0);
     }
     function processQueue() {
       if (queue.length === 0) return;
@@ -8632,7 +8938,9 @@ ${markedSwatchHtml}
         }
       }
       if (queue.length === 0) return;
-      queue.sort((a, b) => getImagePriority(a) - getImagePriority(b));
+      // 单次测量：分类、优先级与 ahead/visible 计数一次算完，本轮全程复用
+      const snap = measureQueue();
+      queue.sort((a, b) => getSnapPriority(snap, a) - getSnapPriority(snap, b));
       // 多轮挑选：跳过暂时因 reserve 不能启动的项，继续尝试后方合适项
       let guard = queue.length + 2;
       while (activeLoads < MAX_CONCURRENT && queue.length > 0 && guard-- > 0) {
@@ -8665,8 +8973,8 @@ ${markedSwatchHtml}
             started = true;
             break;
           }
-          const kind = classifyImage(img);
-          if (!canStartNonGif(kind)) continue;
+          const kind = getSnapKind(snap, img);
+          if (!canStartNonGif(kind, snap)) continue;
           queue.splice(i, 1);
           queued.delete(img);
           noteLoadStart(kind);
@@ -8678,7 +8986,7 @@ ${markedSwatchHtml}
             const k = loadingKindMap.get(img) || kind;
             loadingKindMap.delete(img);
             noteLoadEnd(k);
-            processQueue();
+            scheduleProcessQueue();
           };
           img.addEventListener('load', finish, { once: true });
           img.addEventListener('error', finish, { once: true });
@@ -8690,23 +8998,25 @@ ${markedSwatchHtml}
         if (!started) break;
       }
     }
-    function enqueue(img) {
-      if (!img || img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return;
-      if (!img.dataset.xdexHdSrc) return;
+    function enqueue(img, deferProcess) {
+      if (!img || img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading === '1') return false;
+      if (!img.dataset.xdexHdSrc) return false;
       // GIF 直接加载，不进限速队列
       if (isGifUrl(img.dataset.xdexHdSrc)) {
         load(img, img.dataset.xdexHdSrc);
-        return;
+        return false;
       }
-      if (!queued.has(img)) {
+      const added = !queued.has(img);
+      if (added) {
         queued.add(img);
         queue.push(img);
       }
-      processQueue();
+      // deferProcess=true 时由调用方在整批入队后统一处理一次
+      if (!deferProcess) processQueue();
+      return added;
     }
     function observe(root) {
       bindScrollListener();
-      syncObserverMargin(false);
       const io = ensureObserver();
       if (!io) return;
       collect(root).forEach(img => {
@@ -8930,6 +9240,8 @@ ${markedSwatchHtml}
       expandMsgWidthIfImageExists(msgMain) {
         const imgBox = msgMain.querySelector('.h-threads-img-box');
         if (!imgBox) return; // 没有图片则跳过
+        // 预览框为空壳预览，不参与未激活加宽；否则早期注入时冻结的 px 与正式预览框重算值不一致，替换时会看到宽度跳变
+        if (msgMain.closest('.h-preview-box')) return;
         // ☆ 新增：检查是否已经扩展过，如果已扩展则跳过
         if (msgMain.__imageWidthExpanded === true) return;
         // 如果图片未激活
@@ -9564,10 +9876,17 @@ ${markedSwatchHtml}
     // 监听窗口大小改变
     if (root === document && !enableHDImageAndLayoutFix.__resizeHandlerBound) {
       window.addEventListener('resize', () => {
-        handleImageLayout.handleGeneralElements(document);
-        document.querySelectorAll('.h-threads-img-box.h-active').forEach(imgBox => {
-          handleImageLayout.handleActiveImageBox(imgBox, true);
-        });
+        // 一帧只处理一次：拖动窗口时 resize 每秒可触发数十次，每次都全文档处理图片布局
+        const run = () => {
+          enableHDImageAndLayoutFix.__resizeFrameId = 0;
+          handleImageLayout.handleGeneralElements(document);
+          document.querySelectorAll('.h-threads-img-box.h-active').forEach(imgBox => {
+            handleImageLayout.handleActiveImageBox(imgBox, true);
+          });
+        };
+        if (enableHDImageAndLayoutFix.__resizeFrameId) return;
+        if (typeof requestAnimationFrame !== 'function') { run(); return; }
+        enableHDImageAndLayoutFix.__resizeFrameId = requestAnimationFrame(run);
       });
       enableHDImageAndLayoutFix.__resizeHandlerBound = true;
     }
@@ -9802,8 +10121,8 @@ ${markedSwatchHtml}
       return;
     }
     const cache = Object.create(null);
-    // 防止短时间内重复点击同一引用号导致多重弹窗
-    let lastQuoteTid = null;
+    // 防止短时间内重复点击同一处引用号导致多重弹窗
+    let lastQuoteEl = null;
     let lastQuoteAt = 0;
     const QUOTE_DOUBLE_CLICK_WINDOW = 250;
     // 注入样式（只注入一次）
@@ -9829,10 +10148,26 @@ ${markedSwatchHtml}
         }
         .qp-close-all {
           position: fixed; right: 12px; bottom: 12px;
-          font-size: 20px; line-height: 1;
-          color: #fff; background: rgba(0,0,0,.6);
-          padding: 6px 12px; border-radius: 6px; cursor: pointer; z-index: 10000;
+          width: 30px; height: 30px; padding: 0;
+          display: inline-flex; align-items: center; justify-content: center;
+          background: var(--xdex-qp-reset-bg, rgba(0,0,0,.6));
+          border: 1px solid var(--xdex-qp-reset-border, rgba(255,255,255,.35)); border-radius: 8px; cursor: pointer; z-index: 10000;
           user-select: none;
+          color: var(--xdex-qp-reset-color, #fff);
+        }
+        .qp-close-all:hover {
+          border-color: #EE0000 !important;
+          color: #EE0000 !important;
+        }
+        /* 两个刷新钮（归位/局部刷新）：悬浮边框与 svg 图标同步变绿 */
+        .qp-reset-btn.xdex-icon-btn:hover,
+        .seamless-refresh-btn.xdex-icon-btn:hover {
+          border-color: #00ffcc !important;
+          color: #00ffcc !important;
+        }
+        .qp-reset-btn.xdex-icon-btn:hover svg,
+        .seamless-refresh-btn.xdex-icon-btn:hover svg {
+          stroke: #00ffcc !important;
         }
         .qp-overlay-quote .qp-quote {
           position: absolute;
@@ -9860,6 +10195,11 @@ ${markedSwatchHtml}
           font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 35%, transparent); border-radius: 4px; padding: 2px 6px;
         }
         .qp-overlay-quote .qp-back {
+          font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 22%, transparent);
+          border: 1px solid var(--xdex-qp-border, #ccc); border-radius: 4px; padding: 2px 6px;
+          cursor: pointer;
+        }
+        .qp-overlay-quote .qp-jump {
           font-size: 12px; color: inherit; background: color-mix(in srgb, var(--xdex-qp-border, #ccc) 22%, transparent);
           border: 1px solid var(--xdex-qp-border, #ccc); border-radius: 4px; padding: 2px 6px;
           cursor: pointer;
@@ -9939,6 +10279,7 @@ ${markedSwatchHtml}
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
     const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="red" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path style="fill:none" d="M6 6l12 12"/><path style="fill:none" d="M18 6L6 18"/></svg></div>').appendTo($overlay);
     $closeAll.on('click', () => {
+      $stack.children('.qp-quote').each((_, q) => clearQuoteSourceMark($(q)));
       $stack.empty();
       $overlay.fadeOut(160);
     });
@@ -9954,15 +10295,26 @@ ${markedSwatchHtml}
           $('.qp-quote.is-dragging').length || $('.qp-quote.is-resizing').length ||
           $overlay.data('isDragging')) return;
       // 3) 点击最上层框之外：仅移除最上层
+      clearQuoteSourceMark($top);
       $top.remove();
       if ($stack.children('.qp-quote').length === 0) $overlay.fadeOut(160);
     });
     $(document).on('keydown.qp', e => {
       if (e.key !== 'Escape' || !$overlay.is(':visible')) return;
       const $last = $stack.children('.qp-quote').last();
-      if ($last.length) $last.remove();
+      if ($last.length) { clearQuoteSourceMark($last); $last.remove(); }
       if ($stack.children().length === 0) $overlay.fadeOut(160);
     });
+        // 浮窗关闭时清除源引用元素上的“已打开”标记，允许之后再次点击打开
+    function clearQuoteSourceMark($quote) {
+      try {
+        const el = $quote && $quote[0] && $quote[0].__xdexSourceEl;
+        if (el) {
+          el.__xdexQuoteOpen = false;
+          el.__xdexQuotePending = false;
+        }
+      } catch (e) {}
+    }
     function fetchData(tid) {
       if (cache[tid]) return Promise.resolve(cache[tid]);
       return $.get(`/Home/Forum/ref?id=${tid}`).then(html => (cache[tid] = html));
@@ -10001,14 +10353,41 @@ ${markedSwatchHtml}
         left: '0px',
         zIndex: 1000 + depth
       });
+      // 关联源引用元素：浮窗关闭时据此清除其“已打开”标记
+      if (options && options.sourceEl) $quote[0].__xdexSourceEl = options.sourceEl;
       const $header = $('<div class="qp-header"></div>');
       const $level  = $(`<span class="qp-level">第 ${depth + 1} 层</span>`);
       const $back   = $('<button class="qp-back">返回</button>').on('click', e => {
         e.stopPropagation();
+        clearQuoteSourceMark($quote);
         $quote.remove();
         if ($stack.children().length === 0) $overlay.fadeOut(160);
       });
+      // 跳转按钮：引用号被判为 thread(主串) 时插入到“第 N 层”左侧（不限层数）
+      let $jump = null;
+      const refTid = options && options.tid ? String(options.tid).trim() : '';
+      const ensureJumpButton = () => {
+        if (!refTid || $jump) return;
+        const kind = quoteAvailabilityCache && quoteAvailabilityCache[refTid] && quoteAvailabilityCache[refTid].kind;
+        if (kind !== 'thread') return;
+        $jump = $('<button class="qp-jump">跳转</button>').on('click', e => {
+          e.stopPropagation();
+          let url = '';
+          try { url = getLatestThreadHistoryUrl(refTid) || `${location.origin}/t/${refTid}`; } catch (err) { url = `${location.origin}/t/${refTid}`; }
+          window.open(url, '_blank');
+        });
+        $level.before($jump);
+      };
+      // 判定为 thread 时补插：通过全局监听注册表触发，成功即注销
+      const onThreadAvail = (tid) => {
+        if (String(tid) === refTid) {
+          ensureJumpButton();
+          offQuoteAvailThread(refTid, onThreadAvail);
+        }
+      };
       $header.append($level, $back);
+      ensureJumpButton();
+      if (refTid) onQuoteAvailThread(refTid, onThreadAvail);
       $quote.append($header);
       const $content = stripIds($('<div></div>').html(html));
       simplifyQuoteInfoIdLinks($content);
@@ -10071,6 +10450,7 @@ ${markedSwatchHtml}
           options.currentThreadId = window.__xdexPendingQuoteCtxTid;
           window.__xdexPendingQuoteCtxTid = '';
         }
+        options.tid = String(tid);
         showQuote(html, options);
         return true;
       }).catch(err => {
@@ -10223,11 +10603,17 @@ ${markedSwatchHtml}
       const tid = (this.textContent.match(/\d+/) || [])[0];
       if (!tid) return;
       const now = Date.now();
-      if (lastQuoteTid === tid && now - lastQuoteAt <= QUOTE_DOUBLE_CLICK_WINDOW) {
-        return; // 同一引用号短时间内重复点击，忽略
+      const sourceEl = this;
+      if (lastQuoteEl === sourceEl
+          && (now - lastQuoteAt <= QUOTE_DOUBLE_CLICK_WINDOW
+              || sourceEl.__xdexQuotePending
+              || sourceEl.__xdexQuoteOpen)) {
+        return; // 同一处引用号：请求中/浮窗已开/短时间内重复点击，忽略
       }
-      lastQuoteTid = tid;
+      lastQuoteEl = sourceEl;
       lastQuoteAt = now;
+      sourceEl.__xdexQuotePending = true;
+      sourceEl.__xdexQuoteOpen = false;
       const ctxTid = getRefContextThreadId(this);
       window.__xdexNativeRefCtxTid = ctxTid;
       const refViewEl = document.getElementById('h-ref-view');
@@ -10235,16 +10621,26 @@ ${markedSwatchHtml}
         try { markCurrentThreadQuoteRefs(refViewEl, ctxTid); } catch (e) {}
       }
       fetchData(tid).then(html => {
-        showQuote(html, { currentThreadId: ctxTid });
+        if (sourceEl.__xdexQuotePending) sourceEl.__xdexQuotePending = false;
+        sourceEl.__xdexQuoteOpen = true;
+        // 与悬浮同源：点击拿到的 ref 原文同样可用于实时定论/优先判定
+        if (!settleQuoteRefAsEmpty(tid, html)) prioritizeQuoteProbe(tid);
+        showQuote(html, { currentThreadId: ctxTid, tid: String(tid), sourceEl: sourceEl });
         // 兑底：对最上层拓展浮窗内容再标一次，防 options 链路/后处理导致漏标
         setTimeout(() => {
           try {
             const quotes = document.querySelectorAll('.qp-overlay-quote .qp-quote');
             const top = quotes[quotes.length - 1];
-            if (top) markCurrentThreadQuoteRefs(top, ctxTid);
+            if (top) {
+              markCurrentThreadQuoteRefs(top, ctxTid);
+              try { refreshQuoteAvailability(top); } catch (e) {}
+            }
             console.log('[xdex] quote overlay marked', { ctx: ctxTid, ref: tid });
           } catch (e) {}
         }, 60);
+      }).catch(() => {
+        // 加载失败：清除 pending，允许之后重试
+        sourceEl.__xdexQuotePending = false;
       });
     });
     // 原生引用浮窗标注（多路兑底）：ctx 来自最近一次 hover/click 的引用号所属串；
@@ -10555,13 +10951,17 @@ ${markedSwatchHtml}
         if (el.dataset && el.dataset.xdexCurThreadMarkedTid === tids) return;
         const refNum = (String(el.textContent || '').match(/\d+/) || [])[0];
         if (!refNum) return;
-        // underline 贴近引用号文字；颜色继承 font[color=#789922]（与引用号颜色一致）
-        // 回应模式行（实际容器 .h-post-form-grid / .js-reply-mode-row）内的 No.xxxx 不添加横线
-        if (refNum === tids && !(el.closest && el.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row'))) {
-          el.style.textDecoration = 'underline';
-          el.style.textDecorationThickness = '2px';
+        // 不再直接设 underline：统一由 applyQuoteAvailabilityStyle 按 thread 判定设置实线/虚线
+        // xdexCurThreadMarkedTid 保持“已处理”防重复语义；xdexCurThreadRef 仅本串串首打，供样式判定
+        if (el.dataset) {
+          el.dataset.xdexCurThreadMarkedTid = tids;
+          if (refNum === tids) el.dataset.xdexCurThreadRef = tids;
+          else el.dataset.xdexCurThreadRef = '';
+          // 已有 thread 判定时，打标记后立即刷新线型（防 mark 晚于 apply 时本串串首误显虚线）
+          if (el.dataset.xdexQuoteAvail === 'thread') {
+            try { applyQuoteAvailabilityStyle(el, 'thread'); } catch (e) {}
+          }
         }
-        if (el.dataset) el.dataset.xdexCurThreadMarkedTid = tids;
       });
       // 兑底：仅处理正文区（.h-threads-content）内未渲染成 <font> 的裸引用号（如 >>No.xxx），
       // 消息信息区（.h-threads-info / a.h-threads-info-id，如 "No.69299379" 编号链接）一律不改
@@ -10596,12 +10996,14 @@ ${markedSwatchHtml}
             const font = document.createElement('font');
             font.setAttribute('color', '#789922');
             font.textContent = text.slice(start, end);
-            if (refNum === tids) {
-              font.style.textDecoration = 'underline';
-              font.style.textDecorationThickness = '2px';
-              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = tids;
-            } else if (font.dataset) {
+            // 不再直接设 underline：统一由 applyQuoteAvailabilityStyle 按 thread 判定设置实线/虚线
+            if (font.dataset) {
               font.dataset.xdexCurThreadMarkedTid = tids;
+              if (refNum === tids) font.dataset.xdexCurThreadRef = tids;
+              else font.dataset.xdexCurThreadRef = '';
+              if (font.dataset.xdexQuoteAvail === 'thread') {
+                try { applyQuoteAvailabilityStyle(font, 'thread'); } catch (e) {}
+              }
             }
             frag.appendChild(font);
             cursor = end;
@@ -10616,6 +11018,358 @@ ${markedSwatchHtml}
     getContextThreadId: getRefContextThreadId,
     markCurrentThreadQuoteRefs: markCurrentThreadQuoteRefs
   };
+
+  // —— 引用串可用性检测：仅保留当前页面会话结果，不写入 GM 存储 ——
+  // 「已删/不存在」的标准响应不是 DOCTYPE 裸页，而是服务端照常渲染的 h-threads-item 空字段骨架：
+  // data-threads-id 为空、No. 锚文本无编号、ID: 无饼干、正文为空。二者含义不同，不可混用。
+  function isQuoteRefDeletedSkeleton(html) {
+    if (typeof html !== 'string' || !html) return false;
+    // 编号锚为空：活帖浮窗必然带 No.<数字>，此处只剩 “No.”
+    const emptyNoAnchor = /<a\b[^>]*h-threads-info-id[^>]*>\s*No\.\s*<\/a>/i.test(html);
+    // 容器存在但串号为空
+    const emptyThreadsId = /data-threads-id\s*=\s*["']\s*["']/i.test(html);
+    return emptyNoAnchor && emptyThreadsId;
+  }
+  function parseQuoteResponseForAvailability(html, tid) {
+    if (html == null || String(html).trim() === '') return { kind: 'empty' };
+    const text = String(html).trim();
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) {}
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.success === false || parsed.error) return { kind: 'reply' };
+      if (parsed.id != null || parsed.content != null || Array.isArray(parsed.Replies)) return { kind: 'thread' };
+    }
+    if (/<!DOCTYPE html>\s*<html[^>]*>\s*<head[\s>]/i.test(text) && !/<(?:body|div|article|main)\b/i.test(text)) return { kind: 'empty' };
+    if (tid && (text.includes('id="' + tid + '"') || text.includes("id='" + tid + "'") || text.includes('data-threads-id="' + tid + '"') || text.includes("data-threads-id='" + tid + "'"))) return { kind: 'thread' };
+    // 【已停用·注释保留】类名 token 分支无法区分“主串存在”与“已删”：服务端对不存在的编号照样渲染
+    // <div class="h-threads-item">，只是字段全空。实测删串响应即含该容器，无论宽分支还是收紧后的
+    // token 分支都会误判为 thread（进而误插跳转按钮）。ref 原文只能用来判存在性，不能判主串。
+    // if (/(?:class|id)=["'](?:[^"']*\s)?h-threads-item(?:-index)?(?:\s[^"']*)?["']/i.test(text)) return { kind: 'thread' };
+    // 已删骨架优先于兜底的 reply 结论
+    if (isQuoteRefDeletedSkeleton(text)) return { kind: 'empty' };
+    return { kind: 'reply' };
+  }
+
+  function createQuoteAvailabilityQueue(options = {}) {
+    const pending = new Set();
+    const inFlight = new Set();
+    const attempts = new Map();
+    const MAX_ATTEMPTS = 3;
+    const fetchFn = options.fetchFn || (() => Promise.reject(new Error('quote availability fetch unavailable')));
+    const cacheGet = options.cacheGet || (() => null);
+    const cacheSet = options.cacheSet || (() => {});
+    const onResult = options.onResult || (() => {});
+    let timer = null;
+    let activeWorkers = 0;
+    // 受限并发：一次刷新可能有数百个编号，全量并发会被 CDN 限流（限流错误即 unknown 的来源）
+    // 并发数是实际的限流手段；GAP_MS 为单个 worker 相邻两次请求间的最小间隔，默认关闭，需要时由调用方显式传 gapMs
+    // 判定必须用 Number.isFinite：Number(undefined) 是 NaN，而 `NaN != null` 恒为 true，会让默认分支变成死代码
+    const CONCURRENCY = Math.max(1, Number(options.concurrency) || 2);
+    const GAP_MS = Number.isFinite(Number(options.gapMs)) ? Math.max(0, Number(options.gapMs)) : 0;
+    const delay = options.noDelay ? 0 : (Number(options.delay) || 120);
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const RETRY_BASE_MS = 1500;
+    const retryLater = (tid) => {
+      const n = (attempts.get(tid) || 0) + 1;
+      attempts.set(tid, n);
+      if (n >= MAX_ATTEMPTS) return false;
+      setTimeout(() => {
+        if (!cacheGet(tid) && !inFlight.has(tid) && !pending.has(tid)) {
+          pending.add(tid);
+          schedule();
+        }
+      }, RETRY_BASE_MS * n);
+      return true;
+    };
+    const drainOne = async (tid) => {
+      inFlight.add(tid);
+      try {
+        const cached = cacheGet(tid);
+        if (cached && cached.kind) {
+          onResult(tid, cached.kind);
+          return;
+        }
+        const response = await fetchFn(tid);
+        const parsed = parseQuoteResponseForAvailability(response && response.html, tid);
+        const result = { kind: parsed.kind, t: Date.now() };
+        // 只缓存明确判定（thread/reply/empty）；失败不缓存，保留后续重试资格
+        cacheSet(tid, result);
+        attempts.delete(tid);
+        onResult(tid, result.kind);
+      } catch (e) {
+        // 请求失败（限流/超时/断网）：不入缓存，退避后自动重试，重试耗尽则本轮放弃
+        const willRetry = retryLater(tid);
+        onResult(tid, 'unknown');
+        if (!willRetry) console.warn('[xdex-availability] 放弃重试', { id: tid });
+      } finally {
+        inFlight.delete(tid);
+      }
+    };
+    // 常驻 worker：谁空了谁取下一个编号，消除“凑满一批 → 等最慢的一个 → 整批空等”的头部阻塞
+    // 峰值在途请求数仍严格等于 CONCURRENCY，不增加任何 CDN 压力
+    const startWorker = () => {
+      activeWorkers++;
+      const run = async () => {
+        try {
+          while (pending.size) {
+            const id = pending.values().next().value;
+            pending.delete(id);
+            await drainOne(id);
+            if (GAP_MS && pending.size) await sleep(GAP_MS);
+          }
+        } finally {
+          activeWorkers--;
+        }
+        // 退出与入队存在竞态：仍有待办则补位，避免任务搁置到下一次 schedule
+        if (pending.size && activeWorkers < CONCURRENCY) startWorker();
+      };
+      run();
+    };
+    const pump = () => {
+      while (activeWorkers < CONCURRENCY && pending.size) startWorker();
+    };
+    const schedule = () => {
+      if (timer !== null) return;
+      if (options.noDelay) { pump(); return; }
+      timer = setTimeout(() => { timer = null; pump(); }, delay);
+    };
+    return {
+      // opts.priority：用户正在查看的编号提到队首，不排在数百个后台编号之后
+      enqueue(tid, opts) {
+        const id = String(tid || '').trim();
+        if (!/^\d\d\d\d\d\d\d\d$/.test(id) || cacheGet(id) || inFlight.has(id)) return false;
+        if ((attempts.get(id) || 0) >= MAX_ATTEMPTS) return false;
+        const priority = !!(opts && opts.priority);
+        if (pending.has(id)) {
+          if (!priority) return false;
+          pending.delete(id);
+        }
+        if (priority) {
+          const rest = Array.from(pending);
+          pending.clear();
+          pending.add(id);
+          rest.forEach((x) => pending.add(x));
+        } else {
+          pending.add(id);
+        }
+        schedule();
+        return true;
+      },
+      // 已凭悬浮/点击的 ref 原文实时定论的编号：撤掉尚未发出的探测，省掉 api/ref+api/thread
+      drop(tid) {
+        const id = String(tid || '').trim();
+        const had = pending.delete(id);
+        if (had) attempts.delete(id);
+        return had;
+      },
+      flushNow() {
+        if (timer !== null) { clearTimeout(timer); timer = null; }
+        pump();
+        return new Promise((resolve) => {
+          const wait = () => (pending.size || inFlight.size || activeWorkers) ? setTimeout(wait, 0) : resolve();
+          wait();
+        });
+      },
+      pendingSize() { return pending.size + inFlight.size; }
+    };
+  }
+
+  function applyQuoteAvailabilityStyle(el, kind) {
+    if (!el || !el.style) return;
+    const value = kind === 'thread' || kind === 'empty' || kind === 'reply' || kind === 'unknown' ? kind : 'unknown';
+    if (el.dataset) el.dataset.xdexQuoteAvail = value;
+    // 统一不加粗：主串用横线区分；本串串首实线，其他主串虚线
+    el.style.fontWeight = '';
+    el.style.textDecoration = '';
+    el.style.textDecorationThickness = '';
+    if (value === 'thread') {
+      const isCurrentThread = !!(el.dataset && el.dataset.xdexCurThreadRef);
+      el.style.textDecoration = isCurrentThread ? 'underline' : 'underline dashed';
+      el.style.textDecorationThickness = '2px';
+    }
+    el.style.opacity = value === 'empty' ? '0.5' : '';
+  }
+
+  // 提取元素文本中的引用编号：仅标准（>>No. / No.）与拓展（独立 8 位数字 / >>8位）格式；
+  // 不含编号的绿色文本（如 ">>如我所见"）返回 null，视为非引用，不判定、不改样式
+  function getQuoteRefIdFromText(text) {
+    const m = String(text || '').match(/(?:>>)?No\.\s?(\d{8})\b|(?:>>)?(?<!\d)(\d{8})(?!\d)/);
+    return m ? (m[1] || m[2]) : null;
+  }
+
+  function probeQuoteAvailability(el, context = {}) {
+    const text = String(el && el.textContent || '');
+    // 仅当文本是标准/拓展引用时才判定；不含引用编号的绿色 font（如 ">>如我所见"）不是引用，直接跳过
+    const tid = getQuoteRefIdFromText(text);
+    if (!tid) return { kind: 'skip', queued: false };
+    const state = context.state || {};
+    if (state.extendQuoteAvailabilityDetection === false || state.extendQuote === false) return { kind: 'unknown', queued: false };
+    const cached = context.cache && context.cache[tid];
+    const kind = cached && cached.kind ? cached.kind : 'unknown';
+    applyQuoteAvailabilityStyle(el, kind);
+    if (cached || !context.queueSet) return { kind, queued: false };
+    context.queueSet(tid);
+    return { kind, queued: true };
+  }
+
+  const quoteAvailabilityCache = Object.create(null);
+  let quoteAvailabilityQueue = null;
+  // 跳转按钮补插监听：key = 引用串号，value = Set<回调>（浮窗打开后注册，判定为 thread 时触发）
+  const quoteJumpListeners = new Map();
+  function onQuoteAvailThread(tid, fn) {
+    const id = String(tid || '');
+    if (!id || typeof fn !== 'function') return;
+    if (!quoteJumpListeners.has(id)) quoteJumpListeners.set(id, new Set());
+    quoteJumpListeners.get(id).add(fn);
+  }
+  function offQuoteAvailThread(tid, fn) {
+    const id = String(tid || '');
+    const set = quoteJumpListeners.get(id);
+    if (set) { set.delete(fn); if (!set.size) quoteJumpListeners.delete(id); }
+  }
+  let xdexAvailSummary = { thread: 0, reply: 0, empty: 0, unknown: 0 };
+  let xdexAvailSummaryTimer = null;
+  function xdexAvailLogSummary() {
+    const s = xdexAvailSummary;
+    const total = s.thread + s.reply + s.empty + s.unknown;
+    if (total <= 0) return;
+    console.log('[xdex-availability] 判定汇总', { thread: s.thread, reply: s.reply, empty: s.empty, unknown: s.unknown });
+    xdexAvailSummary = { thread: 0, reply: 0, empty: 0, unknown: 0 };
+  }
+  function getQuoteAvailabilityState() {
+    try {
+      return Object.assign({}, SettingPanel.defaults, SettingPanel.state || {}, GM_getValue(SettingPanel.key, {}));
+    } catch (e) { return { extendQuote: true, extendQuoteAvailabilityDetection: true }; }
+  }
+  function fetchQuoteAvailability(tid) {
+    const id = encodeURIComponent(tid);
+    const refUrl = `https://api.nmb.best/api/ref?id=${id}`;
+    const threadUrl = `https://api.nmb.best/api/thread?id=${id}&page=1`;
+    const headers = typeof getPostHistoryApiCookieHeaders === 'function'
+      ? getPostHistoryApiCookieHeaders()
+      : null;
+    const readResponse = (resp) => {
+      const raw = resp && (resp.response || resp.responseText || '');
+      if (raw && typeof raw === 'object') return raw;
+      try { return JSON.parse(String(raw || '')); } catch (e) { return null; }
+    };
+    return gmRequest(refUrl, 'text', headers).then((refResp) => {
+      const ref = readResponse(refResp);
+      // ref 存在且非业务失败 → 目标编号确实存在；是否主串由 thread 判定
+      if (!ref || ref.success === false || ref.error) return { html: '', httpStatus: 200 };
+      return gmRequest(threadUrl, 'text', headers).then((threadResp) => {
+        const thread = readResponse(threadResp);
+        if (thread && thread.success === false) return { html: JSON.stringify({ success: false, error: thread.error || 'reply' }), httpStatus: 200 };
+        return { html: JSON.stringify(thread || {}), httpStatus: 200 };
+      }).catch((err) => {
+        // thread 明确 404 → 该编号不是主串，是回复
+        if (err && /HTTP 404\b/.test(String(err.message || err))) {
+          return { html: JSON.stringify({ success: false, error: 'reply' }), httpStatus: 404 };
+        }
+        throw err;
+      });
+    });
+  }
+  // 判定结果统一出口：样式回填、跳转按钮补插、汇总日志。队列回调与悬浮/点击实时回填共用
+  function applyQuoteAvailabilityResult(tid, kind) {
+    // 仅对真正包含该引用编号的元素应用样式；不含编号的绿色文本不改动
+    document.querySelectorAll('font[color="#789922"]').forEach((el) => {
+      if (getQuoteRefIdFromText(el.textContent) === tid) applyQuoteAvailabilityStyle(el, kind);
+    });
+    // 判定为 thread(主串) 时，通知所有打开该引用浮窗的跳转按钮补插
+    if (kind === 'thread' && quoteJumpListeners && quoteJumpListeners.size) {
+      const set = quoteJumpListeners.get(String(tid));
+      if (set && set.size) {
+        [...set].forEach((fn) => { try { fn(String(tid)); } catch (e) {} });
+      }
+    }
+    // 批量汇总：一次扫掠只打一条汇总日志，不逐 id 输出（发送消息后整片新引用号会一次性判定，逐行会刷屏）
+    if (xdexAvailSummary[kind] != null) xdexAvailSummary[kind] += 1;
+    if (xdexAvailSummaryTimer) return;
+    xdexAvailSummaryTimer = setTimeout(() => {
+      xdexAvailSummaryTimer = null;
+      xdexAvailLogSummary();
+    }, 300);
+  }
+  function getQuoteAvailabilityQueue() {
+    if (quoteAvailabilityQueue) return quoteAvailabilityQueue;
+    quoteAvailabilityQueue = createQuoteAvailabilityQueue({
+      fetchFn: fetchQuoteAvailability,
+      cacheGet: (tid) => quoteAvailabilityCache[tid],
+      cacheSet: (tid, entry) => { quoteAvailabilityCache[tid] = entry; },
+      onResult: applyQuoteAvailabilityResult
+    });
+    return quoteAvailabilityQueue;
+  }
+  // 悬浮/点击路径自己会打 /Home/Forum/ref，命中“已删骨架”即得到实时可用性结论，
+  // 据此直接定论并撤掉尚未发出的探测，省掉后台的 api/ref + api/thread 两次重复请求
+  // 【已停用·注释保留】DOCTYPE 裸页对应“请求没返回可渲染内容”（登录跳转/错误页/被拦），与“已删”是两件事，
+  // 不作为删串判据；悬浮路径原有的“不渲染浮窗”早退仍按该标记执行。
+  const QUOTE_REF_EMPTY_MARK = '<!DOCTYPE html><html><head>';
+  // 悬浮/点击回填与优先探测同样受开关约束：检测关闭时不得建队、不得改样式
+  function isQuoteAvailabilityEnabled() {
+    const state = getQuoteAvailabilityState();
+    return state.extendQuoteAvailabilityDetection !== false && state.extendQuote !== false;
+  }
+  function settleQuoteRefAsEmpty(tid, html) {
+    const id = String(tid || '').trim();
+    if (!/^\d{8}$/.test(id)) return false;
+    // 【已停用·注释保留】旧判据把 DOCTYPE 裸页当“已删”，实际打不到标准删串响应（它是空字段骨架，无 DOCTYPE）
+    // if (typeof html !== 'string' || html.indexOf(QUOTE_REF_EMPTY_MARK) < 0) return false;
+    if (!isQuoteRefDeletedSkeleton(html)) return false;
+    if (!isQuoteAvailabilityEnabled()) return false;
+    if (!quoteAvailabilityCache[id] || !quoteAvailabilityCache[id].kind) {
+      quoteAvailabilityCache[id] = { kind: 'empty', t: Date.now() };
+    }
+    if (quoteAvailabilityQueue) quoteAvailabilityQueue.drop(id);
+    applyQuoteAvailabilityResult(id, 'empty');
+    return true;
+  }
+  // 用户正在查看的编号提到队首，不必排在数百个后台编号之后
+  function prioritizeQuoteProbe(tid) {
+    const id = String(tid || '').trim();
+    if (!/^\d{8}$/.test(id)) return;
+    if (!isQuoteAvailabilityEnabled()) return;
+    if (quoteAvailabilityCache[id] && quoteAvailabilityCache[id].kind) return;
+    getQuoteAvailabilityQueue().enqueue(id, { priority: true });
+  }
+  // 视口门控：只对进入视口（含预读边距）的引用号入队，使探测进度跟随阅读位置，
+  // 而不是页面一打开就按 DOM 顺序排队数百个编号、用户读到哪都还没轮到哪
+  const QUOTE_PROBE_ROOT_MARGIN = '200px';
+  let quoteProbeObserver = null;
+  function observeQuoteProbe(el, tid) {
+    const id = String(tid || '').trim();
+    if (!/^\d{8}$/.test(id)) return;
+    if (typeof IntersectionObserver !== 'function') { getQuoteAvailabilityQueue().enqueue(id); return; }
+    if (!quoteProbeObserver) {
+      quoteProbeObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const waiting = entry.target.__xdexQuoteProbeTid;
+          delete entry.target.__xdexQuoteProbeTid;
+          quoteProbeObserver.unobserve(entry.target);
+          if (waiting) getQuoteAvailabilityQueue().enqueue(waiting);
+        });
+      }, { rootMargin: QUOTE_PROBE_ROOT_MARGIN });
+    }
+    if (el.__xdexQuoteProbeTid === id) return; // 已在观察同一编号，避免重复 observe
+    el.__xdexQuoteProbeTid = id;
+    quoteProbeObserver.observe(el);
+  }
+  function refreshQuoteAvailability(root = document) {
+    const state = getQuoteAvailabilityState();
+    if (state.extendQuoteAvailabilityDetection === false || state.extendQuote === false) return;
+    getQuoteAvailabilityQueue();
+    const fonts = [];
+    if (root && root.matches && root.matches('font[color="#789922"]')) fonts.push(root);
+    if (root && root.querySelectorAll) fonts.push(...root.querySelectorAll('font[color="#789922"]'));
+    fonts.forEach((el) => probeQuoteAvailability(el, {
+      state,
+      cache: quoteAvailabilityCache,
+      queueSet: (tid) => observeQuoteProbe(el, tid)
+    }));
+  }
+  window.__xdexQuoteAvailability = { refresh: refreshQuoteAvailability, probe: probeQuoteAvailability };
 
   //引用格式拓展
   function extendQuote(root = document) {
@@ -10652,6 +11406,7 @@ ${markedSwatchHtml}
         // 原生标准引用号（>>No.12345678 已由原站渲染为 <font color="#789922">）会被 walker 跳过，
         // 这里统一补标：引用号 == 当前串号 → 同色下划线
         try { markCurrentThreadQuoteRefs(root, getRefContextThreadId(root)); } catch (e) {}
+      try { refreshQuoteAvailability(root); } catch (e) {}
     });
     function processTextNode(textNode) {
         const text = textNode.nodeValue;
@@ -10687,9 +11442,14 @@ ${markedSwatchHtml}
             const refNum = (font.textContent.match(/\d+/) || [])[0];
             const modeTextEl = textNode.parentElement && textNode.parentElement.closest ? textNode.parentElement.closest('.h-post-form-grid, .js-reply-mode-text, .js-reply-mode-row') : null;
             if (refNum && !modeTextEl && refNum === getRefContextThreadId(textNode.parentElement)) {
-              font.style.textDecoration = 'underline';
-              font.style.textDecorationThickness = '2px';
-              if (font.dataset) font.dataset.xdexCurThreadMarkedTid = refNum;
+              // 不再直接设 underline：统一由 applyQuoteAvailabilityStyle 按 thread 判定设置实线/虚线
+              if (font.dataset) {
+                font.dataset.xdexCurThreadMarkedTid = refNum;
+                font.dataset.xdexCurThreadRef = refNum;
+                if (font.dataset.xdexQuoteAvail === 'thread') {
+                  try { applyQuoteAvailabilityStyle(font, 'thread'); } catch (e) {}
+                }
+              }
             }
             frag.appendChild(font);
             cursor = end;
@@ -10718,6 +11478,7 @@ ${markedSwatchHtml}
         }
         return best;
     }
+    try { refreshQuoteAvailability(root); } catch (e) {}
     }, () => startupPerfDebug.summarizeRoot(root));
   }
   function initExtendedContent(root) {
@@ -10759,6 +11520,8 @@ ${markedSwatchHtml}
           $.get('/Home/Forum/ref?id=' + tid)
             .done(function (data) {
               if (seq !== window.__xdexRefViewRequestSeq) return;
+              // 空壳即实时可用性结论：直接定论并撤掉后台探测；否则把该编号提到队首优先判定
+              if (!settleQuoteRefAsEmpty(tid, data)) prioritizeQuoteProbe(tid);
               if (data.indexOf('<!DOCTYPE html><html><head>') >= 0) return;
               $rv.html(data).css({
                 top: $(quoteEl).offset().top,
@@ -10772,6 +11535,7 @@ ${markedSwatchHtml}
                 renderHiddenTextContent(refEl);
                 if (typeof extendQuote === 'function') extendQuote(refEl);
                 if (typeof initExtendedContent === 'function') initExtendedContent(refEl);
+                try { refreshQuoteAvailability(refEl); } catch (e) {}
                 const _cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
                 markAllCookies(_cfg.markedGroups || [], refEl);
                 if (_cfg.enableImageHideMode) applyImageHideMode(_cfg.applyImageHideMode || 'default', refEl);
@@ -10787,6 +11551,7 @@ ${markedSwatchHtml}
         quoteEl.addEventListener('mouseenter', quoteEl.__xdexRefHoverHandler, true);
       });
     // —— 新增：处理 [h]...[/h] 隐藏文本 ——
+    try { refreshQuoteAvailability(root || document); } catch (e) {}
     }, () => startupPerfDebug.summarizeRoot(root || document));
   }
 
@@ -11333,12 +12098,377 @@ ${markedSwatchHtml}
       resetColor: '#fff',
     };
   }
+  // 自定义深色是否生效：仅当设置开启且 Dark Reader 未激活时
+  function isCustomDarkActive() {
+    try {
+      if (isDarkReaderActive()) return false; // DR 激活 → 由 DR 定色，脚本深色停用
+      return SettingPanel.state.enableCustomDarkTheme === 'dark';
+    } catch (e) { return false; }
+  }
+  // 深色开关视觉：轨道白/黑、日/月图标切换、滑块位移
+  function syncDarkToggleVisual() {
+    const cb = document.getElementById('sp_enableCustomDarkTheme');
+    const track = document.getElementById('sp_dark_toggle_track');
+    const thumb = document.getElementById('sp_dark_toggle_thumb');
+    const sun = document.getElementById('sp_dark_icon_sun');
+    const moon = document.getElementById('sp_dark_icon_moon');
+    if (!cb || !track || !thumb) return;
+    const on = !!cb.checked;
+    // 深色轨道用淡黑（#3a3a3a），比月亮图标的黑色浅、比滑块底深，保证月亮可读
+    track.style.background = on ? '#3a3a3a' : '#fff';
+    track.style.borderColor = on ? '#555' : '#ccc';
+    thumb.style.background = on ? '#2b2b2b' : '#fff';
+    thumb.style.transform = on ? 'translateX(22px)' : 'translateX(0)';
+    if (sun) sun.style.display = on ? 'none' : '';
+    if (moon) moon.style.display = on ? '' : 'none';
+  }
+  window.__xdexSyncDarkToggleVisual = syncDarkToggleVisual;
+  // 整页深色同步：打 xdex-custom-dark 类控制覆盖样式；脚本 UI 沿用 xdex-darkreader-active 暗色规则
+  function syncCustomPageTheme() {
+    const root = document.documentElement;
+    if (!root) return;
+    // state 未就绪守卫：SettingPanel.init() 在 $(document).ready 里才填充 state，
+    // 早于此的同步（tryReplaceRightSidebarEarly → ensureDarkReaderThemeSync）读到空 state
+    // 会按 false 处理——摘掉 early 刚打的类并把 sessionStorage 毒化为 'false'，
+    // 下次刷新 early 判定即失败 → 开屏闪浅。守卫期间保持 early 注入状态并写入 'true'。
+    if (!SettingPanel.state || !('enableCustomDarkTheme' in SettingPanel.state)) {
+      try { sessionStorage.setItem(XDEX_DARK_SESSION_KEY, 'true'); } catch (e) {}
+      return;
+    }
+    const on = isCustomDarkActive();
+    console.log('[xdex-theme-sync] stateLoaded=' + ('enableCustomDarkTheme' in (SettingPanel.state || {})) + ' on=' + on + ' dr=' + isDarkReaderActive() + ' hadEarlyClass=' + root.classList.contains('xdex-custom-dark'));
+    // 维护会话记忆：下次刷新 document-start 阶段同步可读，避免等异步 GM 存储造成闪浅
+    try { sessionStorage.setItem(XDEX_DARK_SESSION_KEY, on ? 'true' : 'false'); } catch (e) {}
+    root.classList.toggle('xdex-custom-dark', on);
+    document.documentElement.style.colorScheme = (on || isDarkReaderActive()) ? 'dark' : 'light';
+    if (on) {
+      // early fallback 已完成首帧使命：完整规则接管后删除（避免两份样式冲突）
+      const early = document.getElementById('xdex-custom-theme-early');
+      if (early) early.remove();
+      refreshCustomDarkThemeStyle();
+      scheduleRefreshCustomDarkTheme(); // 首轮枚举完成后（含 fetch 兜底）再补一次完整表
+    } else {
+      const s = document.getElementById('xdex-custom-theme');
+      if (s) s.textContent = '';
+      const early = document.getElementById('xdex-custom-theme-early');
+      if (early) early.remove();
+    }
+  }
+  // —— 深色配色算法（方案C）：不维护映射表，按 Dark Reader 规律做 HSL 变换 ——
+  // 规律（由 DR 实测映射反推）：色相保持；亮度反转并压缩（亮→暗乘 0.16~0.22，暗→亮乘 0.85）；
+  // 饱和度乘 0.8；低饱和(S<0.1)统一转 210° 微蓝灰（S≈0.02~0.08）
+  function xdexHexToRgb(hex) {
+    let h = String(hex || '').replace(/^#/, '');
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function xdexRgbToHex(r, g, b) {
+    const c = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+    return '#' + c(r) + c(g) + c(b);
+  }
+  function xdexRgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) return [0, 0, l];
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h;
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+    return [h, s, l];
+  }
+  function xdexHslToRgb(h, s, l) {
+    if (s === 0) { const v = l * 255; return [v, v, v]; }
+    const hue2 = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [hue2(p, q, h + 1 / 3) * 255, hue2(p, q, h) * 255, hue2(p, q, h - 1 / 3) * 255];
+  }
+  // 原色 → 深色主题色：亮变暗、暗变亮、饱和压缩、灰阶转微蓝灰
+  function xdexDarkColor(hex) {
+    const rgb = xdexHexToRgb(hex);
+    if (!rgb) return null;
+    const [h, s, l] = xdexRgbToHsl(rgb[0], rgb[1], rgb[2]);
+    if (l > 0.93) {
+      // 近白底（#ffe/#fff 页面底）→ 一律中性化为深底（DR 实测同样处理）
+      const [r, g, b] = xdexHslToRgb(210 / 360, 0.02, 0.16);
+      return xdexRgbToHex(r, g, b);
+    }
+    if (s < 0.1) {
+      if (l >= 0.5 && l <= 0.78) {
+        // 中灰（#999/#aaa 级）→ 保持中亮，仅转微蓝灰（DR 实测：#999→#a29b92，不反转为深底）
+        const [r, g, b] = xdexHslToRgb(210 / 360, 0.07, Math.min(0.66, l + 0.02));
+        return xdexRgbToHex(r, g, b);
+      }
+      // 其余灰阶 → 按原亮度提亮为蓝灰（DR 映射规律：#707070→#9c958b 是提亮而非压暗）
+      const dark = l < 0.1 ? 0.07 : (l < 0.3 ? 0.35 : Math.min(0.72, l + 0.22));
+      const [r, g, b] = xdexHslToRgb(210 / 360, 0.08, dark);
+      return xdexRgbToHex(r, g, b);
+    }
+    // 亮度反转压缩：亮→暗区，暗→亮区
+    let l2;
+    if (l >= 0.5) l2 = 0.5 - (l - 0.5) * 0.62;   // 0.97→0.19、0.89→0.25、0.73→0.42
+    else l2 = 0.5 + (0.5 - l) * 0.85;             // 0.25→0.69、0.37→0.56、0.43→0.62
+    const s2 = Math.min(1, s * 0.8);
+    const [r, g, b] = xdexHslToRgb(h, s2, l2);
+    return xdexRgbToHex(r, g, b);
+  }
+  // 前景白化：正文类文字不保色相，向白灰收敛（主流深色主题策略，可读性优先）
+  // l2 = 亮度反转后与目标白灰按比例混合；饱和度随混合比例同步衰减
+  function xdexDarkForeground(hex) {
+    const rgb = xdexHexToRgb(hex);
+    if (!rgb) return null;
+    const [h, s, l] = xdexRgbToHsl(rgb[0], rgb[1], rgb[2]);
+    if (l > 0.93 || s < 0.1) return xdexDarkColor(hex); // 底色/灰阶走通用分支
+    let l2 = l >= 0.5 ? 0.5 - (l - 0.5) * 0.62 : 0.5 + (0.5 - l) * 0.85;
+    // 混入 88% 目标白灰 #d8d7d4（L≈0.85, S≈0.02），仅保留 12% 原反转结果（近乎纯白灰，粉调不可见）
+    const mixL = l2 * 0.12 + 0.85 * 0.88;
+    const mixS = s * 0.8 * 0.12;
+    const [r, g, b] = xdexHslToRgb(h, mixS, mixL);
+    return xdexRgbToHex(r, g, b);
+  }
+  // 页面原生样式表来源（与站点实际引用一致；uikit 为 CDN 时走 fetch 兜底）
+  const XDEX_DARK_THEME_SHEET_URLS = [
+    location.origin + '/Public/Css/h.desktop.css',
+    'https://www.nmbxd1.com/Public/Css/h.desktop.css'
+  ];
+  // 从 CSS 文本收集颜色值并生成 :root.xdex-custom-dark 全局反转规则
+  function xdexCollectColorsFromCssText(cssText, colorSet) {
+    if (!cssText) return;
+    const re = /(#[0-9a-fA-F]{3}\b|#[0-9a-fA-F]{6}\b|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*[\d.]+)?\s*\))/g;
+    let m;
+    while ((m = re.exec(cssText))) {
+      const token = m[1];
+      if (token.startsWith('#')) colorSet.add(token.toLowerCase());
+      else {
+        const nums = token.match(/\d+/g);
+        if (nums && nums.length >= 3) {
+          colorSet.add(xdexRgbToHex(+nums[0], +nums[1], +nums[2]).toLowerCase());
+        }
+      }
+    }
+  }
+  // 生成全局色彩反转规则：对页面全部颜色类做类名切换（性能远优于逐选择器覆盖）
+  const xdexDarkCache = new Map();
+  function xdexToDarkCached(hex) {
+    if (!xdexDarkCache.has(hex)) xdexDarkCache.set(hex, xdexDarkColor(hex) || hex);
+    return xdexDarkCache.get(hex);
+  }
+  function buildCustomDarkThemeStyleText(colorSet) {
+    const D = (hex) => xdexToDarkCached(hex);
+    const F = (hex) => xdexDarkForeground(hex) || D(hex); // 前景白化（正文可读性优先）
+    const lines = [
+      '/* generated by xdex custom dark (algorithm-based) */',
+      ':root.xdex-custom-dark { color-scheme: dark; }',
+      // 页面底与正文：正文文字走前景白化（可读性优先），底色走通用反转
+      // 注意：:root 即 html 本身，":root.xdex-custom-dark html" 是永不匹配的死选择器
+      'html.xdex-custom-dark, html.xdex-custom-dark body { background-color: ' + D('#ffe') + ' !important; color: ' + F('#800000') + ' !important; }',
+      // 左侧菜单（不用白化：保留原反转色彩）
+      ':root.xdex-custom-dark #h-menu { background-color: ' + D('#fff') + ' !important; color: ' + D('#c00') + ' !important; border-right-color: ' + D('#000') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-nav-parent-header, :root.xdex-custom-dark #h-menu #h-menu-content .h-nav-header { color: ' + D('#c00') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-active { background: ' + D('#ea8') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-active a { color: ' + D('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item a { color: ' + D('#07d') + ' !important; }',
+      ':root.xdex-custom-dark #h-menu #h-menu-content .h-nav-item:hover a { color: ' + D('#059') + ' !important; }',
+      // 底部导航与工具
+      ':root.xdex-custom-dark #h-bottom-nav { background: ' + D('#fff') + ' !important; border-top-color: ' + D('#000') + ' !important; }',
+      ':root.xdex-custom-dark #h-tool .h-tool-btn { background: ' + D('#b00') + ' !important; }',
+      // 正文信息行：标题/邮箱保色相（功能性红绿）；info 通用通配不再扫掉彩色（红字绿字变灰的根因）
+      ':root.xdex-custom-dark #h-content h2.h-title, :root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-title, :root.xdex-custom-dark .h-threads-info .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .h-threads-item .h-threads-info .h-threads-info-email, :root.xdex-custom-dark .h-threads-info .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
+      // SAGE 警示行（uk-text-danger 原生红）保持警示红，不走 tips 灰
+      ':root.xdex-custom-dark .h-threads-item .h-threads-tips.uk-text-danger, :root.xdex-custom-dark .h-threads-tips.uk-text-danger { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .h-threads-item .h-threads-tips, :root.xdex-custom-dark .h-threads-tips { color: ' + F('#707070') + ' !important; }',
+      // 回复块
+      ':root.xdex-custom-dark .h-threads-item .h-threads-item-replies .h-threads-item-reply .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
+      // 信息行链接与正文链接（No.xxx/举报/回应/订阅/外部链接）：uikit 全局 a 色 #1e87f0 落在深底上偏暗，
+      // 统一提亮至与分页/浮窗一致的亮蓝（DR 级观感）
+      ':root.xdex-custom-dark .h-threads-item .h-threads-info a, :root.xdex-custom-dark .h-threads-content a { color: ' + D('#07d') + ' !important; }',
+      // PO主标记（uk-text-primary，uikit 主题蓝）：同样提亮
+      ':root.xdex-custom-dark .h-threads-item .uk-text-primary { color: ' + D('#07d') + ' !important; }',
+      // 分页
+      ':root.xdex-custom-dark .h-pagination li a, :root.xdex-custom-dark .h-pagination li span { color: ' + D('#07d') + ' !important; background: ' + D('#fff') + ' !important; }',
+      ':root.xdex-custom-dark .h-pagination li:hover a { color: ' + D('#059') + ' !important; }',
+      ':root.xdex-custom-dark .h-pagination li.uk-active a, :root.xdex-custom-dark .h-pagination li.uk-active span { color: ' + F('#800000') + ' !important; background: ' + D('#b00') + ' !important; }',
+      // 引用号
+      ':root.xdex-custom-dark font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
+      // 隐藏文本
+      ':root.xdex-custom-dark .h-hidden-text { background: ' + D('#666') + ' !important; color: transparent !important; }',
+      ':root.xdex-custom-dark .h-hidden-text:hover { background: transparent !important; color: ' + F('#800000') + ' !important; }',
+      // 原生引用浮窗与发帖表单标题栏
+      ':root.xdex-custom-dark #h-ref-view .h-threads-item-ref, :root.xdex-custom-dark #h-ref-view .uk-container { background: ' + D('#f0e0d6') + ' !important; }',
+      ':root.xdex-custom-dark #h-post-form .h-post-form-title { background: ' + D('#ea8') + ' !important; }',
+      // —— 脚本自建 UI 深色（修复覆盖不足）：通用前景/背景反转 ——
+      ':root.xdex-custom-dark .qp-quote { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .qp-header .qp-level, :root.xdex-custom-dark .qp-header .qp-back, :root.xdex-custom-dark .qp-header .qp-jump { color: ' + F('#800000') + ' !important; }',
+      // 颜文字面板
+      ':root.xdex-custom-dark .kaomoji-panel, :root.xdex-custom-dark .kaomoji-popup, :root.xdex-custom-dark .kaomoji-dropdown { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#000') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-panel *, :root.xdex-custom-dark .kaomoji-popup *, :root.xdex-custom-dark .kaomoji-dropdown * { color: ' + F('#800000') + ' !important; }',
+      // 回复浮窗内的原生片段：默认白化，但功能性彩色（title/email/引用/链接/SAGE）保色相
+      ':root.xdex-custom-dark .qp-body .h-threads-info, :root.xdex-custom-dark .qp-body .h-threads-info *, :root.xdex-custom-dark .qp-body .h-threads-content, :root.xdex-custom-dark .qp-body .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-tips.uk-text-danger { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body .h-threads-info a, :root.xdex-custom-dark .qp-body .h-threads-content a { color: ' + D('#07d') + ' !important; }',
+      ':root.xdex-custom-dark .qp-body { background: ' + D('#ffe') + ' !important; }',
+      // 预览框（发送前实时预览）：与回复块完全同构 —— 本体兜底深棕底+浅字，
+      // info/content 白化后跟保色规则（链接/PO主/引用绿），特异性白化规则更高
+      ':root.xdex-custom-dark .h-preview-box { background: ' + D('#f0e0d6') + ' !important; color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-item-reply-main { background: ' + D('#f0e0d6') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info, :root.xdex-custom-dark .h-preview-box .h-threads-info *, :root.xdex-custom-dark .h-preview-box .h-threads-content, :root.xdex-custom-dark .h-preview-box .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info a, :root.xdex-custom-dark .h-preview-box .h-threads-content a { color: ' + D('#07d') + ' !important; }',
+      ':root.xdex-custom-dark .h-preview-box .uk-text-primary { color: ' + D('#07d') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-modal { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-modal h3 { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-modal p { color: ' + F('#707070') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-modal p font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-list [data-cookie-id] { color: ' + F('#800000') + ' !important; background-color: ' + D('#fafafa') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-list .h-threads-info-uid { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #cookie-confirm-actions button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border: 1px solid ' + D('#bbb') + ' !important; border-radius: 6px; cursor: pointer; }',
+      // 设置面板分组输入行（标记/屏蔽/只看/常用串/订阅/关键词）：容器去白底、输入框深底浅字、徽标/删除钮暗底
+      ':root.xdex-custom-dark #marked-inputs-container > div > div, :root.xdex-custom-dark #blocked-inputs-container > div > div, :root.xdex-custom-dark #favorite-thread-inputs-container > div > div, :root.xdex-custom-dark #subscription-feed-inputs-container > div > div, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container > div > div, :root.xdex-custom-dark #blocked-keyword-inputs-container > div > div { background: ' + D('#fafafa') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      // input 深底浅字，但排除 xdex-switch（正则开关保红/蓝语义）
+      ':root.xdex-custom-dark #marked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #favorite-thread-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #subscription-feed-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      // button 深底浅字，但排除 marked-color-swatch（保持用户选定的标记色）
+      ':root.xdex-custom-dark #marked-inputs-container button:not(.marked-color-swatch), :root.xdex-custom-dark #blocked-inputs-container button, :root.xdex-custom-dark #favorite-thread-inputs-container button, :root.xdex-custom-dark #subscription-feed-inputs-container button, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container button, :root.xdex-custom-dark #blocked-keyword-inputs-container button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      ':root.xdex-custom-dark #marked-inputs-container span, :root.xdex-custom-dark #blocked-inputs-container span, :root.xdex-custom-dark #favorite-thread-inputs-container span, :root.xdex-custom-dark #subscription-feed-inputs-container span, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container span, :root.xdex-custom-dark #blocked-keyword-inputs-container span { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; }',
+      // 常用串菜单（脚本自建侧栏）
+      ':root.xdex-custom-dark .xdex-fav-threads-menu, :root.xdex-custom-dark .xdex-fav-threads-menu * { background-color: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .xdex-fav-threads-menu .h-active, :root.xdex-custom-dark .xdex-fav-threads-menu .h-active * { background: ' + D('#ea8') + ' !important; }',
+      // 饼干切换模块：当前饼干名白色字体（含异常红色状态排除）
+      ':root.xdex-custom-dark #current-cookie-display { color: #d8d7d4 !important; }',
+      ':root.xdex-custom-dark #current-cookie-display[style*="red"], :root.xdex-custom-dark #current-cookie-display[style*="rgb(255, 0, 0)"] { color: #e85248 !important; }',
+      // 折叠占位按钮（发送表单可选项/关键词/饼干屏蔽折叠区通用）
+      ':root.xdex-custom-dark .xdex-placeholder.xdex-generic-toggle, :root.xdex-custom-dark .xdex-placeholder { background: ' + D('#fafafa') + ' !important; color: ' + F('#888') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      // 外部图床图片预览折叠容器（.injected-image-container / .iic-*）：内联浅灰系，深色下整块刺眼
+      ':root.xdex-custom-dark .injected-image-container { background: ' + D('#f9f9f9') + ' !important; border-color: ' + D('#ddd') + ' !important; }',
+      ':root.xdex-custom-dark .iic-header { background: ' + D('#f2f2f2') + ' !important; border-bottom-color: ' + D('#e6e6e6') + ' !important; }',
+      ':root.xdex-custom-dark .iic-title { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .iic-footer { background: ' + D('#f9f9f9') + ' !important; border-top-color: ' + D('#eee') + ' !important; }',
+      ':root.xdex-custom-dark .iic-more-btn-top, :root.xdex-custom-dark .iic-toggle-btn, :root.xdex-custom-dark .iic-more-btn-bottom { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#ccc') + ' !important; }',
+      ':root.xdex-custom-dark .iic-body img { border-color: ' + D('#ccc') + ' !important; }',
+      ':root.xdex-custom-dark .iic-body > div { color: ' + F('#707070') + ' !important; }',
+      // 颜文字选择框：原生 select 亮白 → 深色
+      ':root.xdex-custom-dark #h-emot-select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      ':root.xdex-custom-dark #h-emot-select option { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
+      // 颜文字触发按钮与键盘选中项
+      ':root.xdex-custom-dark .kaomoji-trigger { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item.kaomoji-active { background: #3a3d40 !important; }',
+      ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
+      // 悬浮底色：压过浅色源的 #f2f2f2，用深色中灰 + 白化前景
+      ':root.xdex-custom-dark .kaomoji-item:hover { background: #3a3d40 !important; }',
+      // 回应省略提示（warn_txt2）：站点原生 .warn_txt2 直接命中子元素，需单独白化（容器继承管不到）
+      ':root.xdex-custom-dark .warn_txt2 { color: ' + F('#707070') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-quick-sort, :root.xdex-custom-dark #h-emot-select ~ select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark html, :root.xdex-custom-dark body, :root.xdex-custom-dark #h-menu, :root.xdex-custom-dark .h-threads-item, :root.xdex-custom-dark .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }',
+      'html.xdex-theme-anim, html.xdex-theme-anim body, html.xdex-theme-anim #h-menu, html.xdex-theme-anim #h-content, html.xdex-theme-anim .h-threads-item, html.xdex-theme-anim .h-threads-item *, html.xdex-theme-anim .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }'
+    ];
+    return lines.join('\n');
+  }
+  function ensureCustomDarkThemeStyle(colorSet) {
+    const existing = document.getElementById('xdex-custom-theme');
+    const text = buildCustomDarkThemeStyleText(colorSet || new Set());
+    if (existing) { existing.textContent = text; return existing; }
+    const style = document.createElement('style');
+    style.id = 'xdex-custom-theme';
+    style.textContent = text;
+    document.head.appendChild(style);
+    return style;
+  }
+  // —— 样式表枚举：从页面原生 CSS 收集全部颜色，生成“原色→深色”CSS 变量表 + 通用覆盖 ——
+  function xdexCollectColorsFromStyleSheets(colorSet) {
+    try {
+      for (const sheet of document.styleSheets) {
+        let rules = null;
+        try { rules = sheet.cssRules; } catch (e) { /* 跨域样式表：cssRules 受限，走 fetch 兜底 */ }
+        if (rules) {
+          const drain = (list) => {
+            for (const rule of list) {
+              if (rule.type === 1 /* STYLE_RULE */ && rule.style) {
+                for (let i = 0; i < rule.style.length; i++) {
+                  const prop = rule.style[i];
+                  if (!/color|background|border|outline|shadow|fill|stroke/i.test(prop)) continue;
+                  const val = rule.style.getPropertyValue(prop);
+                  xdexCollectColorsFromCssText(val, colorSet);
+                }
+              } else if (rule.cssRules) {
+                drain(rule.cssRules);
+              }
+            }
+          };
+          drain(rules);
+        } else if (sheet.href && !colorSet.__fetched) {
+          // 跨域表：异步 fetch 后重建样式（不阻塞首次注入）
+          colorSet.__fetched = true;
+          fetch(sheet.href).then((r) => r.text()).then((txt) => {
+            const s2 = new Set();
+            xdexCollectColorsFromCssText(txt, s2);
+            refreshCustomDarkThemeStyle(s2);
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {}
+  }
+  // 生成“颜色变量表 + 按值替换”的通用覆盖：用 CSS 变量把每个原色挂到 :root，
+  // 再通过 attribute/class 无关的全局选择器无法按值匹配，故这里输出【每色一类】的变量表，
+  // 真正的按值替换交给 styleOverridesText（对常见结构性选择器做深色赋值）。
+  function xdexDarkVarsText(colorSet) {
+    const out = [];
+    for (const hex of colorSet) {
+      const dark = xdexToDarkCached(hex);
+      if (!dark || dark === hex) continue;
+      const varName = '--xdex-dark-' + hex.replace('#', '');
+      out.push(varName + ': ' + dark + ';');
+    }
+    return out.length ? ':root.xdex-custom-dark {\n  ' + out.join('\n  ') + '\n}' : '';
+  }
+  let refreshTimer = 0;
+  function refreshCustomDarkThemeStyle(extraColors) {
+    const colorSet = new Set(extraColors || []);
+    xdexCollectColorsFromStyleSheets(colorSet);
+    // 兜底核心色（防止样式表枚举失败时页面全白）
+    ['#ffe', '#fff', '#800000', '#789922', '#f0e0d6', '#07d', '#c00', '#000', '#059', '#ea8', '#999', '#cc1105', '#117743', '#b00', '#707070', '#666'].forEach((c) => colorSet.add(c));
+    const style = ensureCustomDarkThemeStyle(colorSet);
+    const varsText = xdexDarkVarsText(colorSet);
+    style.textContent = buildCustomDarkThemeStyleText(colorSet) + '\n' + varsText;
+  }
+  function scheduleRefreshCustomDarkTheme() {
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = 0;
+      refreshCustomDarkThemeStyle();
+    }, 400);
+  }
   function syncQuotePopupTheme() {
     const root = document.documentElement;
     if (!root) return;
     const dark = isDarkReaderActive();
-    root.classList.toggle('xdex-darkreader-active', dark);
-    const theme = getReplyOverlayThemeTokens(dark);
+    // 脚本 UI 暗色：DR 激活 或 自定义深色开启（复用现有 :root.xdex-darkreader-active 全部暗色规则）
+    const uiDark = dark || isCustomDarkActive();
+    root.classList.toggle('xdex-darkreader-active', uiDark);
+    syncCustomPageTheme();
+    // DR 激活时内联 !important 钉死必须退让：DR 反转后会重写这些属性，脚本钉死即优先级反超
+    if (dark) {
+      document.querySelectorAll('.qp-quote, .qp-body .qp-content-wrap, .qp-body .qp-content-wrap form, .qp-body .qp-content-wrap textarea[name="content"], .qp-reset-btn').forEach((el) => {
+        ['background', 'border-color', 'outline-color', 'box-shadow', 'color'].forEach((p) => { try { el.style.removeProperty(p); } catch (e) {} });
+      });
+    }
+    const theme = getReplyOverlayThemeTokens(uiDark);
     // CSS 变量兜底（未打开浮窗时也保持一致）
     root.style.setProperty('--xdex-qp-shell-bg', theme.shellBg);
     root.style.setProperty('--xdex-qp-form-bg', theme.formBg);
@@ -11362,9 +12492,12 @@ ${markedSwatchHtml}
     document.querySelectorAll('.qp-body .qp-content-wrap textarea[name="content"]').forEach((el) => {
       el.style.setProperty('background', theme.textareaBg, 'important');
     });
-    document.querySelectorAll('.qp-reset-btn').forEach((el) => {
-      el.style.setProperty('background', theme.resetBg, 'important');
-      el.style.setProperty('color', theme.resetColor, 'important');
+    document.querySelectorAll('.qp-reset-btn, .qp-close-all').forEach((el) => {
+      // 写 CSS 变量而非内联 color/background：内联 !important 会压过样式表 hover 规则，
+      // 导致悬浮时只有边框变绿、svg(currentColor) 不变色
+      el.style.setProperty('--xdex-qp-reset-bg', theme.resetBg);
+      el.style.setProperty('--xdex-qp-reset-color', theme.resetColor);
+      el.style.setProperty('--xdex-qp-reset-border', theme.resetBg);
     });
     document.querySelectorAll('.qp-body .qp-content-wrap .h-preview-box, .qp-body .qp-content-wrap .h-preview-box .h-threads-item, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-replies, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply, .qp-body .qp-content-wrap .h-preview-box .h-threads-item-reply-main').forEach((el) => {
       el.style.setProperty('background', theme.previewBg, 'important');
@@ -11384,7 +12517,8 @@ ${markedSwatchHtml}
     const observer = new MutationObserver(scheduleSync);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'class'],
+      // DR 实际写入含 fr-init-once 与 style 内联变量（实测）→ 必须盯，否则开 DR 后仍浅色
+      attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'fr-init-once', 'style', 'class'],
     });
     window.__xdexDarkReaderThemeObserver = observer;
     return observer;
@@ -11523,19 +12657,17 @@ ${markedSwatchHtml}
           .qp-body {
             flex: 0 0 auto; /* 贴内容高度，达上限后由 .qp-quote 整体滚动 */
             min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: visible;
           }
           /* 归位按钮 */
           .qp-reset-btn {
             position: fixed; right: 12px; bottom: 12px;
-            font-size: 20px; line-height: 1;
+            width: 30px; height: 30px; padding: 0;
+            display: none;
+            align-items: center; justify-content: center;
             color: var(--xdex-qp-reset-color); background: var(--xdex-qp-reset-bg);
-            padding: 6px 12px; border-radius: 6px; cursor: pointer;
+            border: 1px solid rgba(255,255,255,.35); border-radius: 8px; cursor: pointer;
             z-index: 9001; /* 比 overlay 高 */
             user-select: none;
-            display: none;
           }
           .qp-body .qp-content-wrap {
             display: flex;
@@ -11686,7 +12818,7 @@ ${markedSwatchHtml}
                       <div class="qp-drag-edge right"></div>
                       <div class="qp-resize-corner nw" data-dir="nw"></div>
                       <div class="qp-resize-corner ne" data-dir="ne"></div>
-                      <div class="qp-resize-corner sw" data-dir="sw"></div>
+              <div class="qp-reset-btn xdex-icon-btn" title="回复浮窗归位"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
                       <div class="qp-resize-corner se" data-dir="se"></div>
                       <div class="qp-body"></div>
                   </div>
@@ -12420,7 +13552,11 @@ ${markedSwatchHtml}
       scheduleReplyPanelAutoFit(ov);
       // 显示归位按钮
       const resetBtn = ov.querySelector('.qp-reset-btn');
-      if (resetBtn) resetBtn.style.display = 'block';
+      if (resetBtn) {
+        resetBtn.style.display = 'flex';
+        resetBtn.style.alignItems = 'center';
+        resetBtn.style.justifyContent = 'center';
+      }
       const ta = ov.querySelector('textarea[name="content"]');
 
       if (ta) {
@@ -12690,37 +13826,7 @@ ${markedSwatchHtml}
       const cur = getCurrentCookie();
       const cookieText = cur ? cur.name : '--';
       // 先放一个占位 ID，等刷新完成后再更新
-      previewBox.innerHTML = `
-        <div class="h-preview-box">
-          <div class="h-threads-item">
-            <div class="h-threads-item-replies">
-              <div class="h-threads-item-reply">
-                <div class="h-threads-item-reply-main">
-                  <div class="h-threads-img-box">
-                    <div class="h-threads-img-tool uk-animation-slide-top">
-                      <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                      <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
-                      <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
-                      <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
-                    </div>
-                    <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
-                  </div>
-                  <div class="h-threads-info">
-                    <span class="h-threads-info-title"></span>
-                    <span class="h-threads-info-email"></span>
-                    <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
-                    <span class="h-threads-info-uid">ID:${cookieText}</span>
-                    <!-- <span class="h-threads-info-report-btn">
-                      [<a href="/f/值班室" target="_blank">举报</a>]
-                    </span> -->
-                    <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
-                  </div>
-                  <div class="h-threads-content"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          </div>`;
+      previewBox.innerHTML = buildEnhanceIslandPreviewHtml(false);
       if (typeof enableHDImage === 'function') {
         enableHDImage(previewBox);
       }
@@ -14861,6 +15967,7 @@ ${markedSwatchHtml}
               toast('本串默认饼干已失效，请重新选择');
               showCookieConfirmDialog(_threadId, (selectedHash) => {
                 setThreadCookiePref(_threadId, selectedHash);
+                if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
                 _doSend();
               }, () => { unlockSubmit(form); }, { mode: 'setDefault' });
               return;
@@ -14875,6 +15982,7 @@ ${markedSwatchHtml}
             // 不匹配 → 弹窗，预选偏好饼干
             showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
               if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
+              if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
               _doSend();
             }, () => { unlockSubmit(form); }, { preselectHash: _pref.hash });
             return;
@@ -16104,7 +17212,9 @@ ${markedSwatchHtml}
               const targetW = getPanelTargetWidth();
               const maxW = Math.max(ITEM_W, window.innerWidth - margin * 2);
               const finalW = Math.min(targetW, maxW);
-              panel.style.width = `${Math.round(finalW)}px`;
+              // 写入会脏化布局，紧随其后的 getBoundingClientRect 就退化成强制同步重排；值未变则不写
+              const nextW = `${Math.round(finalW)}px`;
+              if (panel.style.width !== nextW) panel.style.width = nextW;
               // 若当前不可见，临时显示用于测量
               const wasHidden = (panel.style.display === 'none' || panel.style.display === '');
               if (wasHidden) {
@@ -16127,8 +17237,10 @@ ${markedSwatchHtml}
               if (top + panelH > window.innerHeight - margin) {
                   top = Math.max(margin, window.innerHeight - margin - panelH);
               }
-              panel.style.left = `${Math.round(left)}px`;
-              panel.style.top = `${Math.round(top)}px`;
+              const nextLeft = `${Math.round(left)}px`;
+              const nextTop = `${Math.round(top)}px`;
+              if (panel.style.left !== nextLeft) panel.style.left = nextLeft;
+              if (panel.style.top !== nextTop) panel.style.top = nextTop;
               if (wasHidden) {
                 panel.style.visibility = '';
               }
@@ -16812,7 +17924,7 @@ ${markedSwatchHtml}
     const isDraftEnabled = () => getDraftEnabledNow();
     let draftAutosaveBound = false;
     // 预览区域 DOM
-    const previewHtml = buildEnhanceIslandPreviewHtml();
+    const previewHtml = buildEnhanceIslandPreviewHtml(true);
     //previewBox.outerHTML = previewHtml;
     // 引用插入函数（与原脚本一致）
     function enhanceNode(root) {
@@ -17180,8 +18292,10 @@ function 注册自动保存编辑() {
       }, () => ({ textLength: 正文框 && 正文框.val ? String(正文框.val() || '').length : 0 }));
     }
     function isPreviewPlaceholderInfoId(anchor) {
-      const text = anchor && anchor.textContent ? anchor.textContent.trim() : '';
-      return text === 'No.9999999' && !!(anchor && anchor.closest && anchor.closest('.h-preview-box'));
+      if (!anchor || !anchor.closest || !anchor.closest('.h-preview-box')) return false;
+      // 占位链接特征：无 href（模板刻意去掉 href 使其不可点击）或旧的伪协议 href
+      const href = anchor.getAttribute('href') || '';
+      return !href || /(^|\/)?:javascript:;?$/.test(href);
     }
     // 点击 No.xxxx 插入引用（保持原先光标与选择区逻辑）
     function 注册追记引用串号() {
@@ -17284,13 +18398,7 @@ function 注册自动保存编辑() {
           let $btn = $form.find('.xdex-clear-image-btn');
           if (hasFile) {
               if (!$btn.length) {
-                  $btn = $('<button type="button" class="xdex-clear-image-btn" title="清除图片">').html(XDEX_SVG_X);
-                  $btn.css({
-                      fontSize: '16px',
-                      lineHeight: '1',
-                      padding: '2px 6px',
-                      cursor: 'pointer'
-                  });
+                  $btn = $('<button type="button" class="xdex-clear-image-btn xdex-icon-btn" title="清除图片">').html(XDEX_SVG_X_ICON);
                   $file.after($btn);
                   $btn.on('click', function (e) {
                     e.stopPropagation();
@@ -17396,10 +18504,12 @@ function 注册自动保存编辑() {
         if (!timeStr) return;
         const date = new Date(timeStr);
         if (Number.isNaN(date.getTime())) return;
-        target.attr('data-xdex-original-time', timeStr);
-        target.attr('title', timeStr);
+        // 写前先比较：相对时间实际一分钟才变一次，无条件写 attr/text 会让每 5s 的全量遍历把整页版面弄脏，
+        // 紧接着的 rect 读取就退化成强制同步重排（表现为每 5s 一次可感知微顿）
+        if (target.attr('data-xdex-original-time') !== timeStr) target.attr('data-xdex-original-time', timeStr);
+        if (target.attr('title') !== timeStr) target.attr('title', timeStr);
         const friendlyTime = getFriendlyTime(timeStr);
-        target.text(friendlyTime);
+        if (target.text() !== friendlyTime) target.text(friendlyTime);
       });
     }
     function getTimeDisplayMode() {
@@ -17417,7 +18527,7 @@ function 注册自动保存编辑() {
       targets.each(function () {
         const target = $(this);
         const timeStr = target.attr('data-xdex-original-time') || target.attr('title');
-        if (timeStr) target.text(timeStr);
+        if (timeStr && target.text() !== timeStr) target.text(timeStr); // 同样写前比较，避免无变化的整页脏化
       });
     }
     function applyTimeDisplayMode(root = document) {
@@ -17703,7 +18813,7 @@ function 注册自动保存编辑() {
                 <span class="xdex-cookie-check-area" style="display:flex;align-items:center;gap:4px;flex-shrink:0;"></span>
                 <div class="reply-mode-toggle" style="display:flex;flex-direction:row;align-items:center;gap:6px;">
                   <span class="js-reply-extra" style="display:none;display:inline-flex;align-items:center;"></span>
-                  <button type="button" class="js-toggle-mode" style="display:inline-flex;flex:0 0 auto;align-items:center;width:auto;padding:2px 8px;font-size:13px;cursor:pointer;">切换</button>
+                  <button type="button" class="js-toggle-mode xdex-reply-mode-btn" title="当前为&quot;回复&quot;模式，点击切换为&quot;发串&quot;模式">${XDEX_SVG_SWITCH}</button>
                 </div>
               </div>
             </div>
@@ -17830,7 +18940,7 @@ function 注册自动保存编辑() {
             <span class="xdex-cookie-check-area" style="display:flex;align-items:center;gap:4px;flex-shrink:0;"></span>
             <div class="reply-mode-toggle" style="display:flex;flex-direction:row;align-items:center;gap:6px;">
               <span class="js-reply-extra" style="display:none;display:inline-flex;align-items:center;"></span>
-              <button type="button" class="js-toggle-mode" style="display:inline-flex;flex:0 0 auto;align-items:center;width:auto;padding:2px 8px;font-size:13px;cursor:pointer;">切换</button>
+              <button type="button" class="js-toggle-mode xdex-reply-mode-btn" title="当前为&quot;回复&quot;模式，点击切换为&quot;发串&quot;模式">${XDEX_SVG_SWITCH}</button>
             </div>
           </div>
         </div>
@@ -17862,8 +18972,7 @@ function 注册自动保存编辑() {
       $row.find('.js-reply-mode-text').text(boardBaseName ? (boardBaseName + '-发串') : '板块-发串');
         window.replyModeState = { mode: '发串', extra: null };
         // 发串模式不需要饼干偏好
-        const _area = document.querySelector('.xdex-cookie-check-area');
-        if (_area) _area.innerHTML = '';
+        clearCookieCheckSwitch();
 
         if (!silent) {
           toast('已切换到 发串 模式');
@@ -17895,9 +19004,9 @@ function 注册自动保存编辑() {
           if (typeof initContent === 'function') { try { initContent(root); } catch(e){} }
           //if (typeof autoHideRefView === 'function') { try { autoHideRefView(root); } catch(e){} }
           toast('已自动填充回复串号，请确认无误后再发送');
-          // 串号变化 → 更新饼干偏好开关
-          if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(pendingReplyParams.tid);
+          // 串号变化 → 先解析偏好再重建开关，避免开关渲染与偏好脱节
           if (typeof initThreadCookiePref === 'function') initThreadCookiePref(pendingReplyParams.tid);
+          if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(pendingReplyParams.tid);
           pendingReplyParams = null; // 用过一次就清空
           autofilled = true;
         } else {
@@ -17908,6 +19017,8 @@ function 注册自动保存编辑() {
           if (!isTimeline) {
             $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
           }
+          // 无串上下文（切回回复模式但未指定串）：开关同样不得残留上一串状态
+          clearCookieCheckSwitch();
         }
         // 插入“临时/连续”按钮（若尚未插入）
         const $extra = $row.find('.reply-mode-toggle .js-reply-extra');
@@ -17915,7 +19026,7 @@ function 注册自动保存编辑() {
           // 包裹容器
           const $wrapper = $('<div class="xdex-file-wrapper" style="display:flex;align-items:center;justify-content:space-between;width:100%;"></div>');
           // “×”按钮
-          const $btnReset = $('<button type="button" class="js-reset" style="margin-right:6px;display:inline-flex;align-items:center;">').html(XDEX_SVG_X);
+          const $btnReset = $('<button type="button" class="js-reset xdex-reply-mode-btn" title="重置回复目标" style="margin-right:6px;">').html(XDEX_SVG_X_ICON);
           $btnReset.on('click', function(){
             // 重置 hidden 值
             $formPost.find('input[name="resto"]').val('20011114');
@@ -17929,8 +19040,7 @@ function 注册自动保存编辑() {
               $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
             }
             // 重置饼干偏好开关
-            const checkArea = document.querySelector('.xdex-cookie-check-area');
-            if (checkArea) checkArea.innerHTML = '';
+            clearCookieCheckSwitch();
 
             // **清空正文 textarea**
             $formPost.find('textarea.h-post-form-textarea').val('');
@@ -17944,38 +19054,7 @@ function 注册自动保存编辑() {
               // 获取当前饼干
               const cur = getCurrentCookie();
               const cookieText = cur ? cur.name : '--';
-                previewBox.innerHTML = `
-                <div class="h-preview-box">
-                  <div class="h-threads-item">
-                    <div class="h-threads-item-replies">
-                      <div class="h-threads-item-reply">
-                        <div class="h-threads-item-reply-main">
-                          <div class="h-threads-img-box">
-                            <div class="h-threads-img-tool uk-animation-slide-top">
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-small uk-button-link"><i class="uk-icon-minus"></i>收起</span>
-                              <a href="javascript:;" class="h-threads-img-tool-btn h-threads-img-tool-large uk-button-link"><i class="uk-icon-search-plus"></i>查看大图</a>
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-left uk-button-link"><i class="uk-icon-reply"></i>向左旋转</span>
-                              <span class="h-threads-img-tool-btn h-threads-img-tool-right uk-button-link"><i class="uk-icon-share"></i>向右旋转</span>
-                            </div>
-                            <a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a>
-                          </div>
-                          <div class="h-threads-info">
-                            <span class="h-threads-info-title"></span>
-                            <span class="h-threads-info-email"></span>
-                            <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
-                            <span class="h-threads-info-uid">ID:${cookieText}</span>
-                            <!-- <span class="h-threads-info-report-btn">
-                              [<a href="/f/值班室" target="_blank">举报</a>]
-                            </span> -->
-                            <a href=":javascript:;" class="h-threads-info-id" target="_blank">No.42</a>
-                          </div>
-                          <div class="h-threads-content">
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  </div>`;
+                previewBox.innerHTML = buildEnhanceIslandPreviewHtml(false);
               if (typeof enableHDImage === 'function') {
                 enableHDImage(previewBox);
               }
@@ -17984,15 +19063,15 @@ function 注册自动保存编辑() {
             toast('已重置');
           });
           // “临时/连续”按钮
-          const $btnExtra = $('<button type="button" class="js-extra" data-extra="临时" style="display:inline-flex; flex:0 0 auto; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;">临时</button>');
+          const $btnExtra = $('<button type="button" class="js-extra xdex-reply-mode-btn" data-extra="临时" title=\'当前为"临时"回复模式，点击切换为"连续"回复模式\'>').html(XDEX_SVG_STOPWATCH);
           $btnExtra.on('click', function(){
             const cur = $(this).attr('data-extra');
             if (cur === '临时') {
-              $(this).attr('data-extra','连续').text('连续');
+              $(this).attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
               window.replyModeState = { mode: '回复', extra: '连续' };
               toast('已切换到 连续 回复模式');
             } else {
-              $(this).attr('data-extra','临时').text('临时');
+              $(this).attr('data-extra','临时').html(XDEX_SVG_STOPWATCH).attr('title','当前为"临时"回复模式，点击切换为"连续"回复模式');
               window.replyModeState = { mode: '回复', extra: '临时' };
               toast('已切换到 临时 回复模式');
             }
@@ -18009,6 +19088,12 @@ function 注册自动保存编辑() {
           toast('已切换到 回复 模式');
         }
       }
+      // 同步“切换”按钮悬浮提示（setMode 所有路径统一出口）
+      {
+        const modeName = window.replyModeState.mode === '发串' ? '发串' : '回复';
+        const nextName = modeName === '发串' ? '回复' : '发串';
+        $row.find('.js-toggle-mode').attr('title', '当前为"' + modeName + '"模式，点击切换为"' + nextName + '"模式');
+      }
       emitReplyModeChange();
     }
     // 绑定模式按钮（原先存在的行为）
@@ -18020,7 +19105,7 @@ function 注册自动保存编辑() {
       if (SettingPanel.state.replyExtraDefault === '连续') {
         // 模拟点击一次“临时/连续”按钮，或者直接设置
         window.replyModeState.extra = '连续';
-        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+        $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     } else if (PageType.isSpecialBoard()) {
       // 值班室/测试版块强制发串模式，方便快速举报/测试（不修改设置项，用户仍可手动切换回复模式)
@@ -18039,14 +19124,14 @@ function 注册自动保存编辑() {
       }
       if (SettingPanel.state.replyExtraDefault === '连续') {
         window.replyModeState.extra = '连续';
-        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+        $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     } else {
       setMode(SettingPanel.state.replyModeDefault, {silent: true});
       // extra 模式
       if (SettingPanel.state.replyExtraDefault === '连续') {
         window.replyModeState.extra = '连续';
-        $row.find('.js-extra').attr('data-extra','连续').text('连续');
+        $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     }
     // 切换按钮逻辑（若存在切换按钮）
@@ -18069,6 +19154,8 @@ function 注册自动保存编辑() {
           ? (timelineNameMap[timelineId] || '时间线')
           : (boardBaseName || '板块');
         $('.js-reply-mode-row .js-reply-mode-text').text(`${displayName}-快速回复`);
+        // 串上下文已清除，饼干偏好开关必须一并清空：否则残留上一串的默认饼干状态与齿轮
+        clearCookieCheckSwitch();
         // 广播“临时回复发送成功”
         document.dispatchEvent(new CustomEvent('tempReplySuccess', {
           detail: { key: e.detail?.key, tid: e.detail?.tid }
@@ -18119,9 +19206,9 @@ function 注册自动保存编辑() {
                 `<font color="#789922" data-darkreader-inline-color="" style="--darkreader-inline-color: var(--darkreader-text-789922, #aec66f);">No.${tid}</font>`
               );
 
-              // 串号变化 → 更新饼干偏好开关
-              if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(tid);
+              // 串号变化 → 先解析偏好再重建开关，避免开关渲染与偏好脱节
               if (typeof initThreadCookiePref === 'function') initThreadCookiePref(tid);
+              if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(tid);
 
               const root = $replyModeText[0];
               if (typeof initExtendedContent === 'function') { try { initExtendedContent(root); } catch(e){} }
@@ -18178,14 +19265,24 @@ function 注册自动保存编辑() {
     function bindBoardQuickReplyRefresh() {
       document.addEventListener('tempReplySuccess', handleBoardQuickReplyRefresh);
       document.addEventListener('contReplySuccess', handleBoardQuickReplyRefresh);
+      document.addEventListener('xdexBoardThreadRefresh', handleBoardQuickReplyRefresh);
+      // 按钮触发的刷新：同串并发去重（回复后的自动增量不受影响）
+      const _boardRefreshInflight = new Set();
       // === v3: API 拉取末页+倒数第二页，位置感知增量合并，滚动位置保持 ===
       function handleBoardQuickReplyRefresh(e) {
         // 只在 板块页 或 时间线 页生效
         if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
+        const btn = (e.detail && e.detail.btn) || null;
+        const fromButton = !!(e.detail && e.detail.fromButton);
         const tid = e.detail?.tid || currentReplyTid;
         if (!tid) {
           toast('订阅失败：未识别到当前串号');
           return;
+        }
+        if (fromButton) {
+          if (_boardRefreshInflight.has(String(tid))) return;
+          _boardRefreshInflight.add(String(tid));
+          if (btn) { btn.disabled = true; btn.classList.add('xdex-icon-loading'); }
         }
         const cfg2 = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
           ? SettingPanel.state : null;
@@ -18256,7 +19353,7 @@ function 注册自动保存编辑() {
               // 无回复区串：页面从未展示过回复；排除 PO 主帖（Replies[0].id === tid）后即为新增回复
               newReplies = tailReplies.filter(r => r && Number(r.id) !== Number(tid));
             }
-            if (!newReplies.length) return;
+            if (!newReplies.length) { if (fromButton) toast('已是最新回复'); return; }
             // Step 5: 保存滚动位置（插入前）
             const scrollEl = document.scrollingElement || document.documentElement;
             const scrollTopBefore = scrollEl.scrollTop;
@@ -18324,12 +19421,16 @@ function 注册自动保存编辑() {
               try { if (cfg2) refreshFilterDisplay(cfg2); } catch (err) {}
               try { if (typeof enablePostExpand === 'function') enablePostExpand(document); } catch (err) {}
             }, 50);
+            if (fromButton) toast('已更新 ' + newReplies.length + ' 条回复');
             if (e.type === 'tempReplySuccess') currentReplyTid = null;
           } catch (err) {
             console.warn('[board-quick-reply] API refresh failed', err);
             toast('刷新板块串失败');
           }
-        })();
+        })().finally(() => {
+          if (btn) { btn.disabled = false; btn.classList.remove('xdex-icon-loading'); }
+          if (fromButton) _boardRefreshInflight.delete(String(tid));
+        });
       }
       // 构建 API 回复的 DOM 节点（匹配页面原生 .h-threads-item-reply 结构）
       function buildApiReplyNode(reply, threadId, opUserHash) {
@@ -18394,6 +19495,49 @@ function 注册自动保存编辑() {
     // 统一调用
     bindReplyQuoteLinks();
     bindBoardQuickReplyRefresh();
+    bindBoardThreadRefreshButtons(document);
+  }
+  // tag 15 子功能：板块页/时间线串卡片「获取最新回复」按钮
+  // 复用 handleBoardQuickReplyRefresh 的增量刷新；放在展开/收起按钮(.js-toggle-mode)之后
+  function bindBoardThreadRefreshButtons(root) {
+    if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
+    const scanRoot = (root && typeof root.querySelectorAll === 'function') ? root : document;
+    const items = [];
+    if (scanRoot.classList && scanRoot.classList.contains('h-threads-item-index')) items.push(scanRoot);
+    scanRoot.querySelectorAll('.h-threads-item-index').forEach(it => { if (items.indexOf(it) < 0) items.push(it); });
+    items.forEach(item => {
+      const infoBar = item.querySelector('.h-threads-info');
+      if (!infoBar) return;
+      let tid = item.getAttribute('data-threads-id');
+      if (!tid) {
+        const idEl = infoBar.querySelector('.h-threads-info-id');
+        const m = idEl && (idEl.textContent || '').match(/\d+/);
+        if (m) tid = m[0];
+      }
+      if (!tid) return;
+      let btn = infoBar.querySelector(':scope > .xdex-board-refresh-btn');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'xdex-icon-btn xdex-board-refresh-btn';
+        btn.title = '获取最新回复';
+        btn.style.cssText = 'min-width:1em;text-align:center;margin-left:4px;vertical-align:middle;';
+        btn.setAttribute('data-tid', tid);
+        btn.innerHTML = XDEX_ICON_SYNC;
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          const t = btn.getAttribute('data-tid');
+          if (!t) return;
+          document.dispatchEvent(new CustomEvent('xdexBoardThreadRefresh', { detail: { tid: t, fromButton: true, btn: btn } }));
+        });
+        infoBar.appendChild(btn);
+      } else {
+        btn.setAttribute('data-tid', tid);
+      }
+      // 定位到展开/收起按钮之前（本按钮加载更快，置于左侧；enablePostExpand 可能晚于本函数执行，故每次重排）
+      const toggle = infoBar.querySelector(':scope > .js-toggle-mode');
+      if (toggle && toggle.previousElementSibling !== btn) toggle.insertAdjacentElement('beforebegin', btn);
+    });
   }
   // === 通用：确保某个元素被折叠（幂等） ===
   function ensureCollapsed($elem, hint) {
@@ -18641,7 +19785,7 @@ function 注册自动保存编辑() {
         }
         // 触发收起
         const btn = lastExpandedItem.querySelector('.h-threads-info .js-toggle-mode');
-        if (btn) btn.textContent = '展开';
+        if (btn) setPostExpandToggleVisual(btn, false);
         collapseWithoutShift(lastExpandedItem);
         lastExpandedItem = null;
         return;
@@ -18679,7 +19823,7 @@ function 注册自动保存编辑() {
       }
       if (target && !target.classList.contains('xdex-post-expand-collapsed')) {
         const btn = target.querySelector('.h-threads-info .js-toggle-mode');
-        if (btn) btn.textContent = '展开';
+        if (btn) setPostExpandToggleVisual(btn, false);
         target.classList.add('xdex-post-expand-collapsed');
         collapseWithoutShift(target);
       }
@@ -18698,9 +19842,9 @@ function 注册自动保存编辑() {
       if (infoBar.querySelector('.js-toggle-mode')) return;
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'js-toggle-mode';
-      btn.style.cssText = 'display:inline-flex; align-items:center; width:auto; padding:2px 8px; font-size:13px; cursor:pointer;';
-      btn.textContent = expandAllMode && !item.classList.contains('xdex-post-expand-collapsed') ? '收起' : '展开';
+      btn.className = 'js-toggle-mode xdex-icon-btn';
+      btn.style.cssText = 'min-width:1em;text-align:center;vertical-align:middle;margin-left:4px;';
+      setPostExpandToggleVisual(btn, expandAllMode && !item.classList.contains('xdex-post-expand-collapsed'));
       btn.addEventListener('click', e => {
         e.stopPropagation();
         const isAllMode = document.documentElement.classList.contains('xdex-post-expand-all');
@@ -18708,10 +19852,10 @@ function 注册自动保存编辑() {
           const willExpand = item.classList.contains('xdex-post-expand-collapsed');
           if (willExpand) {
             item.classList.remove('xdex-post-expand-collapsed');
-            btn.textContent = '收起';
+            setPostExpandToggleVisual(btn, true);
             lastExpandedItem = item;
           } else {
-            btn.textContent = '展开';
+            setPostExpandToggleVisual(btn, false);
             item.classList.add('xdex-post-expand-collapsed');
             collapseWithoutShift(item);
             if (lastExpandedItem === item) lastExpandedItem = null;
@@ -18721,10 +19865,10 @@ function 注册自动保存编辑() {
         const willExpand = !item.classList.contains('expanded');
         if (willExpand) {
           item.classList.add('expanded');
-          btn.textContent = '收起';
+          setPostExpandToggleVisual(btn, true);
           lastExpandedItem = item;
         } else {
-          btn.textContent = '展开';
+          setPostExpandToggleVisual(btn, false);
           collapseWithoutShift(item);
           if (lastExpandedItem === item) lastExpandedItem = null;
         }
@@ -20654,6 +21798,7 @@ function 注册自动保存编辑() {
   const THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300;
   const THREAD_HISTORY_LIVE_RENDER_MAX_WAIT = 1500;
   const THREAD_HISTORY_REVISIT_DWELL_MS = 5000;
+  const HISTORY_SEARCH_INPUT_DEBOUNCE_MS = 300;
   const POST_HISTORY_STORAGE_KEY = 'xdex_post_history';
   const POST_HISTORY_STORE_VERSION = 1;
   // const POST_HISTORY_LIMIT = 500;
@@ -20885,9 +22030,27 @@ function 注册自动保存编辑() {
     Object.keys(store.items).forEach(key => {
       const item = store.items[key];
       const idx = store.index[key];
-      // 失步自愈: index.lastVisitedAt 与 item 不一致(历史合并缺陷的存量脏数据)时重建
-      if (!idx || Number(idx.lastVisitedAt) !== Number(item.lastVisitedAt)) {
+      // 失步自愈:指纹覆盖 searchText 与谓词来源字段,任一变更即重建;存量无 fp 的索引首次读取补齐
+      if (!idx || idx.fp !== threadHistoryIndexFingerprint(item)) {
         store.index[key] = buildThreadHistoryIndexEntry(item);
+      }
+      // 页码一致性自愈: 修复 page=97/maxVisitedPage=97/url=?page=86/lastKnownPage=86 类自相矛盾的存量脏数据
+      // (WebDAV 裸展开或过时快照钳制的产物)。不变量: 串页数只增不减 → maxVisitedPage/lastKnownPage 只允许抬升
+      {
+        const pageNum = Math.max(1, Number(item.page) || 1);
+        const maxVp = Math.max(pageNum, Number(item.maxVisitedPage) || 0);
+        const lastKp = Number(item.lastKnownPage) || 0;
+        let urlPage = 0;
+        if (item.url) {
+          const pu = parseThreadHistoryUrl(item.url);
+          urlPage = (pu && pu.page) || 0;
+        }
+        if (Number(item.maxVisitedPage) !== maxVp || (lastKp && lastKp < maxVp) || (urlPage && urlPage !== pageNum)) {
+          item.maxVisitedPage = maxVp;
+          if (!lastKp || lastKp < maxVp) item.lastKnownPage = maxVp;
+          // url 永远跟随 page(最近查看页): 双向脱钩都按 page 重建
+          if (!item.url || (urlPage && urlPage !== pageNum)) item.url = buildThreadHistoryPageUrl(item.mode, item.threadId, pageNum);
+        }
       }
       if (!seen.has(key)) {
         seen.add(key);
@@ -20909,16 +22072,24 @@ function 注册自动保存编辑() {
     }
     return store;
   }
+  // 归一化结果记忆化:检索随输入触发,写入远少于读取;缓存由 setThreadHistoryStore 与跨标签变更监听失效
+  let threadHistoryStoreCache = null;
+  function invalidateThreadHistoryStoreCache() { threadHistoryStoreCache = null; }
   function getThreadHistoryStore() {
+    if (threadHistoryStoreCache) return threadHistoryStoreCache;
+    let store;
     try {
-      return normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+      store = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
     } catch (e) {
-      return createDefaultThreadHistoryStore();
+      store = createDefaultThreadHistoryStore();
     }
+    threadHistoryStoreCache = store;
+    return store;
   }
   function setThreadHistoryStore(store) {
     const normalized = normalizeThreadHistoryStore(store);
     GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
+    threadHistoryStoreCache = normalized;
     notifyThreadHistoryStoreChanged('local-write', false);
     return normalized;
   }
@@ -20975,6 +22146,7 @@ function 注册自动保存编辑() {
     if (typeof GM_addValueChangeListener === 'function') {
       try {
         GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          invalidateThreadHistoryStoreCache();
           scheduleThreadHistoryLiveRender('gm-value-change', remote);
           syncFavoriteThreadsLinks();
         });
@@ -20992,6 +22164,7 @@ function 注册自动保存编辑() {
       version: POST_HISTORY_STORE_VERSION,
       // limit: POST_HISTORY_LIMIT,
       items: {},
+      index: {},
       tombstones: {},
       order: []
     };
@@ -21147,11 +22320,36 @@ function 注册自动保存编辑() {
     postHistoryDebugState.last = null;
     return postHistoryDebugState;
   };
+  // 检索索引指纹:仅拼接短标量字段,成本远低于构建 searchText(含全文);指纹一致即复用旧索引
+  function postHistoryIndexFingerprint(item) {
+    return [
+      item.id, item.postId, item.resto, item.threadId, item.fid, item.forumName,
+      item.title, item.name, item.email, item.userHash, item.status, item.type,
+      item.page, item.url, item.sourceUrl, item.imageFile, item.imageImg, item.imageExt,
+      item.contentHash, (item.contentText || '').length, (item.contentRaw || '').length
+    ].join('\u0001');
+  }
+  // 发言历史检索索引:与浏览历史同构,把检索期字符串拼接与正则判定前移到写入期
+  function buildPostHistoryIndexEntry(item) {
+    return {
+      fp: postHistoryIndexFingerprint(item),
+      searchText: buildPostHistorySearchText(item),
+      forumText: getPostHistoryForumSearchText(item),
+      type: item.type,
+      status: item.status,
+      fid: item.fid,
+      hasImage: !!item.imageFile,
+      isGif: /\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || '')),
+      hasZeroWidth: ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))
+    };
+  }
   function normalizePostHistoryStore(rawStore) {
     const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
     store.version = POST_HISTORY_STORE_VERSION;
     // store.limit = Number(store.limit) > 0 ? Number(store.limit) : POST_HISTORY_LIMIT;
     store.items = store.items && typeof store.items === 'object' ? store.items : {};
+    // 检索索引:存量数据无此字段,首次读取即补齐(派生数据,旧版本代码忽略不影响)
+    store.index = store.index && typeof store.index === 'object' ? store.index : {};
     // 墓碑: 与浏览历史同构。TTL 到期降级 purged; purged 超安全期清除; revivedAt 标记超期清除
     store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
     {
@@ -21191,11 +22389,14 @@ function 注册自动保存编辑() {
       item.contentHash = item.contentHash || hashPostHistoryText(item.contentText);
       item.page = Math.max(0, Number(item.page) || 0);
       store.items[key] = item;
+      const idx = store.index[key];
+      if (!idx || idx.fp !== postHistoryIndexFingerprint(item)) store.index[key] = buildPostHistoryIndexEntry(item);
       if (!seen.has(key)) {
         seen.add(key);
         store.order.push(key);
       }
     });
+    Object.keys(store.index).forEach(key => { if (!store.items[key]) delete store.index[key]; });
     store.order.sort((a, b) => {
       const av = Number(store.items[a] && store.items[a].submittedAt) || 0;
       const bv = Number(store.items[b] && store.items[b].submittedAt) || 0;
@@ -21227,12 +22428,19 @@ function 注册自动保存编辑() {
     }
     return store;
   }
+  // 同浏览历史:归一化结果记忆化,失效点在 setPostHistoryStore 与跨标签变更监听
+  let postHistoryStoreCache = null;
+  function invalidatePostHistoryStoreCache() { postHistoryStoreCache = null; }
   function getPostHistoryStore() {
+    if (postHistoryStoreCache) return postHistoryStoreCache;
+    let store;
     try {
-      return normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
+      store = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
     } catch (e) {
-      return createDefaultPostHistoryStore();
+      store = createDefaultPostHistoryStore();
     }
+    postHistoryStoreCache = store;
+    return store;
   }
   function isPostHistoryPanelOpen() {
     const cover = document.getElementById('sp_cover');
@@ -21254,7 +22462,8 @@ function 注册自动保存编辑() {
       pendingCount: postHistoryLiveRenderPendingCount,
       firstAt: postHistoryLiveRenderFirstAt
     });
-    if (!renderable) {
+    // 与浏览历史一致：模块未打开时不渲染，避免 WebDAV 合并触发全量历史渲染造成可用性检测刷屏
+    if (!active) {
       if (postHistoryLiveRenderTimer) clearTimeout(postHistoryLiveRenderTimer);
       postHistoryLiveRenderTimer = 0;
       postHistoryLiveRenderFirstAt = 0;
@@ -21286,6 +22495,7 @@ function 注册自动保存编辑() {
   function setPostHistoryStore(store) {
     const normalized = normalizePostHistoryStore(store);
     GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
+    postHistoryStoreCache = normalized;
     notifyPostHistoryStoreChanged('local-write', false);
     return normalized;
   }
@@ -21295,6 +22505,7 @@ function 注册自动保存编辑() {
     if (typeof GM_addValueChangeListener === 'function') {
       try {
         GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+          invalidatePostHistoryStoreCache();
           schedulePostHistoryLiveRender('gm-value-change', remote);
         });
       } catch (e) {
@@ -21477,27 +22688,28 @@ function 注册自动保存编辑() {
   function searchPostHistory(query, type) {
     const store = getPostHistoryStore();
     const tombs = store.tombstones || {};
+    const index = store.index || {};
     const selectedType = normalizePostHistoryType(type || postHistoryActiveType);
     const { filters, tokens } = parsePostHistorySearchQuery(query);
     return (store.order || [])
-      .map(key => ({ key, item: store.items[key] }))
-      .filter(result => {
-        // 回收站压制: 未复活墓碑的条目不在主列表显示
-        const tomb = tombs[result.key];
-        // 仅"无删除后新记录"的纯墓碑才隐藏; 重新添加/更新会重建 items 影子条目并带标识显示
-        if (tomb && !tomb.revivedAt && !store.items[result.key]) return false;
-        const item = result.item || {};
-        if (normalizePostHistoryType(item.type) !== selectedType) return false;
-        if (filters.statusFilters.length && !filters.statusFilters.includes(normalizePostHistoryStatus(item.status))) return false;
-        if (filters.fidFilters.length && !filters.fidFilters.includes(normalizePostHistoryFid(item.fid))) return false;
-        if (filters.forumFilters.length && !filters.forumFilters.every(value => getPostHistoryForumSearchText(item).includes(value))) return false;
-        if (filters.hasImage && !item.imageFile) return false;
-        if (filters.isGif && !/\.gif(?:$|[?#])/i.test(String(item.imageFile || item.imageExt || ''))) return false;
-        if (filters.hasZeroWidth && !ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))) return false;
+      .filter(key => {
+        const entry = index[key];
+        const item = store.items[key];
+        if (!entry || !item) return false;
+        // 回收站压制: 仅"无删除后新记录"的纯墓碑才隐藏; 重新添加/更新会重建 items 影子条目并带标识显示
+        const tomb = tombs[key];
+        if (tomb && !tomb.revivedAt && !item) return false;
+        if (entry.type !== selectedType) return false;
+        if (filters.statusFilters.length && !filters.statusFilters.includes(entry.status)) return false;
+        if (filters.fidFilters.length && !filters.fidFilters.includes(entry.fid)) return false;
+        if (filters.forumFilters.length && !filters.forumFilters.every(value => entry.forumText.includes(value))) return false;
+        if (filters.hasImage && !entry.hasImage) return false;
+        if (filters.isGif && !entry.isGif) return false;
+        if (filters.hasZeroWidth && !entry.hasZeroWidth) return false;
         if (filters.fieldFilters.length && !filters.fieldFilters.every(filter => getPostHistorySearchFieldText(item, filter.field).includes(filter.value))) return false;
-        const text = buildPostHistorySearchText(item);
-        return tokens.every(token => text.includes(token));
-      });
+        return tokens.every(token => entry.searchText.includes(token));
+      })
+      .map(key => ({ key, item: store.items[key] }));
   }
   function parsePostHistorySearchQuery(query) {
     const filters = { statusFilters: [], fidFilters: [], forumFilters: [], fieldFilters: [], hasImage: false, isGif: false, hasZeroWidth: false };
@@ -22024,7 +23236,7 @@ function 注册自动保存编辑() {
     updatePostHistoryRecord(localId, update);
     // 新串发布成功 → 自动写入串内饼干偏好
     if (type === 'thread' && update.userHash) {
-      try { setThreadCookiePref(id, update.userHash); } catch (e) {}
+      try { setThreadCookiePref(id, update.userHash); if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState(); } catch (e) {}
     }
     const resolver = postHistoryConfirmationMap.get(localId);
     if (!imageFile) {
@@ -22188,41 +23400,53 @@ function 注册自动保存编辑() {
   }
   function getThreadHistoryPaginationBounds(root = document) {
     const paginations = Array.from((root || document).querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination'));
-    const pagination = paginations.length ? paginations[paginations.length - 1] : null;
-    if (!pagination) return null;
-    const items = Array.from(pagination.querySelectorAll('li'));
-    const elements = Array.from(pagination.querySelectorAll('a, span'));
-    const parsedLinks = elements
-      .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
-      .filter(Boolean);
-    const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
-    const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
-    const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
-    const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
-    const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
-    const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
-    const numericPages = elements
-      .map(parseThreadHistoryPageNumberFromElement)
-      .filter(num => num > 0);
-    let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
-    if (!lastPage && nextItem && !nextHasLink) {
-      lastPage = activePage || Math.max(0, ...numericPages);
+    if (!paginations.length) return null;
+    // 无缝翻页会给每页追加一个克隆分页栏；HTTP 缓存可能返回旧页面 → 某些栏的"末页"过时偏小。
+    // 真实总页数 >= 任何栏显示的末页 → 跨所有栏取最大值，免疫缓存旧栏把 page/lastKnownPage 钢制回退
+    let best = null;
+    for (const pagination of paginations) {
+      const items = Array.from(pagination.querySelectorAll('li'));
+      const elements = Array.from(pagination.querySelectorAll('a, span'));
+      const parsedLinks = elements
+        .map(el => parseThreadHistoryUrl(el.getAttribute && el.getAttribute('href')))
+        .filter(Boolean);
+      const parsedIdentity = parsedLinks.find(parsed => parsed.threadId);
+      const lastPageLink = elements.find(el => /^末页/.test(String(el.textContent || '').trim()));
+      const activeEl = pagination.querySelector('li.uk-active a, li.uk-active span');
+      const activePage = parseThreadHistoryPageNumberFromElement(activeEl);
+      const nextItem = items.find(li => /下一页|下页|Next|›|»|→/i.test(String(li.textContent || '').trim()));
+      const nextHasLink = !!(nextItem && nextItem.querySelector('a[href]'));
+      const numericPages = elements
+        .map(parseThreadHistoryPageNumberFromElement)
+        .filter(num => num > 0);
+      let lastPage = parseThreadHistoryPageNumberFromElement(lastPageLink);
+      if (!lastPage && nextItem && !nextHasLink) {
+        lastPage = activePage || Math.max(0, ...numericPages);
+      }
+      if (!lastPage) continue;
+      const candidate = {
+        lastPage,
+        activePage,
+        threadId: parsedIdentity && parsedIdentity.threadId || '',
+        mode: parsedIdentity && parsedIdentity.mode || '',
+        source: lastPageLink ? 'last-link' : 'disabled-next'
+      };
+      if (!best || lastPage > best.lastPage) best = candidate;
     }
-    if (!lastPage) return null;
-    return {
-      lastPage,
-      activePage,
-      threadId: parsedIdentity && parsedIdentity.threadId || '',
-      mode: parsedIdentity && parsedIdentity.mode || '',
-      source: lastPageLink ? 'last-link' : 'disabled-next'
-    };
+    return best;
   }
-  function applyThreadHistoryPageBounds(record, root = document) {
+  function applyThreadHistoryPageBounds(record, root = document, knownMaxPage = 0) {
     if (!record || !record.threadId) return record;
     const bounds = getThreadHistoryPaginationBounds(root);
     if (!bounds || !bounds.lastPage) return record;
     if (bounds.threadId && bounds.threadId !== String(record.threadId)) return record;
     if (bounds.mode && record.mode && bounds.mode !== record.mode) return record;
+    // ── 过时快照写入闸门 ──
+    // 串页数只增不减。分页栏快照末页 < 已确认进度(真实访问过的更后页) → 分页栏来自旧缓存
+    // (整页 HTTP 缓存/无缝翻页克隆的旧栏), 据此钳制会把 page/maxVisitedPage/url 打回旧页码。
+    // 拒绝本次快照的一切降级写入; 快照末页 ≥ 已知进度时才有资格参与钳制。
+    const knownMax = Math.max(Number(knownMaxPage) || 0, 0);
+    if (knownMax > 1 && bounds.lastPage < knownMax) return record;
     const parsedUrl = record.url ? parseThreadHistoryUrl(record.url) : null;
     const page = Math.max(1, Number(record.page || (parsedUrl && parsedUrl.page)) || 1);
     const boundedPage = Math.min(page, bounds.lastPage);
@@ -22230,7 +23454,7 @@ function 注册自动保存编辑() {
     const next = Object.assign({}, record, {
       page: boundedPage,
       maxVisitedPage: Math.min(Math.max(Number(record.maxVisitedPage) || boundedPage, boundedPage), bounds.lastPage),
-      lastKnownPage: bounds.lastPage
+      lastKnownPage: Math.max(Number(record.lastKnownPage) || 0, bounds.lastPage)
     });
     if (page > bounds.lastPage || existingUrlPage > bounds.lastPage) {
       next.url = buildThreadHistoryPageUrl(next.mode, next.threadId, boundedPage);
@@ -22560,6 +23784,17 @@ function 注册自动保存编辑() {
             lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
     };
   }
+  // 索引指纹:覆盖 searchText 与全部布尔谓词的来源字段;仅短标量拼接,远廉于重建 searchText
+  function threadHistoryIndexFingerprint(item) {
+    const flags = (item && item.contentFlags) || {};
+    return [
+      item && item.threadId, item && item.mode, item && item.title, item && item.author,
+      item && item.cookieId, String(item && (item.contentText || item.excerpt) || '').length,
+      item && item.imageFile, flags.hasZeroWidth ? 1 : 0, flags.hasVisibleText ? 1 : 0,
+      flags.hasWhitespaceOnly ? 1 : 0, item && item.sageHtml ? 1 : 0,
+      Number(item && item.lastVisitedAt) || 0
+    ].join('\u0001');
+  }
   function buildThreadHistoryIndexEntry(item) {
     const contentFlags = item && item.contentFlags ? item.contentFlags : {};
     const imageFile = String(item && item.imageFile || '');
@@ -22569,6 +23804,7 @@ function 注册自动保存编辑() {
     const excerptText = String(item && (item.contentText || item.excerpt) || '').toLowerCase();
     const threadIdText = String(item && item.threadId || '');
     return {
+      fp: threadHistoryIndexFingerprint(item),
       searchText: [threadIdText, titleText, authorText, cookieIdText, excerptText].join(' ').toLowerCase(),
       threadIdText,
       titleText,
@@ -22591,25 +23827,27 @@ function 注册自动保存编辑() {
     const countVisit = options.countVisit !== false;
     const touchVisitedAt = countVisit || options.touchVisitedAt === true;
     const store = getThreadHistoryStore();
-    nextRecord = applyThreadHistoryPageBounds(nextRecord);
+    // 写前校验: 以存量进度为信任下限。过时分页快照(lastPage < 已到过的最远页)在 bounds 闸门被整条拒绝,
+    // 不会再把 page/maxVisitedPage/url 打回旧页码
     const key = nextRecord.key || getThreadHistoryKey(nextRecord.mode, nextRecord.threadId);
     const old = store.items[key] || {};
+    const knownMax = Math.max(Number(old.maxVisitedPage) || 0, Number(old.page) || 0);
+    nextRecord = applyThreadHistoryPageBounds(nextRecord, document, knownMax);
+    // maxVisitedPage 单调只升不降(lastKnownPage 钳制在闸门之后仅剩抬升作用)
     const maxVisitedPage = Math.max(Number(old.maxVisitedPage) || 1, Number(nextRecord.page) || 1);
-    const boundedMaxVisitedPage = nextRecord.lastKnownPage ? Math.min(maxVisitedPage, Number(nextRecord.lastKnownPage) || maxVisitedPage) : maxVisitedPage;
     const mergedBase = Object.assign({}, old, nextRecord);
-    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase), {
+    const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase, document, knownMax), {
       key,
       firstVisitedAt: old.firstVisitedAt || now,
       lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
       visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
-      maxVisitedPage: boundedMaxVisitedPage,
+      maxVisitedPage,
       cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
     });
     store.items[key] = merged;
-    store.index[key] = buildThreadHistoryIndexEntry(merged);
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
     const saved = setThreadHistoryStore(store);
-    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: merged });
+    logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: JSON.parse(JSON.stringify({ page: merged.page, maxVisitedPage: merged.maxVisitedPage, lastKnownPage: merged.lastKnownPage, url: merged.url, visitCount: merged.visitCount })) });
     // 同步常用串菜单中对应串的链接
     try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
     return saved;
@@ -22622,16 +23860,17 @@ function 注册自动保存编辑() {
     const item = store.items[key];
     if (!item) return store;
     const now = Date.now();
+    // 写前校验: 以存量进度为信任下限, 过时分页快照不得降级写入; lastKnownPage/maxVisitedPage 单调只升
+    const knownMax = Math.max(Number(item.maxVisitedPage) || 0, Number(item.page) || 0);
+    // page = 最近查看页, 如实记录当前所在页(允许主动回退到更低页码); maxVisitedPage 不受回翻影响
     const bounded = applyThreadHistoryPageBounds(Object.assign({}, item, {
-      page: Math.max(Number(item.page) || 1, Number(options.page || parsed.page) || 1),
+      page: Number(options.page || parsed.page) || 1,
       url: options.url || parsed.url
-    }));
+    }), document, knownMax);
     item.page = bounded.page;
-    item.url = bounded.url;
-    item.maxVisitedPage = bounded.lastKnownPage
-      ? Math.min(Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1), Number(bounded.lastKnownPage) || Number(item.page) || 1)
-      : Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
-    if (bounded.lastKnownPage) item.lastKnownPage = bounded.lastKnownPage;
+    item.url = bounded.url || item.url;
+    item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
+    if (bounded.lastKnownPage && Number(bounded.lastKnownPage) > (Number(item.lastKnownPage) || 0)) item.lastKnownPage = bounded.lastKnownPage;
     item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
     if (options.touchVisitedAt) item.lastVisitedAt = now;
     store.index[key] = buildThreadHistoryIndexEntry(item);
@@ -22791,14 +24030,13 @@ function 注册自动保存编辑() {
     });
     return { filters, tokens };
   }
-  function scoreThreadHistoryIndexEntry(entry, tokens) {
+  function scoreThreadHistoryIndexEntry(entry, numericTokens) {
     let score = Number(entry.lastVisitedAt) || 0;
-    tokens.forEach(token => {
-      if (/^\d{1,8}$/.test(token)) {
-        if (entry.threadIdText === token) score += 1000000000000000;
-        else if (entry.threadIdText.includes(token)) score += 500000000000000;
-      }
-    });
+    for (let i = 0; i < numericTokens.length; i++) {
+      const token = numericTokens[i];
+      if (entry.threadIdText === token) score += 1000000000000000;
+      else if (entry.threadIdText.includes(token)) score += 500000000000000;
+    }
     return score;
   }
   function getThreadHistorySortValue(item, field) {
@@ -22807,18 +24045,25 @@ function 注册自动保存编辑() {
     if (field === 'maxVisitedPage') return Number(item.maxVisitedPage || item.page) || 0;
     return Number(item.lastVisitedAt) || 0;
   }
-  function compareThreadHistoryResults(a, b, sortMode, tokens) {
+  function compareThreadHistoryResults(a, b, sortMode, numericTokens) {
     const itemA = a.item || {};
     const itemB = b.item || {};
     if (sortMode === 'last-asc') return getThreadHistorySortValue(itemA, 'lastVisitedAt') - getThreadHistorySortValue(itemB, 'lastVisitedAt');
     if (sortMode === 'visits-desc') return getThreadHistorySortValue(itemB, 'visitCount') - getThreadHistorySortValue(itemA, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
     if (sortMode === 'visits-asc') return getThreadHistorySortValue(itemA, 'visitCount') - getThreadHistorySortValue(itemB, 'visitCount') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
     if (sortMode === 'page-desc') return getThreadHistorySortValue(itemB, 'maxVisitedPage') - getThreadHistorySortValue(itemA, 'maxVisitedPage') || getThreadHistorySortValue(itemB, 'lastVisitedAt') - getThreadHistorySortValue(itemA, 'lastVisitedAt');
-    return scoreThreadHistoryIndexEntry(b.index, tokens) - scoreThreadHistoryIndexEntry(a.index, tokens);
+    // 分数已在检索期预计算;兜底按需再算
+    const scoreA = a.score != null ? a.score : scoreThreadHistoryIndexEntry(a.index, numericTokens || []);
+    const scoreB = b.score != null ? b.score : scoreThreadHistoryIndexEntry(b.index, numericTokens || []);
+    return scoreB - scoreA;
   }
   function searchThreadHistory(query, storeInput, sortMode) {
-    const store = normalizeThreadHistoryStore(storeInput || getThreadHistoryStore());
+    // 默认走记忆化缓存:仅显式传入 storeInput 时才归一化,避免每次检索重复归一化 + 重复排序
+    const store = storeInput ? normalizeThreadHistoryStore(storeInput) : getThreadHistoryStore();
     const { filters, tokens } = parseThreadHistorySearchQuery(query);
+    // 数字 token 判定外提一次:原先在比较器内每次比较都跑正则(约 2·m·log m·tokens 次)
+    const numericTokens = tokens.filter(token => /^\d{1,8}$/.test(token));
+    const useScoreSort = !sortMode || sortMode === 'last-desc';
     return (store.order || [])
       .filter(key => {
         const entry = store.index[key];
@@ -22834,8 +24079,11 @@ function 注册自动保存编辑() {
         if (filters.isSage && !entry.isSage) return false;
         return tokens.every(token => entry.searchText.includes(token));
       })
-      .map(key => ({ key, item: store.items[key], index: store.index[key] }))
-      .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', tokens));
+      .map(key => {
+        const index = store.index[key];
+        return { key, item: store.items[key], index, score: useScoreSort ? scoreThreadHistoryIndexEntry(index, numericTokens) : 0 };
+      })
+      .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', numericTokens));
   }
   let threadHistoryScrollTrackingInstalled = false;
   function installThreadHistoryScrollTracking() {
@@ -22951,6 +24199,11 @@ function 注册自动保存编辑() {
     return `https://image.nmb.best/${path}/${encodedFile}`;
   }
   function buildThreadHistoryItemUrl(item) {
+    // 消费一致性: 不信任持久化的 item.url(可能被旧快照/裸展开污染, 出现 page=97/url=?page=86 的矛盾)。
+    // 链接指向最近查看页(item.page, 允许低于 maxVisitedPage 的主动回翻); 仅当无法重建时才回退 item.url
+    if (item && item.page && item.threadId) {
+      return buildThreadHistoryPageUrl(item.mode, item.threadId, item.page);
+    }
     if (item && item.url) return item.url;
     const threadId = item && item.threadId ? item.threadId : '';
     const page = item && item.page ? item.page : 1;
@@ -23188,6 +24441,11 @@ function 注册自动保存编辑() {
   // ===== 共享 SVG 图标（统一视觉，替代字符"×"等占位） =====
   const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  // 回复模式行按钮图标（16px，与刷新饼干等 xdex-icon-btn 图标同尺寸）
+  const XDEX_SVG_X_ICON = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
+  const XDEX_SVG_STOPWATCH = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13.6" r="7.4"></circle><path d="M12 13.6V9.8"></path><path d="M9.2 2.4h5.6"></path><path d="M12 2.4v3.8"></path><path d="M17.9 8.2l1.7-1.7"></path></svg>';
+  const XDEX_SVG_INFINITY = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z"></path></svg>';
+  const XDEX_SVG_SWITCH = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-5 5"></path><path d="M21 8H5"></path><path d="m8 21-5-5 5-5"></path><path d="M3 16h16"></path></svg>';
   const XDEX_SVG_RESTORE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 18A8.5 8.5 0 1 1 18.5 6.5"></path><path d="M18.5 6.5l-1.3 3.6"></path><path d="M19.2 10.6L18.5 6.5l-3.2 2.7"></path></svg>';
   const XDEX_SVG_PURGE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
   // 剩余时间略写: 24 小时内显示小时数, 超过显示天数
@@ -23503,10 +24761,38 @@ function 注册自动保存编辑() {
     $('body').append($m);
     try { $m.find('#xdex-clear-history-warning-cancel')[0].focus(); } catch (e) {}
   }
+  // 检索输入统一绑定:拼音等输入法合成期间不检索,合成结束或停止输入后延迟一次,
+  // 避免半截关键词反复触发全表扫描;回车立即检索并取消在途定时器
+  function bindHistorySearchInput(selector, render, namespace) {
+    const el = $(selector)[0];
+    if (!el) return;
+    if (el.__xdexSearchTimer) { clearTimeout(el.__xdexSearchTimer); el.__xdexSearchTimer = 0; }
+    const schedule = (value) => {
+      if (el.__xdexSearchTimer) clearTimeout(el.__xdexSearchTimer);
+      el.__xdexSearchTimer = setTimeout(() => {
+        el.__xdexSearchTimer = 0;
+        if (document.contains(el)) render(value);
+      }, HISTORY_SEARCH_INPUT_DEBOUNCE_MS);
+    };
+    $(el)
+      .off('.' + namespace)
+      .on('compositionstart.' + namespace, () => { el.__xdexSearchComposing = true; })
+      .on('compositionend.' + namespace, (e) => {
+        el.__xdexSearchComposing = false;
+        schedule(e.target.value || '');
+      })
+      .on('input.' + namespace, function () {
+        if (el.__xdexSearchComposing) return;
+        schedule(this.value || '');
+      })
+      .on('keydown.' + namespace, function (e) {
+        if (e.key !== 'Enter') return;
+        if (el.__xdexSearchTimer) { clearTimeout(el.__xdexSearchTimer); el.__xdexSearchTimer = 0; }
+        render(this.value || '');
+      });
+  }
   function bindThreadHistoryModuleEvents() {
-    $('#sp_history_search').off('input.xdex-history').on('input.xdex-history', function () {
-      renderThreadHistoryModule(this.value || '');
-    });
+    bindHistorySearchInput('#sp_history_search', renderThreadHistoryModule, 'xdex-history');
     $('#sp_history_sort').off('change.xdex-history').on('change.xdex-history', function () {
       renderThreadHistoryModule();
     });
@@ -24609,9 +25895,7 @@ function 注册自动保存编辑() {
     renderPostHistoryModule();
   }
   function bindPostHistoryModuleEvents() {
-    $('#sp_posts_search').off('input.xdex-post-history').on('input.xdex-post-history', function () {
-      renderPostHistoryModule(this.value || '');
-    });
+    bindHistorySearchInput('#sp_posts_search', renderPostHistoryModule, 'xdex-post-history');
     $('#sp_posts_type_buttons').off('click.xdex-post-history', '[data-post-history-type]').on('click.xdex-post-history', '[data-post-history-type]', function (e) {
       e.preventDefault();
       setPostHistoryType(this.dataset.postHistoryType || 'thread');
@@ -24910,7 +26194,7 @@ function 注册自动保存编辑() {
         const $body = $fold.children('.sp_fold_body');
         if (!$body.is(':visible')) {
           $body.slideDown(150);
-          $('#btn_sp_favoriteThreads,#btn_group_favoriteThreads').removeClass('xdex-inv');
+          $('#btn_sp_favoriteThreads,#btn_group_favoriteThreads').removeClass('xdex-btn-hidden');
         }
         if ($fold[0]) $fold[0].scrollIntoView({ block: 'center' });
         if (options.addEmptyGroup) {
@@ -25195,7 +26479,7 @@ function 注册自动保存编辑() {
     menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
     menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
   }
-  // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，保持链接指向最远访问页）
+  // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，指向最近查看页，允许低于最远访问页）
   function syncFavoriteThreadsLinks() {
     const links = document.querySelectorAll('#xdex-favorite-threads-menu a[data-thread-id], #sp_panel_footer a[data-thread-id]');
     if (!links.length) return;
@@ -25207,7 +26491,7 @@ function 注册自动保存编辑() {
         const normal = store.items[getThreadHistoryKey('normal', tid)];
         const item = normal || store.items[getThreadHistoryKey('po', tid)];
         if (item) {
-          const page = item.maxVisitedPage || item.page || 1;
+          const page = item.page || 1;
           link.href = buildThreadHistoryPageUrl(item.mode, tid, page);
         } else {
           link.href = buildThreadHistoryPageUrl('normal', tid, 1);
@@ -25230,6 +26514,9 @@ function 注册自动保存编辑() {
         margin-left: 1px;
       }
       .xdex-sub-ex-btn:hover { text-decoration: underline; }
+      /* 深色模式：信息行链接提亮规则(!important)会盖掉品牌色，这里以同特异性+后源顺序夺回 */
+      :root.xdex-custom-dark .h-threads-item .h-threads-info a.xdex-sub-ex-btn { color: #00FFCC !important; }
+      :root.xdex-custom-dark .h-threads-item .h-threads-info a.xdex-sub-ex-btn .xdex-sidebar-ex-badge { color: #66CCFF !important; }
       .xdex-feed-selector-display {
         display: flex; align-items: center; gap: 6px;
         padding: 6px 8px;
@@ -25280,7 +26567,8 @@ function 注册自动保存编辑() {
         padding: 6px 8px;
         cursor: pointer;
         font-size: 13px;
-        color: var(--foreground, #333);
+        /* --foreground 未定义会恒取 #333，深色下与 #2b2c2d 底同暗不可见；改为继承面板前景（与选择框本体一致） */
+        color: inherit;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
       .xdex-feed-option:hover { background: #F0E0D6; }
@@ -25539,6 +26827,8 @@ function 注册自动保存编辑() {
           }
           toast('已清除当前串的偏好饼干');
         }
+        // 手动设置或清除默认饼干后，同步外部开关状态与圆圈着色
+        if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
         updateOkButton();
       });
       $list.append($item);
@@ -25681,6 +26971,43 @@ function 注册自动保存编辑() {
     if (!cookieList || !hash) return null;
     return Object.values(cookieList).find(c => abbreviateName(c.name || '') === hash) || null;
   }
+  // 当前饼干是否命中本串偏好：未开启偏好返回 null，命中 true，未命中 false
+  function isCookieMatchingThreadPref(threadId) {
+    const pref = getThreadCookiePref(threadId);
+    if (!pref || !pref.hash) return null;
+    const cur = getCurrentCookie();
+    if (!cur) return false;
+    return abbreviateName(cur.name || '') === String(pref.hash);
+  }
+  // 依据判定结果给开关圆圈加/去着色类并同步 tooltip；仅作视觉反馈，不改变任何发送逻辑
+  function refreshCookiePrefSwitchState() {
+    document.querySelectorAll('.xdex-cookie-check-sw').forEach(sw => {
+      const tid = sw.dataset ? (sw.dataset.threadId || '') : '';
+      const pref = tid ? getThreadCookiePref(tid) : null;
+      const enabled = !!(pref && pref.hash);
+      // 开关状态与齿轮可见性同步自实际偏好：未开启偏好（开关关闭）时圆圈恒为白色、无提示
+      if (sw.checked !== enabled) sw.checked = enabled;
+      const area = sw.closest ? sw.closest('.xdex-cookie-check-area') : null;
+      const editBtn = area ? area.querySelector('.xdex-edit-default-btn') : null;
+      if (editBtn) {
+        editBtn.style.visibility = enabled ? 'visible' : 'hidden';
+        editBtn.style.pointerEvents = enabled ? 'auto' : 'none';
+      }
+      const matched = enabled ? isCookieMatchingThreadPref(tid) : null;
+      sw.classList.toggle('xdex-cookie-pref-match', matched === true);
+      sw.classList.toggle('xdex-cookie-pref-mismatch', matched === false);
+      if (matched === true) {
+        sw.title = '当前饼干即为默认饼干';
+      } else if (matched === false) {
+        const prefHash = String((pref || {}).hash || '');
+        const prefCookie = findCookieByHash(getCookiesList(), prefHash);
+        const prefName = (prefCookie ? abbreviateName(prefCookie.name || '') : prefHash) || '未设置';
+        sw.title = '当前饼干非默认饼干，默认饼干为' + prefName;
+      } else {
+        sw.removeAttribute('title');
+      }
+    });
+  }
   // ── PO 主饼干检测 ──
   function detectPOCookieHash() {
     // 直接从 PO 的 uid 文本提取 hash（如 "ID:z19vISg" → "z19vISg"）
@@ -25720,13 +27047,19 @@ function 注册自动保存编辑() {
     }
     const poHash = detectPOCookieHash();
     console.log('[cookie-pref] init threadId=' + threadId + ' poHash=' + poHash);
-    if (poHash) { setThreadCookiePref(threadId, poHash); return; }
+    if (poHash) { setThreadCookiePref(threadId, poHash); refreshCookiePrefSwitchState(); return; }
     const histHash = detectHistoryCookieHash(threadId);
     console.log('[cookie-pref] init threadId=' + threadId + ' histHash=' + histHash);
-    if (histHash) { setThreadCookiePref(threadId, histHash); return; }
+    if (histHash) { setThreadCookiePref(threadId, histHash); refreshCookiePrefSwitchState(); return; }
   }
   // ── 注入"饼干偏好"开关到回应模式行 ──
 
+  // 清空饼干偏好开关区域：无串上下文时不应残留上一个串的开关/齿轮/圆圈着色状态
+  // 四处共用——发串模式、回复模式无串上下文、重置按钮、临时模式回复成功（漏一处即出现状态残留）
+  function clearCookieCheckSwitch() {
+    const area = document.querySelector('.xdex-cookie-check-area');
+    if (area) area.innerHTML = '';
+  }
   function injectCookieCheckSwitch(threadId) {
     // 注入到 .xdex-cookie-check-area（串内页和板块页共用）
     let area = document.querySelector('.xdex-cookie-check-area');
@@ -25752,8 +27085,8 @@ function 注册自动保存编辑() {
     }
     const pref = getThreadCookiePref(threadId);
     const isEnabled = !!pref;
-    area.innerHTML = '<button type="button" class="xdex-edit-default-btn" style="visibility:' + (isEnabled ? 'visible' : 'hidden') + ';pointer-events:' + (isEnabled ? 'auto' : 'none') + ';font-size:11px;padding:1px 4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">修改默认</button>' +
-      '<input type="checkbox" class="xdex-switch xdex-cookie-check-sw" role="switch"' + (isEnabled ? ' checked' : '') + '>' +
+    area.innerHTML = '<button type="button" class="xdex-edit-default-btn" title="修改默认饼干" style="visibility:' + (isEnabled ? 'visible' : 'hidden') + ';pointer-events:' + (isEnabled ? 'auto' : 'none') + ';">' + XDEX_ICON_GEAR + '</button>' +
+      '<input type="checkbox" class="xdex-switch xdex-cookie-check-sw" role="switch" data-thread-id="' + threadId + '"' + (isEnabled ? ' checked' : '') + '>' +
       '<label style="font-size:11px;cursor:pointer;white-space:nowrap;">饼干偏好</label>';
     const switchEl = area.querySelector('.xdex-cookie-check-sw');
     const editBtn = area.querySelector('.xdex-edit-default-btn');
@@ -25774,6 +27107,7 @@ function 注册自动保存编辑() {
         editBtn.style.visibility = 'hidden';
         editBtn.style.pointerEvents = 'none';
       }
+      refreshCookiePrefSwitchState();
     });
     editBtn.addEventListener('click', () => {
       showCookieConfirmDialog(threadId, (selectedHash) => {
@@ -25781,8 +27115,11 @@ function 注册自动保存编辑() {
         const _c = findCookieByHash(getCookiesList(), selectedHash);
         const _n = _c ? abbreviateName(_c.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim() : selectedHash;
         toast('已将 ' + _n + ' 设为本串默认饼干');
+        refreshCookiePrefSwitchState();
       }, () => {}, { mode: 'setDefault' });
     });
+    // 注入/重建后立即按当前饼干与偏好的一致性着色
+    refreshCookiePrefSwitchState();
   }
 
   /* --------------------------------------------------
@@ -26040,6 +27377,18 @@ function 注册自动保存编辑() {
       }
     `;
     (document.head || document.documentElement).appendChild(style);
+  }
+  // 阅图模式「分隔线」子设置：控制页码分隔线与“第N页”标识的显示（跨页面实时同步）
+  function applyImageViewerSeparatorSetting(enabled) {
+    let on = enabled;
+    if (typeof on !== 'boolean') {
+      try {
+        on = !(typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state && SettingPanel.state.imageViewerSeparators === false);
+      } catch (e) { on = true; }
+    }
+    const overlay = document.getElementById('xdex-image-viewer');
+    if (!overlay) return;
+    overlay.classList.toggle('xdex-iv-no-sep', !on);
   }
   function getCurrentImageHideModeForViewerBtn() {
     const live = window.__xdexImageHideMode;
@@ -26312,7 +27661,7 @@ function 注册自动保存编辑() {
     overlay.innerHTML = `
       <div class="xv-header" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
         <span class="xv-header-info" style="color:var(--foreground,#ccc);font-size:13px;">串号 ${ImageViewer.threadId} · 正在加载…</span>
-        <div style="display:flex;gap:6px;align-items:center;"><button class="xv-upward-btn" style="padding:4px 10px;background:var(--muted-foreground,#666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;opacity:0.6;" title="开启向上翻页">▲</button><button class="xv-close-btn" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button></div>
+        <div style="display:flex;gap:6px;align-items:center;"><button class="xv-upward-btn" style="padding:4px 10px;background:#666;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;opacity:0.6;" title="开启向上翻页">▲</button><button class="xv-close-btn" style="padding:4px 10px;background:var(--destructive,#EE0000);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button></div>
       </div>
       <div class="xv-grid-scroll" style="flex:1;overflow-y:auto;overflow-anchor:none;padding:12px;">
         <div class="xv-masonry-upward" style="display:flex;gap:8px;align-items:flex-end;justify-content:center;position:relative;width:100%;"></div>
@@ -26321,6 +27670,7 @@ function 注册自动保存编辑() {
       </div>
     `;
     document.body.appendChild(overlay);
+    try { applyImageViewerSeparatorSetting(); } catch (e) {}
     // 拦截滚轮和触摸，防止穿透到原页面
     overlay.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
     overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
@@ -26360,7 +27710,7 @@ function 注册自动保存编辑() {
           loadPrevGridPages();
         } else {
           upwardBtn.style.opacity = '0.6';
-          upwardBtn.style.background = 'var(--muted-foreground,#666)';
+          upwardBtn.style.background = '#666';
           upwardBtn.title = '开启向上翻页';
           toast('已关闭向上翻页');
         }
@@ -26415,7 +27765,7 @@ function 注册自动保存编辑() {
     if (!colHeights || colHeights.length < 2) {
       const minH = colHeights && colHeights.length ? Math.min(...colHeights) : 0;
       sep.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);width:' + totalW + 'px;top:' + minH + 'px;pointer-events:none;z-index:2;text-align:center;';
-      sep.innerHTML = '<span style="display:inline-block;background:var(--background,#111);color:#e53935;font-size:12px;font-weight:600;padding:2px 8px;">第' + pageNum + '页</span>';
+      sep.innerHTML = '<span style="display:inline-block;background:var(--background,#111);color:#EE0000;font-size:12px;font-weight:600;padding:2px 8px;">第' + pageNum + '页</span>';
       return sep;
     }
     const maxH = Math.max(...colHeights);
@@ -26438,7 +27788,7 @@ function 注册自动保存编辑() {
     const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
     polyline.setAttribute('points', points.join(' '));
     polyline.setAttribute('fill', 'none');
-    polyline.setAttribute('stroke', '#e53935');
+    polyline.setAttribute('stroke', '#EE0000');
     polyline.setAttribute('stroke-width', '2');
     polyline.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.appendChild(polyline);
@@ -26467,7 +27817,7 @@ function 注册自动保存编辑() {
       }
     }
     const label = document.createElement('span');
-    label.style.cssText = 'position:absolute;left:50%;top:' + Math.round(labelY) + 'px;transform:translate(-50%,-50%);background:var(--background,#111);color:#e53935;font-size:12px;font-weight:600;padding:0 8px;white-space:nowrap;z-index:1;';
+    label.style.cssText = 'position:absolute;left:50%;top:' + Math.round(labelY) + 'px;transform:translate(-50%,-50%);background:var(--background,#111);color:#EE0000;font-size:12px;font-weight:600;padding:0 8px;white-space:nowrap;z-index:1;';
     label.textContent = '第' + pageNum + '页';
     sep.appendChild(label);
     // 绝对定位：top = 最矮列高度
@@ -26632,7 +27982,7 @@ function 注册自动保存编辑() {
       const upwardBtn = document.querySelector(".xv-upward-btn");
       if (upwardBtn) {
         upwardBtn.style.opacity = "0.4";
-        upwardBtn.style.background = "var(--muted-foreground,#444)";
+        upwardBtn.style.background = "#444";
         upwardBtn.title = "已到第1页";
         upwardBtn.disabled = true;
       }
@@ -26719,7 +28069,7 @@ function 注册自动保存编辑() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--card,#1a1a1a);border-bottom:1px solid var(--border,#333);flex-shrink:0;">
         <button class="xv-back-btn" style="padding:4px 10px;background:var(--primary,#006666);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">返回瀑布流</button>
         <span style="color:var(--foreground,#ccc);font-size:13px;">${ImageViewer.currentDetailIndex + 1} / ${ImageViewer.gridImages.length} · No.${img.id} · 第${img.page}页 · 第${img.pageIdx}/${ImageViewer.gridImages.reduce((m, g) => g.page === img.page && g.pageIdx > m ? g.pageIdx : m, 0)}张</span>
-        <button class="xv-close-btn2" style="padding:4px 10px;background:var(--destructive,#c00);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
+        <button class="xv-close-btn2" style="padding:4px 10px;background:var(--destructive,#EE0000);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">退出</button>
       </div>
       <div style="display:flex;flex:1;overflow:hidden;">
         <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
@@ -27689,7 +29039,7 @@ function 注册自动保存编辑() {
       if (!pushOk) {
         // 回滚浏览历史存储与基线到合并前：本地与云端重新解耦，下轮 delta = 本地 − 旧基线 仍完整可算
         try {
-          if (thStoreBeforeMerge !== null) GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalizeThreadHistoryStore(thStoreBeforeMerge));
+          if (thStoreBeforeMerge !== null) setThreadHistoryStore(thStoreBeforeMerge);
           if (kaoStoreBeforeMerge !== null) GM_setValue('kaomojiUsageStats', kaoStoreBeforeMerge);
           GM_setValue('xdex_webdav_history_baselines', thBaselineBeforeMerge || {});
         } catch (e) {
@@ -27892,7 +29242,9 @@ function 注册自动保存编辑() {
           if (input) {
             const showing = input.type === 'text';
             input.type = showing ? 'password' : 'text';
-            btn.textContent = showing ? '显示' : '隐藏';
+            // 图标切换：密码显示 → 闭眼（点击后隐藏）；密码隐藏 → 睁眼（点击后显示）
+            btn.innerHTML = showing ? XDEX_ICON_EYE : XDEX_ICON_EYE_OFF;
+            btn.title = showing ? '显示密码' : '隐藏密码';
             console.log('[webdav] 密码可见性切换', { showing: !showing });
           }
           return;
@@ -27900,10 +29252,11 @@ function 注册自动保存编辑() {
         if (btn.id === 'btn_webdavSync') {
           e.preventDefault();
           e.stopPropagation();
+          btn.classList.add('xdex-icon-loading');
           webdavSyncNow().catch((err) => {
             console.error('[webdav] 手动同步异常', err);
             setWebdavStatus('同步异常：' + (err && err.message ? err.message : err));
-          });
+          }).finally(() => { btn.classList.remove('xdex-icon-loading'); });
         }
       }, true);
       // 面板重建后回填已保存配置：聚焦输入框时空值则回填
@@ -28086,7 +29439,7 @@ function 注册自动保存编辑() {
       { label: 'startup.batch1.enableHDImage', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImage(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.applyImageHideMode', run: () => { if (cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.highlightPO', run: () => highlightPO(), meta: () => startupPerfDebug.summarizeRoot(document) },
-      { label: 'startup.batch1.enablePostExpand', run: () => enablePostExpand(document), meta: () => startupPerfDebug.summarizeRoot(document) },
+      { label: 'startup.batch1.enablePostExpand', run: () => { enablePostExpand(document); try { bindBoardThreadRefreshButtons(document); } catch (e) {} }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.refreshFilterDisplay', run: () => refreshFilterDisplay(cfg), meta: () => startupPerfDebug.summarizeRoot(document) }
     ], 0, 'batch1-layout-filter-image');
     deferStartupSteps([
@@ -28168,7 +29521,7 @@ function 注册自动保存编辑() {
           const end = Math.min(idx + 12, threads.length);
           for (; idx < end; idx++) {
             const btn = threads[idx].querySelector('.h-threads-info .js-toggle-mode');
-            if (btn) btn.textContent = '收起';
+            if (btn) setPostExpandToggleVisual(btn, true);
           }
           if (idx < threads.length) requestAnimationFrame(updateButtons);
         };
@@ -28182,7 +29535,7 @@ function 注册自动保存编辑() {
           const d = delayIdx++ * 45; // 45ms 间隔（经验值）
           setTimeout(() => {
             const btn = item.querySelector('.h-threads-info .js-toggle-mode');
-            if (btn) btn.textContent = '展开';
+            if (btn) setPostExpandToggleVisual(btn, false);
             if (!shouldCollapse) return;
             try { collapseWithoutShift(item); } catch (err) { // 防守
               try { item.classList.remove('expanded'); } catch(e){}

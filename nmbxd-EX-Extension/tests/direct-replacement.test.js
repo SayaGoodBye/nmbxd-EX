@@ -287,7 +287,7 @@ function testSettingsPanelModuleShellContract() {
   const tabLabelExpandedCss = extractCssRule(upstream, '#sp_panel_tab_slot .sp_panel_tab.active .sp_panel_tab_label,\n                  #sp_panel_tab_slot .sp_panel_tab:hover .sp_panel_tab_label,\n                  #sp_panel_tab_slot .sp_panel_tab:focus .sp_panel_tab_label,\n                  #sp_panel_tab_slot .sp_panel_tab:focus-visible .sp_panel_tab_label,\n                  #sp_panel_tab_slot .sp_panel_tab.is-hover .sp_panel_tab_label');
   const panelViewsCss = extractCssRule(upstream, '#sp_panel_views');
   const moduleActiveCss = extractCssRule(upstream, '.sp_panel_module.active');
-  assert(upstream.includes("sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中可不在前台。'"), 'image context menu setting description must explain userscript and extension behavior with a line break');
+  assert(upstream.includes("sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中焦点可不在前台'"), 'image context menu setting description must explain userscript and extension behavior with a line break');
   assert(upstream.includes('id="sp_panel_tab_slot"'), 'settings panel must reserve a left-side module tab slot #sp_panel_tab_slot');
   assert(upstream.includes('id="sp_panel_views"'), 'settings panel must include a module view container #sp_panel_views');
   assert(upstream.includes('id="sp_module_settings"'), 'settings panel must wrap existing settings UI in #sp_module_settings');
@@ -368,7 +368,7 @@ function testBrowsingHistoryStorageContract() {
   assert(upstream.includes("source: lastPageLink ? 'last-link' : 'disabled-next'"), 'history page bounds must fall back to disabled/no-link next-page state at the real last page');
   assert(upstream.includes('function applyThreadHistoryPageBounds'), 'history records must clamp dirty page/url/maxVisitedPage values before saving');
   assert(upstream.includes('buildThreadHistoryPageUrl(next.mode, next.threadId, boundedPage)'), 'dirty history URLs must be rebuilt to the validated bounded page');
-  assert(upstream.includes('applyThreadHistoryPageBounds(mergedBase)'), 'existing polluted history records must be corrected on the next write');
+  assert(upstream.includes('applyThreadHistoryPageBounds(mergedBase, document, knownMax)'), 'existing polluted history records must be corrected on the next write');
   assert(upstream.includes('const countVisit = options.countVisit !== false'), 'history upsert must distinguish real visits from progress-only touches');
   assert(upstream.includes('visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0)'), 'progress-only history updates must not increment visitCount');
   assert(upstream.includes('function touchThreadHistoryCurrentLocation'), 'history must update latest URL/page/max page without counting a new visit');
@@ -594,6 +594,11 @@ function testPostHistoryAdvancedSearchContract() {
   const parserBody = upstream.slice(parserStart, upstream.indexOf('function parseLastPostResponse', parserStart));
   const searchStart = upstream.indexOf('function searchPostHistory(query, type)');
   const searchBody = upstream.slice(searchStart, upstream.indexOf('function parseLastPostResponse', searchStart));
+  // 检索索引构建期:searchText 与布尔谓词在写入期物化,检索期不再逐条拼字符串
+  const indexStart = upstream.indexOf('function buildPostHistoryIndexEntry(item)');
+  const indexBody = upstream.slice(indexStart, upstream.indexOf('function normalizePostHistoryStore', indexStart));
+  const stStart = upstream.indexOf('function buildPostHistorySearchText(item)');
+  const searchTextBody = upstream.slice(stStart, upstream.indexOf('function parseLastPostResponse', stStart));
 
   assert(parserStart !== -1, 'post-history search must parse advanced query syntax separately from browsing history');
   assert(upstream.includes('function getPostHistoryForumSearchText(item)'), 'post-history search must centralize forum display/raw/group fuzzy text');
@@ -601,11 +606,11 @@ function testPostHistoryAdvancedSearchContract() {
   assert(upstream.includes("rawName: 'DANGER_U'") && upstream.includes("showName: 'DANGER/U/'") && upstream.includes("groupName: '综合'"), 'forum metadata must allow forum:DAN/forum:danger and group-name matching');
   assert(parserBody.includes('statusFilters') && parserBody.includes('forumFilters') && parserBody.includes('fieldFilters') && parserBody.includes('hasImage') && parserBody.includes('isGif') && parserBody.includes('hasZeroWidth'), 'post-history parser must support status, forum, field, and has filters');
   assert(!parserBody.includes('typeFilters') && !parserBody.includes('type:reply') && !parserBody.includes('type:thread'), 'post-history advanced search must not duplicate the existing thread/reply tabs');
-  assert(searchBody.includes('normalizePostHistoryType(item.type) !== selectedType'), 'post-history search must keep the current theme/reply tab as the type boundary');
+  assert(searchBody.includes('entry.type !== selectedType') && indexBody.includes('type: item.type'), 'post-history search must keep the current theme/reply tab as the type boundary');
   assert(searchBody.includes('filters.statusFilters') && searchBody.includes('filters.fidFilters') && searchBody.includes('filters.forumFilters'), 'post-history search must apply status, fid, and fuzzy forum filters');
-  assert(searchBody.includes('getPostHistoryForumSearchText(item).includes(value)'), 'forum: filters must fuzzy-match forum display name, raw name, showName, and group name');
+  assert(searchBody.includes('entry.forumText.includes(value)') && indexBody.includes('forumText: getPostHistoryForumSearchText(item)'), 'forum: filters must fuzzy-match forum display name, raw name, showName, and group name');
   assert(searchBody.includes('filters.hasImage') && searchBody.includes('filters.isGif') && searchBody.includes('filters.hasZeroWidth'), 'post-history search must support image/gif/zero-width has filters');
-  assert(searchBody.includes('item.resto') && searchBody.includes('item.contentRaw') && searchBody.includes('item.sourceUrl') && searchBody.includes('item.url') && searchBody.includes('item.imageFile'), 'post-history ordinary search text must include expanded stored fields');
+  assert(searchTextBody.includes('item.resto') && searchTextBody.includes('item.contentRaw') && searchTextBody.includes('item.sourceUrl') && searchTextBody.includes('item.url') && searchTextBody.includes('item.imageFile'), 'post-history ordinary search text must include expanded stored fields');
 }
 
 function testHistoryAndPostCanonicalReplyLinksContract() {
@@ -655,7 +660,7 @@ function testPostHistoryLiveSyncContract() {
   assert(schedulerBody.includes('postHistoryLiveRenderDirty = true;') && schedulerBody.includes('postHistoryLiveRenderDirty = false;'), 'post history scheduler must retain dirty writes until a posts render consumes them');
   assert(schedulerBody.includes("logPostHistory('live sync'") && schedulerBody.includes('pendingCount: postHistoryLiveRenderPendingCount') && schedulerBody.includes('renderable,'), 'post history scheduler must log live sync diagnostics');
   assert(schedulerBody.includes('clearTimeout(postHistoryLiveRenderTimer)'), 'post history scheduler must merge repeated writes into one render');
-  assert(schedulerBody.includes('if (!renderable) {'), 'post history scheduler must only defer when the posts render target does not exist yet');
+  assert(schedulerBody.includes('if (!active) {'), 'post history scheduler must defer while the posts module is not active, matching browsing history');
   assert(schedulerBody.includes('Math.min(THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY, THREAD_HISTORY_LIVE_RENDER_MAX_WAIT - elapsed)'), 'post history scheduler must use the same debounce/max-wait behavior as history');
   assert(schedulerBody.includes('renderPostHistoryModule();'), 'post history scheduler must re-render the visible posts module');
   const renderStart = upstream.indexOf('function renderPostHistoryModule(query)');
@@ -1614,7 +1619,20 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   await testIntegratedUpdateDebugBridge();
   await testIntegratedPostHistoryDebugBridge();
   await testServiceWorkerInjectsApiUserhashCookie();
-  console.log('direct replacement contract ok');
+  
+function testQuoteAvailabilityContract() {
+  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  assert(upstream.includes('extendQuoteAvailabilityDetection: true'), 'quote availability sub-switch must default enabled');
+  assert(upstream.includes('id="sp_extendQuoteAvailability"'), 'settings panel must expose the availability sub-switch');
+  assert(upstream.includes('sp_extendQuoteAvailability:'), 'settings panel must document the availability sub-switch');
+  assert(upstream.includes('function parseQuoteResponseForAvailability'), 'quote availability parser must exist');
+  assert(upstream.includes('function probeQuoteAvailability'), 'quote availability probe must exist');
+  assert(upstream.includes('function mountQuoteAvailabilityOnRoot'), 'quote availability must be mounted into quote roots');
+  assert(upstream.includes('function createQuoteAvailabilityQueue'), 'quote availability must dedupe probe requests through a shared queue');
+  assert(upstream.includes("parseQuoteResponseForAvailability(String(html || ''), id)"), 'quote popup ref responses must feed the availability cache');
+}
+
+console.log('direct replacement contract ok');
 }()).catch((err) => {
   console.error(err && err.stack ? err.stack : err);
   process.exitCode = 1;
