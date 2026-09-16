@@ -11282,6 +11282,8 @@ ${markedSwatchHtml}
   }
   // 判定结果统一出口：样式回填、跳转按钮补插、汇总日志。队列回调与悬浮/点击实时回填共用
   function applyQuoteAvailabilityResult(tid, kind) {
+    // 检测关闭时不得改样式：多标签页远程关闭后，已入队探测的残余回调不得再回填全文档（L2 缺口）
+    if (!isQuoteAvailabilityEnabled()) return;
     // 仅对真正包含该引用编号的元素应用样式；不含编号的绿色文本不改动
     document.querySelectorAll('font[color="#789922"]').forEach((el) => {
       if (getQuoteRefIdFromText(el.textContent) === tid) applyQuoteAvailabilityStyle(el, kind);
@@ -11358,7 +11360,7 @@ ${markedSwatchHtml}
           const waiting = entry.target.__xdexQuoteProbeTid;
           delete entry.target.__xdexQuoteProbeTid;
           quoteProbeObserver.unobserve(entry.target);
-          if (waiting) getQuoteAvailabilityQueue().enqueue(waiting);
+          if (waiting && isQuoteAvailabilityEnabled()) getQuoteAvailabilityQueue().enqueue(waiting);
         });
       }, { rootMargin: QUOTE_PROBE_ROOT_MARGIN });
     }
