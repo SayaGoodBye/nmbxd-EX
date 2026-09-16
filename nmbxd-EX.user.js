@@ -9853,6 +9853,12 @@ ${markedSwatchHtml}
     // 4. 监听图片盒子状态
     handleImageInteraction.observeImageBoxes(root);
     // ★ 页面加载和无缝翻页新内容都需要拓展带图回复宽度
+    // 拓展基数=信息行宽，会被 hideEmptyTitleAndEmail 改变约97px；必须保证同一 root 内先 hide 再量宽，
+    // 否则 document级/引用浮窗/pending 等路径读到 hide 前宽度，与 applyPageEnhancements 路径得到两种结果（竞态）
+    try {
+      const _cfg = getEarlyStartupConfig();
+      if (_cfg.hideEmptyTitleEmail && typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(root);
+    } catch (e) {}
     expandReplyMainWidths(root);
     // ==================== 全局监听 ====================
     // 监听 DOM 变化
