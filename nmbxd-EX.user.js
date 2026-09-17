@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      4.1.0
+// @version      4.1.1
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -37,7 +37,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    ### 新增\n\n - 添加自定义深/浅色模式。\n - 实现引用号可用性检测功能拓展，已失效引用：浅色；本串引用号：实线；其他主串引用号：虚线。\n - 为添加板块页「获取最新回复」按钮，在回复场景下也可手动触发增量刷新。\n - 添加阅图模式「分隔线」开关，关闭后获得无割裂的纯净阅图体验。\n\n ### 优化\n\n - 拓展引用浮窗中添加主串的跳转按钮。\n - 统一当前的图标UI。\n - “饼干偏好”按钮提示作用饼干是否为当前串默认饼干。\n - 浏览历史/发言历史检索性能优化。\n ### 修复\n\n - 修复浏览记录与常用串链接构造中最近查看页、最远访问页、已知总页数之间的逻辑矛盾，解决 WebDAV 同步后浏览历史页码回退问题。\n - 修复连续点击同一引用号导致的多层拓展引用浮窗出现的问题。\n - 修复无缝翻页时偶现的加载多次同一页的问题。\n - 修复在 WebDAV 同步后由于发言历史自动渲染导致的引用号可用性检测被持续触发的问题。\n
+// @changelog    ### 新增\n\n - 添加自定义深/浅色模式。\n - 实现引用号可用性检测功能拓展，已失效引用：浅色；本串引用号：实线；其他主串引用号：虚线。\n - 为添加板块页「获取最新回复」按钮，在回复场景下也可手动触发增量刷新。\n - 添加阅图模式「分隔线」开关，关闭后获得无割裂的纯净阅图体验。\n\n ### 优化\n\n - 拓展引用浮窗中添加主串的跳转按钮。\n - 统一当前的图标UI。\n - “饼干偏好”按钮提示作用饼干是否为当前串默认饼干。\n - 浏览历史/发言历史检索性能优化。\n ### 修复\n\n - 修复浏览记录与常用串链接构造中最近查看页、最远访问页、已知总页数之间的逻辑矛盾，解决 WebDAV 同步后浏览历史页码回退问题。\n - 修复连续点击同一引用号导致的多层拓展引用浮窗出现的问题。\n - 修复无缝翻页时偶现的加载多次同一页的问题。\n - 修复在 WebDAV 同步后由于发言历史自动渲染导致的引用号可用性检测被持续触发的问题。\n - 修复原站点部分颜文字丢失的问题。\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -6927,7 +6927,7 @@ ${markedSwatchHtml}
                   <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
                   </span> -->
-                  <a class="h-threads-info-id" style="cursor: default;">No.${getPreviewPlaceholderId(early)}</a>
+                  <a class="h-threads-info-id" href="javascript:;" style="cursor: default;">No.${getPreviewPlaceholderId(early)}</a>
                 </div>
                 <div class="h-threads-content"></div>
               </div>
@@ -9853,6 +9853,12 @@ ${markedSwatchHtml}
     // 4. 监听图片盒子状态
     handleImageInteraction.observeImageBoxes(root);
     // ★ 页面加载和无缝翻页新内容都需要拓展带图回复宽度
+    // 拓展基数=信息行宽，会被 hideEmptyTitleAndEmail 改变约97px；必须保证同一 root 内先 hide 再量宽，
+    // 否则 document级/引用浮窗/pending 等路径读到 hide 前宽度，与 applyPageEnhancements 路径得到两种结果（竞态）
+    try {
+      const _cfg = getEarlyStartupConfig();
+      if (_cfg.hideEmptyTitleEmail && typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(root);
+    } catch (e) {}
     expandReplyMainWidths(root);
     // ==================== 全局监听 ====================
     // 监听 DOM 变化
@@ -11276,6 +11282,8 @@ ${markedSwatchHtml}
   }
   // 判定结果统一出口：样式回填、跳转按钮补插、汇总日志。队列回调与悬浮/点击实时回填共用
   function applyQuoteAvailabilityResult(tid, kind) {
+    // 检测关闭时不得改样式：多标签页远程关闭后，已入队探测的残余回调不得再回填全文档（L2 缺口）
+    if (!isQuoteAvailabilityEnabled()) return;
     // 仅对真正包含该引用编号的元素应用样式；不含编号的绿色文本不改动
     document.querySelectorAll('font[color="#789922"]').forEach((el) => {
       if (getQuoteRefIdFromText(el.textContent) === tid) applyQuoteAvailabilityStyle(el, kind);
@@ -11352,7 +11360,7 @@ ${markedSwatchHtml}
           const waiting = entry.target.__xdexQuoteProbeTid;
           delete entry.target.__xdexQuoteProbeTid;
           quoteProbeObserver.unobserve(entry.target);
-          if (waiting) getQuoteAvailabilityQueue().enqueue(waiting);
+          if (waiting && isQuoteAvailabilityEnabled()) getQuoteAvailabilityQueue().enqueue(waiting);
         });
       }, { rootMargin: QUOTE_PROBE_ROOT_MARGIN });
     }
@@ -18295,21 +18303,35 @@ function 注册自动保存编辑() {
       }
       }, () => ({ textLength: 正文框 && 正文框.val ? String(正文框.val() || '').length : 0 }));
     }
-    function isPreviewPlaceholderInfoId(anchor) {
-      if (!anchor || !anchor.closest || !anchor.closest('.h-preview-box')) return false;
-      // 占位链接特征：无 href（模板刻意去掉 href 使其不可点击）或旧的伪协议 href
-      const href = anchor.getAttribute('href') || '';
-      return !href || /(^|\/)?:javascript:;?$/.test(href);
-    }
     // 点击 No.xxxx 插入引用（保持原先光标与选择区逻辑）
     function 注册追记引用串号() {
-      if (!cfg.enableQuoteInsert) return;
+      // 预览占位编号点击会夺走文本框焦点（浏览器在 mousedown 阶段转移焦点，click 拦不住），
+      // 这里在 mousedown 时记录光标，click 确认是预览编号后把焦点和光标恢复到原位置
+      $('body').on('mousedown', 'a.h-threads-info-id', () => {
+        const el = 正文框[0];
+        if (!el) return;
+        window.__xdexPreviewFocusRestore = {
+          el,
+          start: el.selectionStart,
+          end: el.selectionEnd,
+          hadFocus: document.activeElement === el,
+        };
+      });
       $('body').on('click', 'a.h-threads-info-id', e => {
         // 如果按住 Ctrl/Meta/Shift 键，允许浏览器默认行为（在新标签页/新窗口打开链接）
         if (e.ctrlKey || e.metaKey || e.shiftKey) return;
         e.preventDefault();
-        if (isPreviewPlaceholderInfoId(e.currentTarget)) {
+        // 发言预览内的占位编号不参与引用追记（保留 href="javascript:;" 以兼容站点 attr(href).replace，
+        // 排除只按 .h-preview-box 祖先判断，不依赖 href 推断）
+        if (e.currentTarget.closest('.h-preview-box')) {
           e.stopPropagation();
+          // 点击预览占位编号：把焦点和光标恢复到文本框原位置
+          const r = window.__xdexPreviewFocusRestore;
+          delete window.__xdexPreviewFocusRestore;
+          if (r && r.el && r.el.isConnected) {
+            r.el.focus({ preventScroll: true });
+            r.el.setSelectionRange(r.start, r.end);
+          }
           return;
         }
         if (!正文框.length) return;
@@ -28345,6 +28367,8 @@ function 注册自动保存编辑() {
   }
   function extractQuoteIdFromClickTarget(target) {
     if (!target || !target.closest) return '';
+    // 发言预览的占位编号不参与自动引用放行（避免 No.占位号 误设 2 秒手动引用标记）
+    if (target.closest('.h-preview-box')) return '';
     const a = target.closest('a.h-threads-info-id, a[href*="r="], a[href*="/t/"]');
     if (!a) return '';
     // 仅关注串号/引用链接，避免误伤普通导航
