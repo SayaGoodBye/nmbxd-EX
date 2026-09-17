@@ -6927,7 +6927,7 @@ ${markedSwatchHtml}
                   <!-- <span class="h-threads-info-report-btn">
                     [<a href="/f/值班室" target="_blank">举报</a>]
                   </span> -->
-                  <a class="h-threads-info-id" style="cursor: default;">No.${getPreviewPlaceholderId(early)}</a>
+                  <a class="h-threads-info-id" href="javascript:;" style="cursor: default;">No.${getPreviewPlaceholderId(early)}</a>
                 </div>
                 <div class="h-threads-content"></div>
               </div>
@@ -17517,7 +17517,6 @@ ${markedSwatchHtml}
        */
       function extendKaomojiSet() {
           const EXTRA_EMOTS = [
-              "･ﾟ( ﾉヮ´ )","(ﾉ)`ω´(ヾ)","ᕕ( ᐛ )ᕗ","(　ˇωˇ)","( ｣ﾟДﾟ)｣＜","( ›´ω`‹ )","(;´ヮ`)7","(`ゥ´ )","(`ᝫ´ )","( ᑭ`д´)ᓀ))д´)ᑫ","σ( ᑒ )",
               "( ´_ゝ`)旦","(<ゝω・) ☆","(`ε´ (つ*⊂)","=͟͟͞͞( 'ヮ' 三 'ヮ' =͟͟͞͞)","↙(`ヮ´ )↗ 开摆！",
               "(っ˘Д˘)ノ<","(ﾉ#)`д´)σ","₍₍(ง`ᝫ´ )ว⁾","( `ᵂ´)","( *・ω・)✄╰ひ╯","U•ェ•*U","⊂( ﾟωﾟ)つ",
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
@@ -17568,9 +17567,6 @@ ${markedSwatchHtml}
               "血压0↓":"　算逑喽／＞__フ\n　　　　| ＝ ˇωˇ)＝　血压0↓\n　 　　／`　　 丨",
               "全角空格": "　",
               "零宽空格": "​",
-              "防剧透": "[h] [/h]",
-              "骰子": "[n]",
-              "高级骰子":"[n,m]",
           };
           const ORDERED_RICH = [
               "҉( ﾟ∀。)","⬭꒰ঌ( ˇωˇ)໒꒱","齐齐蛤尔","呼伦悲尔","愕尔多厮","智利","阴山山脉",
@@ -17581,7 +17577,7 @@ ${markedSwatchHtml}
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
               "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓",
-              "全角空格","零宽空格","防剧透","骰子","高级骰子"
+              "全角空格","零宽空格",
               // 页面中“防剧透/骰子/高级骰子”不动其原位
           ];
           const NEED_LF = new Set([
@@ -18307,21 +18303,35 @@ function 注册自动保存编辑() {
       }
       }, () => ({ textLength: 正文框 && 正文框.val ? String(正文框.val() || '').length : 0 }));
     }
-    function isPreviewPlaceholderInfoId(anchor) {
-      if (!anchor || !anchor.closest || !anchor.closest('.h-preview-box')) return false;
-      // 占位链接特征：无 href（模板刻意去掉 href 使其不可点击）或旧的伪协议 href
-      const href = anchor.getAttribute('href') || '';
-      return !href || /(^|\/)?:javascript:;?$/.test(href);
-    }
     // 点击 No.xxxx 插入引用（保持原先光标与选择区逻辑）
     function 注册追记引用串号() {
-      if (!cfg.enableQuoteInsert) return;
+      // 预览占位编号点击会夺走文本框焦点（浏览器在 mousedown 阶段转移焦点，click 拦不住），
+      // 这里在 mousedown 时记录光标，click 确认是预览编号后把焦点和光标恢复到原位置
+      $('body').on('mousedown', 'a.h-threads-info-id', () => {
+        const el = 正文框[0];
+        if (!el) return;
+        window.__xdexPreviewFocusRestore = {
+          el,
+          start: el.selectionStart,
+          end: el.selectionEnd,
+          hadFocus: document.activeElement === el,
+        };
+      });
       $('body').on('click', 'a.h-threads-info-id', e => {
         // 如果按住 Ctrl/Meta/Shift 键，允许浏览器默认行为（在新标签页/新窗口打开链接）
         if (e.ctrlKey || e.metaKey || e.shiftKey) return;
         e.preventDefault();
-        if (isPreviewPlaceholderInfoId(e.currentTarget)) {
+        // 发言预览内的占位编号不参与引用追记（保留 href="javascript:;" 以兼容站点 attr(href).replace，
+        // 排除只按 .h-preview-box 祖先判断，不依赖 href 推断）
+        if (e.currentTarget.closest('.h-preview-box')) {
           e.stopPropagation();
+          // 点击预览占位编号：把焦点和光标恢复到文本框原位置
+          const r = window.__xdexPreviewFocusRestore;
+          delete window.__xdexPreviewFocusRestore;
+          if (r && r.el && r.el.isConnected) {
+            r.el.focus({ preventScroll: true });
+            r.el.setSelectionRange(r.start, r.end);
+          }
           return;
         }
         if (!正文框.length) return;
@@ -28357,6 +28367,8 @@ function 注册自动保存编辑() {
   }
   function extractQuoteIdFromClickTarget(target) {
     if (!target || !target.closest) return '';
+    // 发言预览的占位编号不参与自动引用放行（避免 No.占位号 误设 2 秒手动引用标记）
+    if (target.closest('.h-preview-box')) return '';
     const a = target.closest('a.h-threads-info-id, a[href*="r="], a[href*="/t/"]');
     if (!a) return '';
     // 仅关注串号/引用链接，避免误伤普通导航
