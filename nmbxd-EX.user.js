@@ -156,7 +156,7 @@ function xdexEarlyDarkEnabled() {
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info *,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content *{color:#d9d0d0 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-tips.uk-text-danger{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote font[color="#789922"]{color:#b5d06d !important;}' +
-        ':root.xdex-custom-dark .qp-overlay-quote a{color:#3e8eec !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info a{color:#3e8eec !important;}' +
         ':root.xdex-custom-dark .kaomoji-item:hover{background:#3a3d40 !important;}' +
         '@keyframes xdex-icon-sync-spin{to{transform:rotate(360deg)}}' +
         '.xdex-icon-loading .xdex-icon-sync{animation:xdex-icon-sync-spin .8s linear infinite}' +
