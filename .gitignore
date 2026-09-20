@@ -26,3 +26,4 @@ AGENTS.md
 .semgrep/
 .serena/.gitignore
 .serena/project.yml
+.workbuddy/

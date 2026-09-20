@@ -314,6 +314,7 @@ function xdexEarlyDarkEnabled() {
   }
   function showImmediateToast(msg, duration = 900, key = 'default') {
     const safeKey = String(key || 'default').replace(/[^a-z0-9_-]/gi, '-');
+    if (safeKey === 'refresh-status') console.log('[toast]', msg); // 刷新状态提示同步输出到控制台（对齐通用 toast 路径）
     let $t = $(`#xdex-immediate-toast-${safeKey}`);
     if (!$t.length) {
       $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
@@ -333,6 +334,9 @@ function xdexEarlyDarkEnabled() {
     const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
     el.__xdexImmediateToastSeq = seq;
     $t.stop(true, false).text(msg).show();
+    // 淡出被 stop(true,false) 打断时 style.opacity 会冻结在中间值，而 jQuery 的 .show() 不恢复不透明度，
+    // 导致「上一条正在淡出时下发的新消息」整段偏淡甚至近乎不可见 → 显式复位
+    $t.css('opacity', 1);
     $t.delay(duration).fadeOut(160, () => {
       if (el.__xdexImmediateToastSeq === seq) $t.remove();
     });
@@ -8117,7 +8121,7 @@ ${markedSwatchHtml}
           prepareForceLoadNext(result.nextPage);
           setTimeout(() => loadNext(refreshGeneration), 50);
         } else if (result.status === 'last') {
-          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新');
+          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', 1800); // 结果提示给足阅读时间（原 900ms 偏短，易漏看后重复刷新）
         }
       }
       // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）
