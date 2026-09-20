@@ -1,4 +1,4 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
 // @version      4.1.1
@@ -10303,7 +10303,14 @@ ${markedSwatchHtml}
       const $top = $stack.children('.qp-quote').last();
       if (!$top.length) { $overlay.fadeOut(160); return; }
       // 1) 如果点击发生在最上层引用框内部，忽略
-      if ($(e.target).closest($top).length) return;
+      //    必须用派发时定格的 composedPath 判定：冒泡途中控件若替换了自身内容，e.target 会脱离文档，
+      //    closest($top) 随即失效、被误判成「点了框外」而误关引用浮窗（jQuery 事件需取 originalEvent）
+      const nativeEv = e.originalEvent || e;
+      const evPath = typeof nativeEv.composedPath === 'function' ? nativeEv.composedPath() : null;
+      const inTopQuote = evPath
+          ? evPath.indexOf($top[0]) !== -1
+          : !!(e.target && e.target.closest && e.target.closest($top[0]));
+      if (inTopQuote) return;
       // 2) 如果正在/刚刚拖拽或拉伸，避免误触关闭
       if ($top.hasClass('is-dragging') || $top.hasClass('is-resizing') ||
           $('.qp-quote.is-dragging').length || $('.qp-quote.is-resizing').length ||
@@ -12844,7 +12851,13 @@ ${markedSwatchHtml}
           document.body.appendChild(overlay);
           // 点击遮罩关闭（点内容不关闭，且允许事件冒泡到 document 以触发引用弹窗）
           overlay.addEventListener('click', function (e) {
-            if (e.target.closest('.qp-quote')) {
+            // 冒泡途中若有控件替换了自身内容（如 .js-extra 切换图标），e.target 会脱离文档，
+            // closest('.qp-quote') 随即失效、被误判成「点了遮罩」；改用派发时定格的 composedPath 判定
+            const evPath = typeof e.composedPath === 'function' ? e.composedPath() : null;
+            const inQuote = evPath
+                ? evPath.some(el => el && el.classList && el.classList.contains('qp-quote'))
+                : !!(e.target && e.target.closest && e.target.closest('.qp-quote'));
+            if (inQuote) {
                 return; // 点击在内容区：不关闭，也不阻止冒泡
             }
             // 如果正在调整 textarea 大小，不关闭浮窗
@@ -18995,6 +19008,13 @@ function 注册自动保存编辑() {
     // 切换逻辑（保留原版 setMode，外部依赖不变）
     const $modeBtns = $row.find('.js-mode'); // 兼容原代码（若不存在不会报错）
     function setMode(mode, {silent = false} = {}) {
+      // 保留用户手动选择的 临时/连续：发串 分支会 .empty() 掉整排按钮并把 extra 置 null，
+      // 切回 回复 时按钮 DOM 与 window.replyModeState 都已无值，只能靠 $row 上持久化的值还原，
+      // 否则每次 发串↔回复 往返都会把用户的选择打回默认（首帧无历史值 → 仍走默认）
+      const prevExtra = $row.find('.js-extra').attr('data-extra')
+        || $row.data('xdexLastExtra')
+        || (window.replyModeState && window.replyModeState.extra)
+        || null;
       $modeBtns.removeClass('active').filter('[data-mode="'+mode+'"]').addClass('active');
       if (mode === '发串') {
       $formPost.attr('action', '/Home/Forum/doPostThread.html');
@@ -19094,15 +19114,20 @@ function 注册自动保存编辑() {
           });
           // “临时/连续”按钮
           const $btnExtra = $('<button type="button" class="js-extra xdex-reply-mode-btn" data-extra="临时" title=\'当前为"临时"回复模式，点击切换为"连续"回复模式\'>').html(XDEX_SVG_STOPWATCH);
-          $btnExtra.on('click', function(){
+          $btnExtra.on('click', function(e){
+            // 下面会用 .html() 替换被点击的图标本身：若不阻断冒泡，遮罩处理器拿到的 e.target
+            // 已脱离文档，closest('.qp-quote') 判定失效，会把这次点击误判为「点了遮罩」而关闭浮窗
+            e.stopPropagation();
             const cur = $(this).attr('data-extra');
             if (cur === '临时') {
               $(this).attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
               window.replyModeState = { mode: '回复', extra: '连续' };
+              $row.data('xdexLastExtra', '连续'); // 持久化用户选择，供 发串→回复 往返后还原
               toast('已切换到 连续 回复模式');
             } else {
               $(this).attr('data-extra','临时').html(XDEX_SVG_STOPWATCH).attr('title','当前为"临时"回复模式，点击切换为"连续"回复模式');
               window.replyModeState = { mode: '回复', extra: '临时' };
+              $row.data('xdexLastExtra', '临时'); // 持久化用户选择，供 发串→回复 往返后还原
               toast('已切换到 临时 回复模式');
             }
             emitReplyModeChange();
@@ -19112,7 +19137,11 @@ function 注册自动保存编辑() {
           $extra.append($wrapper);
         }
         $extra.show();
-        window.replyModeState = { mode: '回复', extra: '临时' };
+        // 新建的按钮固定是 临时 图标，这里按 prevExtra 还原（无历史值时保持 临时，再由下方初始状态块应用设置项默认）
+        if (prevExtra === '连续') {
+          $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
+        }
+        window.replyModeState = { mode: '回复', extra: prevExtra === '连续' ? '连续' : '临时' };
         // 只有在没有自动填充时，才显示默认切换提示
         if (!autofilled && !silent) {
           toast('已切换到 回复 模式');
@@ -19128,11 +19157,14 @@ function 注册自动保存编辑() {
     }
     // 绑定模式按钮（原先存在的行为）
     $modeBtns.on('click', function(){ setMode($(this).attr('data-mode')); });
+    // 记录本行按钮上已有的 临时/连续（'临时' 表示用户手动选过；本函数可重复执行，如无缝加载后重跑）
+    // 下方三处初始状态分支据此避免用设置项默认值覆盖用户的选择
+    const rowPrevExtra = $row.find('.js-extra').attr('data-extra') || $row.data('xdexLastExtra') || null;
     // 初始状态：如果是时间线则强制 回复 模式（silent），否则默认静默发串
     if (isTimeline) {
       setMode('回复', {silent: true});
-      // extra 模式
-      if (SettingPanel.state.replyExtraDefault === '连续') {
+      // extra 模式（rowPrevExtra 为 '临时' 说明用户手动选过，不再用设置项默认覆盖）
+      if (SettingPanel.state.replyExtraDefault === '连续' && rowPrevExtra !== '临时') {
         // 模拟点击一次“临时/连续”按钮，或者直接设置
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
@@ -19152,14 +19184,14 @@ function 注册自动保存编辑() {
       } catch (e) {
         toast(_boardName + '版块默认为"发串"模式，请注意', 7112, { queue: false, key: 'board-post-mode-notice' });
       }
-      if (SettingPanel.state.replyExtraDefault === '连续') {
+      if (SettingPanel.state.replyExtraDefault === '连续' && rowPrevExtra !== '临时') {
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     } else {
       setMode(SettingPanel.state.replyModeDefault, {silent: true});
-      // extra 模式
-      if (SettingPanel.state.replyExtraDefault === '连续') {
+      // extra 模式（rowPrevExtra 为 '临时' 说明用户手动选过，不再用设置项默认覆盖）
+      if (SettingPanel.state.replyExtraDefault === '连续' && rowPrevExtra !== '临时') {
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
