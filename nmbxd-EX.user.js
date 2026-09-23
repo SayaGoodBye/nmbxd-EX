@@ -2995,7 +2995,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               name: (newer.name || '').trim() ? newer.name : (localItem.name || remoteItem.name),
             };
           } else if (localItem) {
-            mergedItem = Object.assign({}, localItem, { visitCount: mergedCount });
+            // 远端无此 key（从未有过，或被其他端的裸上传覆盖）时，本地值是唯一真相。
+            // 不能沿用 mergedCount(=0+本地−基线)：已同步过的条目会被算成 0 而清零
+            mergedItem = Object.assign({}, localItem, { visitCount: localCount });
           } else if (remoteItem) {
             mergedItem = Object.assign({}, remoteItem, { visitCount: mergedCount });
           }
@@ -3268,7 +3270,17 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           let mode = 'merge';
           if (options.threadHistoryMode === 'webdav-delta') {
             // WebDAV：基于基线计算独立贡献，不直接累加
-            const baselines = getWebdavHistoryBaselines();
+            let baselines = getWebdavHistoryBaselines();
+            // 迁移兜底：基线从未建立（功能首次引入/基线丢失）但本端此前同步过时，本地存储已是
+            // 历史合并结果；若按 baseline=0 计算，整份旧计数会被当成新增，导致各端逐轮倍增
+            if (!baselines.threadHistory) {
+              let syncedBefore = 0;
+              try { syncedBefore = Number((GM_getValue(WEBDAV_CONFIG_KEY, null) || {}).lastSyncAt) || 0; } catch (e) {}
+              if (syncedBefore > 0) {
+                baselines = saveWebdavHistoryBaselinesFromStore(local, baselines);
+                console.log('[webdav] 基线缺失且本端曾同步过：已按当前本地值重建基线，避免旧计数被计为新增');
+              }
+            }
             merged = mergeThreadHistoryStoreWebdav(local, normalizeThreadHistoryStore(payload.threadHistory), baselines);
             merged = setThreadHistoryStore(merged);
             saveWebdavHistoryBaselinesFromStore(merged, baselines);
@@ -28901,6 +28913,7 @@ function 注册自动保存编辑() {
       return { ok: false, status: 0, missingUtils: true };
     }
     const built = utils.buildFullExportFile(webdavFullSelection());
+    let historyMerged = false; // 本次上传是否经过“基线增量”合并；裸上传需另行推进基线
     // 上传前先拉取远端（若存在）：浏览历史按“基线增量”合并、发言历史按 postId/指纹归一化合并，
     // 避免全量覆盖其他端已贡献的独立记录
     let existing = null;
@@ -28925,6 +28938,7 @@ function 注册自动保存编辑() {
             // 下轮 delta = max(0, 本地旧值 − 基线) 归零，本端新增计数会被静默吞掉
             setThreadHistoryStore(merged);
             if (utils.saveWebdavHistoryBaselinesFromStore) utils.saveWebdavHistoryBaselinesFromStore(merged, baselines);
+            historyMerged = true;
           }
           if (built.file.payload.postHistory && utils.mergePostHistoryStore && parsed.data.payload.postHistory) {
             // local=本端待上传数据，imported=远端数据（归一化合并，保留本端 key 优先）
@@ -28957,7 +28971,21 @@ function 注册自动保存编辑() {
       // 全量导出体积较大，放宽 PUT 超时（默认 10s 对慢速上行易超时）
       timeout: 30000
     });
-    return { ok: put.status >= 200 && put.status < 300, status: put.status };
+    const putOk = put.status >= 200 && put.status < 300;
+    // 裸上传（远端缺失或内容无效，未经上面的“基线增量”合并）成功后必须把基线推进到本次上传值：
+    // 否则该端基线停留在缺失/旧值，下一轮双向合并会把整份本地计数当成新增再加一遍（多端倍增）
+    if (putOk && !historyMerged && built.file.payload && built.file.payload.threadHistory
+        && typeof utils.saveWebdavHistoryBaselinesFromStore === 'function') {
+      try {
+        utils.saveWebdavHistoryBaselinesFromStore(
+          built.file.payload.threadHistory,
+          typeof utils.getWebdavHistoryBaselines === 'function' ? utils.getWebdavHistoryBaselines() : {}
+        );
+      } catch (e) {
+        console.warn('[webdav] 裸上传后推进基线失败', e);
+      }
+    }
+    return { ok: putOk, status: put.status };
   }
   async function webdavSyncCore(cfg, silent) {
     const notify = (t) => { if (!silent && typeof toast === 'function') toast(t); };

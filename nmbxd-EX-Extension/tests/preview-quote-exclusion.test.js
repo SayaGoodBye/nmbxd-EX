@@ -48,7 +48,7 @@ test('引用追记: 预览内编号被排除，预览外正常追记（且不依
   const textareaVal = { v: 'draft' };
   const sandbox = {
     cfg: { enableQuoteInsert: true },
-    $: () => ({ on: (ev, sel, cb) => clicks.push(cb) }),
+    $: () => ({ on: (ev, sel, cb) => clicks.push({ ev, sel, cb }) }),
     正文框: {
       0: { focus() {}, setSelectionRange() {}, dispatchEvent() {} },
       length: 1,
@@ -57,6 +57,7 @@ test('引用追记: 预览内编号被排除，预览外正常追记（且不依
       val: (nv) => { if (nv !== undefined) textareaVal.v = nv; return textareaVal.v; },
     },
     document: { activeElement: null },
+    window: {}, // 焦点恢复依赖 window.__xdexPreviewFocusRestore
     setTimeout: (fn) => fn(),
     Event: function () {},
     console: { log: () => {} },
@@ -67,16 +68,18 @@ test('引用追记: 预览内编号被排除，预览外正常追记（且不依
   sandbox.注册();
 
   const mkEvent = (href, insidePreview) => ({ ctrlKey: false, metaKey: false, shiftKey: false, preventDefault: () => {}, stopPropagation: () => {}, currentTarget: makeAnchor(href, insidePreview) });
+  // 该函数同时注册 mousedown（记录光标）与 click（追记）两个委托，按事件名取 click
+  const onClick = clicks.find((c) => c.ev === 'click').cb;
   const ta = sandbox.正文框;
 
   // 预览内、带 href="javascript:;" 的编号：不得插入
   ta.val('draft');
-  clicks[0](mkEvent('javascript:;', true));
+  onClick(mkEvent('javascript:;', true));
   assert(ta.val() === 'draft', `预览内编号不得插入引用, got ${JSON.stringify(ta.val())}`);
 
   // 预览外真实编号：正常插入
   ta.val('draft');
-  clicks[0](mkEvent('/t/123?r=123', false));
+  onClick(mkEvent('/t/123?r=123', false));
   assert(ta.val().includes('>>No.123'), `预览外编号应正常追记, got ${JSON.stringify(ta.val())}`);
 });
 
