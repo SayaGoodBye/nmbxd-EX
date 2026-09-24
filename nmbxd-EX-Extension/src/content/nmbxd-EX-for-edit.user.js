@@ -9267,16 +9267,35 @@ ${markedSwatchHtml}
         // 如果图片未激活
         if (!imgBox.classList.contains('h-active')) {
           const currentWidth = msgMain.offsetWidth;
+          // ★ 未参与布局（隐藏/游离）时量不到宽度，此刻不做判定也不置锁，留给后续 pass 重试
+          if (!currentWidth) return;
           const maxMsgWidth = this.getMaxMsgWidth(msgMain);
-          const targetWidth = Math.min(currentWidth + 80, maxMsgWidth);
+          // ★ 加宽量 = 固定预算（getExpandedWidthBudget）：按「本步骤之后仍会改变容器宽度的操作」的
+          // 最坏叠加一次性算入并写入，不做实时测量，之后不再重算，避免渲染后的反复横向变化
+          const targetWidth = Math.min(currentWidth + this.getExpandedWidthBudget(), maxMsgWidth);
+          // ★ 目标宽度非法则不写入也不置锁（写入无效值时浏览器会丢弃该声明，锁却已置位 → 该回复永久不加宽）
+          if (!Number.isFinite(targetWidth) || targetWidth <= 0) return;
           // 保存原始宽度，便于之后恢复
           if (msgMain.__originalWidth === undefined) {
             msgMain.__originalWidth = msgMain.style.width || '';
           }
           msgMain.style.width = targetWidth + 'px';
-          // ☆ 新增：标记已经扩展过，防止重复调用时继续加宽
+          // ☆ 新增：标记已经扩展过，防止重复调用时继续加宽（仅在成功写入宽度后置位）
           msgMain.__imageWidthExpanded = true;
         }
+      },
+      // ★ 加宽预算（固定常数，不做实时测量）：按「本步骤之后仍会改变 main 容器宽度的操作」的最坏叠加取值，
+      // 一次写入后不再重算，避免渲染后的反复横向变化。构成：
+      // - 图片加载形态切换 ≈ 200px：原图（image/）与缩略图（thumb/）两种形式的非激活预览宽度均为固定值
+      //   （原图 ≈ 270px，缩略图按长边缩放、竖长图最窄 ≈ 70px，如 PDF 长页 90 → 270），最坏差 ≈ 200px
+      // - 相对时间形态演化 ≈ 101px：最短形态「今天(四)N秒前」(≈5.7em) → 最坏「N年前 YYYY-MM-DD(四)HH:MM:SS」
+      //   (≈13.4em)，差 ≈ 7.75em，按信息行 ~13px 字号折算（跨年只变数字，宽度不再增长）
+      // - 饼干大小写 ≈ 18px：饼干为 7 位，全大写 ID 在非等宽字体下比小写宽（按 7 字符 ID 估）
+      // - 饼干标记内边距 6px：markAllCookies 给 ID 文本加 0 3px，可能晚于本步骤生效
+      // 不产生增量的项（预算 0）：编号/Po 标记（只改 3em 定宽的图标单元格）、去除无标题/无名氏（只收窄，
+      // 且已在本步骤前生效）。观感调整只需改这一个返回值。
+      getExpandedWidthBudget() {
+        return (270 - 70) + 101 + 18 + 6; // ≈ 325px（270/70 = 原图/缩略图形式的预览宽常数）
       },
       // 预计算图片在所有旋转角度下的尺寸
       precalculateImageSizes(naturalWidth, naturalHeight, maxWidth) {
@@ -9828,6 +9847,17 @@ ${markedSwatchHtml}
               mutations.forEach(mutation => {
                 if (mutation.attributeName === 'class') {
                   handleImageLayout.handleActiveImageBox(imgBox);
+                  // ★ 图片收起（h-active 被移除）后补一次首次判定：展开态下首次判定会被跳过，
+                  // 而收起时补写容器宽度的旧逻辑（约 9517-9530，注释掉的死代码）缺失，缺这一步该回复将永久不加宽。
+                  // 已参与过加宽的回复无需重算：预算已在首次判定时一次算入后续变化的最坏增量，
+                  // min-width 语义下收起后内容回落只会让表格回到该宽度，不会突破。
+                  // 复用该图片盒已有的 class observer，事件驱动，不做周期性扫描。
+                  if (!imgBox.classList.contains('h-active')) {
+                    const replyMain = imgBox.closest('.h-threads-item-reply-main');
+                    if (replyMain && replyMain.__imageWidthExpanded !== true) {
+                      handleImageLayout.expandMsgWidthIfImageExists(replyMain);
+                    }
+                  }
                 }
               });
               }, () => ({ imgBoxes: 1 }));
@@ -9851,6 +9881,12 @@ ${markedSwatchHtml}
         scope.querySelectorAll('.h-threads-item-reply-main').forEach(msgMain => {
           replyMains.push(msgMain);
         });
+      }
+      // ★ 向上取证：pending 标记常落在 reply-main 的后代（.h-threads-img-box / .h-threads-img-a /
+      // .h-threads-img / .h-threads-content）上，仅向下查找会漏掉所属 reply-main（该回复永远不加宽）
+      const upwardMain = scope.closest && scope.closest('.h-threads-item-reply-main');
+      if (upwardMain && upwardMain !== scope) {
+        replyMains.push(upwardMain);
       }
       replyMains.forEach(msgMain => {
         handleImageLayout.expandMsgWidthIfImageExists(msgMain);
@@ -9876,6 +9912,8 @@ ${markedSwatchHtml}
       if (_cfg.hideEmptyTitleEmail && typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(root);
     } catch (e) {}
     expandReplyMainWidths(root);
+    // 注：后续增强（相对时间/饼干标记等）造成的宽度变化已按最坏增量算入加宽预算（getExpandedWidthBudget），
+    // 一次写入后不再重算，避免渲染后的反复横向变化。
     // ==================== 全局监听 ====================
     // 监听 DOM 变化
     if (root === document && !enableHDImageAndLayoutFix.__globalObserver) {
@@ -9945,7 +9983,10 @@ ${markedSwatchHtml}
         const node = queue.shift();
         queued.delete(node);
         if (node && node.isConnected) {
-          enableHDImageAndLayoutFix(node);
+          // ★ 标记常落在 reply-main 的后代（图片盒/锚/图片/正文）上：直接以该后代为 root 会导致
+          // 其所属 reply-main 不在作用域内（既不加宽、也绑不上图片控件），故提升到最近的整条回复
+          const scope = (node.closest && node.closest('.h-threads-item-reply')) || node;
+          enableHDImageAndLayoutFix(scope);
           processed++;
         }
       }
@@ -12550,12 +12591,13 @@ ${markedSwatchHtml}
       });
     };
     const observer = new MutationObserver(scheduleSync);
+    // 先挂到 window 再 observe：early open 复用同一实例；赋值与 attributeFilter 保持相邻（契约测试就近断言）
+    window.__xdexDarkReaderThemeObserver = observer;
     observer.observe(document.documentElement, {
       attributes: true,
       // DR 实际写入含 fr-init-once 与 style 内联变量（实测）→ 必须盯，否则开 DR 后仍浅色
       attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'fr-init-once', 'style', 'class'],
     });
-    window.__xdexDarkReaderThemeObserver = observer;
     return observer;
   }
   // 设置面板/登录框/历史等共用 :root.xdex-darkreader-active。
