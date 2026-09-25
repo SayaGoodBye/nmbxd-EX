@@ -9267,8 +9267,27 @@ ${markedSwatchHtml}
         // 如果图片未激活
         if (!imgBox.classList.contains('h-active')) {
           const currentWidth = msgMain.offsetWidth;
-          // ★ 未参与布局（隐藏/游离）时量不到宽度，此刻不做判定也不置锁，留给后续 pass 重试
-          if (!currentWidth) return;
+          // ★ 未参与布局（隐藏/游离）时量不到宽度，此刻不做判定也不置锁
+          if (!currentWidth) {
+            // ★ 事件驱动补判定：pending 队列对每个节点只处理一次，若插入时容器尚不可测量（所在容器
+            // 隐藏/未布局完成），该回复要等下一次全文档 pass（window.load 或触底增量更新）才有机会
+            // 补写，期间一直保持窄列。这里用 ResizeObserver 精确等「容器从 0 宽变为有实际尺寸」的
+            // 那一次回调：量到宽度即按正常流程写入并置锁、随后断开观察；仍为 0 宽（继续隐藏）则不
+            // 动作也不轮询。永久隐藏的回复只会有一次 0 尺寸初始回调，无后续开销。
+            if (typeof ResizeObserver === 'function' && !msgMain.__xdexExpandWidthRO) {
+              const ro = new ResizeObserver(() => {
+                if (!msgMain.offsetWidth) return; // 仍不可测量（含 observe 时的 0 尺寸初始回调）
+                ro.disconnect();
+                msgMain.__xdexExpandWidthRO = null;
+                if (msgMain.isConnected && msgMain.__imageWidthExpanded !== true) {
+                  handleImageLayout.expandMsgWidthIfImageExists(msgMain);
+                }
+              });
+              ro.observe(msgMain);
+              msgMain.__xdexExpandWidthRO = ro;
+            }
+            return;
+          }
           const maxMsgWidth = this.getMaxMsgWidth(msgMain);
           // ★ 加宽量 = 固定预算（getExpandedWidthBudget）：按「本步骤之后仍会改变容器宽度的操作」的
           // 最坏叠加一次性算入并写入，不做实时测量，之后不再重算，避免渲染后的反复横向变化
