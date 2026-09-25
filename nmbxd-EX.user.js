@@ -5656,7 +5656,9 @@ ${markedSwatchHtml}
         dropdown.__focusBackTarget = focusBackTarget || dropdown.__focusBackTarget || document.activeElement || null;
         dropdown.value = item.dataset.value || '';
         dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+        // 先移除菜单再交还焦点：菜单若仍在文档中，焦点会落到即将被移除的按钮上
         closeCookieShortcutMenu();
+        if (typeof restorePostTextareaFocus === 'function') restorePostTextareaFocus();
       });
       menu.appendChild(item);
     });
@@ -5698,6 +5700,13 @@ ${markedSwatchHtml}
     logCookieDropdownShortcutStage('custom-menu-opened', { options: options.length, value: dropdown.value });
     return true;
   }
+  // 把焦点交回发帖输入框（多处共用：切换饼干成功后、快捷菜单选择瞬间、弹窗取消等）
+  function restorePostTextareaFocus() {
+    const textarea = document.querySelector('textarea.h-post-form-textarea');
+    if (textarea && typeof textarea.focus === 'function') {
+      try { textarea.focus(); } catch (e) {}
+    }
+  }
   function switch_cookie(cookie, opts = {}){
     const silent = !!opts.silent;
     const onDone = typeof opts.onDone === 'function' ? opts.onDone : null;
@@ -5707,6 +5716,8 @@ ${markedSwatchHtml}
       onFail && onFail();
       return;
     }
+    // ★ 选择即回归焦点：不等网络往返，避免换饼期间（网络延迟时）阻塞用户输入
+    if (opts.focusBackNow) restorePostTextareaFocus();
     $.get(`https://www.nmbxd1.com/Member/User/Cookie/switchTo/id/${cookie.id}.html`)
       .done(()=>{
         if (!silent) toast('切换成功! 当前饼干为 '+abbreviateName(cookie.name));
@@ -5716,13 +5727,8 @@ ${markedSwatchHtml}
         updateDropdownUI(getCookiesList());
         removeDateString();
         updatePreviewCookieId();
-        // 切换成功后，将焦点移回到 textarea
-        const textarea = document.querySelector('textarea.h-post-form-textarea');
-        if (textarea) {
-          setTimeout(() => {
-            textarea.focus();
-          }, 100); // 延迟100ms确保UI更新完成
-        }
+        // 切换成功后，将焦点移回到 textarea（兜底：即时恢复可能被后续 UI 更新打断）
+        setTimeout(() => { restorePostTextareaFocus(); }, 100);
         onDone && onDone(cookie);
       })
       .fail(()=>{
@@ -6302,7 +6308,8 @@ ${markedSwatchHtml}
       const l = getCookiesList();
       if(!Object.keys(l).length) return showLoginPrompt();
       if(!sel) return toast('请选择饼干');
-      l[sel] ? switch_cookie(l[sel]) : toast('饼干信息无效');
+      // focusBackNow：选择瞬间即交还焦点，不等 switch_cookie 的网络往返
+      l[sel] ? switch_cookie(l[sel], { focusBackNow: true }) : toast('饼干信息无效');
       scheduleCookieDropdownFocusRestore(this, 120);
       if (!this.__focusBackTarget) delete this.__openedValue;
     });
