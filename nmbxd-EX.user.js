@@ -1617,7 +1617,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_subscriptionFeeds,#btn_group_subscriptionFeeds"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>我的订阅</span>
-                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:auto;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_group_subscriptionFeeds" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加订阅号">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="subscription-feed-inputs-container"></div>
@@ -7240,7 +7241,19 @@ ${markedSwatchHtml}
     }
   }
   const startupPerfDebug = (() => {
-    const AUTO_COLLECTION_ENABLED = false;
+    // 现场取证开关：默认关闭（关闭时 record/mark 全是空调用，无额外开销）。
+    // 开启方式（无需改源码）：
+    //   localStorage.setItem('xdexPerfCollect','1') 后刷新页面；或控制台执行 __xdexPerfCollectOn() 再刷新
+    // 关闭：__xdexPerfCollectOff() 后刷新，或 localStorage.removeItem('xdexPerfCollect')
+    let AUTO_COLLECTION_ENABLED = false;
+    try {
+      AUTO_COLLECTION_ENABLED = (typeof localStorage !== 'undefined' && localStorage.getItem('xdexPerfCollect') === '1');
+    } catch (e) {}
+    try {
+      window.__xdexPerfCollectOn = () => { try { localStorage.setItem('xdexPerfCollect', '1'); } catch (e) {} console.log('[XDEX perf] 采集已开启，请刷新页面后复现操作'); };
+      window.__xdexPerfCollectOff = () => { try { localStorage.removeItem('xdexPerfCollect'); } catch (e) {} console.log('[XDEX perf] 采集已关闭，请刷新页面'); };
+      window.__xdexPerfCollectState = () => ({ enabled: AUTO_COLLECTION_ENABLED, report: 'window.__xdexStartupPerfReport()', reset: 'window.__xdexStartupPerfReset()' });
+    } catch (e) {}
     const LONG_TASK_MS = 50;
     const LOG_TASK_MS = 16;
     const AUTO_REPORT_AFTER_MS = 60000;
@@ -7580,7 +7593,9 @@ ${markedSwatchHtml}
       try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
       try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
-      try { refreshFilterDisplay(liveCfg, document); } catch (e) {}
+      // 作用域必须与上方各步骤一致传 root：传 document 会在每次局部刷新/快速回复/翻页时
+      // 对整条串的全部回复重跑「重置PO布局 → 过滤 → 重算PO布局」，成本随串长度线性放大
+      try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
       try { if (typeof initContent === 'function') initContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
@@ -7845,7 +7860,15 @@ ${markedSwatchHtml}
         obs.observe(sentinel);
         return obs;
       }
+      // ★ 滚动高频：本回调每次都读 scrollTop/scrollHeight，未合并会让滚动期间每帧重复强制布局。
+      // 与同文件 bindScrollListener 的写法对齐：一帧只处理一次，滚动中不重复读取布局。
+      let userScrollFrameId = 0;
       function onUserScroll() {
+        if (userScrollFrameId) return;
+        if (typeof requestAnimationFrame !== 'function') { runUserScrollFrame(); return; }
+        userScrollFrameId = requestAnimationFrame(() => { userScrollFrameId = 0; runUserScrollFrame(); });
+      }
+      function runUserScrollFrame() {
         hasUserInteracted = true;
         const curTop = window.pageYOffset || document.documentElement.scrollTop || 0;
         lastUserScrollDir = (curTop > lastScrollTop) ? 1 : (curTop < lastScrollTop ? -1 : lastUserScrollDir);
