@@ -7252,7 +7252,7 @@ ${markedSwatchHtml}
     try {
       window.__xdexPerfCollectOn = () => { try { localStorage.setItem('xdexPerfCollect', '1'); } catch (e) {} console.log('[XDEX perf] 采集已开启，请刷新页面后复现操作'); };
       window.__xdexPerfCollectOff = () => { try { localStorage.removeItem('xdexPerfCollect'); } catch (e) {} console.log('[XDEX perf] 采集已关闭，请刷新页面'); };
-      window.__xdexPerfCollectState = () => ({ enabled: AUTO_COLLECTION_ENABLED, report: 'window.__xdexStartupPerfReport()', reset: 'window.__xdexStartupPerfReset()' });
+      window.__xdexPerfCollectState = () => ({ enabled: AUTO_COLLECTION_ENABLED, report: 'window.__xdexStartupPerfReport()', reset: 'window.__xdexStartupPerfReset()', capture: 'window.__xdexPerfCapture("场景名")', list: 'window.__xdexPerfRounds()', print: 'window.__xdexPerfPrint()', clear: 'window.__xdexPerfClear()' });
     } catch (e) {}
     const LONG_TASK_MS = 50;
     const LOG_TASK_MS = 16;
@@ -7312,7 +7312,19 @@ ${markedSwatchHtml}
       }
       return event;
     }
+    // ★ 零开销快路径：关闭采集时直接转发调用，不读时钟、不构造 meta。
+    // 热路径（滚动/观察器回调）上的埋点全部依赖这条早退，否则每帧两次 performance.now 会变成常驻成本。
+    function begin() {
+      return AUTO_COLLECTION_ENABLED ? now() : null;
+    }
+    // 与 begin 配对：token 为 null（未开启采集）时立即返回；
+    // 用 `token == null` 而非 falsy 判断，避免 performance.now() 早期返回 0 被误判为「未计时」
+    function finish(label, token, meta) {
+      if (!AUTO_COLLECTION_ENABLED || token == null) return;
+      record(label, now() - token, meta);
+    }
     function measure(label, fn, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return fn();
       const started = now();
       try {
         return fn();
@@ -7321,6 +7333,7 @@ ${markedSwatchHtml}
       }
     }
     async function measureAsync(label, fn, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return fn();
       const started = now();
       try {
         return await fn();
@@ -7329,6 +7342,7 @@ ${markedSwatchHtml}
       }
     }
     function measureObserver(label, mutations, fn, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return fn();
       let result;
       const started = now();
       try {
@@ -7404,6 +7418,147 @@ ${markedSwatchHtml}
       console.log('[XDEX startup perf] reset');
       return 'reset';
     }
+    // ==================== 场景记录与导出（真机测量用） ====================
+    // 设计：每轮测量 = 一次 reset → 一次操作 → 一次 capture(name) 留档。
+    // 留档只做「归档 + 精简」，不改变统计口径；导出的 JSON 用于跨版本/跨场景对照。
+    const rounds = [];
+    // 只保留判读所需的字段，避免导出体积随 events/browserEvents 膨胀
+    const MEASURED_LABELS = [
+      'hdLazy.onScrollFrame', 'hdLazy.measureQueue',                   // D：滚动帧内成本
+      'seamless.runUserScrollFrame',                                    // D：无缝翻页判定
+      'applyPageEnhancements.total', 'applyPageEnhancements.syncPreprocess', // A/B/C/D：增强收口
+      'refresh.checkNext.syncDom',                                      // C：刷新按钮 / 末页旁路
+      'refresh.postReply.syncDom',                                      // A：串内页发送后刷新
+      // B：板块页/时间线发送后增量刷新（Step 5-8 的同步 DOM 工作与两处全文档调用）
+      'boardQuickReply.total',
+      'boardQuickReply.step5.measure', 'boardQuickReply.step6.insert', 'boardQuickReply.step7.compensate',
+      'boardQuickReply.step8.post', 'boardQuickReply.buildNode',
+      'boardQuickReply.deferred.refreshFilter', 'boardQuickReply.deferred.enablePostExpand', 'boardQuickReply.deferred.total',
+      // B：await 分段（区分「网络耗时」与「桥接阻塞」——整链 7.5s 而同步 DOM 仅 ~28ms）
+      'boardQuickReply.await.p1', 'boardQuickReply.await.tail', 'boardQuickReply.await.prev',
+      'refreshFilterDisplay', 'applyFilters',                           // 过滤（作用域是否放大）
+      'seamless.loadNext.total', 'seamless.loadNext.applyPageEnhancements',
+      'seamless.loadNextBoard.total', 'seamless.loadNextBoard.applyPageEnhancements',
+      'enableHDImageAndLayoutFix', 'enableHDImageAndLayoutFix.pending',
+      'highlightPO', 'initContent'
+    ];
+    function collectScenario(round) {
+      const observers = [];
+      let observerTotal = 0;
+      round.stats.forEach(s => {
+        if (s.label.indexOf('observer.create:') === 0) {
+          observers.push({ name: s.label.slice('observer.create:'.length), count: s.count });
+          observerTotal += s.count;
+        }
+      });
+      const frames = round.browserEvents.filter(e => e.label === 'browser:long-animation-frame');
+      const blocking = frames.reduce((a, e) => a + (e.blockingDuration || 0), 0);
+      // ★ 长帧归因汇总：按脚本来源聚合 duration 与 forcedStyleAndLayout，
+      // 定位「未归因阻塞」属于哪个脚本/函数（LoAF scripts[] 提供）
+      const scriptAgg = new Map();
+      frames.forEach(f => (f.scripts || []).forEach(s => {
+        const key = `${s.src || '?'}::${s.fn || s.invoker || '?'}`;
+        const acc = scriptAgg.get(key) || { src: s.src, fn: s.fn, invoker: s.invoker, duration: 0, forcedStyleAndLayout: 0, times: 0 };
+        acc.duration += s.duration || 0;
+        acc.forcedStyleAndLayout += s.forcedStyleAndLayout || 0;
+        acc.times += 1;
+        scriptAgg.set(key, acc);
+      }));
+      const topScripts = Array.from(scriptAgg.values())
+        .map(s => ({ ...s, duration: Number(s.duration.toFixed(2)), forcedStyleAndLayout: Number(s.forcedStyleAndLayout.toFixed(2)) }))
+        .sort((a, b) => (b.duration + b.forcedStyleAndLayout) - (a.duration + a.forcedStyleAndLayout))
+        .slice(0, 12);
+      return {
+        // ★ 关键字段前置：控制台复制时容易从尾部截断，而 blocking/LoAF 归因是排障的核心依据
+        scenario: round.scenario,
+        blockingDurationMs: Number(blocking.toFixed(2)),
+        longAnimationFrames: frames.length,
+        longTasks: round.browserEvents.filter(e => e.label === 'browser:longtask').length,
+        topLoafScripts: topScripts,
+        observerCreates: observers,
+        observerCreateTotal: observerTotal,
+        at: new Date(round.at).toISOString(),
+        version: round.version,
+        page: round.page,
+        elapsedMs: round.elapsed,
+        measured: round.stats.filter(s => MEASURED_LABELS.indexOf(s.label) !== -1),
+        allLabels: round.stats.map(s => ({ label: s.label, count: s.count, total: s.total, max: s.max }))
+      };
+    }
+    // capture(name)：把当前累计统计按场景名留档并清空，返回该场景的精简摘要
+    function capture(name) {
+      if (!name) {
+        console.warn('[XDEX perf] capture(name) 需要场景名，例如 capture("D-scroll")');
+        return null;
+      }
+      const round = {
+        scenario: name,
+        at: Date.now(),
+        version: (typeof VERSION !== 'undefined' ? VERSION : 'unknown'),
+        page: location.pathname + location.search,
+        stats: report({ table: false }).stats,
+        elapsed: Number((now() - startedAt).toFixed(2)),
+        browserEvents: browserEvents.slice()
+      };
+      const scenario = collectScenario(round);
+      rounds.push(scenario);
+      reset();
+      console.log(`[XDEX perf] 已留档「${name}」：${scenario.measured.length} 个测量标签，`
+        + `${scenario.observerCreateTotal} 个观察器创建，${scenario.longAnimationFrames} 个长帧`);
+      // ★ 单行摘要：控制台复制大对象时常被截断，这里把判读所需的三个数压缩成一行
+      const hot = scenario.measured.slice(0, 3)
+        .map(m => `${m.label.replace(/^boardQuickReply\./, '')}=${m.total}`).join(' ');
+      console.log(`[XDEX perf] 摘要 blocking=${scenario.blockingDurationMs}ms 长帧=${scenario.longAnimationFrames}`
+        + ` 观察器=${scenario.observerCreateTotal} | ${hot}`);
+      if (scenario.topLoafScripts.length) {
+        console.log('[XDEX perf] 长帧归因 TOP（duration+forcedLayout，含强制布局）:');
+        console.table(scenario.topLoafScripts.map(s => ({
+          src: s.src, fn: s.fn || s.invoker, times: s.times,
+          duration: s.duration, forcedLayout: s.forcedStyleAndLayout
+        })));
+      }
+      console.table(scenario.measured.map(m => ({ label: m.label, count: m.count, total: m.total, max: m.max })));
+      return scenario;
+    }
+    // export()：返回全部留档的 JSON 字符串（便于整段复制）；dumps 保留挂到 window 供 DevTools copy()
+    function exportAll() {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        userAgent: (typeof navigator !== 'undefined' && navigator.userAgent) || '',
+        viewport: (typeof window !== 'undefined') ? { w: window.innerWidth, h: window.innerHeight } : null,
+        rounds
+      };
+      const json = JSON.stringify(payload, null, 2);
+      try { window.__xdexPerfDump = json; } catch (e) {}
+      return json;
+    }
+    // print()：把 JSON 直接展开输出到控制台（剪贴板 API 需用户手势/受页面策略限制，不可靠，故不采用）。
+    // 同时输出对象本体：DevTools 里可右键「Copy object」拿到结构化副本。
+    function printAll() {
+      const json = exportAll();
+      console.log('[XDEX perf] 导出 JSON（%d bytes，可直接从下方选中复制）：', json.length);
+      console.log(json);
+      console.log('[XDEX perf] 结构化对象（右键可 Copy object）：');
+      console.log(JSON.parse(json));
+      return json;
+    }
+    function listRounds() {
+      console.table(rounds.map(r => ({
+        scenario: r.scenario,
+        version: r.version,
+        page: r.page,
+        measured: r.measured.length,
+        observers: r.observerCreateTotal,
+        longFrames: r.longAnimationFrames,
+        blockingMs: r.blockingDurationMs
+      })));
+      return rounds;
+    }
+    function clearRounds() {
+      rounds.length = 0;
+      console.log('[XDEX perf] 留档已清空');
+      return 'cleared';
+    }
     function installBrowserObservers() {
       if (typeof PerformanceObserver === 'undefined' || !PerformanceObserver.supportedEntryTypes) return;
       const supported = PerformanceObserver.supportedEntryTypes;
@@ -7440,7 +7595,17 @@ ${markedSwatchHtml}
                 duration: Number(entry.duration.toFixed(2)),
                 renderStart: entry.renderStart ? Number(entry.renderStart.toFixed(2)) : 0,
                 styleAndLayoutStart: entry.styleAndLayoutStart ? Number(entry.styleAndLayoutStart.toFixed(2)) : 0,
-                blockingDuration: entry.blockingDuration ? Number(entry.blockingDuration.toFixed(2)) : 0
+                blockingDuration: entry.blockingDuration ? Number(entry.blockingDuration.toFixed(2)) : 0,
+                // ★ 归因：LoAF 的 scripts[] 给出每段脚本的 URL/入口函数与其中「强制样式与布局」耗时。
+                // 590ms 级未归因阻塞靠它定位，比逐个加埋点快。
+                scripts: Array.from(entry.scripts || []).map(s => ({
+                  src: String(s.sourceURL || '').split('/').pop() || '(inline)',
+                  fn: String(s.sourceFunctionName || ''),
+                  invoker: String(s.invoker || ''),
+                  duration: Number((s.duration || 0).toFixed(2)),
+                  forcedStyleAndLayout: Number((s.forcedStyleAndLayoutDuration || 0).toFixed(2)),
+                  pause: Number((s.pauseDuration || 0).toFixed(2))
+                })).sort((a, b) => (b.duration + b.forcedStyleAndLayout) - (a.duration + a.forcedStyleAndLayout))
               };
               browserEvents.push(item);
               console.log('[XDEX browser perf]', item);
@@ -7450,11 +7615,23 @@ ${markedSwatchHtml}
         } catch (e) {}
       }
     }
-    const api = { measure, measureAsync, measureObserver, record, recordObserver, mark, report, reset, summarizeRoot };
+    const api = { measure, measureAsync, measureObserver, begin, finish, record, recordObserver, mark, report, reset, summarizeRoot,
+      capture, exportAll, printAll, listRounds, clearRounds };
     window.__xdexStartupPerfReport = report;
     window.__xdexStartupPerfReset = reset;
     target.__xdexStartupPerfReport = report;
     target.__xdexStartupPerfReset = reset;
+    // 真机测量入口：capture(场景名) 留档 / listRounds() 查看 / print() 展开输出
+    window.__xdexPerfCapture = capture;
+    window.__xdexPerfRounds = listRounds;
+    window.__xdexPerfExport = exportAll;
+    window.__xdexPerfPrint = printAll;
+    window.__xdexPerfClear = clearRounds;
+    target.__xdexPerfCapture = capture;
+    target.__xdexPerfRounds = listRounds;
+    target.__xdexPerfExport = exportAll;
+    target.__xdexPerfPrint = printAll;
+    target.__xdexPerfClear = clearRounds;
     if (AUTO_COLLECTION_ENABLED) {
       installBrowserObservers();
       setTimeout(() => {
@@ -7572,8 +7749,13 @@ ${markedSwatchHtml}
   function applyPageEnhancements(root, cfg) {
     const getLatestCfg = () => getPageEnhancementConfig(cfg);
     let liveCfg = getLatestCfg();
-    preprocessPageEnhancementsBeforeInsert(root, liveCfg);
+    // ★ 同步段埋点：插入前的预增强（URL 链接化 / 引用扩展）属同步成本，与下面的异步段分开计量
+    startupPerfDebug.measure('applyPageEnhancements.syncPreprocess', () => preprocessPageEnhancementsBeforeInsert(root, liveCfg), { root: root === document ? 'document' : 'scoped' });
     setTimeout(() => {
+      // ★ 埋点覆盖全部 4 个调用点（板块增量刷新 / 快速回复 / 无缝翻页两种）：
+      // 本函数体是 setTimeout 异步，外层 measure 只能量到同步的 preprocess 部分（数十微秒），
+      // 真正耗时在这段回调里，故计时点必须放在回调内部。
+      const __perfToken = startupPerfDebug.begin();
       liveCfg = getLatestCfg();
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
       // 只处理本次新增内容（root=新克隆/目标回复区），避免无缝翻页后对全页既有内容重复编号与重标 Po
@@ -7607,6 +7789,15 @@ ${markedSwatchHtml}
       // if (typeof preventContentOverflow === 'function') {
       //   try { preventContentOverflow(document); } catch (e) {}
       // }
+      // ★ meta 带 root 标识与回复数：用于判断成本是否随串长/DOM 规模放大（R2/R3/R4 的核心指标）
+      startupPerfDebug.finish('applyPageEnhancements.total', __perfToken, () => {
+        const el = root && root.nodeType === 1 ? root : null;
+        return {
+          root: el ? (el.className ? String(el.className).slice(0, 60) : el.nodeName) : 'none',
+          replies: el && el.querySelectorAll ? el.querySelectorAll('.h-threads-item-reply-main').length : -1,
+          doc: root === document
+        };
+      });
     }, 50);
   }
   function isEnhanceIslandAutoTitlePage() {
@@ -7869,6 +8060,7 @@ ${markedSwatchHtml}
         userScrollFrameId = requestAnimationFrame(() => { userScrollFrameId = 0; runUserScrollFrame(); });
       }
       function runUserScrollFrame() {
+        const __perfToken = startupPerfDebug.begin();
         hasUserInteracted = true;
         const curTop = window.pageYOffset || document.documentElement.scrollTop || 0;
         lastUserScrollDir = (curTop > lastScrollTop) ? 1 : (curTop < lastScrollTop ? -1 : lastUserScrollDir);
@@ -7886,6 +8078,8 @@ ${markedSwatchHtml}
             observerFrozen = false;
           }
         }
+        // ★ 热路径埋点：滚动帧内成本 + 触发次数（frozen 短路时耗时≈0，靠 count 识别）
+        startupPerfDebug.finish('seamless.runUserScrollFrame', __perfToken, () => ({ frozen: !!observerFrozen }));
       }
       function onWheel(e) {
         hasUserInteracted = true;
@@ -8091,6 +8285,9 @@ ${markedSwatchHtml}
                 console.warn('预处理过滤失败', e);
               }
               // Phase2：增量 append 走共享核（对齐旧：不过滤 9999999 在比较集合中的行为差异，由 strip 先清 new 侧）
+              // ★ 计时点：只覆盖「响应到达后的同步 DOM 处理」（merge → applyPageEnhancements 同步段 → 回复统计）。
+              // 网络往返被有意排除——卡顿来自脚本同步工作，不是 fetch。
+              const __perfToken = startupPerfDebug.begin();
               const merge = appendMissingRepliesByThreadsId(targetReplies, newReplies, {
                 replyOnly: false,
                 excludeSystemOnOld: false,
@@ -8108,6 +8305,11 @@ ${markedSwatchHtml}
                 const pag = newPag || doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination') || doc.querySelector('ul.uk-pagination');
                 return pag ? parseLastPageFromPagination(pag) : null;
               })();
+              if (__perfToken != null) startupPerfDebug.finish('refresh.checkNext.syncDom', __perfToken, () => ({
+                replies: userCount,
+                updated: !!hasUpdate,
+                domPages: document.querySelectorAll('.h-threads-item-replies[data-cloned-page]').length
+              }));
               if (userCount < 19) {
                 const result = { status: 'last', hasUpdate };
                 if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
@@ -8240,6 +8442,8 @@ ${markedSwatchHtml}
           // 浮窗若为新建元素则无此标记，仍会被观察，保留「晚出现的浮窗也能被挂上」的行为
           if (el.__xdexSeamlessOverlayObserved) return;
           el.__xdexSeamlessOverlayObserved = true;
+          // ★ 计数埋点（H1-H3 真机验收判据）：实例数应恒定，不随开关浮窗次数增长
+          startupPerfDebug.record('observer.create:overlay', 0, { tag: 'qp-overlay' });
           const obs = new MutationObserver(() => {
             updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
@@ -8269,6 +8473,8 @@ ${markedSwatchHtml}
             seamlessPagObserver.disconnect();
           }
           // 新建 observer 监听底部分页栏的变化
+          // ★ 计数埋点（H2 真机验收判据）：同目标复用时不重建，调用多次也应为 1
+          startupPerfDebug.record('observer.create:pag', 0, { tag: 'bottom-pagination' });
           seamlessPagObserver = new MutationObserver(() => {
             updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
@@ -8281,6 +8487,8 @@ ${markedSwatchHtml}
         observeBottomPagination();
         // 每次 DOM 可能插入新分页栏时，重新绑定监听（只挂一次，回调内复用同一分页栏观察器逻辑）
         if (!seamlessGlobalObserver) {
+          // ★ 计数埋点（H1 真机验收判据）：body 级观察器必须恒为 1，不得随翻页/刷新次数增长
+          startupPerfDebug.record('observer.create:body', 0, { tag: 'document.body' });
           seamlessGlobalObserver = new MutationObserver(() => {
             observeBottomPagination();
           });
@@ -8826,6 +9034,7 @@ ${markedSwatchHtml}
     // 单次遍历产出分类、优先级与 visible/ahead 计数，供本轮 processQueue 全程复用；
     // 取代原“排序逐项回查 rect + 每个候选扫全队列”的 O(N²) 布局读取
     function measureQueue() {
+      const __perfToken = startupPerfDebug.begin();
       const meta = new Map();
       const vh = window.innerHeight || document.documentElement.clientHeight || 0;
       let aheadCount = 0;
@@ -8838,6 +9047,8 @@ ${markedSwatchHtml}
         if (m.kind === 'ahead') aheadCount++;
         else if (m.kind === 'visible') visibleCount++;
       }
+      // ★ 队列长度即 rect 读取次数，是判断成本是否随图片数放大的唯一依据
+      startupPerfDebug.finish('hdLazy.measureQueue', __perfToken, () => ({ rects: queue.length, ahead: aheadCount, visible: visibleCount }));
       return { meta, aheadCount, visibleCount };
     }
     function getSnapPriority(snap, img) {
@@ -8896,9 +9107,11 @@ ${markedSwatchHtml}
     // }
     let scrollFrameId = 0;
     function onScrollFrame() {
+      const __perfToken = startupPerfDebug.begin();
       const currentY = window.scrollY || window.pageYOffset || 0;
       updateScrollMetrics(currentY);
       processQueue();
+      startupPerfDebug.finish('hdLazy.onScrollFrame', __perfToken, () => ({ queue: queue.length, activeLoads }));
     }
     function bindScrollListener() {
       if (scrollListenerBound) return;
@@ -9305,6 +9518,9 @@ ${markedSwatchHtml}
             // 那一次回调：量到宽度即按正常流程写入并置锁、随后断开观察；仍为 0 宽（继续隐藏）则不
             // 动作也不轮询。永久隐藏的回复只会有一次 0 尺寸初始回调，无后续开销。
             if (typeof ResizeObserver === 'function' && !msgMain.__xdexExpandWidthRO) {
+              // ★ 计数埋点：本分支为「容器未布局」的兜底，每个未布局容器挂一个；
+              // 数量即「未布局带图回复数」，多图长串应关注其总数
+              startupPerfDebug.record('observer.create:expandWidthRO', 0, { tag: 'msg-main' });
               const ro = new ResizeObserver(() => {
                 if (!msgMain.offsetWidth) return; // 仍不可测量（含 observe 时的 0 尺寸初始回调）
                 ro.disconnect();
@@ -9891,6 +10107,8 @@ ${markedSwatchHtml}
           }
           // 监听 class 变化
           if (!imgBox.__overflowObserver) {
+            // ★ 计数埋点：每个带图回复盒一个（单图复杂度），数量应≈带图回复数且不随滚动/翻页重复创建
+            startupPerfDebug.record('observer.create:hdImageBox', 0, { tag: 'img-box' });
             const observer = new MutationObserver(mutations => {
               startupPerfDebug.measureObserver('hdImageBox', mutations, () => {
               mutations.forEach(mutation => {
@@ -9966,6 +10184,8 @@ ${markedSwatchHtml}
     // ==================== 全局监听 ====================
     // 监听 DOM 变化
     if (root === document && !enableHDImageAndLayoutFix.__globalObserver) {
+      // ★ 计数埋点：全局 DOM 观察器必须恒为 1，不得随增量刷新/翻页重复创建
+      startupPerfDebug.record('observer.create:hdGlobal', 0, { tag: 'hd-global' });
       const observer = new MutationObserver(mutations => {
         startupPerfDebug.measureObserver('hdGlobal', mutations, () => {
         mutations.forEach(mutation => {
@@ -16285,6 +16505,10 @@ ${markedSwatchHtml}
             return;
           }
           const cfg2 = (typeof getConfig === 'function') ? getConfig() : null;
+          // ★ 计时点：串内页「发送后刷新」的同步 DOM 处理（fragment 预增强 → merge → 逐节点后处理）。
+          // 本路径与刷新按钮的 refreshRepliesAndCheckNext 是两条独立实现，需分别计量。
+          // 网络往返已排除在计时点之外。
+          const __perfToken = startupPerfDebug.begin();
           const fragment = document.createElement('div');
           fragment.innerHTML = newReplies.innerHTML;
           stripSystemTipReplies(fragment);
@@ -16315,6 +16539,13 @@ ${markedSwatchHtml}
               appendedNodes.forEach(n => { try { enablePostExpand(n); } catch (_) {} });
             }
           } catch (e) {}
+          // ★ 计时收尾：只覆盖响应到达后的同步 DOM 工作，不含下面的 50ms 异步增强段
+          // （异步段已由 applyPageEnhancements.total 单独记录）
+          startupPerfDebug.finish('refresh.postReply.syncDom', __perfToken, () => ({
+            replies: targetReplies.querySelectorAll ? targetReplies.querySelectorAll('.h-threads-item-reply').length : -1,
+            appended: (appendedNodes && appendedNodes.length) || 0,
+            domPages: document.querySelectorAll('.h-threads-item-replies[data-cloned-page]').length
+          }));
           setTimeout(() => {
             try {
               if (typeof applyPageEnhancements === 'function') {
@@ -19453,10 +19684,17 @@ function 注册自动保存编辑() {
           ? SettingPanel.state : null;
         const REPLY_PER_PAGE = 19;
         const API_BASE = 'https://api.nmb.best/api';
+        // ★ 整链计时：板块页/时间线发送后增量刷新（B 场景）。
+        // 注意用 begin/finish 而非 measure：本函数是 async，measure 只能量到首个 await 之前，
+        // 真正的同步 DOM 工作（Step 5-8）在多个 await 之后的续体里。
+        const __perfToken = startupPerfDebug.begin();
         (async () => {
           try {
             // Step 1: 拉取第1页获取 ReplyCount → 计算末页页码
+            // ★ 逐段计时：整链 7.5s 而同步 DOM 仅 ~28ms，必须确认耗时是网络还是「桥接阻塞」
+            const __tA1 = startupPerfDebug.begin();
             const p1Resp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=1', 'json');
+            startupPerfDebug.finish('boardQuickReply.await.p1', __tA1, () => ({}));
             const p1Raw = p1Resp && (p1Resp.response || p1Resp.responseText);
             const p1 = typeof p1Raw === 'string' ? JSON.parse(p1Raw) : p1Raw;
             if (!p1 || p1.success === false) throw new Error((p1 && p1.error) || 'API error');
@@ -19465,7 +19703,9 @@ function 注册自动保存编辑() {
             const opUserHash = String((p1 && (p1.user_hash || p1.UserHash)) || '');
             const tailPage = Math.max(1, Math.ceil(replyCount / REPLY_PER_PAGE));
             // Step 2: 拉取末页
+            const __tA2 = startupPerfDebug.begin();
             const tResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + tailPage, 'json');
+            startupPerfDebug.finish('boardQuickReply.await.tail', __tA2, () => ({ page: tailPage }));
             const tRaw = tResp && (tResp.response || tResp.responseText);
             const t = typeof tRaw === 'string' ? JSON.parse(tRaw) : tRaw;
             if (!t || t.success === false) throw new Error((t && t.error) || 'API error');
@@ -19489,7 +19729,9 @@ function 注册自动保存编辑() {
               } else {
                 // lastOldId 不在末页 → 需要拉倒数第二页填补间隙
                 if (tailPage > 1) {
+                  const __tA3 = startupPerfDebug.begin();
                   const pResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + (tailPage - 1), 'json');
+                  startupPerfDebug.finish('boardQuickReply.await.prev', __tA3, () => ({ page: tailPage - 1 }));
                   const pRaw = pResp && (pResp.response || pResp.responseText);
                   const p = typeof pRaw === 'string' ? JSON.parse(pRaw) : pRaw;
                   const prevReplies = (Array.isArray(p && p.Replies) ? p.Replies : []).filter(r => r && Number(r.id) !== 9999999);
@@ -19520,6 +19762,8 @@ function 注册自动保存编辑() {
             }
             if (!newReplies.length) { if (fromButton) toast('已是最新回复'); return; }
             // Step 5: 保存滚动位置（插入前）
+            // ★ 强制同步布局热点：每个 node 读一次 getBoundingClientRect + offsetHeight
+            const __t5 = startupPerfDebug.begin();
             const scrollEl = document.scrollingElement || document.documentElement;
             const scrollTopBefore = scrollEl.scrollTop;
             const viewportTop = scrollTopBefore;
@@ -19532,7 +19776,12 @@ function 注册自动保存编辑() {
                 height: node.offsetHeight
               };
             });
+            startupPerfDebug.finish('boardQuickReply.step5.measure', __t5, () => ({ nodes: allOldNodes.length }));
             // Step 6: 遍历所有匹配节点，每个节点独立增量追加
+            // ★ 每次 appendChild 都会触发 document.body 子树的多个观察器（hdGlobal 等），
+            // 插入 N 条 = N 轮全页观察器回调，是「发送后卡顿」的首要嫌疑
+            const __t6 = startupPerfDebug.begin();
+            let __inserted = 0;
             for (const node of allOldNodes) {
               let rc = node.querySelector('.h-threads-item-replies');
               // 无回复区（新串未展开过回复）→ 创建容器，否则增量刷新会被静默跳过
@@ -19551,11 +19800,14 @@ function 注册自动保存编辑() {
               for (const reply of newReplies) {
                 if (!existingIds.has(String(reply.id))) {
                   const el = buildApiReplyNode(reply, tid, opUserHash);
-                  if (el) rc.appendChild(el);
+                  if (el) { rc.appendChild(el); __inserted++; }
                 }
               }
             }
+            startupPerfDebug.finish('boardQuickReply.step6.insert', __t6, () => ({ nodes: allOldNodes.length, inserted: __inserted }));
             // Step 7: 计算视口上方节点增长的高度，补偿滚动位置
+            // ★ 又一次强制同步布局：读取每个 node 的 offsetHeight + 写 scrollTop
+            const __t7 = startupPerfDebug.begin();
             // 只有完全在视口上方（bottom <= viewportTop）的节点增长才需要补偿
             let heightAddedAbove = 0;
             for (let i = 0; i < allOldNodes.length; i++) {
@@ -19567,13 +19819,17 @@ function 注册自动保存编辑() {
               }
             }
             scrollEl.scrollTop = scrollTopBefore + heightAddedAbove;
+            startupPerfDebug.finish('boardQuickReply.step7.compensate', __t7, () => ({ nodes: allOldNodes.length, addedAbove: heightAddedAbove }));
             // Step 8: 后处理增强（所有匹配节点）
+            const __t8 = startupPerfDebug.begin();
             for (const node of allOldNodes) {
               try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(node)); } catch (err) {}
               try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig().markedGroups || [], node); } catch (err) {}
             }
+            startupPerfDebug.finish('boardQuickReply.step8.post', __t8, () => ({ nodes: allOldNodes.length }));
             // 延迟执行其他增强
             setTimeout(() => {
+              const __td = startupPerfDebug.begin();
               for (const node of allOldNodes) {
                 try { if (typeof highlightPO === 'function') highlightPO(node); } catch (err) {}
                 try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(node); } catch (err) {}
@@ -19583,8 +19839,15 @@ function 注册自动保存编辑() {
                 try { if (typeof initContent === 'function') initContent(node); } catch (err) {}
                 try { if (typeof initExtendedContent === 'function') initExtendedContent(node); } catch (err) {}
               }
+              // ★ 两处「全文档」调用：refreshFilterDisplay 未传 root、enablePostExpand 传 document。
+              // 单独计时以确认它们是否是「插入后卡顿」的剩余来源。
+              const __tf = startupPerfDebug.begin();
               try { if (cfg2) refreshFilterDisplay(cfg2); } catch (err) {}
+              startupPerfDebug.finish('boardQuickReply.deferred.refreshFilter', __tf, () => ({ nodes: allOldNodes.length }));
+              const __tp = startupPerfDebug.begin();
               try { if (typeof enablePostExpand === 'function') enablePostExpand(document); } catch (err) {}
+              startupPerfDebug.finish('boardQuickReply.deferred.enablePostExpand', __tp, () => ({ nodes: allOldNodes.length }));
+              startupPerfDebug.finish('boardQuickReply.deferred.total', __td, () => ({ nodes: allOldNodes.length }));
             }, 50);
             if (fromButton) toast('已更新 ' + newReplies.length + ' 条回复');
             if (e.type === 'tempReplySuccess') currentReplyTid = null;
@@ -19593,6 +19856,8 @@ function 注册自动保存编辑() {
             toast('刷新板块串失败');
           }
         })().finally(() => {
+          // ★ 整链收尾：含全部 await 等待与 Step 5-8 同步工作；与 LoAF 的 blockingDuration 对照
+          startupPerfDebug.finish('boardQuickReply.total', __perfToken, () => ({ fromButton }));
           if (btn) { btn.disabled = false; btn.classList.remove('xdex-icon-loading'); }
           if (fromButton) _boardRefreshInflight.delete(String(tid));
         });
@@ -19652,8 +19917,11 @@ function 注册自动保存编辑() {
             + '<div class="h-threads-content">' + contentHtml + '</div>'
           + '</div>'
         + '</div>';
+        // ★ 逐条计时：innerHTML 解析成本。Step 6 内循环调用，条数多时累加可观
+        const __tok = startupPerfDebug.begin();
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
+        startupPerfDebug.finish('boardQuickReply.buildNode', __tok, () => ({ html: html.length, hasImg: !!imgRaw }));
         return tmp.firstChild || null;
       }
     }

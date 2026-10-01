@@ -97,6 +97,9 @@ function setup() {
   sandbox.ensureSeamlessRefreshButtonNode = () => btnNode;
   sandbox.getSeamlessBottomPagination = () => { pagLookups += 1; return pagNode; };
   sandbox.updateSeamlessRefreshBtnDisplay = () => { displayCalls += 1; };
+  // 源码中观察器创建处带计数埋点（依赖外层 startupPerfDebug）；抽函数到裸沙箱后需补桩
+  sandbox.startupPerfDebug = { begin: () => null, finish: () => {}, record: () => {}, mark: () => {},
+    measure: (label, fn) => fn(), measureObserver: (label, mutations, fn) => fn() };
 
   vm.createContext(sandbox);
   vm.runInNewContext(code, sandbox, { filename: 'seamless.js' });

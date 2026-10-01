@@ -130,6 +130,9 @@ this.api = { measureImage, measureQueue, getSnapPriority, getSnapKind, canStartN
 };`;
 
 const ctx = { Math, Number, Array, Object, Map, window: { innerHeight: 800 } };
+// 源码中 measureQueue 带热路径埋点（依赖外层 startupPerfDebug）；抽函数到裸沙箱后需补桩
+ctx.startupPerfDebug = { begin: () => null, finish: () => {}, record: () => {}, mark: () => {},
+  measure: (label, fn) => fn(), measureObserver: (label, mutations, fn) => fn() };
 ctx.globalThis = ctx;
 require('vm').runInNewContext(code, ctx, { filename: 'hd.js' });
 const A = ctx.api;
