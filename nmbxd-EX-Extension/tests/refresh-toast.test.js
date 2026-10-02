@@ -39,7 +39,8 @@ function testRefreshStatusUsesImmediateToastKey() {
 
   assert(refreshStatusCalls >= 1, 'refresh status channel should define the immediate refresh-status key');
 
-  assert(source.includes("showRefreshStatus(result.hasUpdate ? '已更新' : '无更新')"), 'manual/auto refresh result should use the dedicated refresh-status toast');
+  // 8497 现形态：文本相同但以独立 duration 参数调用（1800，给足阅读时间）
+  assert(source.includes("showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', 1800)"), 'manual/auto refresh result should use the dedicated refresh-status toast');
 
 }
 
@@ -92,12 +93,18 @@ function testRefreshPathDoesNotUseQueuedToast() {
 }
 
 
-const tests = [
-  testImmediateToastUsesGenerationGuard,
-  testRefreshStatusUsesImmediateToastKey,
-  testRefreshStatusHasDedicatedChannel,
-  testRefreshChainPassesGenerationToken,
-  testRefreshPathDoesNotUseQueuedToast,
+const tests = [
+
+  testImmediateToastUsesGenerationGuard,
+
+  testRefreshStatusUsesImmediateToastKey,
+
+  testRefreshStatusHasDedicatedChannel,
+
+  testRefreshChainPassesGenerationToken,
+
+  testRefreshPathDoesNotUseQueuedToast,
+
 ];
 
 for (const test of tests) test();

@@ -542,8 +542,8 @@ function testRetryContractsRemainVisible() {
   assert(script.includes('const maxRetriesAll = 3;'), 'unvcode must retain total retry count');
   assert(script.includes('restoreOriginalSubmitContent(form);'), 'failed illegal-word retries must restore original content through the shared helper');
   assert(script.includes('form.__illegalRetryCountU200B >= 1'), 'U+200B mode must retain its single retry limit');
-  assert(script.includes("toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 3000);"), 'U+200B terminal toast wording must remain unchanged');
-  assert(script.includes("toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 3000);"), 'unvcode terminal toast wording must remain unchanged');
+  assert(script.includes("toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 0, { type: 'error', key: 'send-error' });"), 'U+200B terminal toast wording must remain unchanged (now a persisting error toast)');
+  assert(script.includes("toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 0, { type: 'error', key: 'send-error' });"), 'unvcode terminal toast wording must remain unchanged (now a persisting error toast)');
   assert(script.includes("toast('已尝试插入零宽空格模式并重试提交', 2000);\n                  doSubmit(newFD, false);"), 'U+200B retry must preserve toast-before-submit order and isRetry=false');
   assert(script.includes("const newFD = createContentRetryFormData(form, safeText);\n                  // 新增：递增计数"), 'U+200B retry must prepare current form state before incrementing');
   assert(script.includes("form.__illegalRetryCount++;\n                    doSubmit(newFD, false);"), 'unvcode retry must increment before recursive isRetry=false submission');
@@ -578,7 +578,32 @@ function testSuccessfulSubmitPreviewCleanupContract() {
     },
     updatePreviewCookieId() { context.trace.push('updatePreviewCookieId'); },
     toast(message) { context.trace.push(`toast:${message}`); },
-    previewBox: { innerHTML: '' }
+    previewBox: { innerHTML: '' },
+    // buildEnhanceIslandPreviewHtml 是后来引入的预览框重建依赖（14310），沙箱需提供桩
+    // 返回结构与真实实现（7056-7064）一致
+    // 桩复刻真实模板（7056-7091）的骨架：完整楼层结构 + ID:测试饼干 + No.42 占位号
+    buildEnhanceIslandPreviewHtml(withReplies) {
+      context.trace.push(`buildEnhanceIslandPreviewHtml:${withReplies}`);
+      return `<div class="h-preview-box">
+        <div class="h-threads-item">
+          <div class="h-threads-item-replies">
+            <div class="h-threads-item-reply" style="width:100%">
+              <div class="h-threads-item-reply-main">
+                <div class="h-threads-img-box"><div class="h-threads-img-tool uk-animation-slide-top"></div><a class="h-threads-img-a"><img src="" align="left" border="0" hspace="20" class="h-threads-img"></a></div>
+                <div class="h-threads-info">
+                  <span class="h-threads-info-title"></span>
+                  <span class="h-threads-info-email"></span>
+                  <span class="h-threads-info-createdat">2013-07-11(六)12:07:12</span>
+                  <span class="h-threads-info-uid">ID:测试饼干</span>
+                  <a class="h-threads-info-id" href="javascript:;" style="cursor: default;">No.42</a>
+                </div>
+                <div class="h-threads-content"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
   };
   vm.runInNewContext(`${helper}\nthis.clearSuccessfulSubmitPreview = clearSuccessfulSubmitPreview;`, context);
   context.clearSuccessfulSubmitPreview();
@@ -588,7 +613,7 @@ function testSuccessfulSubmitPreviewCleanupContract() {
     '<div class="h-preview-box">',
     '<div class="h-threads-item">',
     '<div class="h-threads-item-replies">',
-    '<div class="h-threads-item-reply">',
+    '<div class="h-threads-item-reply" style="width:100%">',
     '<div class="h-threads-item-reply-main">',
     '<div class="h-threads-img-box">',
     '<div class="h-threads-info">',
@@ -601,6 +626,7 @@ function testSuccessfulSubmitPreviewCleanupContract() {
     JSON.stringify(context.trace) === JSON.stringify([
       'query:.h-preview-box',
       'getCurrentCookie',
+      'buildEnhanceIslandPreviewHtml:false',
       'enableHDImage',
       'refreshCookies:false',
       'updatePreviewCookieId',
@@ -640,7 +666,7 @@ function testSubmitLockLifecycleContracts() {
   assert(intercept.includes('f.__submitting = true;\n        f.__submitImageProcessing = true;'), 'entering image processing must preserve the submit lock and mark the form before expensive work');
   assert(intercept.includes('clearSubmitLockTimer(f);'), 'entering image processing must cancel the current network timeout');
   assert(intercept.includes('if (f.__submitImageProcessing) return;'), 'timeout callback must not toast or unlock while image processing is active');
-  assert(intercept.includes('f.__submitting = false;\n          toast(\'提交可能失败，请检查网络，或者刷新后重试\');'), 'ordinary submit timeout must retain toast and unlock behavior');
+  assert(intercept.includes("f.__submitting = false;\n          toast('提交可能失败，请检查网络，或者刷新后重试', 0, { type: 'error' });"), 'ordinary submit timeout must retain toast and unlock behavior (toast now persists as error)');
 
   assert(doSubmit.includes('finishSubmitImageProcessing(form);\n        refreshSubmitLockTimer(form);'), 'recursive network submit must atomically leave image processing and start a fresh timeout');
   assert(intercept.includes('beginSubmitImageProcessing(form);\n                try {\n                  const actualFormat = await detectImageFormat(file);'), 'oversized-image handling must enter the unified lifecycle before format detection and compression');
@@ -735,6 +761,9 @@ function createReplyRefreshHarness(options = {}) {
       trace.push(root === context.document ? 'getRealThreadsList:current' : 'getRealThreadsList:fetched');
       return root === context.document ? realList : parsedList;
     },
+    // 热路径埋点（发送后刷新链 16640 等处）依赖外层 startupPerfDebug；抽函数到沙箱后需补桩
+    startupPerfDebug: { begin: () => null, finish: () => {}, record: () => {}, mark: () => {},
+      measure: (label, fn) => fn(), measureObserver: (label, mutations, fn) => fn() },
     ensureThreadRepliesContainer(list, page) {
       trace.push(`ensure:${list === realList}:${page}`);
       return { targetReplies: options.targetRepliesMissing ? null : targetReplies, created: false };

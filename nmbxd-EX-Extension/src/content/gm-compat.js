@@ -551,12 +551,33 @@
     showExtensionToast(text);
   }
 
-  function showExtensionToast(text, duration = 1800) {
+  function showExtensionToast(text, duration = 1800, type = '') {
     const toast = document.createElement('div');
     toast.className = 'ae-toast';
     toast.textContent = text;
     toast.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483647;background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:5px;font-size:14px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.25);';
+    if (type === 'error') {
+      toast.style.border = '1px solid #e74c3c';
+      toast.style.boxShadow = '0 0 0 1px rgba(231,76,60,.4), 0 2px 8px rgba(0,0,0,.25)';
+      toast.style.fontWeight = 'bold';
+    }
     document.documentElement.appendChild(toast);
+    if (type === 'error') {
+      // ★ 扩展侧错误 toast 与 userscript 同语义：3 秒渐隐，交互可提前关闭
+      const dismiss = () => { removeListeners(); toast.remove(); };
+      const onPointer = dismiss;
+      const onKey = dismiss;
+      const removeListeners = () => {
+        document.removeEventListener('pointerdown', onPointer, true);
+        document.removeEventListener('keydown', onKey, true);
+        window.clearTimeout(extensionToastFadeTimer);
+      };
+      let extensionToastFadeTimer = 0;
+      document.addEventListener('pointerdown', onPointer, true);
+      document.addEventListener('keydown', onKey, true);
+      extensionToastFadeTimer = window.setTimeout(dismiss, 3000);
+      return toast;
+    }
     const ms = Number(duration);
     setTimeout(() => toast.remove(), Number.isFinite(ms) && ms > 0 ? ms : 1800);
   }

@@ -284,6 +284,11 @@ function xdexEarlyDarkEnabled() {
   }
 
   function toast(msg, duration = 1800, options = {}) {
+    if (options.type === 'error') {
+      // ★ 错误提示强制走立即通道（不排队），红框 + 驻留到下次用户交互（见 showImmediateToast）
+      showImmediateToast(msg, duration, options.key, 'error');
+      return;
+    }
     if (options.queue === false) {
       showImmediateToast(msg, duration, options.key);
       return;
@@ -312,7 +317,7 @@ function xdexEarlyDarkEnabled() {
       showNextToast(); // ✅ 显示下一个
     });
   }
-  function showImmediateToast(msg, duration = 900, key = 'default') {
+  function showImmediateToast(msg, duration = 900, key = 'default', type = '') {
     const safeKey = String(key || 'default').replace(/[^a-z0-9_-]/gi, '-');
     if (safeKey === 'refresh-status') console.log('[toast]', msg); // 刷新状态提示同步输出到控制台（对齐通用 toast 路径）
     let $t = $(`#xdex-immediate-toast-${safeKey}`);
@@ -330,17 +335,141 @@ function xdexEarlyDarkEnabled() {
         fontWeight: 'bold',
       });
     }
+    if (type === 'error') {
+      // ★ 错误提示：红框 + 醒目样式；不自动消失，驻留到下次用户交互（点击/键盘/焦点切换），30s 保险上限
+      $t.css({
+        border: '1px solid #e74c3c',
+        boxShadow: '0 0 0 1px rgba(231,76,60,.4), 0 4px 16px rgba(0,0,0,.55)',
+        fontWeight: 'bold',
+      });
+    }
     const el = $t[0];
+    // ★ 复用节点时先清理上一代的驻留监听/计时器：
+    // 「错误 toast 可被下一条同为 error 的 toast 顶掉」由此实现——顶掉一刻起旧监听即刻失效，
+    // 若等到下次交互才清理会造成 document 捕获相监听器 + 30s 计时器永久泄漏
+    if (el.__xdexToastDismissCleanup) {
+      el.__xdexToastDismissCleanup();
+      if (el.__xdexToastError) {
+        try { console.log('[xdex error toast] 关闭原因: 被同 key 的新 toast 顶掉'); } catch (e) {}
+      }
+      el.__xdexToastDismissCleanup = null;
+    }
+    // 上一轮是错误、本轮不是 → 清除遗留的红框样式（refresh-status 专属样式见上方重新设置，无冲突）
+    if (el.__xdexToastError && type !== 'error') {
+      $t.css({ border: '', boxShadow: '', fontWeight: '' });
+      if (safeKey === 'refresh-status') {
+        $t.css({
+          background: '#242424',
+          boxShadow: '0 4px 16px rgba(0,0,0,.55)',
+          fontWeight: 'bold',
+        });
+      }
+    }
+    el.__xdexToastError = (type === 'error');
     const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
     el.__xdexImmediateToastSeq = seq;
     $t.stop(true, false).text(msg).show();
     // 淡出被 stop(true,false) 打断时 style.opacity 会冻结在中间值，而 jQuery 的 .show() 不恢复不透明度，
     // 导致「上一条正在淡出时下发的新消息」整段偏淡甚至近乎不可见 → 显式复位
     $t.css('opacity', 1);
+    if (type === 'error') {
+      dismissOnNextInteraction($t, el, seq);
+      return $t;
+    }
     $t.delay(duration).fadeOut(160, () => {
       if (el.__xdexImmediateToastSeq === seq) $t.remove();
     });
     return $t;
+  }
+
+  // ★ 错误 toast 语义
+  // 无操作驻留 30 秒（比普通 toast 的 1.8s 长得多，核心目的：提醒窗口拉长，避免一闪而过）；
+  // 用户发生键鼠操作后，进入 5 秒渐隐宽限（给足看清内容的时间，不是瞬间消失）；
+  // 挂载后 1 秒武装期内忽略交互（提交后的连续击键/点击不误关）；同 key 新 error 顶掉旧 error。
+  const ERROR_TOAST_MAX_HOLD_MS = 30000;            // 无操作驻留上限
+  const ERROR_TOAST_FADE_AFTER_INTERACT_MS = 5000;  // 操作后的渐隐宽限
+  // ★ 挂载后 1 秒内的 pointerdown/keydown 不关闭 toast：
+  // 「含有非法词语」等错误出现在提交动作之后，用户往往正在继续打字或点击（keydown/pointerdown
+  // 紧随 toast 出现），若立即武装会把刚弹出的提示秒关——实测「消失得很快」的主因。
+  const ERROR_TOAST_ARM_DELAY_MS = 1000;
+  function dismissOnNextInteraction($t, el, seq) {
+    const dismiss = (reason) => {
+      // ★ 消失原因诊断：无论哪条路径关闭，都输出原因（排查「红框很快消失」用）
+      try { console.log(`[xdex error toast] 关闭原因: ${reason}`); } catch (e) {}
+      $t.css('opacity', 1); // fadeOut 需要从完全不透明起步
+      $t.fadeOut(160, () => {
+        if (el.__xdexImmediateToastSeq === seq) $t.remove();
+      });
+    };
+    let holdTimer = 0;
+    let fadeTimer = 0;
+    let armed = false;
+    let armTimer = 0;
+    let interacted = false;
+    let pointerH, keyH; // 保存「已挂载」的包裹引用，移除时才能精确匹配
+    const clearListeners = () => {
+      if (pointerH) document.removeEventListener('pointerdown', pointerH, true);
+      if (keyH) document.removeEventListener('keydown', keyH, true);
+      pointerH = keyH = null;
+    };
+    const cleanup = () => {
+      clearListeners();
+      window.clearTimeout(holdTimer);
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(armTimer);
+      // 节点级清理钩子已执行 → 清掉，避免下次复用重复触发
+      if (el.__xdexToastDismissCleanup === cleanup) el.__xdexToastDismissCleanup = null;
+    };
+    // 交互后的 5 秒渐隐宽限：清监听与 30s 驻留，改由宽限计时器接管
+    const startFadeGrace = () => {
+      clearListeners();
+      window.clearTimeout(holdTimer);
+      fadeTimer = window.setTimeout(() => {
+        dismiss(`${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒宽限期满，渐隐`);
+        cleanup();
+      }, ERROR_TOAST_FADE_AFTER_INTERACT_MS);
+    };
+    // 传递 seq，比对代看守：若期间同 key 又来了新消息（含下一条 error 顶掉），本 toast 已不再是最新
+    const guarded = (fn) => () => {
+      if (!armed) return;            // 武装期内忽略（弹出的同一手势/连续击键不关）
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      fn();
+    };
+    const onPointer = (e) => {
+      // ★ 只认「左键点击本页内容」：右键/中键（菜单、滚轮按下）、滚动条拖动都不算。
+      // 实测反馈：单纯移动鼠标（拖滚动条浏览）不应关闭提示。
+      if (e.button !== 0) return;
+      if (interacted) return;
+      interacted = true;
+      startFadeGrace();
+      console.log(`[xdex error toast] 检测到鼠标左键点击 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (target=${e.target && e.target.tagName || '?'}, isTrusted=${e.isTrusted})`);
+    };
+    const onKey = (e) => {
+      if (interacted) return;
+      interacted = true;
+      startFadeGrace();
+      console.log(`[xdex error toast] 检测到键盘按键 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (key=${e.key || '?'}, isTrusted=${e.isTrusted})`);
+    };
+    pointerH = (e) => {
+      if (!armed) return;
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      onPointer(e);
+    };
+    keyH = (e) => {
+      if (!armed) return;
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      onKey(e);
+    };
+    // ★ 提前关闭只认「明确指向本页的操作」：pointerdown / keydown。
+    // 不监听 focusin——发送失败后脚本恢复输入框焦点、输入法切换、Alt+Tab 回窗口等
+    // 都会产生 focusin，会在用户还没看到提示时就把它关掉（实测「红框很快消失」的主因）。
+    document.addEventListener('pointerdown', pointerH, true);
+    document.addEventListener('keydown', keyH, true);
+    armTimer = window.setTimeout(() => { armed = true; }, ERROR_TOAST_ARM_DELAY_MS);
+    // ★ 无操作 30 秒驻留上限（从挂载起算；交互后由 5s 渐隐宽限接管，本计时器被 startFadeGrace 清除）
+    holdTimer = window.setTimeout(() => { dismiss(`无操作到达 ${ERROR_TOAST_MAX_HOLD_MS / 1000} 秒驻留上限，自动消失`); cleanup(); }, ERROR_TOAST_MAX_HOLD_MS);
+    // 清理钩子挂到节点：showImmediateToast 复用它时能立刻停止旧监听/计时器（顶掉语义）
+    el.__xdexToastDismissCleanup = cleanup;
   }
   const Utils = {
       // 逗号(中英)分隔，支持转义 \, \， \\
@@ -5713,7 +5842,7 @@ ${markedSwatchHtml}
     const onDone = typeof opts.onDone === 'function' ? opts.onDone : null;
     const onFail = typeof opts.onFail === 'function' ? opts.onFail : null;
     if(!cookie || !cookie.id) {
-      if (!silent) toast('无效的饼干信息！');
+      if (!silent) toast('无效的饼干信息！', 0, { type: 'error' });
       onFail && onFail();
       return;
     }
@@ -5733,7 +5862,7 @@ ${markedSwatchHtml}
         onDone && onDone(cookie);
       })
       .fail(()=>{
-        if (!silent) toast('切换失败，请重试');
+        if (!silent) toast('切换失败，请重试', 0, { type: 'error' });
         onFail && onFail();
       });
   }
@@ -5770,7 +5899,7 @@ ${markedSwatchHtml}
       method:'GET',
       url:'https://www.nmbxd1.com/Member/User/Cookie/index.html',
       onload: async r=>{
-        if(r.status!==200){ toast('刷新失败 HTTP '+r.status); return cb&&cb(); }
+        if(r.status!==200){ toast('刷新失败 HTTP '+r.status, 0, { type: 'error' }); return cb&&cb(); }
         const doc=new DOMParser().parseFromString(r.responseText,'text/html');
         const rows=doc.querySelectorAll('tbody>tr'), list={};
         rows.forEach(row=>{
@@ -5844,7 +5973,7 @@ ${markedSwatchHtml}
         cb&&cb();
       },
       onerror:()=>{
-        toast('刷新失败，网络错误'); cb&&cb();
+        toast('刷新失败，网络错误', 0, { type: 'error' }); cb&&cb();
       }
     });
   }
@@ -6308,9 +6437,9 @@ ${markedSwatchHtml}
       const sel = $(this).val();
       const l = getCookiesList();
       if(!Object.keys(l).length) return showLoginPrompt();
-      if(!sel) return toast('请选择饼干');
+      if(!sel) return toast('请选择饼干', 0, { type: 'error' });
       // focusBackNow：选择瞬间即交还焦点，不等 switch_cookie 的网络往返
-      l[sel] ? switch_cookie(l[sel], { focusBackNow: true }) : toast('饼干信息无效');
+      l[sel] ? switch_cookie(l[sel], { focusBackNow: true }) : toast('饼干信息无效', 0, { type: 'error' });
       scheduleCookieDropdownFocusRestore(this, 120);
       if (!this.__focusBackTarget) delete this.__openedValue;
     });
@@ -8245,7 +8374,7 @@ ${markedSwatchHtml}
           const targetReplies = ensured.targetReplies;
           if (!targetReplies) {
             console.warn('[refreshReplies] 未找到 .h-threads-item，无法创建回复区');
-            toast('刷新回复失败，未找到串容器');
+            toast('刷新回复失败，未找到串容器', 0, { type: 'error' });
             return done && done({ status: "error" });
           }
           if (ensured.created) {
@@ -8274,7 +8403,7 @@ ${markedSwatchHtml}
               const newReplies = newList.querySelector('.h-threads-item-replies');
               if (!newReplies) {
                 console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-item-replies');
-                toast('刷新回复失败，页面无回复内容');
+                toast('刷新回复失败，页面无回复内容', 0, { type: 'error' });
                 return done && done({ status: "error" });
               }
               stripSystemTipReplies(newReplies);
@@ -8648,7 +8777,7 @@ ${markedSwatchHtml}
             }
         } catch (e) {
           console.warn('seamless paging loadNext error:', e);
-          toast('加载失败，请稍后重试');
+          toast('加载失败，请稍后重试', 0, { type: 'error' });
           return;
         } finally {
           loading = false;
@@ -14196,7 +14325,7 @@ ${markedSwatchHtml}
         }, false);
       } catch (err) {
         console.warn('[interceptReplyForm] refreshCookies after success failed', err);
-        toast('回复已发送，但饼干刷新失败，请刷新页面');
+        toast('回复已发送，但饼干刷新失败，请刷新页面', 0, { type: 'error' });
       }
     }
   }
@@ -15299,12 +15428,12 @@ ${markedSwatchHtml}
       apng = apngJsLib(arrayBuffer);
     } catch (e) {
       console.warn('[compressApngToSize] parseAPNG 失败，降级到静态压缩:', e.message);
-      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 0, { type: 'error' });
       return compressImageToSize(file, maxSizeKB);
     }
     if (apng instanceof Error) {
       console.warn('[compressApngToSize] parseAPNG 返回错误:', apng.message);
-      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 0, { type: 'error' });
       return compressImageToSize(file, maxSizeKB);
     }
     const { width, height } = apng;
@@ -15889,10 +16018,10 @@ ${markedSwatchHtml}
               window.open(confirmed.url, '_blank');
               toast('已在新标签页打开新串');
             } else {
-              toast('新串已发送，但未能确认地址');
+              toast('新串已发送，但未能确认地址', 0, { type: 'error' });
             }
           }).catch(() => {
-            toast('新串已发送，确认地址超时');
+            toast('新串已发送，确认地址超时', 0, { type: 'error' });
           });
         } else if (postAction === 'refresh' && confirmPromise) {
           // refresh 模式：等待发言历史确认后，跳转板块第一页顶部
@@ -15967,7 +16096,7 @@ ${markedSwatchHtml}
           console.log(`[interceptReplyForm] 动画WebP→APNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
           if (convertedFile.size > 2048 * 1024) {
             console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，用 APNG 压缩`);
-            toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 3000);
+            toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 0, { type: 'error' });
             const compressResult = await compressApngToSize(convertedFile, 2048, {
               onProgress: (progress) => {
                 if (progress.error) {
@@ -16018,7 +16147,7 @@ ${markedSwatchHtml}
           // 打印解析到的 success / error 节点，便于调试未触发 toast 的情况
           console.log('[interceptReplyForm] parsed successMsg:', successMsg, 'errorMsg:', errorMsg);
           if (response.kind === 'fallback-error') {
-            toast(response.message);
+            toast(response.message, 0, { type: 'error', key: 'send-error' });
             return;
           }
           if (successMsg) {
@@ -16095,7 +16224,7 @@ ${markedSwatchHtml}
                     return;
                   } catch (convertErr) {
                     console.error('[interceptReplyForm] 图片格式转换失败:', convertErr);
-                    toast(convertErr && convertErr.message ? convertErr.message : '图片格式转换失败，请手动转换为 JPG/PNG 后再试', 3000);
+                    toast(convertErr && convertErr.message ? convertErr.message : '图片格式转换失败，请手动转换为 JPG/PNG 后再试', 0, { type: 'error' });
                     return;
                   } finally {
                     finishSubmitImageProcessing(form);
@@ -16111,7 +16240,7 @@ ${markedSwatchHtml}
             if (errorKind === 'image-size') {
               if (!cfg.interceptReplyFormAutoCompress) {
                 try {
-                  toast(msg);
+                  toast(msg, 0, { type: 'error', key: 'send-error' });
                 } catch (e) {
                   console.warn('[interceptReplyForm] toast error for image-size message:', msg, e);
                 }
@@ -16138,7 +16267,7 @@ ${markedSwatchHtml}
                   return;
                 } catch (compressErr) {
                   console.error('[interceptReplyForm] 图片压缩失败:', compressErr);
-                  toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000);
+                  toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 0, { type: 'error' });
                   return;
                 } finally {
                   finishSubmitImageProcessing(form);
@@ -16163,7 +16292,7 @@ ${markedSwatchHtml}
                   return;
                 } catch (reencodeErr) {
                   console.error('[interceptReplyForm] GIF重编码失败:', reencodeErr);
-                  toast('GIF重编码失败，请手动处理');
+                  toast('GIF重编码失败，请手动处理', 0, { type: 'error' });
                   return;
                 } finally {
                   finishSubmitImageProcessing(form);
@@ -16173,7 +16302,7 @@ ${markedSwatchHtml}
             // 如果不是"含有非法词语"的特殊情况，直接提示并返回，避免被后续分支忽略
             if (errorKind !== 'illegal-word') {
               try {
-                toast(msg);
+                toast(msg, 0, { type: 'error', key: 'send-error' });
               } catch (e) {
                 console.warn('[interceptReplyForm] toast error for message:', msg, e);
               }
@@ -16187,7 +16316,7 @@ ${markedSwatchHtml}
                   form.__illegalRetryCountU200B = (form.__illegalRetryCountU200B || 0);
                   // 新增：检查是否已经重试过
                   if (form.__illegalRetryCountU200B >= 1) {
-                    toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 3000);
+                    toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 0, { type: 'error', key: 'send-error' });
                     restoreOriginalSubmitContent(form);
                     form.__originalContent = null;
                     form.__illegalRetryCountU200B = 0;
@@ -16213,7 +16342,7 @@ ${markedSwatchHtml}
                     form.__originalContent = currentInput;
                   }
                   if (form.__illegalRetryCount >= maxRetriesAll) {
-                    toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 3000);
+                    toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 0, { type: 'error', key: 'send-error' });
                     restoreOriginalSubmitContent(form);
                     resetCacheForFailedContent(form.__originalContent);
                     form.__originalContent = null;
@@ -16236,17 +16365,17 @@ ${markedSwatchHtml}
                     doSubmit(newFD, false);
                     return;
                   }
-                  toast(msg);
+                  toast(msg, 0, { type: 'error', key: 'send-error' });
                 }
               } else {
-                toast(msg);
+                toast(msg, 0, { type: 'error', key: 'send-error' });
               }
             }
           }
         })
         .catch((err) => {
           console.error('[interceptReplyForm] fetch error:', err);
-          toast(formatSubmitNetworkError(err));
+          toast(formatSubmitNetworkError(err), 0, { type: 'error', key: 'send-error' });
         });
       }
       // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
@@ -16273,7 +16402,7 @@ ${markedSwatchHtml}
           if (!f.__submitting) return;
           if (f.__submitImageProcessing) return;
           f.__submitting = false;
-          toast('提交可能失败，请检查网络，或者刷新后重试');
+          toast('提交可能失败，请检查网络，或者刷新后重试', 0, { type: 'error' });
         }, SUBMIT_LOCK_TIMEOUT_MS);
       }
       function beginSubmitImageProcessing(f) {
@@ -16316,7 +16445,7 @@ ${markedSwatchHtml}
             const _cookieList = getCookiesList();
             if (!findCookieByHash(_cookieList, _pref.hash)) {
               // 默认饼干已失效
-              toast('本串默认饼干已失效，请重新选择');
+              toast('本串默认饼干已失效，请重新选择', 0, { type: 'error' });
               showCookieConfirmDialog(_threadId, (selectedHash) => {
                 setThreadCookiePref(_threadId, selectedHash);
                 if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();

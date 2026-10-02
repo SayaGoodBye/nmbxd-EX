@@ -1175,7 +1175,7 @@ function testGifCompressionDiagnosticsContract() {
   assert(compressSource.includes('const GIF_MAX_ATTEMPTS = 3') || upstream.includes('const GIF_MAX_ATTEMPTS = 3'), 'GIF maximum attempt count must remain 3');
   assert(compressSource.includes("const args = ['-O3', `--lossy=${Math.round(lossy)}`, '--colors', String(Math.round(colors))]"), 'GIF optimization command must retain -O3 and existing lossy/colors construction');
   assert(compressSource.includes('const remain = GIF_MAX_ATTEMPTS - (i + 1);') && compressSource.includes('const predictedScale = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * safety;') && compressSource.includes('scale = clampNumber(nextScale, 0.16, 0.98)'), 'GIF oversize adjustment must use remaining-attempt-aware scale prediction');
-  assert(upstream.includes("toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000)"), 'existing compression failure toast text and call must remain unchanged');
+  assert(upstream.includes("toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 0, { type: 'error' })"), 'existing compression failure toast must keep its text and now persist as an error toast');
 }
 
 function testUserscriptRuntimeLogHelper() {
