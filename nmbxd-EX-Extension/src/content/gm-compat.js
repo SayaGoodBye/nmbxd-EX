@@ -225,7 +225,7 @@
     if (!extensionContextReminderShown) {
       extensionContextReminderShown = true;
       console.warn('[X岛-EX Extension] extension context invalidated; refresh this page to reconnect', error);
-      showExtensionToast('扩展已更新，刷新页面可恢复完整同步', 7112);
+      showExtensionToast('扩展已更新，刷新页面可恢复完整同步', 0, 'error');
     }
     return true;
   }
@@ -563,19 +563,42 @@
     }
     document.documentElement.appendChild(toast);
     if (type === 'error') {
-      // ★ 扩展侧错误 toast 与 userscript 同语义：3 秒渐隐，交互可提前关闭
-      const dismiss = () => { removeListeners(); toast.remove(); };
-      const onPointer = dismiss;
-      const onKey = dismiss;
-      const removeListeners = () => {
+      // ★ 扩展侧错误 toast 与 userscript 同语义：
+      // 无操作驻留 30s；挂载后 1s 武装期内忽略交互；操作后进入 5s 渐隐宽限
+      let holdTimer = 0;
+      let graceTimer = 0;
+      let armed = false;
+      let armTimer = 0;
+      let interacted = false;
+      const clearAll = () => {
         document.removeEventListener('pointerdown', onPointer, true);
         document.removeEventListener('keydown', onKey, true);
-        window.clearTimeout(extensionToastFadeTimer);
+        window.clearTimeout(holdTimer);
+        window.clearTimeout(graceTimer);
+        window.clearTimeout(armTimer);
       };
-      let extensionToastFadeTimer = 0;
+      const dismiss = () => { clearAll(); toast.remove(); };
+      const startGrace = () => {
+        document.removeEventListener('pointerdown', onPointer, true);
+        document.removeEventListener('keydown', onKey, true);
+        window.clearTimeout(holdTimer);
+        graceTimer = window.setTimeout(dismiss, 5000);
+      };
+      const onPointer = (e) => {
+        if (!armed || interacted) return;
+        if (e && e.button !== 0) return; // 仅左键
+        interacted = true;
+        startGrace();
+      };
+      const onKey = () => {
+        if (!armed || interacted) return;
+        interacted = true;
+        startGrace();
+      };
       document.addEventListener('pointerdown', onPointer, true);
       document.addEventListener('keydown', onKey, true);
-      extensionToastFadeTimer = window.setTimeout(dismiss, 3000);
+      armTimer = window.setTimeout(() => { armed = true; }, 1000);
+      holdTimer = window.setTimeout(dismiss, 30000);
       return toast;
     }
     const ms = Number(duration);

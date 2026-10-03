@@ -128,7 +128,9 @@ function testExtensionRuntimeDescriptor() {
     document: {
       createElement() { return {}; },
       head: { appendChild() {} },
-      documentElement: { appendChild() {} }
+      documentElement: { appendChild() {} },
+      // showExtensionToast 的 error 通道会挂 pointerdown/keydown 驻留监听
+      addEventListener() {}, removeEventListener() {}
     }
   };
   context.globalThis = context;
@@ -173,7 +175,9 @@ function testGmInfoMetadataMatchesUserscriptHeader() {
     document: {
       createElement() { return {}; },
       head: { appendChild() {} },
-      documentElement: { appendChild() {} }
+      documentElement: { appendChild() {} },
+      // showExtensionToast 的 error 通道会挂 pointerdown/keydown 驻留监听
+      addEventListener() {}, removeEventListener() {}
     }
   };
   context.globalThis = context;
@@ -1046,11 +1050,15 @@ function createGmCompatStorageContext() {
     document: {
       createElement() { return { style: {}, remove() {} }; },
       head: { appendChild() {} },
-      documentElement: { appendChild() {} }
+      documentElement: { appendChild() {} },
+      // showExtensionToast 的 error 通道会挂 pointerdown/keydown 驻留监听
+      addEventListener() {}, removeEventListener() {}
     },
     location: { href: 'https://www.nmbxd1.com/t/12345678', origin: 'https://www.nmbxd1.com' },
     URL,
     setTimeout(fn) { return fn(); },
+    // error 通道的驻留/宽限计时器需要 clearTimeout
+    clearTimeout() {},
     addEventListener(type, fn) {
       const list = listeners.get(type) || [];
       list.push(fn);

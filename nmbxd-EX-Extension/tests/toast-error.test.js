@@ -183,8 +183,34 @@ function testExtensionSideSupportsErrorType() {
   assert(gm.includes("function showExtensionToast(text, duration = 1800, type = '')"), 'extension toast must accept the error type');
   assert(gm.includes('#e74c3c'), 'extension error toast must use the red border');
   assert((gm.match(/addEventListener\('pointerdown', onPointer, true\)/g) || []).length === 1,
-    'extension error toast must persist until pointer interaction');
-  assert(gm.includes('setTimeout(dismiss, 3000)'), 'extension error toast must fade after 3s');
+    'extension error toast must listen for pointer interaction');
+  assert(gm.includes('setTimeout(dismiss, 30000)'), 'extension error toast must hold 30s without interaction');
+  assert(gm.includes('setTimeout(dismiss, 5000)'), 'extension error toast must fade 5s after interaction');
+  assert(gm.includes('armed = true; }, 1000)'), 'extension error toast must have the 1s arm delay');
+}
+
+function testRefreshStatusErrorChannel() {
+  // 刷新快速队列的错误语义与全局 error 一致（无操作 30s 驻留 / 操作后 5s 渐隐）
+  const fn = src.slice(src.indexOf('function showRefreshStatus('), src.indexOf('function toast(msg, duration = 1800'));
+  assert(fn.includes("type"), 'showRefreshStatus must accept and forward the error type');
+  assert(fn.includes("key: 'refresh-status', type"), 'error type must ride the refresh-status channel (later status toasts replace it)');
+  const samples = [
+    "showRefreshStatus('刷新回复失败，该串可能已被删除', 0, 'error');",
+    "showRefreshStatus('刷新回复区失败', 0, 'error');",
+    "showRefreshStatus('刷新失败，网络错误', 0, 'error');",
+  ];
+  samples.forEach(x => assert(src.includes(x), `refresh error call site missing: ${x.slice(20, 50)}…`));
+  assert((src.match(/showRefreshStatus\([^)]*, 0, 'error'\)/g) || []).length === 4,
+    `expected 4 migrated refresh error call sites (2x 刷新回复失败 + 回复区失败 + 网络错误)`);
+}
+
+function testSpecialBoardAndExtensionUpdateToasts() {
+  // 值班室/测试板块默认发串模式提示（两处分支）+ 扩展更新后刷新提示，均需 error 通道
+  assert(src.includes("toast(_boardName + '版块默认为\"发串\"模式，请注意', 0, { type: 'error', key: 'board-post-mode-notice' });"),
+    'special board post-mode notice must use the error channel');
+  const gm = fs.readFileSync(path.join(root, 'src/content/gm-compat.js'), 'utf8');
+  assert(gm.includes("showExtensionToast('扩展已更新，刷新页面可恢复完整同步', 0, 'error')"),
+    'extension-updated reminder must use the error toast channel');
 }
 
 function testMigratedErrorCallSites() {
@@ -209,6 +235,8 @@ const tests = [
   testFocusinMustNotDismiss,
   testArmDelayGuardsImmediateDismiss,
   testDismissReasonLogging,
+  testRefreshStatusErrorChannel,
+  testSpecialBoardAndExtensionUpdateToasts,
   testErrorToastHasRedBorder,
   testErrorToastPersistsUntilInteraction,
   testNewerErrorToastReplacesOlderOne,

@@ -279,8 +279,10 @@ function xdexEarlyDarkEnabled() {
   function isCurrentRefreshStatus(generation) {
     return generation === refreshStatusGeneration;
   }
-  function showRefreshStatus(msg, duration = 900) {
-    return toast(msg, duration, { queue: false, key: 'refresh-status' });
+  function showRefreshStatus(msg, duration = 900, type = '') {
+    // type='error'：红框 + 无操作 30s 驻留 / 操作后 5s 渐隐（与全局 error 语义一致）；
+    // 复用 refresh-status 节点，后续任何刷新状态提示（正在刷新/已更新）会自动顶掉它
+    return toast(msg, duration, { queue: false, key: 'refresh-status', type });
   }
 
   function toast(msg, duration = 1800, options = {}) {
@@ -8366,7 +8368,7 @@ ${markedSwatchHtml}
           const list = getRealThreadsList(document);
           if (!list) {
             console.warn('[refreshReplies] 未找到 .h-threads-list');
-            showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
+            showRefreshStatus('刷新回复失败，该串可能已被删除', 0, 'error');
             return done && done({ status: "error" });
           }
           const pageAttr = maxCloned > 0 ? maxCloned : 0;
@@ -8397,7 +8399,7 @@ ${markedSwatchHtml}
               const newList = getRealThreadsList(doc);
               if (!newList) {
                 console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-list');
-                showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
+                showRefreshStatus('刷新回复失败，该串可能已被删除', 0, 'error');
                 return done && done({ status: "error" });
               }
               const newReplies = newList.querySelector('.h-threads-item-replies');
@@ -8461,7 +8463,7 @@ ${markedSwatchHtml}
             })
             .catch(err => {
               console.error('refreshRepliesAndCheckNext error:', err);
-          if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新回复区失败', 1800);
+          if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新回复区失败', 0, 'error');
           if (typeof done === 'function') done({ status: 'error' });
             });
         } catch (err) {
@@ -8712,7 +8714,7 @@ ${markedSwatchHtml}
         try {
           const res = await startupPerfDebug.measureAsync('seamless.loadNext.fetch', () => fetch(nextUrl, { credentials: 'same-origin' }), { nextPageNum, nextUrl });
           if (!res.ok) {
-              if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新失败，网络错误', 1800);
+              if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新失败，网络错误', 0, 'error');
               return;
           }
           const html = await startupPerfDebug.measureAsync('seamless.loadNext.responseText', () => res.text(), { nextPageNum });
@@ -19641,11 +19643,11 @@ function 注册自动保存编辑() {
         const toastKey = 'xdex_' + _boardName + '_post_mode_toast_date';
         const lastShown = typeof GM_getValue === 'function' ? GM_getValue(toastKey, '') : '';
         if (lastShown !== today) {
-          toast(_boardName + '版块默认为"发串"模式，请注意', 7112, { queue: false, key: 'board-post-mode-notice' });
+          toast(_boardName + '版块默认为"发串"模式，请注意', 0, { type: 'error', key: 'board-post-mode-notice' });
           if (typeof GM_setValue === 'function') GM_setValue(toastKey, today);
         }
       } catch (e) {
-        toast(_boardName + '版块默认为"发串"模式，请注意', 7112, { queue: false, key: 'board-post-mode-notice' });
+        toast(_boardName + '版块默认为"发串"模式，请注意', 0, { type: 'error', key: 'board-post-mode-notice' });
       }
       if (SettingPanel.state.replyExtraDefault === '连续' && rowPrevExtra !== '临时') {
         window.replyModeState.extra = '连续';
