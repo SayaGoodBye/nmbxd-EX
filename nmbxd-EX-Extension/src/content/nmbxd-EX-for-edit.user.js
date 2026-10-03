@@ -7186,6 +7186,10 @@ ${markedSwatchHtml}
     try {
       if (typeof tryReplaceRightSidebarEarly === 'function') tryReplaceRightSidebarEarly();
     } catch (e) {}
+    try {
+      // tag 30：测试板块侧边栏入口（每次页面加载 / 局部增强都会补挂，含观察器兜底）
+      if (typeof installTestBoardSidebarLinkObserver === 'function') installTestBoardSidebarLinkObserver();
+    } catch (e) {}
     // 顶栏刷新点击：越早越好，不依赖 batch2
     try {
       if (typeof installOverrideTopImageClickEarly === 'function') installOverrideTopImageClickEarly();
@@ -29866,6 +29870,53 @@ function 注册自动保存编辑() {
   window.addEventListener('load', () => {
     setTimeout(() => { webdavAutoSyncIfEnabled(); }, 4000);
   });
+
+  /* --------------------------------------------------
+   * tag 30. 测试板块侧边栏入口
+   * -------------------------------------------------- */
+  // 测试版（fid=122）不在站点公开的侧边栏列表里（与值班室同组但被隐藏），补一个入口。
+  // 链接与样式与同组其他链接（值班室、三百人委员会等）完全一致。
+  function ensureTestBoardSidebarLink() {
+    const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
+    if (!menu) return false;
+    // 幂等：已存在则跳过
+    if (menu.querySelector('a[data-xdex-test-board-link]')) return true;
+    // 定位「管理」分组：<li class="uk-parent"> > a.h-nav-parent-header 文本为「管理」
+    const groupLi = Array.from(menu.children).find((li) => {
+      if (!li || !li.querySelector) return false;
+      const header = li.querySelector(':scope > .h-nav-parent-header, :scope > a.h-nav-parent-header');
+      return header && (header.textContent || '').trim() === '管理';
+    });
+    if (!groupLi) return false;
+    const sub = groupLi.querySelector(':scope > ul.uk-nav-sub')
+      || groupLi.querySelector(':scope > div > ul.uk-nav-sub')
+      || groupLi.querySelector('ul.uk-nav-sub');
+    if (!sub) return false;
+    // 以「三百人委员会」为锚点插到其后；找不到锚点则追加到子列表末尾
+    const anchor = Array.from(sub.children).find((li) => {
+      const a = li.querySelector && li.querySelector(':scope > a');
+      return a && (a.textContent || '').trim() === '三百人委员会';
+    });
+    const li = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = 'https://www.nmbxd1.com/f/%E6%B5%8B%E8%AF%95';
+    link.textContent = '测试';
+    link.setAttribute('data-xdex-test-board-link', '1');
+    li.appendChild(link);
+    if (anchor && anchor.nextSibling) sub.insertBefore(li, anchor.nextSibling);
+    else sub.appendChild(li);
+    return true;
+  }
+  // 侧边栏可能晚于脚本渲染（站点异步构建），装观察器兜底补挂
+  function installTestBoardSidebarLinkObserver() {
+    ensureTestBoardSidebarLink();
+    if (installTestBoardSidebarLinkObserver.__installed) return;
+    installTestBoardSidebarLinkObserver.__installed = true;
+    const observer = new MutationObserver(() => {
+      ensureTestBoardSidebarLink();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
 
   /* --------------------------------------------------
    * tag -1. 入口初始化
