@@ -53,7 +53,7 @@ function buildSidebar({ withAdmin = true } = {}) {
 
 // tag 30 模块：从注释头到 tag -1 之间提取（独立模块，已不再挂在 PageType 上）
 function loadTag30(menu) {
-  const s0 = src.indexOf('tag 30. 测试板块侧边栏入口');
+  const s0 = src.indexOf('tag 30. 测试板块增强');
   const s1 = src.indexOf('tag -1. 入口初始化');
   assert(s0 !== -1 && s1 !== -1, 'tag 30 block must exist between tag 29 and tag -1');
   const block = src.slice(src.lastIndexOf('/*', s0), src.lastIndexOf('/*', s1));
@@ -110,20 +110,66 @@ function testGracefulWhenAdminMissing() {
 function testWiredIntoRenderPipeline() {
   // 1) tag 30 必须位于 tag 29 与 tag -1 之间
   const i29 = src.indexOf('tag 29. WebDAV');
-  const i30 = src.indexOf('tag 30. 测试板块侧边栏入口');
+  const i30 = src.indexOf('tag 30. 测试板块增强');
   const iMinus1 = src.indexOf('tag -1. 入口初始化');
   assert(i29 !== -1 && i30 !== -1 && iMinus1 !== -1, 'tag markers must all exist');
   assert(i29 < i30 && i30 < iMinus1, 'tag 30 must sit between tag 29 and tag -1');
   // 2) 页面加载时生效：挂进 runCriticalVisualEnhancements（启动早期 + 局部增强都会跑）
   const fn = src.slice(src.indexOf('function runCriticalVisualEnhancements('), src.indexOf('function runEarlyStartupPass('));
   assert(fn.includes('installTestBoardSidebarLinkObserver()'), 'critical visual pass must install the sidebar link');
-  assert(/try \{[\s\S]{0,400}installTestBoardSidebarLinkObserver\(\)[\s\S]{0,60}\} catch/.test(fn), 'call must be guarded');
+  assert(fn.includes('installTestBoardListGuard()'), 'critical visual pass must install the list guard');
+  assert(fn.includes('restoreTestBoardThreadList()'), 'critical visual pass must run the list restore');
+  assert(/try \{[\s\S]{0,1200}installTestBoardListGuard\(\)[\s\S]{0,500}restoreTestBoardThreadList\(\)[\s\S]{0,60}\} catch/.test(fn), 'all three calls must be guarded');
   // 3) 独立模块：不再挂在 PageType 上
   const pt = src.slice(src.indexOf('const PageType = {'), src.indexOf('const Utils = {'));
   assert(!pt.includes('ensureTestBoardSidebarLink'), 'helper must be extracted out of PageType');
   // 4) 含观察器兜底（侧边栏晚于脚本渲染时补挂）
-  const mod = src.slice(src.indexOf('tag 30. 测试板块侧边栏入口'), src.indexOf('tag -1. 入口初始化'));
+  const mod = src.slice(src.indexOf('tag 30. 测试板块增强'), src.indexOf('tag -1. 入口初始化'));
   assert(mod.includes('MutationObserver'), 'tag 30 must install a fallback observer for late sidebar rendering');
+  assert(mod.includes('restoreTestBoardThreadList'), 'tag 30 must include the thread list restore for the test board');
+  // 无缝翻页双分页修复：守护放回的原生分页（列表紧邻前方）须同步最新页码
+  // 该修复在 tag 7（板块页无缝翻页）内，不在 tag 30
+  const tag7 = src.slice(src.indexOf('tag 7. 自动+手动无缝翻页'), src.indexOf('tag 8.'));
+  assert(tag7.includes('for (const oldPag of allPaginations)') && tag7.includes('replaceWith(pagClone.cloneNode(true))'),
+    'seamless paging must sync all native paginations (incl. guard-restored)');
+  // v2：守护器（removedNodes 即时放回，无闪变、增强可作用、无缝翻页可用）
+  assert(mod.includes('installTestBoardListGuard'), 'tag 30 must include the list guard');
+  assert(mod.includes('removedNodes'), 'guard must watch removedNodes');
+  assert(mod.includes(".h-threads-list, .h-pagination"), 'guard must protect both list and pagination');
+  // 页首页码共存：守护器不得放回 enablePaginationDuplication 的克隆（titlePag），否则与其去重逻辑死循环
+  assert(mod.includes("dataset.xdexTitleClone === '1'"), 'guard must skip titlePag clones');
+  // 豁免：页首页码克隆与无缝翻页替换的移除必须放行（否则与页码去重/翻页替换死循环）
+  assert(mod.includes("dataset.xdexTitleClone === '1'"), 'guard must skip titlePag clones');
+  assert(mod.includes("dataset.xdexSeamlessReplaced === '1'"), 'guard must honor seamless-replaced marker');
+  assert(src.includes("dataset.xdexSeamlessReplaced = '1'"), 'seamless paging must mark replaced native pagination');
+  // 全量替换：除 titlePag 与 pagClone 外的所有分页（含守护放回的页底分页）都要同步页码
+  const tag7seg = src.slice(src.indexOf('tag 7. 自动+手动无缝翻页'), src.indexOf('tag 8.'));
+  assert(/for \(const oldPag of allPaginations\)/.test(tag7seg), 'must iterate all paginations for replacement');
+  assert(tag7seg.includes("oldPag.dataset.xdexTitleClone === '1'"), 'titlePag must be excluded from replacement');
+  // 守护范围限定主内容区：站点脚本会移除侧边栏里的分页（那是站点自身行为），我们不代管
+  assert(mod.includes("closest('#h-content')"), 'guard must scope to #h-content only');
+  // 结构化锚定：列表放回发串表单容器后的 hr① 下方（分页紧随列表），不依赖易失效的位置表
+  assert(mod.includes('findListAnchor'), 'guard must anchor placement structurally');
+  assert(mod.includes('doPostThread.html'), 'anchor must be the post form');
+  assert(mod.includes('hr.nextSibling'), 'list must be placed right after the first hr');
+  // 测试板块上下文识别 + 管理分组展开（对齐服务端对默认板块的 uk-open 行为）
+  assert(mod.includes('function isTestBoardContext()'), 'must identify test board context');
+  assert(/function expandAdminGroupIfTestBoard\(/.test(mod), 'must expand the admin group');
+  assert(mod.includes('input[name="fid"][value="122"]'), 'fid=122 form field must be a recognition signal (covers thread pages)');
+  assert(mod.includes("classList.add('uk-open')"), 'expansion must add uk-open');
+  assert(mod.includes("classList.remove('uk-hidden')"), 'expansion must remove uk-hidden (sidebar collapse uses it)');
+  assert(mod.includes("setAttribute('aria-expanded', 'true')"), 'expansion must sync aria-expanded');
+  // UIkit 竞态：ready 后重申展开（early pass 的设置会被组件初始化覆盖）
+  assert(mod.includes('reassert'), 'expansion must re-assert after UIkit init (500ms/1200ms)');
+  assert(mod.includes('scrollHeight'), 'expanded height must use concrete pixel value (native form is height:130px)');
+  // 当前版块链接样式：ultimate-bold-correct + h-active，判定用测试板块上下文整体（版块页与串内页均高亮）
+  assert(mod.includes("toggle('ultimate-bold-correct', active)"), 'link must carry ultimate-bold-correct in test board context (board & thread pages)');
+  assert(mod.includes('const active = isTestBoardContext();'), 'style gate must be the test-board-context check');
+  assert(mod.includes("classList.add('h-active')"), 'board page must mark the link active');
+  // 串内页主判据：面包屑板块链接（服务端输出当前串所属板块），href 需解码后比对（兼容编码/明文两态）
+  assert(mod.includes('a[href^="/f/"]'), 'breadcrumb must scan all /f/ links');
+  assert(mod.includes("decodeURIComponent(href)"), 'breadcrumb href must be decoded before matching');
+  assert(!mod.includes('refreshTestBoardThreadIds'), 'showf thread-id set fallback must stay removed (breadcrumb is sufficient)');
 }
 
 const tests = [testLinkInsertedAfterCommittee, testLinkUrlAndStyle, testIdempotent, testGracefulWhenAdminMissing, testWiredIntoRenderPipeline];

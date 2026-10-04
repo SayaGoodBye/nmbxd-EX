@@ -6733,6 +6733,7 @@ ${markedSwatchHtml}
           titlePag = pag;
           titlePag.dataset.xdexTitleClone = '1';
         } else {
+          console.info('[X岛-EX][页首页码] 去重：移除多余标题页码栏 (prev=' + (pag.previousElementSibling ? pag.previousElementSibling.tagName + '.' + String(pag.previousElementSibling.className).split(' ')[0] : 'null') + ')');
           pag.remove();
         }
       });
@@ -6749,6 +6750,7 @@ ${markedSwatchHtml}
       titlePag = sourcePags[0].cloneNode(true);
       titlePag.dataset.xdexTitleClone = '1';
       tit.parentNode.insertBefore(titlePag, tit.nextSibling);
+      console.info('[X岛-EX][页首页码] 已创建页首页码栏 (来源=' + (sourcePags[0].previousElementSibling ? sourcePags[0].previousElementSibling.tagName : '?') + ')');
     }
     if (titlePag && titlePag.isConnected) {
       rebuildPaginationPages(titlePag);
@@ -7189,6 +7191,10 @@ ${markedSwatchHtml}
     try {
       // tag 30：测试板块侧边栏入口（每次页面加载 / 局部增强都会补挂，含观察器兜底）
       if (typeof installTestBoardSidebarLinkObserver === 'function') installTestBoardSidebarLinkObserver();
+      // tag 30：测试版主串列表守护（抢在站点内联脚本移除前装好 removedNodes 守护器）
+      if (typeof installTestBoardListGuard === 'function') installTestBoardListGuard();
+      // tag 30：测试版主串列表恢复兜底（守护器失手时网络拉取放回）
+      if (typeof restoreTestBoardThreadList === 'function') restoreTestBoardThreadList();
     } catch (e) {}
     // 顶栏刷新点击：越早越好，不依赖 batch2
     try {
@@ -8861,12 +8867,17 @@ ${markedSwatchHtml}
               startupPerfDebug.measure('seamless.loadNextBoard.applyPageEnhancements', () => applyPageEnhancements(listClone, cfg), { nextPageNum });
               // ============================================
               // 更新底部分页条
+              // ★ 测试版块页：守护放回的原生分页（页1高亮）插在列表1 之后、
+              //   本函数又把 pagClone(页2) 插到列表1 之后 → 出现「页1 + 页2」两条相邻分页栏。
+              //   修复：找出**除 titlePag 与 pagClone 外**的原生分页（守护放回的那条），
+              //   replaceWith 前先打 xdexSeamlessReplaced 豁免标记——守护器见标记即放行，
+              //   否则 replaceWith 的移除会触发放回死循环。
               const allPaginations = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
-              if (allPaginations.length > 0) {
-                const lastPagination = allPaginations[allPaginations.length - 1];
-                if (lastPagination && lastPagination !== pagClone) {
-                  lastPagination.replaceWith(pagClone.cloneNode(true));
-                }
+              for (const oldPag of allPaginations) {
+                if (oldPag === pagClone) continue;
+                if (oldPag.dataset && oldPag.dataset.xdexTitleClone === '1') continue; // 页首页码不动
+                oldPag.dataset.xdexSeamlessReplaced = '1';
+                oldPag.replaceWith(pagClone.cloneNode(true));
               }
             } else {
               startupPerfDebug.measure('seamless.loadNextBoard.insertDom', () => lastList.insertAdjacentElement('afterend', listClone), { nextPageNum });
@@ -29872,15 +29883,95 @@ function 注册自动保存编辑() {
   });
 
   /* --------------------------------------------------
-   * tag 30. 测试板块侧边栏入口
+   * tag 30. 测试板块增强：侧边栏入口 + 主串列表恢复
    * -------------------------------------------------- */
   // 测试版（fid=122）不在站点公开的侧边栏列表里（与值班室同组但被隐藏），补一个入口。
   // 链接与样式与同组其他链接（值班室、三百人委员会等）完全一致。
+  // ★ 当前页/串来自测试板块时，同时展开「管理」分组（服务端不知道该板块属于侧边栏哪个分组，
+  //   不会加 uk-open；值班室等默认板块则会展开——这里补齐一致体验）。
+  // 识别判据（覆盖版块页与串内页）：
+  //   1) URL 路径以 /f/测试 开头（版块页；复用 PageType 统一解析）
+  //   2) 发串表单隐藏域 input[name=fid][value=122]（版块页与串内页均有表单）
+  //   3) 面包屑中存在 /f/%E6%B5%8B%E8%AF%95 链接（版块页；串内页面包屑不含板块）
+  //   4) forum-info 脚本的 forum.id === '122'（仅版块页）
+  //   5) 串内页兜底：当前串号 ∈ 测试版串号集合（showf API 拉取，1h 缓存）
+  //      —— 串内页 URL/表单/面包屑/forum-info 均不含板块信息，只能靠串号归属判定
+  function isTestBoardContext() {
+    try {
+      // 仅 /f/测试（值班室虽同属特殊板块，但不是测试上下文）
+      if (/^\/f\/%E6%B5%8B%E8%AF%95(?:\/|$)/i.test(location.pathname)
+        || /^\/f\/测试(?:\/|$)/.test(decodeURIComponent(location.pathname))) return true;
+      if (document.querySelector('#h-post-form input[name="fid"][value="122"], form input[name="fid"][value="122"]')) return true;
+      // ★ 串内页主判据：面包屑含板块链接（服务端会输出当前串所属板块）。
+      //   href 可能是编码态（/f/%E6%B5%8B%E8%AF%95）或明文态（/f/测试），逐链接解码后比对
+      const bc = document.querySelector('.uk-breadcrumb');
+      if (bc) {
+        const links = bc.querySelectorAll('a[href^="/f/"]');
+        for (const a of links) {
+          const href = a.getAttribute('href') || '';
+          let decoded = href;
+          try { decoded = decodeURIComponent(href); } catch (e) {}
+          if (/^\/f\/测试(?:\/|$)/.test(decoded)) return true;
+        }
+      }
+      const info = document.getElementById('forum-info');
+      if (info && /"id"\s*:\s*"122"/.test(info.textContent)) return true;
+    } catch (e) {}
+    return false;
+  }
+  // 展开「管理」分组（与站点服务端对默认板块的 uk-open 行为对齐）
+  // ⚠️ UIkit 竞态：站点内联脚本 ready 时会初始化 nav 组件并按服务端初始状态重设高度——
+  // 我们在 early pass 加的 uk-open/height 会被它覆盖（实测版块页 uk-open 丢失、串内页 height 归 0）。
+  // 因此展开分两段：立即设一次；ready 后延迟（500ms/1200ms）再重申，并使用具体像素高度
+  // （原生展开态是 height:130px 这类具体值，UIkit 对 auto 支持不佳）。
+  function expandAdminGroupIfTestBoard(alreadyMatched) {
+    if (!alreadyMatched && !isTestBoardContext()) return false;
+    const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
+    if (!menu) return false;
+    const groupLi = Array.from(menu.children).find((li) => {
+      if (!li || !li.querySelector) return false;
+      const header = li.querySelector(':scope > .h-nav-parent-header, :scope > a.h-nav-parent-header');
+      return header && (header.textContent || '').trim() === '管理';
+    });
+    if (!groupLi) return false;
+    const applyExpand = () => {
+      groupLi.classList.add('uk-open');
+      groupLi.setAttribute('aria-expanded', 'true');
+      const wrap = groupLi.querySelector(':scope > div');
+      if (wrap) {
+        wrap.classList.remove('uk-hidden');
+        const sub = wrap.querySelector('ul.uk-nav-sub');
+        // 使用具体像素高度（对齐原生展开态 height:130px 的形态），随内容自适应
+        const h = sub && sub.scrollHeight ? sub.scrollHeight + 'px' : 'auto';
+        wrap.style.height = h;
+      }
+      // 链接样式对齐原生当前版块：ultimate-bold-correct + li.h-active
+      // 判定用「测试板块上下文」整体（版块页与串内页均算——串内页面包屑指向测试板块，
+      // 原生对值班室串内页同样高亮其板块链接）
+      const link = groupLi.querySelector('a[data-xdex-test-board-link]');
+      if (link) {
+        const active = isTestBoardContext();
+        link.classList.toggle('ultimate-bold-correct', active);
+        if (active && link.parentElement) link.parentElement.classList.add('h-active');
+      }
+    };
+    applyExpand();
+    // 重申：覆盖 UIkit 组件初始化的覆盖（ready 后 500ms / 1200ms 各一次）
+    const reassert = () => { try { applyExpand(); } catch (e) {} };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => { setTimeout(reassert, 500); setTimeout(reassert, 1200); }, { once: true });
+    } else {
+      setTimeout(reassert, 500);
+      setTimeout(reassert, 1200);
+    }
+    return true;
+  }
   function ensureTestBoardSidebarLink() {
     const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
     if (!menu) return false;
-    // 幂等：已存在则跳过
-    if (menu.querySelector('a[data-xdex-test-board-link]')) return true;
+    const contextMatched = isTestBoardContext();
+    // 幂等：已存在则跳过（同时保证展开状态被应用）
+    if (menu.querySelector('a[data-xdex-test-board-link]')) { expandAdminGroupIfTestBoard(contextMatched); return true; }
     // 定位「管理」分组：<li class="uk-parent"> > a.h-nav-parent-header 文本为「管理」
     const groupLi = Array.from(menu.children).find((li) => {
       if (!li || !li.querySelector) return false;
@@ -29905,6 +29996,7 @@ function 注册自动保存编辑() {
     li.appendChild(link);
     if (anchor && anchor.nextSibling) sub.insertBefore(li, anchor.nextSibling);
     else sub.appendChild(li);
+    expandAdminGroupIfTestBoard(contextMatched);
     return true;
   }
   // 侧边栏可能晚于脚本渲染（站点异步构建），装观察器兜底补挂
@@ -29917,6 +30009,139 @@ function 注册自动保存编辑() {
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
+  // ★ 测试版主串列表守护（v2）：
+  // 站点内联脚本对 /f/测试 的处理是「无条件 remove() 主串列表与分页，再请求 /Admin/Api/isManager，
+  // 仅管理员放回」。但服务端对已登录用户正常下发了完整列表（含主串），移除只发生在客户端。
+  //
+  // v2 方案（取代 v1 的「事后拉取放回」）：
+  // 文档起始即装 MutationObserver 守护 document.documentElement，监听 removedNodes——
+  // .h-threads-list / .h-pagination 一旦被移除，立刻在原父容器的原位置放回**同一个节点**。
+  // 优点：
+  //   1. 移除与放回发生在同一帧内，肉眼无闪变；
+  //   2. 节点是服务端原始 DOM，早期增强 pass（回复编号/PO标记/页码扩充等）正常作用；
+  //   3. 原始分页结构完好，无缝翻页可用；零额外网络请求；
+  //   4. 站点管理员分支的 container.append(threadList) 是移动语义（jQuery append），
+  //      节点已在容器内时为先 remove 后 append，位置可能挪到容器末尾，无实质影响。
+  function installTestBoardListGuard() {
+    if (!PageType.isSpecialBoard()) return;
+    if (installTestBoardListGuard.__installed) return;
+    installTestBoardListGuard.__installed = true;
+    const GUARD_SEL = '.h-threads-list, .h-pagination';
+    // 只守护主内容区（#h-content）内的列表与分页：
+    // 站点脚本 $(".h-pagination") 会把侧边栏/管理分组里的分页也一并移除——那是站点自身行为，
+    // 管理员放回分支也只处理主内容区，我们不越界代管，避免节点被放回错误容器。
+    const inMainContent = (node) => !!(node.closest && node.closest('#h-content'));
+    // ★ 结构化锚定（站点真实结构，见 /f/测试 原始 HTML）：
+    //   #h-post-form（含 form[action=doPostThread]）→ <hr>（hr①）→ .h-threads-list → .h-pagination
+    //   → <script id="forum-info">（其前有 <hr>，hr②）→ #h-footer
+    // 列表应放回 hr① 之后；分页放回列表之后。不再依赖通用位置表（同批次多个 removal 时失效）。
+    const findListAnchor = () => {
+      const container = document.querySelector('.uk-container');
+      if (!container) return null;
+      const form = container.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]')
+        || container.querySelector('#h-post-form');
+      if (!form) return null;
+      // hr① = 表单容器之后的第一个 <hr>
+      let node = form.parentElement === container ? form : container.querySelector('#h-post-form');
+      while (node && node.nextElementSibling) {
+        node = node.nextElementSibling;
+        if (node.tagName === 'HR') return { hr: node, container };
+      }
+      return { hr: null, container }; // 无 hr①：插在表单容器之后
+    };
+    const placeList = (list) => {
+      const anchor = findListAnchor();
+      if (!anchor) return false;
+      try {
+        if (anchor.hr && anchor.hr.parentElement === anchor.container) {
+          anchor.container.insertBefore(list, anchor.hr.nextSibling);
+        } else {
+          anchor.container.insertBefore(list, anchor.hr || null);
+        }
+        // 分页紧跟列表之后（若分页节点游离，一并归位）
+        const navi = document.querySelector('.h-pagination');
+        if (navi && navi.parentElement !== list.parentElement) {
+          list.parentElement.insertBefore(navi, list.nextSibling);
+        }
+        return true;
+      } catch (e) { return false; }
+    };
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (!mutation.removedNodes || !mutation.removedNodes.length) continue;
+        for (const node of mutation.removedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (!node.matches || !node.matches(GUARD_SEL)) continue;
+          // ★ 只守护「站点原生分页」：enablePaginationDuplication 克隆的页首页码（titlePag）
+          //   不在守护范围——它的插入/移除由页码功能自己管理，守护器若放回会与其去重逻辑死循环
+          if (node.dataset && node.dataset.xdexTitleClone === '1') continue;
+          // 无缝翻页接管标记：replaceWith 更新页码前的有意移除，守护器放行
+          if (node.dataset && node.dataset.xdexSeamlessReplaced === '1') continue;
+          // 列表：结构化放回（hr① 之后）
+          if (node.classList.contains('h-threads-list')) {
+            if (placeList(node)) console.info('[X岛-EX][测试版列表] 已守护放回（hr① 下方）');
+            continue;
+          }
+          // 分页：结构化放回列表之后（页底）
+          if (node.classList.contains('h-pagination')) {
+            const list = document.querySelector('#h-content .h-threads-list');
+            const container = document.querySelector('.uk-container');
+            try {
+              if (list && list.parentElement === container) {
+                container.insertBefore(node, list.nextSibling);
+                console.info('[X岛-EX][测试版分页] 已守护放回页底 (items=' + node.querySelectorAll('li').length + ')');
+              } else if (container) {
+                const info = container.querySelector('script#forum-info');
+                container.insertBefore(node, info || document.getElementById('h-footer') || null);
+                console.info('[X岛-EX][测试版分页] 已守护放回（列表未就位，暂放 forum-info 前）');
+              } else {
+                console.info('[X岛-EX][测试版分页] 未找到 .uk-container，跳过');
+              }
+            } catch (e) {
+              console.warn('[X岛-EX][测试版分页] 放回失败', e);
+            }
+          }
+        }
+      }
+    });
+    const start = () => {
+      if (!document.documentElement) { setTimeout(start, 25); return; }
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    };
+    start();
+  }
+  // ★ 兜底：守护器万一失手（极端竞态/父容器销毁），ready+400ms 后检查一次并网络拉取放回。
+  // 正常情况下守护器已放回节点，这里直接返回；保留 v1 逻辑作为最后防线。
+  function restoreTestBoardThreadList() {
+    if (!PageType.isSpecialBoard()) return;
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => setTimeout(restoreTestBoardThreadList, 400), { once: true });
+      return;
+    }
+    setTimeout(restoreTestBoardThreadList.__attempt, 400);
+  }
+  restoreTestBoardThreadList.__attempt = function __attempt() {
+    if (!PageType.isSpecialBoard()) return;
+    if (document.querySelector('.h-threads-list')) return; // 已有列表（管理员或已守护恢复）
+    if (restoreTestBoardThreadList.__running) return;
+    restoreTestBoardThreadList.__running = true;
+    const container = document.querySelector('.uk-container');
+    if (!container) { restoreTestBoardThreadList.__running = false; return; }
+    fetch(location.href, { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('HTTP ' + res.status))))
+      .then((html) => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const list = doc.querySelector('.h-threads-list');
+        if (!list) return; // 服务端也没给（未登录等），保持站点原状
+        if (document.querySelector('.h-threads-list')) return; // 竞态：站点脚本已放回
+        const navi = doc.querySelector('.h-pagination');
+        container.appendChild(list);
+        if (navi) container.appendChild(navi);
+        console.info('[X岛-EX] 测试版主串列表已通过兜底拉取恢复');
+      })
+      .catch((e) => console.warn('[X岛-EX] 测试版列表恢复失败', e))
+      .finally(() => { restoreTestBoardThreadList.__running = false; });
+  };
 
   /* --------------------------------------------------
    * tag -1. 入口初始化
