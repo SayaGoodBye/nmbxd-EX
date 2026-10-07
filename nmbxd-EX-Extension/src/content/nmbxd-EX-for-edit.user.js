@@ -672,6 +672,9 @@ function xdexEarlyDarkEnabled() {
       blockedKeywords: [],
       favoriteThreads: [],
       subscriptionFeeds: [],    // [{desc, uuid}, ...]
+      // 分组顺序元数据：{ [分组字段名]: { order: [语义键...], at: 时间戳 } }
+      // 用于把「拖拽排序」作为可传播设置随 WebDAV/导入导出同步（静默合并，不触发冲突弹窗）
+      groupOrderMeta: {},
       blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
     },
     state: {},
@@ -822,12 +825,12 @@ function xdexEarlyDarkEnabled() {
     init() {
       const saved = GM_getValue(this.key, {});
       const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
-      console.log('init读取的原始数据:', JSON.stringify(saved));
+      // console.log('init读取的原始数据:', JSON.stringify(saved));
           this.state = Object.assign({}, this.defaults, saved);
           if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
       // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
       this.state.enableImageHideMode = true;
-      console.log('init合并后的state:', JSON.stringify(this.state));
+      // console.log('init合并后的state:', JSON.stringify(this.state));
       // 兼容迁移：屏蔽饼干到组结构
       this.state.markedGroups = spData('normalizeMarkedGroups', this.state.markedGroups);
       this.state.blockedCookies = spData('normalizeBlockedGroups', this.state.blockedCookies);
@@ -843,7 +846,7 @@ function xdexEarlyDarkEnabled() {
           needCleanup = true;
         }
       });
-      console.log('init清理后的state:', JSON.stringify(this.state));
+      // console.log('init清理后的state:', JSON.stringify(this.state));
       // 只在首次初始化或需要清理废弃字段时才保存
       if (isFirstInit || needCleanup) {
         console.log('首次初始化或需要清理，执行保存');
@@ -2520,6 +2523,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         e.stopPropagation();
         saveThreadCookieWhitelistGroups();
       });
+      // ===== 分组行拖拽排序注册（拖动结束即保存 + 写入 groupOrderMeta 供跨端传播；失败自动回滚） =====
+      installRowDragSorting({ containerSelector: '#marked-inputs-container', rowSelector: '.marked-row', field: 'markedGroups', onSorted: () => saveMarkedGroups() });
+      installRowDragSorting({ containerSelector: '#blocked-inputs-container', rowSelector: '.blocked-row', field: 'blockedCookies', onSorted: () => saveBlockedGroups() });
+      installRowDragSorting({ containerSelector: '#thread-cookie-whitelist-inputs-container', rowSelector: '.thread-cookie-whitelist-row', field: 'threadCookieWhitelistGroups', onSorted: () => saveThreadCookieWhitelistGroups() });
+      installRowDragSorting({ containerSelector: '#blocked-keyword-inputs-container', rowSelector: '.blocked-keyword-row', field: 'blockedKeywords', onSorted: () => saveBlockedKeywordGroups() });
+      installRowDragSorting({ containerSelector: '#favorite-thread-inputs-container', rowSelector: '.favorite-thread-row', field: 'favoriteThreads', onSorted: () => saveFavoriteThreads() });
+      installRowDragSorting({ containerSelector: '#subscription-feed-inputs-container', rowSelector: '.subscription-feed-row', field: 'subscriptionFeeds', onSorted: () => saveSubscriptionFeeds() });
       const closeMarkedColorPopovers = () => {
         $('#marked-inputs-container .marked-color-popover').hide();
       };
@@ -2997,6 +3007,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, importedSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, importedSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
+        // 顺序传播：按 groupOrderMeta 的 at 新者胜重排六个分组（静默，不弹窗）
+        mergeGroupOrdersInto(result, localSettings, importedSettings);
         return result;
       }
       // WebDAV「保留本地上传」专用：标量项以本地为准（result 以 localSettings 为底），
@@ -3010,6 +3022,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, remoteSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, remoteSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, remoteSettings.threadCookieWhitelistGroups);
+        // 顺序传播：同 full-import，按 groupOrderMeta 的 at 新者胜重排
+        mergeGroupOrdersInto(result, localSettings, remoteSettings);
         return result;
       }
       function mergeThreadHistoryStore(localStore, importedStore) {
@@ -4290,8 +4304,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="thread-cookie-whitelist-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
           <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
@@ -4302,8 +4317,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-input" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${placeholder}" value="${Utils.escapeHTML ? Utils.escapeHTML(value || '') : (value || '')}">
         </div>
       </div>`;
@@ -4326,8 +4342,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="blocked-keyword-row" style="position:relative;margin:10px 0 8px;" data-regex="${regexOn ? '1' : '0'}">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <div style="display:flex;align-items:center;gap:8px;">
             <input class="blocked-keyword-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${safePlaceholder}" value="${safeValue}">
             <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;">
@@ -4337,6 +4354,244 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           </div>
         </div>
       </div>`;
+  }
+  // ===== 分组顺序传播（拖拽排序作为可传播设置） =====
+  // 设计：state.groupOrderMeta[分组字段] = { order: [语义键...], at: 时间戳 }
+  //  - 语义键与该分组合并函数的匹配键一致（双键：desc 优先，cookies 兜底）
+  //  - 合并规则：两端都有则 at 新者胜；order 中不存在的项追加末尾；已失效的键丢弃
+  //  - 静默传播：groupOrderMeta 在 WEBDAV_SETTINGS_SKIP_KEYS 中，不触发冲突弹窗
+  const GROUP_ORDER_FIELDS = ['markedGroups', 'blockedCookies', 'threadCookieWhitelistGroups', 'blockedKeywords', 'favoriteThreads', 'subscriptionFeeds'];
+  // 分组类型 → 键提取（与合并函数保持一致）
+  function groupOrderKeysOf(field, item) {
+    if (!item || typeof item !== 'object') return [];
+    const keys = [];
+    const desc = String(item.desc || item.name || '').trim();
+    if (desc) keys.push('d:' + desc);
+    // 各分组的存储结构（与 collect/save 函数写入的字段一致）：
+    //   markedGroups/blockedCookies: {desc, color?, cookies:[...]}
+    //   threadCookieWhitelistGroups: {desc, threads:[...], cookies:[...]}
+    //   blockedKeywords:             {value, regex}
+    //   favoriteThreads:             {desc, threadId}
+    //   subscriptionFeeds:           {desc, uuid}
+    const joinList = (v) => (Array.isArray(v) ? v : String(v == null ? '' : v).split(/\s*,\s*/))
+      .map((x) => String(x).trim()).filter(Boolean).join(',');
+    if (field === 'markedGroups' || field === 'blockedCookies') {
+      const ck = joinList(item.cookies);
+      if (ck) keys.push('c:' + ck);
+    } else if (field === 'threadCookieWhitelistGroups') {
+      const th = joinList(item.threads);
+      if (th) keys.push('t:' + th);
+    } else if (field === 'favoriteThreads') {
+      const tid = String(item.threadId || '').trim();
+      if (tid) keys.push('i:' + tid);
+    } else if (field === 'subscriptionFeeds') {
+      const uuid = String(item.uuid || '').trim();
+      if (uuid) keys.push('u:' + uuid);
+    } else if (field === 'blockedKeywords') {
+      const v = String(item.value || '').trim();
+      if (v) keys.push('k:' + (item.regex ? 'r:' : '') + v);
+    }
+    return keys;
+  }
+  // 数组 → 键序列（取每项的首个可用键，用于写入 order）
+  function groupOrderSnapshot(field, arr) {
+    const out = [];
+    (Array.isArray(arr) ? arr : []).forEach((item) => {
+      const keys = groupOrderKeysOf(field, item);
+      if (keys.length) out.push(keys[0]);
+    });
+    return out;
+  }
+  // 按 order 键序列重排数组：命中的按 order 排序，未命中的追加末尾（保持原相对顺序）
+  function applyGroupOrder(field, arr, order) {
+    const list = Array.isArray(arr) ? arr.slice() : [];
+    if (!Array.isArray(order) || !order.length) return list;
+    const used = new Set();
+    const result = [];
+    order.forEach((key) => {
+      for (let i = 0; i < list.length; i++) {
+        if (used.has(i)) continue;
+        const keys = groupOrderKeysOf(field, list[i]);
+        // 双键匹配：order 中的键命中该项任一键即可（兼容「后补备注」后键变化）
+        if (keys.indexOf(key) !== -1) { used.add(i); result.push(list[i]); return; }
+      }
+    });
+    list.forEach((item, i) => { if (!used.has(i)) result.push(item); });
+    return result;
+  }
+  // 合并两端顺序元数据：at 新者胜；返回 {order, at} 或 null（两端都无）
+  function mergeGroupOrderMeta(localMeta, remoteMeta) {
+    const l = localMeta && typeof localMeta === 'object' ? localMeta : null;
+    const r = remoteMeta && typeof remoteMeta === 'object' ? remoteMeta : null;
+    if (!l && !r) return null;
+    if (!l) return r;
+    if (!r) return l;
+    const lat = Number(l.at) || 0;
+    const rat = Number(r.at) || 0;
+    if (rat > lat) return r;
+    if (lat > rat) return l;
+    // 时间相同：优先更长（覆盖更多项）的序列，保证结果稳定
+    const lo = Array.isArray(l.order) ? l.order : [];
+    const ro = Array.isArray(r.order) ? r.order : [];
+    return ro.length > lo.length ? r : l;
+  }
+  // 对六个分组字段统一应用顺序合并（local/remote 均为 settings 对象）
+  function mergeGroupOrdersInto(result, localSettings, remoteSettings) {
+    const localMeta = (localSettings && localSettings.groupOrderMeta) || {};
+    const remoteMeta = (remoteSettings && remoteSettings.groupOrderMeta) || {};
+    const mergedMeta = {};
+    GROUP_ORDER_FIELDS.forEach((field) => {
+      const picked = mergeGroupOrderMeta(localMeta[field], remoteMeta[field]);
+      if (picked) mergedMeta[field] = picked;
+      if (result[field] && picked) {
+        result[field] = applyGroupOrder(field, result[field], picked.order);
+      }
+    });
+    if (Object.keys(mergedMeta).length) result.groupOrderMeta = mergedMeta;
+  }
+
+  // ===== 分组行拖拽排序（标记/屏蔽饼干、只看饼干、屏蔽关键词、常用串、订阅号共用） =====
+  // 设计：
+  //  - 手柄只在行左上角「六点」区域响应，输入框/色块/删除按钮完全不受影响；
+  //  - 拖动中实时 insertBefore 重排（视觉即时反馈），松手后重编号徽标并调 save 回调落盘；
+  //  - save 失败（校验不过）时回调返回 false → 调用方负责 syncInputs() 回滚到 state 顺序；
+  //  - 与 beginMarkedColorDrag 并存：事件命名空间独立（.rowDrag vs .markedColorDrag）。
+  function buildRowDragHandleHtml() {
+    return `<span class="xdex-row-drag-handle" title="拖动排序" style="position:absolute;left:4px;top:50%;transform:translateY(-50%);width:14px;height:22px;display:flex;align-items:center;justify-content:center;cursor:grab;z-index:2;color:#8a7566;opacity:.8;user-select:none;touch-action:none;">${XDEX_SVG_GRIP}</span>`;
+  }
+  // 行内序号徽标重写（拖动后调用；仅改显示文本，存储中无序号字段）
+  function renumberRowBadges($container, rowSelector) {
+    $container.find(rowSelector).each(function (idx) {
+      const $row = $(this);
+      const $badge = $row.children('span').first();
+      if ($badge.length && /^#\d+$/.test(($badge.text() || '').trim())) $badge.text('#' + (idx + 1));
+    });
+  }
+  // 从行 DOM 提取语义键（与 groupOrderKeysOf 的格式一致：d:/c:/t:/i:/u:/k:）
+  // 用于拖拽结束时按新 DOM 顺序记录 groupOrderMeta（此刻 state 仍是旧顺序）
+  // class 名与各 collect 函数读取的输入框保持一致
+  function rowOrderKeyFromDom(field, $row) {
+    try {
+      let desc = '';
+      if (field === 'markedGroups') desc = String($row.find('.marked-desc-input').val() || '').trim();
+      else if (field === 'blockedCookies') desc = String($row.find('.blocked-desc-input').val() || '').trim();
+      else if (field === 'threadCookieWhitelistGroups') desc = String($row.find('.thread-cookie-whitelist-desc-input').val() || '').trim();
+      else if (field === 'blockedKeywords') desc = String($row.find('.blocked-keyword-desc-input').val() || '').trim();
+      else if (field === 'favoriteThreads') desc = String($row.find('.favorite-thread-desc-input').val() || '').trim();
+      else if (field === 'subscriptionFeeds') desc = String($row.find('.subscription-feed-desc-input').val() || '').trim();
+      if (desc) return 'd:' + desc;
+      if (field === 'markedGroups' || field === 'blockedCookies') {
+        const sel = field === 'markedGroups' ? '.marked-cookies-input' : '.blocked-cookies-input';
+        const ck = String($row.find(sel).val() || '').trim().split(/\s*,\s*/).filter(Boolean).join(',');
+        if (ck) return 'c:' + ck;
+      } else if (field === 'threadCookieWhitelistGroups') {
+        const t = String($row.find('.thread-cookie-whitelist-threads-input').val() || '').trim().split(/\s*,\s*/).filter(Boolean).join(',');
+        if (t) return 't:' + t;
+      } else if (field === 'favoriteThreads') {
+        // 与 collectFavoriteThreadsFromPanel 一致：用规范化后的 threadId（DOM 里是原始输入）
+        const raw = String($row.find('.favorite-thread-id-input').val() || '').trim();
+        let tid = raw;
+        try { if (typeof normalizeFavoriteThreadInput === 'function') tid = normalizeFavoriteThreadInput(raw) || raw; } catch (e) {}
+        if (tid) return 'i:' + tid;
+      } else if (field === 'subscriptionFeeds') {
+        const u = String($row.find('.subscription-feed-uuid-input').val() || '').trim();
+        if (u) return 'u:' + u;
+      } else if (field === 'blockedKeywords') {
+        const v = String($row.find('.blocked-keyword-input').val() || '').trim();
+        const isRegex = $row.attr('data-regex') === '1';
+        if (v) return 'k:' + (isRegex ? 'r:' : '') + v;
+      }
+    } catch (e) {}
+    return null;
+  }
+  // 通用拖拽安装：containerSelector 内 rowSelector 行按手柄拖动排序
+  // field:    分组字段名（写入 state.groupOrderMeta[field] 供跨端传播顺序）
+  // onSorted: 排序落盘回调，返回 false 表示失败（由调用方回滚）
+  function installRowDragSorting({ containerSelector, rowSelector, field, onSorted }) {
+    const $container = $(containerSelector);
+    if (!$container.length) return;
+    $container.off('mousedown.rowDrag touchstart.rowDrag', '.xdex-row-drag-handle')
+      .on('mousedown.rowDrag touchstart.rowDrag', '.xdex-row-drag-handle', function (startEvent) {
+        const isTouch = startEvent.type.indexOf('touch') === 0;
+        if (!isTouch && startEvent.button !== 0) return; // 仅左键
+        startEvent.preventDefault();
+        startEvent.stopPropagation();
+        const $handle = $(this);
+        const $row = $handle.closest(rowSelector);
+        if (!$row.length || $container.find(rowSelector).length < 2) return; // 单行无需排序
+        const rowHeight = $row.outerHeight(true);
+        const dragOffsetY = (isTouch
+          ? (startEvent.originalEvent.touches[0].clientY)
+          : startEvent.clientY) - $row[0].getBoundingClientRect().top;
+        $row.css({ opacity: 0.55, boxShadow: '0 6px 16px rgba(0,0,0,0.25)' });
+        $handle.css('cursor', 'grabbing');
+        $('body').css('user-select', 'none');
+
+        const moveNs = isTouch ? 'touchmove.rowDrag' : 'mousemove.rowDrag';
+        const endNs = isTouch ? 'touchend.rowDrag touchcancel.rowDrag' : 'mouseup.rowDrag';
+        const getPoint = (evt) => {
+          const oe = evt.originalEvent || evt;
+          const touch = oe.touches && oe.touches[0];
+          const changed = oe.changedTouches && oe.changedTouches[0];
+          return touch || changed || oe;
+        };
+        const onMove = (evt) => {
+          evt.preventDefault();
+          const point = getPoint(evt);
+          const y = point.clientY;
+          // 以「被拖行中点」判定目标插入位置
+          const draggedMid = y - dragOffsetY + rowHeight / 2;
+          let $target = null;
+          $container.find(rowSelector).each(function () {
+            if (this === $row[0]) return;
+            const rect = this.getBoundingClientRect();
+            if (draggedMid < rect.top + rect.height / 2) { $target = $(this); return false; }
+          });
+          if ($target && $target.length) {
+            if ($target[0] !== $row[0].nextElementSibling) $target.before($row);
+          } else {
+            $container.append($row);
+          }
+        };
+        const onEnd = () => {
+          $(document).off('.rowDrag');
+          $row.css({ opacity: '', boxShadow: '' });
+          $handle.css('cursor', 'grab');
+          $('body').css('user-select', '');
+          renumberRowBadges($container, rowSelector);
+          // 先按新 DOM 顺序记录 groupOrderMeta（save 成功后即随设置落盘；失败则随后回滚）
+          let wroteOrder = false;
+          if (field && typeof SettingPanel !== 'undefined' && SettingPanel.state) {
+            try {
+              // ★ 必须从 DOM 提取（此刻 state[field] 仍是旧顺序）；
+              //   每行的语义键从行内输入框读取，与 groupOrderKeysOf 的键格式保持一致
+              const order = [];
+              $container.find(rowSelector).each(function () {
+                const key = rowOrderKeyFromDom(field, $(this));
+                if (key) order.push(key);
+              });
+              if (order.length) {
+                if (!SettingPanel.state.groupOrderMeta || typeof SettingPanel.state.groupOrderMeta !== 'object') {
+                  SettingPanel.state.groupOrderMeta = {};
+                }
+                SettingPanel.state.groupOrderMeta[field] = { order, at: Date.now() };
+                wroteOrder = true;
+              }
+            } catch (e) {}
+          }
+          if (typeof onSorted === 'function') {
+            const ok = onSorted();
+            if (ok === false) {
+              // 校验失败：save 未写入也未重绘 → 回滚 DOM 与顺序元数据到 state 顺序
+              if (wroteOrder && field && SettingPanel.state.groupOrderMeta) {
+                try { delete SettingPanel.state.groupOrderMeta[field]; } catch (e) {}
+              }
+              try { SettingPanel.syncInputs(); } catch (e) {}
+            }
+          }
+        };
+        $(document).off('.rowDrag').on(moveNs, onMove).on(endNs, onEnd);
+      });
   }
   function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
     const desc = group.desc || '';
@@ -4384,8 +4639,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
 ${markedSwatchHtml}
@@ -22344,8 +22600,9 @@ function 注册自动保存编辑() {
     return `
       <div class="favorite-thread-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
         </div>
@@ -22357,8 +22614,9 @@ function 注册自动保存编辑() {
     return `
       <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
         </div>
@@ -25020,6 +25278,8 @@ function 注册自动保存编辑() {
   // ===== 共享 SVG 图标（统一视觉，替代字符"×"等占位） =====
   const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  // 分组行拖拽手柄图标（六点：2 列 × 3 行，点距紧凑，参考常见拖拽手柄样式）
+  const XDEX_SVG_GRIP = '<svg viewBox="0 0 10 16" style="display:block;width:10px;height:16px;margin:auto;" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3" r="1.3"></circle><circle cx="7.5" cy="3" r="1.3"></circle><circle cx="2.5" cy="8" r="1.3"></circle><circle cx="7.5" cy="8" r="1.3"></circle><circle cx="2.5" cy="13" r="1.3"></circle><circle cx="7.5" cy="13" r="1.3"></circle></svg>';
   // 回复模式行按钮图标（16px，与刷新饼干等 xdex-icon-btn 图标同尺寸）
   const XDEX_SVG_X_ICON = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_STOPWATCH = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13.6" r="7.4"></circle><path d="M12 13.6V9.8"></path><path d="M9.2 2.4h5.6"></path><path d="M12 2.4v3.8"></path><path d="M17.9 8.2l1.7-1.7"></path></svg>';
@@ -29325,7 +29585,9 @@ function 注册自动保存编辑() {
   const WEBDAV_SETTINGS_SKIP_KEYS = new Set([
     'enableImageHideMode', 'interceptReplyForm', 'updateReplyNumbers', 'replaceRightSidebar',
     'enablePostExpandAll', 'kaomojiEnhancer', 'enableImageViewerMode', 'autoSelectReportReason',
-    'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory', 'enableSubscriptionFeed'
+    'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory',
+    // 分组顺序元数据：走静默合并（at 新者胜），不参与差异弹窗判定
+    'groupOrderMeta', 'enableSubscriptionFeed'
   ]);
   function sameSettingValue(a, b) {
     if (a === b) return true;
@@ -29351,6 +29613,59 @@ function 注册自动保存编辑() {
     }
     return false;
   }
+  // 设置键 → 中文短名称（用于 WebDAV 冲突弹窗等需要简明标识的场景；与 spDescriptions 的键对应）
+  const SETTING_LABELS = {
+    enableCookieSwitch: '饼干切换器',
+    enableCookieConfirm: '发送前饼干确认',
+    disableWatermark: '取消默认水印',
+    enablePaginationDuplication: '添加页首页码',
+    updatePreviewCookie: '预览框显示真实饼干',
+    hideEmptyTitleEmail: '隐藏空标题/无名氏',
+    enableExternalImagePreview: '外部图床预览',
+    enableAutoCookieRefresh: '自动刷新饼干',
+    enableAutoCookieRefreshToast: '自动刷新提示',
+    interceptReplyFormUnvcode: 'unvcode替换模式',
+    interceptReplyFormU200B: '零宽空格模式',
+    interceptReplyFormAutoCompress: '自动压缩图片',
+    enableSeamlessPaging: '无缝翻页',
+    enableAutoSeamlessPaging: '自动无缝翻页',
+    enableHDImageAndLayoutFix: '原图加载与布局修复',
+    enableLinkBlank: '链接新标签页打开',
+    enableAutoUrlLinkify: '网址自动转链接',
+    enableQuotePreview: '优化引用弹窗',
+    enableUpdateCheck: '自动检查更新',
+    enableImageContextMenu: '图片右键菜单',
+    enableImageHideMode: '图片显示模式',
+    applyImageHideMode: '图片隐藏模式应用',
+    imageViewerSeparators: '阅图模式分隔线',
+    enableDraft: '草稿功能',
+    timeDisplayMode: '时间显示方式',
+    extendQuote: '拓展引用格式',
+    extendQuoteAvailabilityDetection: '引用号检测',
+    enablePostExpandAll: '展开/收起长串',
+    kaomojiSort: '颜文字排序',
+    toggleSidebar: '自动收起侧边栏',
+    enableCustomDarkTheme: '深色模式',
+    dockDisplayMode: '扩展坞显示模式',
+    postAfterAction: '发串后行为',
+    disableAutoQuote: '禁用自动引用',
+    threadCookieWhitelistGroups: '只看饼干分组',
+    threadCookieWhitelistDisplayMode: '只看饼干显示模式',
+    poAnnotationSideDisplayMode: '批注侧栏显示模式',
+    replyModeDefault: '默认回复模式',
+    replyExtraDefault: '默认回复附加项',
+    markedGroups: '标记饼干分组',
+    blockedCookies: '屏蔽饼干分组',
+    blockedKeywords: '屏蔽关键词分组',
+    favoriteThreads: '常用串分组',
+    subscriptionFeeds: '订阅号分组',
+    groupOrderMeta: '分组排序',
+    blockDisplayMode: '屏蔽显示方式',
+  };
+  // 取设置项中文名（未知键回退为原键名）
+  function getSettingLabel(key) {
+    return SETTING_LABELS[key] || key;
+  }
   function webdavShowSettingsConflictDialog(diffInfo) {
     // 三选：采用远端 / 保留本地上传 / 取消本次同步（Promise 化）
     return new Promise((resolve) => {
@@ -29359,7 +29674,16 @@ function 注册自动保存编辑() {
       const panel = document.createElement('div');
       // 使用设置面板的 dark reader 兼容变量
       panel.style.cssText = 'background:var(--xdex-sp-panel-bg, #FFFFEE);color:var(--foreground, #333);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 8px 24px var(--xdex-sp-shadow, rgba(0,0,0,.3));padding:16px 18px;max-width:min(460px,92vw);font-size:13px;line-height:1.6;';
-      const sample = diffInfo.diff.slice(0, 6).join('、') + (diffInfo.diff.length > 6 ? '…' : '');
+      // 中文名 + 加粗醒目色（多个用顿号分隔；超过 6 个折叠为省略号）
+      const labelOf = (k) => {
+        const name = getSettingLabel(k);
+        const changed = name !== k; // 未收录的键保持原样（不加醒目色）
+        return changed
+          ? `<b style="color:var(--xdex-conflict-key, #C0392B);font-weight:700;">${name}</b>`
+          : `<b style="font-weight:700;">${name}</b>`;
+      };
+      const shown = diffInfo.diff.slice(0, 6).map(labelOf).join('、');
+      const sample = shown + (diffInfo.diff.length > 6 ? '…' : '');
       panel.innerHTML = ''
         + '<div style="font-size:15px;font-weight:700;margin-bottom:8px;">检测到设置与远端不同</div>'
         + '<div style="margin-bottom:4px;">共 ' + diffInfo.diff.length + ' 项：' + sample + (diffInfo.localIsDefault ? '（本地当前为默认设置）' : '') + '</div>'
