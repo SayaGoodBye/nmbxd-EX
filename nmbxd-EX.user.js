@@ -29546,7 +29546,30 @@ function 注册自动保存编辑() {
     if (r.status === 0) return { ok: false, message: '请求失败' };
     // 404/405/207 等均说明服务器可达且认证通过（目录无 index / 不支持 GET 均属正常）
     if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(r.status) >= 0) {
-      return { ok: true, message: '连接成功（HTTP ' + r.status + '）' };
+      // ★ 目录可达 ≠ 同步文件可读写：同步实际请求的是 base + WEBDAV_SYNC_FILE。
+      //   这里追加一次文件级探测，让「连接成功」真正覆盖同步路径。
+      //   预期结果：200（文件已存在）/ 404（尚未上传，属正常）/ 207 / 301 / 302 / 405
+      //   失败即返回具体原因，避免「测试连接成功但同步 HTTP 0」的困惑
+      const fileUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
+      console.log('[webdav] 检查同步文件请求', { method: 'GET', url: fileUrl });
+      const rf = await webdavRequest({ url: fileUrl, method: 'GET', headers });
+      if (rf.unavailable) return { ok: false, message: '同步文件探测：GM_xmlhttpRequest 不可用' };
+      if (rf.callError) return { ok: false, message: '同步文件探测异常：' + rf.callError };
+      if (rf.hanging) return { ok: false, message: '同步文件探测无响应（脚本管理器未触发回调）' };
+      if (rf.networkError) {
+        const fmsg = rf.errorMessage || '';
+        if (/denied|not allowed|connect/i.test(fmsg)) {
+          return { ok: false, message: '同步文件被脚本管理器拦截：请授权该 WebDAV 域名（或加入 @connect）' + (fmsg ? '（' + fmsg.slice(0, 120) + '）' : '') };
+        }
+        return { ok: false, message: '同步文件网络错误：无法访问 ' + WEBDAV_SYNC_FILE + (fmsg ? '（' + fmsg.slice(0, 160) + '）' : '') };
+      }
+      if (rf.timeout) return { ok: false, message: '同步文件探测超时（目录可达，但文件请求超时）' };
+      if (rf.status === 401 || rf.status === 403) return { ok: false, message: '同步文件认证失败（HTTP ' + rf.status + '）' };
+      if (rf.status === 0) return { ok: false, message: '同步文件请求失败（HTTP 0）：' + (rf.timeout ? '超时' : '网络层错误，请查看控制台 [webdav] 日志') };
+      if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(rf.status) >= 0) {
+        return { ok: true, message: '连接成功（目录 HTTP ' + r.status + '，同步文件 HTTP ' + rf.status + '）' };
+      }
+      return { ok: false, message: '同步文件异常响应 HTTP ' + rf.status + (rf.statusText ? ' ' + rf.statusText : '') };
     }
     return { ok: false, message: '异常响应 HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : '') };
   }
@@ -29846,8 +29869,20 @@ function 注册自动保存编辑() {
       return { ok: false, reason: 'upload-failed' };
     }
     if (remote.status !== 200) {
-      setWebdavStatus('读取远端失败（HTTP ' + remote.status + '）');
-      notify('WebDAV 读取远端失败：HTTP ' + remote.status);
+      // 区分 status:0 的成因（超时/网络层错误/管理器未回调），给出可操作的提示
+      let reason = '';
+      if (remote.status === 0) {
+        if (remote.timeout) reason = remote.hanging ? '请求无响应（脚本管理器未触发回调）' : '请求超时';
+        else if (remote.networkError) {
+          const m = remote.errorMessage || '';
+          reason = /denied|not allowed|connect/i.test(m) ? '请求被脚本管理器拦截（请授权域名）' : ('网络错误' + (m ? '：' + m.slice(0, 120) : ''));
+        }
+        else if (remote.callError) reason = '调用异常：' + remote.callError;
+        else reason = '网络层错误（详见控制台 [webdav] 日志）';
+      }
+      const detail = remote.status === 0 ? '（HTTP 0：' + reason + '）' : '（HTTP ' + remote.status + '）';
+      setWebdavStatus('读取远端失败' + detail);
+      notify('WebDAV 读取远端失败' + detail);
       return { ok: false, reason: 'remote-read' };
     }
     // 远端存在：按导出时间 last-write-wins
