@@ -25145,9 +25145,10 @@ function 注册自动保存编辑() {
     deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
     // 回收站标识: 该串原始浏览数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    // 已恢复(revivedAt)的墓碑不算「在回收站中」——与 getThreadHistoryTombstoneList 的过滤条件保持一致
     if (typeof getThreadHistoryStore === 'function') {
       const tomb = (getThreadHistoryStore().tombstones || {})[result.key];
-      if (tomb && !tomb.purged) {
+      if (tomb && !tomb.purged && !tomb.revivedAt) {
         const mark = document.createElement('button');
         mark.type = 'button';
         mark.className = 'xdex-history-tombstone-mark';
@@ -25304,7 +25305,9 @@ function 注册自动保存编辑() {
     const store = getThreadHistoryStore();
     const tombs = store.tombstones || {};
     let arr = Object.keys(tombs)
-      .filter((key) => !tombs[key].purged)
+      // 排除已彻底删除(purged)与已恢复(revivedAt)的墓碑：
+      // 恢复后墓碑保留(revivedAt 供 WebDAV 传播、record 已清空)但不应再出现在回收站视图
+      .filter((key) => !tombs[key].purged && !tombs[key].revivedAt)
       .map((key) => Object.assign({ key }, tombs[key]));
       const nowTs = Date.now();
       if (threadHistoryRecycleSort === 'due24h') {
@@ -25768,9 +25771,10 @@ function 注册自动保存编辑() {
     deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
     // 回收站标识: 该发言原始数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    // 已恢复(revivedAt)的墓碑不算「在回收站中」——与 getPostHistoryTombstoneList 的过滤条件保持一致
     if (typeof getPostHistoryStore === 'function') {
       const tomb = (getPostHistoryStore().tombstones || {})[result.key];
-      if (tomb && !tomb.purged) {
+      if (tomb && !tomb.purged && !tomb.revivedAt) {
         const mark = document.createElement('button');
         mark.type = 'button';
         mark.className = 'xdex-post-history-tombstone-mark';
@@ -25835,7 +25839,9 @@ function 注册自动保存编辑() {
     const store = getPostHistoryStore();
     const tombs = store.tombstones || {};
     let arr = Object.keys(tombs)
-      .filter((key) => !tombs[key].purged)
+      // 排除已彻底删除(purged)与已恢复(revivedAt)的墓碑：
+      // 恢复后墓碑保留(revivedAt 供 WebDAV 传播、record 已清空)但不应再出现在回收站视图
+      .filter((key) => !tombs[key].purged && !tombs[key].revivedAt)
       .map((key) => Object.assign({ key }, tombs[key]));
       const nowTs = Date.now();
       if (postHistoryRecycleSort === 'due24h') {
