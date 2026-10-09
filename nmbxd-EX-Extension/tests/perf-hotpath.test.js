@@ -48,7 +48,7 @@ test('applyPageEnhancements 内 refreshFilterDisplay 必须传 root 而非 docum
 });
 
 test('applyPageEnhancements 内各步骤作用域一致（均为 root）', () => {
-  const start = src.indexOf('function applyPageEnhancements(root, cfg)');
+  const start = src.indexOf('function applyPageEnhancements(root, cfg, hotNodes)');
   assert(start !== -1, 'applyPageEnhancements 必须存在');
   const end = src.indexOf('\n  }\n', start);
   const body = src.slice(start, end);
@@ -136,7 +136,7 @@ test('热路径埋点存在且计时策略正确', () => {
 });
 
 test('applyPageEnhancements 计时点在异步回调内（外层 measure 量不到真正耗时）', () => {
-  const start = src.indexOf('function applyPageEnhancements(root, cfg)');
+  const start = src.indexOf('function applyPageEnhancements(root, cfg, hotNodes)');
   assert(start !== -1, 'applyPageEnhancements 必须存在');
   const body = src.slice(start, start + 4000);
   const setT = body.indexOf('setTimeout(() => {');

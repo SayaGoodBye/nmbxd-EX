@@ -8143,7 +8143,7 @@ ${markedSwatchHtml}
     try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
     try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
   }
-  function applyPageEnhancements(root, cfg) {
+  function applyPageEnhancements(root, cfg, hotNodes) {
     const getLatestCfg = () => getPageEnhancementConfig(cfg);
     let liveCfg = getLatestCfg();
     // ★ 同步段埋点：插入前的预增强（URL 链接化 / 引用扩展）属同步成本，与下面的异步段分开计量
@@ -8157,8 +8157,20 @@ ${markedSwatchHtml}
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
       // 只处理本次新增内容（root=新克隆/目标回复区），避免无缝翻页后对全页既有内容重复编号与重标 Po
       try { if (typeof highlightPO === 'function') highlightPO(root); } catch (e) {}
-      try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
-      try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
+      // ★ HD 两函数是布局读写热点（handleGeneralElements 对每元素 读布局+写样式 交错强制重排）。
+      // root 为「含旧回复的容器」（发送后/手动刷新路径）时必须限定本次新增节点（hotNodes），
+      // 否则旧回复全部重跑 → 长串数百次强制重排 = 插入后卡顿主源。
+      // root 为纯新内容（无缝翻页克隆）时 hotNodes 为空 → 保持原行为跑 root。
+      if (Array.isArray(hotNodes) && hotNodes.length) {
+        for (const hot of hotNodes) {
+          const hotScope = hot.closest && hot.closest('.h-threads-item-reply') || hot;
+          try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(hotScope); } catch (e) {}
+          try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(hotScope); } catch (e) {}
+        }
+      } else {
+        try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
+        try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
+      }
       try {
         if (typeof applyImageHideMode === 'function') {
           if (liveCfg && liveCfg.enableImageHideMode) {
@@ -8694,7 +8706,7 @@ ${markedSwatchHtml}
               const pagSync = prepareAndSyncBottomPagination(doc);
               const newPag = pagSync.newPag;
               try { if (typeof reinitForNewContent === 'function') reinitForNewContent(targetReplies); } catch (e) {}
-              applyPageEnhancements(targetReplies, cfg);
+              applyPageEnhancements(targetReplies, cfg, merge.appendedNodes);
               const allReplies = Array.from(targetReplies.querySelectorAll('.h-threads-item-reply'));
               const userReplies = allReplies.filter(el => el.getAttribute('data-threads-id') !== '9999999');
               const userCount = userReplies.length;
@@ -16930,6 +16942,40 @@ ${markedSwatchHtml}
             excludeSystemOnNew: true
           });
           const appendedNodes = merge.appendedNodes;
+          // ★ 借道回填（串内页）：从本次 fetch 的页面提取 fid/页码，把 pending 发言历史
+          // 记录的字段立即补齐（零新增请求）。fid 取表单 hidden input[name=fid]。
+          try {
+            const inlineFid = normalizePostHistoryFid(doc.querySelector('form input[name="fid"]') ? doc.querySelector('form input[name="fid"]').value : '');
+            // 发送时所在页：用户在 /t/xxx/page/N 发送，新回复就在该页（fetch 的就是当前页）
+            const inlinePage = (parseThreadHistoryUrl(location.href) || {}).page || 0;
+            if (inlineFid && appendedNodes.length) {
+              appendedNodes.forEach((node) => {
+                const rid = String(node.getAttribute('data-threads-id') || '').trim();
+                if (!rid || rid === '9999999') return;
+                const store = getPostHistoryStore();
+                const now = Date.now();
+                Object.keys(store.items).forEach((localId) => {
+                  const item = store.items[localId];
+                  if (!item || item.status !== 'pending' || item.type !== 'reply') return;
+                  if (String(item.id || '') !== rid) return;
+                  if (now - (Number(item.submittedAt) || 0) > 180000) return;
+                  const titleEl = node.querySelector('.h-threads-info-title');
+                  const emailEl = node.querySelector('.h-threads-info-email');
+                  // 站点渲染的「无标题/无名氏」是占位符不是真实值，不入队
+                  const rawTitle = titleEl ? String(titleEl.textContent || '').trim() : '';
+                  const rawEmail = emailEl ? String(emailEl.textContent || '').trim() : '';
+                  postHistoryFieldPatchQueue.set(localId, {
+                    fid: inlineFid,
+                    forumName: getPostHistoryForumNameByFid(inlineFid) || '',
+                    page: Math.max(1, Number(inlinePage) || Number(item.page) || 0),
+                    title: rawTitle && rawTitle !== '无标题' ? rawTitle : '',
+                    email: rawEmail && rawEmail !== '无名氏' ? rawEmail : ''
+                  });
+                  schedulePostHistoryFieldPatchFlush();
+                });
+              });
+            }
+          } catch (e) {}
           try {
             if (typeof hideEmptyTitleAndEmail === 'function') {
               appendedNodes.forEach(n => { try { hideEmptyTitleAndEmail($(n)); } catch (_) {} });
@@ -16951,7 +16997,7 @@ ${markedSwatchHtml}
           setTimeout(() => {
             try {
               if (typeof applyPageEnhancements === 'function') {
-                applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === 'function' ? getConfig() : null));
+                applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === 'function' ? getConfig() : null), appendedNodes);
               } else {
                 try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
                 try { if (typeof highlightPO === 'function') highlightPO(targetReplies); } catch (e) {}
@@ -16999,9 +17045,12 @@ ${markedSwatchHtml}
               }
             }
           }
+          // 过滤兜底改为 scoped：只重算本次新增的回复区。全文档调用会对整页所有回复
+          // 重跑过滤/PO 注释列重算（串越长越慢），且 50ms 后 applyPageEnhancements(targetReplies)
+          // 内部还会 scoped 调一次，全文档版是冗余的（发送后既有回复的过滤状态不变，无需重算）。
           try {
             if (cfg2 && typeof applyFilters === 'function') {
-              try { refreshFilterDisplay(cfg2); } catch (e) {}
+              try { refreshFilterDisplay(cfg2, targetReplies); } catch (e) {}
             }
           } catch (e) {}
           if (typeof done === 'function') done();
@@ -20112,6 +20161,9 @@ function 注册自动保存编辑() {
             const t = typeof tRaw === 'string' ? JSON.parse(tRaw) : tRaw;
             if (!t || t.success === false) throw new Error((t && t.error) || 'API error');
             let tailReplies = (Array.isArray(t.Replies) ? t.Replies : []).filter(r => r && Number(r.id) !== 9999999);
+            // ★ 借道回填：本次请求的数据已含刚发回复与 thread 顶层 fid——立即补齐
+            // pending 发言历史记录的 fid/forumName/page/title（零新增请求，字段即刻安全）
+            try { enrichPendingPostHistoryFromThreadData(t, tailReplies, tailPage); } catch (e) {}
             // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
             const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
             if (!allOldNodes.length) return;
@@ -20184,6 +20236,7 @@ function 注册自动保存编辑() {
             // 插入 N 条 = N 轮全页观察器回调，是「发送后卡顿」的首要嫌疑
             const __t6 = startupPerfDebug.begin();
             let __inserted = 0;
+            const appendedNodes = [];
             for (const node of allOldNodes) {
               let rc = node.querySelector('.h-threads-item-replies');
               // 无回复区（新串未展开过回复）→ 创建容器，否则增量刷新会被静默跳过
@@ -20202,7 +20255,7 @@ function 注册自动保存编辑() {
               for (const reply of newReplies) {
                 if (!existingIds.has(String(reply.id))) {
                   const el = buildApiReplyNode(reply, tid, opUserHash);
-                  if (el) { rc.appendChild(el); __inserted++; }
+                  if (el) { rc.appendChild(el); appendedNodes.push(el); __inserted++; }
                 }
               }
             }
@@ -20231,25 +20284,45 @@ function 注册自动保存编辑() {
             startupPerfDebug.finish('boardQuickReply.step8.post', __t8, () => ({ nodes: allOldNodes.length }));
             // 延迟执行其他增强
             setTimeout(() => {
+              // ★ deferred 只处理本次新增的回复（appendedNodes）：
+              // 旧回复在首载/前次刷新已处理过（各函数幂等锁保证不重复）。
+              // 原实现遍历 allOldNodes（整条串）→ enableHDImageAndLayoutFix 对整串所有元素
+              // 读布局+写样式（getBoundingClientRect×每元素，读 写 读 交错强制重排），
+              // 再叠加 refreshFilterDisplay 全文档过滤重算——「插入后卡顿」的主源。
+              // 对齐串内页行为（applyPageEnhancements 只处理新增内容）。
+              if (!appendedNodes.length) return;
               const __td = startupPerfDebug.begin();
+              // ── A 组：需串级作用域（highlightPO 的楼层编号要遍历 .h-threads-item-replies 容器，
+              //    以单条新回复为 scope 会空转 → 新回复无编号/无 Po 标，实测截图问题）。
+              //    highlightPO 是纯 DOM 文本/样式写、无布局读，对整串跑成本低。
               for (const node of allOldNodes) {
                 try { if (typeof highlightPO === 'function') highlightPO(node); } catch (err) {}
-                try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(node); } catch (err) {}
-                try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(node); } catch (err) {}
+              }
+              // ── B 组：布局读写热点，严格限定本次新增回复（旧回复不再重跑——
+              //    enableHDImageAndLayoutFix 的 handleGeneralElements 对每元素
+              //    读布局+写样式交错，整串重跑会强制重排数百次 = 插入后卡顿主源）
+              for (const node of appendedNodes) {
+                const replyScope = node.closest('.h-threads-item-reply') || node;
+                try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(replyScope); } catch (err) {}
+                try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(replyScope); } catch (err) {}
                 try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(node); } catch (err) {}
                 try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(node); } catch (err) {}
                 try { if (typeof initContent === 'function') initContent(node); } catch (err) {}
                 try { if (typeof initExtendedContent === 'function') initExtendedContent(node); } catch (err) {}
               }
-              // ★ 两处「全文档」调用：refreshFilterDisplay 未传 root、enablePostExpand 传 document。
-              // 单独计时以确认它们是否是「插入后卡顿」的剩余来源。
+              // ── D 组：过滤与展开按钮按串节点跑（轻量 DOM 遍历/样式写，无布局读；
+              //    新回复的过滤结果可能影响串的展开/折叠形态）
               const __tf = startupPerfDebug.begin();
-              try { if (cfg2) refreshFilterDisplay(cfg2); } catch (err) {}
+              for (const node of allOldNodes) {
+                try { if (cfg2) refreshFilterDisplay(cfg2, node); } catch (err) {}
+              }
               startupPerfDebug.finish('boardQuickReply.deferred.refreshFilter', __tf, () => ({ nodes: allOldNodes.length }));
               const __tp = startupPerfDebug.begin();
-              try { if (typeof enablePostExpand === 'function') enablePostExpand(document); } catch (err) {}
+              for (const node of allOldNodes) {
+                try { if (typeof enablePostExpand === 'function') enablePostExpand(node); } catch (err) {}
+              }
               startupPerfDebug.finish('boardQuickReply.deferred.enablePostExpand', __tp, () => ({ nodes: allOldNodes.length }));
-              startupPerfDebug.finish('boardQuickReply.deferred.total', __td, () => ({ nodes: allOldNodes.length }));
+              startupPerfDebug.finish('boardQuickReply.deferred.total', __td, () => ({ nodes: appendedNodes.length }));
             }, 50);
             if (fromButton) toast('已更新 ' + newReplies.length + ' 条回复');
             if (e.type === 'tempReplySuccess') currentReplyTid = null;
@@ -23329,10 +23402,147 @@ function 注册自动保存编辑() {
     logPostHistory('store notify', { source, remote: !!remote });
     schedulePostHistoryLiveRender(source, remote);
   }
+  // ★ 发言历史持久化写合并：150ms 窗口内的多次全量写只落盘最后一次。
+  // 背景：每次 GM_setValue 都触发整键序列化
+  //（QwQNT 下还有 localStorage 镜像 stringify + IPC 结构化克隆 + 主进程处理），
+  // 导入/WebDAV 合并路径会在同一时刻连续写 threadHistory + postHistory 等多个大键，
+  // 确认链（snapshot→confirm）也会产生多次全量写。合并窗口显著削减同 tick 连环写的总量。
+  // 一致性：postHistoryStoreCache 在调用方视角始终立即更新（读不受窗口影响）；
+  // 窗口到期才真正 GM_setValue，跨标签广播与 GM_addValueChangeListener 随真实写触发。
+  const POST_HISTORY_PERSIST_DEBOUNCE_MS = 150;
+  let postHistoryPersistTimer = 0;
+  let postHistoryPersistPending = null;
+  function flushPostHistoryStorePersist() {
+    if (postHistoryPersistTimer) {
+      clearTimeout(postHistoryPersistTimer);
+      postHistoryPersistTimer = 0;
+    }
+    if (postHistoryPersistPending === null) return;
+    const pending = postHistoryPersistPending;
+    postHistoryPersistPending = null;
+    try {
+      GM_setValue(POST_HISTORY_STORAGE_KEY, pending);
+    } catch (e) {
+      console.warn('[postHistory] persist flush failed', e);
+    }
+  }
+  function schedulePostHistoryStorePersist(normalized) {
+    postHistoryPersistPending = normalized;
+    if (postHistoryPersistTimer) return;
+    postHistoryPersistTimer = setTimeout(() => {
+      postHistoryPersistTimer = 0;
+      flushPostHistoryStorePersist();
+    }, POST_HISTORY_PERSIST_DEBOUNCE_MS);
+  }
+  // 页面关闭/隐藏前兜底落盘，避免窗口期内最后一次写丢失
+  if (typeof document !== 'undefined' && !window.__xdexPostHistoryPersistFlushBound) {
+    window.__xdexPostHistoryPersistFlushBound = true;
+    const flushOnLeave = () => {
+      // 页面隐藏/关闭：先把字段回填队列落盘（借道回填可能刚入队），再冲 persist 防抖窗口
+      try { flushPostHistoryFieldPatches(); } catch (e) {}
+      flushPostHistoryStorePersist();
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushOnLeave();
+    });
+    // pagehide 已覆盖导航/关闭时机；不挂 beforeunload——它在导航关键路径上，
+    // 同步大对象 stringify+localStorage 写会拖慢「打开新网页」的旧页面卸载
+    window.addEventListener('pagehide', flushOnLeave);
+  }
+  // ★ 发言历史字段回填队列：thread fallback 拿到缺失字段（fid/forumName/page）后不立即
+  // 全量写 store，而是入队；下一次任意 setPostHistoryStore 时免费合并，或 30s 空闲兜底
+  // 一次性落盘。消除「回填 = 一次 2.9MB 全量写 + 2 轮广播」在发送后窗口内的额外卡顿。
+  const postHistoryFieldPatchQueue = new Map();
+  let postHistoryFieldPatchTimer = 0;
+  const POST_HISTORY_FIELD_PATCH_FLUSH_MS = 1500;
+  function applyPostHistoryFieldPatches(store) {
+    if (!postHistoryFieldPatchQueue.size) return store;
+    postHistoryFieldPatchQueue.forEach((patch, localId) => {
+      const item = store.items && store.items[localId];
+      if (!item) { postHistoryFieldPatchQueue.delete(localId); return; }
+      Object.keys(patch).forEach(key => {
+        const cur = item[key];
+        const val = patch[key];
+        // 只补缺失/空值，不覆盖已有数据
+        if (cur === undefined || cur === null || cur === '' || cur === 0) item[key] = val;
+      });
+      postHistoryFieldPatchQueue.delete(localId);
+    });
+    return store;
+  }
+  function flushPostHistoryFieldPatches() {
+    if (!postHistoryFieldPatchQueue.size) return;
+    if (postHistoryFieldPatchTimer) { clearTimeout(postHistoryFieldPatchTimer); postHistoryFieldPatchTimer = 0; }
+    const store = getPostHistoryStore();
+    if (!postHistoryFieldPatchQueue.size) return;
+    applyPostHistoryFieldPatches(store);
+    setPostHistoryStore(store);
+  }
+  function schedulePostHistoryFieldPatchFlush() {
+    if (postHistoryFieldPatchTimer) return;
+    postHistoryFieldPatchTimer = setTimeout(() => {
+      postHistoryFieldPatchTimer = 0;
+      try {
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(() => { try { flushPostHistoryFieldPatches(); } catch (e) {} }, { timeout: POST_HISTORY_FIELD_PATCH_FLUSH_MS + 3500 });
+          return;
+        }
+      } catch (e) { /* 回退直接执行 */ }
+      try { flushPostHistoryFieldPatches(); } catch (e) {}
+    }, POST_HISTORY_FIELD_PATCH_FLUSH_MS);
+  }
+    // ★ 借道确认：发送链已拉取的 thread 数据直接回填 pending 记录的缺失字段。
+  // 零新增请求、字段立即落盘（替代原 fallback 的独立 API 链与延迟写）。
+  // threadObj: /api/thread 响应对象（顶层含 fid）；replies: 含刚发回复的 Replies 数组；
+  // page: 该回复所在页码；snapshotConstraint: 可选 { threadId } 限定串。
+  function enrichPendingPostHistoryFromThreadData(threadObj, replies, page) {
+    try {
+      const store = getPostHistoryStore();
+      const now = Date.now();
+      const PENDING_TTL_MS = 180000;
+      const fid = getPostHistoryPostFid(threadObj) || '';
+      let enriched = 0;
+      (replies || []).forEach((reply) => {
+        const rid = String(reply && reply.id || '').trim();
+        if (!rid) return;
+        Object.keys(store.items).forEach((localId) => {
+          const item = store.items[localId];
+          if (!item || item.status !== 'pending' || item.type !== 'reply') return;
+          if (String(item.threadId || '') !== String(threadObj && threadObj.id || '')) return;
+          if (now - (Number(item.submittedAt) || 0) > PENDING_TTL_MS) return;
+          if (String(item.id || '') === rid || (!item.id && postHistoryMatchesSnapshot(reply, item, new Set()))) {
+            const cand = buildPostHistoryThreadCandidate(reply, threadObj, page);
+            postHistoryFieldPatchQueue.set(localId, {
+              fid: fid || getPostHistoryPostFid(cand) || '',
+              forumName: getPostHistoryForumNameByFid(fid) || '',
+              page: Math.max(1, Number(cand.page) || page || 0),
+              title: String(cand.title || ''),
+              name: String(cand.name || ''),
+              email: String(cand.email || '')
+            });
+            enriched += 1;
+          }
+        });
+      });
+      if (enriched > 0) {
+        logPostHistory('inline enrich', { count: enriched, page });
+        schedulePostHistoryFieldPatchFlush();
+      }
+      return enriched;
+    } catch (e) {
+      logPostHistory('inline enrich error', { error: e && e.message ? e.message : String(e) }, 'warn');
+      return 0;
+    }
+  }
   function setPostHistoryStore(store) {
+    // 先把排队的字段回填合并进本次写（0 额外写）
+    if (postHistoryFieldPatchQueue.size) {
+      try { applyPostHistoryFieldPatches(store); } catch (e) { /* 合并失败不阻塞主写 */ }
+      if (postHistoryFieldPatchTimer) { clearTimeout(postHistoryFieldPatchTimer); postHistoryFieldPatchTimer = 0; }
+    }
     const normalized = normalizePostHistoryStore(store);
-    GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
     postHistoryStoreCache = normalized;
+    schedulePostHistoryStorePersist(normalized);
     notifyPostHistoryStoreChanged('local-write', false);
     return normalized;
   }
@@ -23860,6 +24070,19 @@ function 注册自动保存编辑() {
     return null;
   }
   const POST_HISTORY_THREAD_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
+  // 主路径确认后的 thread 尾页回退调度：错峰到空闲时段，避免发送后的存储写敏感窗口。
+  // 只调度一次（pending 标记防重复）；页面在此期间关闭则放弃（字段缺口无碍主数据）。
+  function schedulePostHistoryThreadFallback(localId, snapshot) {
+    const run = () => { try { completePostHistoryFromThreadFallback(localId, snapshot, 0); } catch (e) { logPostHistory('thread fallback schedule error', { localId, error: e && e.message ? e.message : String(e) }, 'warn'); } };
+    const IDLE_DELAY_MS = 5000;
+    try {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => setTimeout(run, 0), { timeout: IDLE_DELAY_MS + 3000 });
+        return;
+      }
+    } catch (e) { /* 回退 setTimeout */ }
+    setTimeout(run, IDLE_DELAY_MS);
+  }
   async function completePostHistoryFromThreadFallback(localId, snapshot, retryAttempt) {
     if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
       logPostHistory('thread fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
@@ -23875,7 +24098,26 @@ function 注册自动保存编辑() {
         const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
         if (post) {
           logPostHistory('thread fallback confirmed', { localId, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
-          confirmPostHistorySnapshot(localId, post);
+          // ★ 只回填主路径拿不到的字段（fid/forumName/page/title 等），入队等待合并写：
+          // 不再走 confirmPostHistorySnapshot（那会整包 update + 再次状态翻转 = 又一次
+          // 2.9MB 全量存储写 + 2 轮广播，实测是发送后卡顿的残留源）。条目状态仍为
+          // 主路径已写的 confirmed，无字段翻转风险。
+          // 借道回填通常已补齐字段（fid 非空）→ 无缺口则跳过，避免一次空的全量写
+          const existingItem = getPostHistoryStore().items[localId];
+          const needsBackfill = !existingItem || !existingItem.fid || !existingItem.page;
+          if (needsBackfill) {
+            postHistoryFieldPatchQueue.set(localId, {
+              fid: getPostHistoryPostFid(post) || '',
+              forumName: getPostHistoryForumNameByFid(getPostHistoryPostFid(post)) || '',
+              page: Math.max(1, Number(post.page) || 0),
+              title: String(post.title || ''),
+              name: String(post.name || ''),
+              email: String(post.email || '')
+            });
+            schedulePostHistoryFieldPatchFlush();
+          }
+          const resolver = postHistoryConfirmationMap.get(localId);
+          if (resolver) { try { resolver({ localId, fromFallback: true }); postHistoryConfirmationMap.delete(localId); } catch (e) {} }
           return true;
         }
       }
@@ -24143,8 +24385,13 @@ function 注册自动保存编辑() {
         const confirmedResto = String(post.resto || snapshot.resto || '').trim();
         const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });
         confirmPostHistorySnapshot(localId, post);
+        // ★ 主路径确认后仍需 thread 尾页回退：getLastPost 不返回 fid/forumName/page/title
+        //   等字段（实测历史条目缺「技术支持/所在页」等），fallback 的 thread 页 candidate
+        //   负责补齐。但它会再次 confirm → 一次全量存储写 + 2 轮跨标签广播（每次广播
+        //   渲染端 valuesEqual 双 stringify 大对象）——错峰到空闲时段执行，避免叠加在
+        //   发送后 0-3s 的滚动敏感窗口（实测该窗口内 3 次全量写 = 持续卡顿）。
         if (confirmedSnapshot.type === 'reply') {
-          completePostHistoryFromThreadFallback(localId, confirmedSnapshot);
+          schedulePostHistoryThreadFallback(localId, confirmedSnapshot);
         }
       }).catch(e => {
         logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');

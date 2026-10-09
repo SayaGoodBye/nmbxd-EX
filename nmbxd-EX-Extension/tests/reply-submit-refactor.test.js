@@ -875,7 +875,7 @@ function testReplyRefreshPlacementAndGainContracts() {
   const refresh = extractFunctionDeclarations(script, 'refreshRepliesWithSeamlessPaging')[0];
   assert(refresh.includes('resolveThreadRefreshTargetPage(maxPage, maxCloned, currentPage)'), 'target-page resolver arguments changed');
   assert(/appendMissingRepliesByThreadsId\(targetReplies, fragment, \{\s*replyOnly: true,\s*excludeSystemOnOld: true,\s*excludeSystemOnNew: true\s*\}\)/.test(refresh), 'reply merge arguments changed');
-  assert(refresh.includes('applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === \'function\' ? getConfig() : null))'), 'enhancement arguments changed');
+  assert(refresh.includes('applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === \'function\' ? getConfig() : null), appendedNodes)'), 'enhancement arguments changed');
   assert(refresh.includes('prepareAndSyncBottomPagination(doc);'), 'pagination synchronization argument changed');
   assert(refresh.includes('}, 50);') && /window\.SeamlessPaging\.loadNext\(\);\s*\}, 100\);/.test(refresh), '50ms/100ms scheduling contract changed');
   assert(script.includes('refreshRepliesWithSeamlessPaging(() => {') && script.includes('}, { getConfig: safeGetConfig });'), 'caller must pass only the form-local config dependency');
