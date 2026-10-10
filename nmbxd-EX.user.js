@@ -29449,6 +29449,34 @@ function 注册自动保存编辑() {
     const hrefMatch = href.match(/(?:[?&]r=|No\.)(\d{4,8})/i);
     return hrefMatch ? hrefMatch[1] : '';
   }
+  // ★ ?page=N&r=ID 链接定位：打开页面时滚动到 r= 对应回复并尽量在视野中居中。
+// 独立于「关闭引用」开关（开关只控制剥引用，定位是浏览体验）。
+// 判定用 data-threads-id（r= 号即回复号），不依赖站点的 selected 标记时序；
+// 图片/相对时间等增强会改变高度，定位后二次校准。
+function initReplyParamScrollTo() {
+    try {
+      const params = new URLSearchParams(location.search);
+      const rParam = params.get('r');
+      if (!rParam || params.get('page') === null || !/^\d{6,8}$/.test(rParam)) return;
+      const scrollTarget = () => document.querySelector('[data-threads-id="' + rParam + '"]');
+      let attempts = 0;
+      const tryScroll = () => {
+        const el = scrollTarget();
+        if (el) {
+          el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          // 二次校准：图片/懒加载/字体就绪后高度变化会偏离居中
+          setTimeout(() => {
+            try {
+              if (el.isConnected) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+            } catch (e) {}
+          }, 800);
+          return;
+        }
+        if (++attempts <= 20) setTimeout(tryScroll, 300);
+      };
+      tryScroll();
+    } catch (e) { /* 定位失败不影响页面 */ }
+  }
   function initDisableAutoQuote() {
     const rParam = new URLSearchParams(location.search).get('r');
     if (!rParam) return;
@@ -30839,6 +30867,7 @@ function 注册自动保存编辑() {
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
+    initReplyParamScrollTo();                                      //?page&r=链接定位到对应回复
     initDisableAutoQuote(); //关闭引用：阻止URL中?r=参数自动插入引用号
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
