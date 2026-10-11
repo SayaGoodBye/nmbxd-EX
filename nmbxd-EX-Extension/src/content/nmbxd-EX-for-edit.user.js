@@ -3293,14 +3293,17 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         let overwritten = 0;
         const newRegistry = new Set(getDraftRegistry());
         Object.keys(items).forEach((key) => {
-          const ck = canonicalDraftKey(key);
-          if (!ck) return;
+          const rawPath = String(key || '').slice('xdex_draft:'.length);
+          // ★ 远端键规范化：旧槽（/t/{tid}/page/N 等）并入串级单槽；非串内页（/f/ 等）跳过
+          const canonicalPath = normalizeDraftKeyFromPath(rawPath) || (rawPath.indexOf('/t/') === 0 ? rawPath : '');
+          if (!canonicalPath) return;
+          const ck = getDraftStorageKey(canonicalPath);
           // 远端已删除(账本有) → 压制;
           // 远端无删除账本但本地残留删除账本 → 本地账本失效放行(远端有内容=翻案)
-          if (remoteDeletions[ck]) return;
+          if (remoteDeletions[ck] || remoteDeletions[canonicalDraftKey(key)]) return;
           const clean = normalizeDraftExportText(items[key]);
           if (!clean) return;
-          const existing = readDraftValue(ck.slice('xdex_draft:'.length));
+          const existing = readDraftValue(canonicalPath);
           if (existing === items[key]) return;
           if (existing) overwritten++;
           else imported++;
@@ -18518,8 +18521,18 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   // 统一生成草稿存储用的 key
   // 统一：草稿 key 生成
+  // ★ 草稿键规范化：草稿是「串级」共享数据，同一串在任何页面/任何页码回复都读写同一槽。
+  //   /t/{tid}、/t/{tid}/page/N、/Forum/po/id/{tid}/... → 统一为 '/t/{tid}'
+  //   非串内页（/f/xxx 板块页、时间线、搜索页等）→ 返回空串，草稿功能整体短路
+  //   （只有串内才有草稿：板块页发串表单不保存/不载入草稿）
   function getDraftKey() {
-    return window.location.pathname;
+    return normalizeDraftKeyFromPath(window.location.pathname);
+  }
+  function normalizeDraftKeyFromPath(pathname) {
+    const path = String(pathname || '');
+    const parsed = parseThreadHistoryUrl(path);
+    if (!parsed || !parsed.threadId) return '';
+    return '/t/' + parsed.threadId;
   }
   function getDraftStorageKey(pathname = getDraftKey()) {
     return `xdex_draft:${pathname}`;
@@ -18644,6 +18657,88 @@ ${markedSwatchHtml}
     deleteDraftSafe(pathname);
     return legacyValue;
   }
+  // ★ 草稿槽规范化迁移：历史版本按 location.pathname 存草稿，同一串产生多个槽
+  //（/t/{tid}、/t/{tid}/page/N、/Forum/po/id/{tid}/page/N 各一份）。本函数把
+  // 所有旧槽合并进规范槽 '/t/{tid}'：
+  //  - 规范槽已有内容 → 保留；否则取「registry 中位置最靠后」（最近首次保存）的非空旧槽
+  //  - 被清理的旧槽：GM_deleteValue + 登记删除账本（防 WebDAV 同步复活）
+  //  - 非串内页旧槽（/f/xxx、时间线等）：草稿功能已不覆盖这些页面，直接清理（含空值槽）
+  // 仅在首次调用时执行一次（GM 标记）；失败静默不阻塞。
+  function migrateDraftSlotsToCanonical() {
+    try {
+      if (GM_getValue('xdex_draft_slots_migrated_v1', false)) return;
+      const registry = getDraftRegistry();
+      const keys = new Set(registry.slice());
+      try {
+        if (typeof GM_listValues === 'function') {
+          GM_listValues().forEach((k) => { if (typeof k === 'string' && k.indexOf('xdex_draft:') === 0) keys.add(k); });
+        }
+      } catch (_) {}
+      // 按规范槽分组（registry 顺序保序：越靠后越新）
+      const groups = new Map(); // canonical -> [{storageKey, value}]
+      keys.forEach((storageKey) => {
+        const pathname = String(storageKey || '').slice('xdex_draft:'.length);
+        if (!pathname) return;
+        let value = '';
+        try { value = GM_getValue(storageKey, ''); } catch (_) { value = ''; }
+        if (typeof value !== 'string') value = '';
+        const canonical = normalizeDraftKeyFromPath(pathname);
+        const target = canonical || ''; // 非串内页 → 空组（统一清理）
+        if (!groups.has(target)) groups.set(target, []);
+        groups.get(target).push({ storageKey, value, pathname });
+      });
+      const registrySet = new Set(registry);
+      let changed = false;
+      groups.forEach((slots, canonical) => {
+        if (!canonical) {
+          // 非串内页槽：全部清理（空值或历史残留都清）
+          slots.forEach((slot) => {
+            try { deleteDraftSafe(slot.storageKey); } catch (_) {}
+            registrySet.delete(slot.storageKey);
+            changed = true;
+          });
+          return;
+        }
+        const canonicalStorageKey = getDraftStorageKey(canonical);
+        let canonicalValue = '';
+        try { canonicalValue = GM_getValue(canonicalStorageKey, ''); } catch (_) {}
+        if (typeof canonicalValue !== 'string') canonicalValue = '';
+        // 合并：规范槽优先；否则取 registry 顺序最靠后的非空槽（最近保存）
+        let picked = canonicalValue ? null : null;
+        let pickedFrom = canonicalStorageKey;
+        if (!canonicalValue) {
+          for (let i = slots.length - 1; i >= 0; i--) {
+            if (slots[i].value) { picked = slots[i]; pickedFrom = slots[i].storageKey; break; }
+          }
+        }
+        const finalValue = canonicalValue || (picked ? picked.value : '');
+        if (finalValue && !canonicalValue) {
+          try {
+            GM_setValue(canonicalStorageKey, finalValue);
+            registrySet.add(canonicalStorageKey);
+            removeDraftDeletion(canonicalStorageKey);
+            changed = true;
+          } catch (_) {}
+        }
+        // 清理所有非规范槽
+        slots.forEach((slot) => {
+          if (slot.storageKey === canonicalStorageKey) return;
+          try { deleteDraftSafe(slot.storageKey); } catch (_) {}
+          registrySet.delete(slot.storageKey);
+          changed = true;
+        });
+      });
+      // 清理 registry 中已无值的键
+      const nextRegistry = Array.from(registrySet).filter((k) => {
+        try { const v = GM_getValue(k, ''); return typeof v === 'string' && v !== ''; } catch (_) { return false; }
+      });
+      if (changed || nextRegistry.length !== registry.length) saveDraftRegistry(nextRegistry);
+      GM_setValue('xdex_draft_slots_migrated_v1', true);
+      if (changed) console.info('[X岛-EX][草稿] 槽位规范化迁移完成');
+    } catch (e) {
+      console.warn('[X岛-EX][草稿] 槽位迁移失败', e);
+    }
+  }
   // 统一：安全删除草稿（有 GM_deleteValue 用之；否则写空串兜底）
   // ── 草稿删除账本: WebDAV 双向同步时传播"草稿被删除"状态 ──
   // 语义与分组设置删除账本一致: 删除总是赢, 重新编辑即翻案
@@ -18674,8 +18769,9 @@ ${markedSwatchHtml}
     try { GM_setValue('xdex_draft_deletions', store); } catch (_) {}
   }
   function deleteDraftSafe(key) {
+    if (!key) key = getDraftKey();
+    if (!key) return; // 非串内页（草稿键为空）无草稿可删，避免空键误删/空账本登记
     try {
-      if (!key) key = getDraftKey();
       if (typeof GM_deleteValue === 'function') {
         GM_deleteValue(key);
       } else if (typeof GM_setValue === 'function') {
@@ -18984,6 +19080,8 @@ ${markedSwatchHtml}
   // 草稿：发帖成功清空（拦截模式优先）
   function 清空编辑(key) {
     if (!isDraftEnabled()) return;
+    if (!key) key = getDraftKey();
+    if (!key) return; // 非串内页无草稿可清
     if (key) {
       deleteDraftSafe(getDraftStorageKey(key));
       deleteDraftSafe(key);
@@ -19009,6 +19107,7 @@ ${markedSwatchHtml}
       if (!isDraftEnabled()) return;
       if (!正文框.length) return;
       const key = getDraftKey();
+      if (!key) return; // 非串内页（板块页等）无草稿
       const migratedLegacy = migrateLegacyDraftIfNeeded(key);
       let draft = readDraftValue(key);
       if (!draft && migratedLegacy) draft = migratedLegacy;
@@ -19081,7 +19180,8 @@ function 注册自动保存编辑() {
       return startupPerfDebug.measure('enhanceIsland.saveDraftAndPreview', () => {
       if (!正文框.length) return;
       if (isDraftEnabled()) {
-        saveDraftValue(getDraftKey(), 正文框.val());
+        const draftKey = getDraftKey();
+        if (draftKey) saveDraftValue(draftKey, 正文框.val());
       }
       renderContent(正文框.val());
       const box = $('.h-preview-box');
@@ -19440,6 +19540,8 @@ function 注册自动保存编辑() {
     function 未知() {
       if (cfg.enablePasteImage) 注册粘贴图片();
     }
+    // ★ 草稿槽规范化迁移（串级共享单槽；一次性，GM 标记防重）
+    try { migrateDraftSlotsToCanonical(); } catch (e) {}
     // 一级路径解析（支持 m 前缀）
     const 一层路径 = 路径分块[0] === 'm' ? 路径分块[1] : 路径分块[0];
     // 入口分流（与原脚本一致）
