@@ -652,6 +652,8 @@ function xdexEarlyDarkEnabled() {
       applyImageHideMode: 'default', // default | blur | noimage | tips
       imageViewerSeparators: true, // 阅图模式：显示页码分隔线与“第N页”标识
       enableDraft: true,
+      enableThreadHistory: true,   // 浏览历史：关闭后不再自动记录（已有数据保留，侧边栏入口隐藏）
+      enablePostHistory: true,     // 发言历史：关闭后不再在发送消息后自动记录（手动添加不受影响）
       timeDisplayMode: 'relative', // relative | exact
       extendQuote: true, // 拓展引用格式
       extendQuoteAvailabilityDetection: true, // 检测引用串是否存在
@@ -1632,6 +1634,8 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar" class="xdex-switch" role="switch"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck" class="xdex-switch" role="switch"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch" role="switch"><label for="sp_enableThreadHistory"> 浏览历史</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch" role="switch"><label for="sp_enablePostHistory"> 发言历史</label></div>
                 <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
                 <!-- 以下是默认勾选项不可更改 -->
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
@@ -1656,8 +1660,7 @@ function xdexEarlyDarkEnabled() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
@@ -2025,7 +2028,14 @@ function xdexEarlyDarkEnabled() {
       $('#sp_panel_tab_slot').off('click', '[data-sp-module]').on('click', '[data-sp-module]', (e) => {
         e.preventDefault();
         logThreadHistory('panel tab clicked', { module: $(e.currentTarget).data('spModule') });
-        setSettingsPanelModule($(e.currentTarget).data('spModule'));
+        const clickedModule = $(e.currentTarget).data('spModule');
+        // 功能关闭时进入对应 tab：error toast 提示不再接受新数据写入（数据仍可查看）
+        if (clickedModule === 'history' && !isThreadHistoryEnabledNow()) {
+          toast('浏览历史已关闭：不会记录新的浏览数据，已有数据仍可查看', 0, { type: 'error', key: 'thread-history-disabled' });
+        } else if (clickedModule === 'posts' && !isPostHistoryEnabledNow()) {
+          toast('发言历史已关闭：不会自动记录新的发言数据，已有数据仍可查看', 0, { type: 'error', key: 'post-history-disabled' });
+        }
+        setSettingsPanelModule(clickedModule);
         if ($(e.currentTarget).data('spModule') === 'history') renderThreadHistoryModuleSoon();
         if ($(e.currentTarget).data('spModule') === 'posts') renderPostHistoryModuleSoon();
         if ($(e.currentTarget).data('spModule') === 'feeds') renderSubscriptionFeedModule();
@@ -2113,6 +2123,20 @@ function xdexEarlyDarkEnabled() {
       $(reloadRequiredSettingSelector)
         .off('change.xdexReloadSettingSave')
         .on('change.xdexReloadSettingSave', saveReloadRequiredSettingsImmediately);
+      // 历史开关：即时生效（无需刷新）——更新 state + 持久化 + toast + 重渲染侧边栏入口
+      const applyHistoryToggleImmediately = (key, label) => {
+        const checked = $('#sp_' + key).is(':checked');
+        this.state[key] = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        toast(label + (checked ? '已开启' : '已关闭'), 1400, { queue: false, key: 'history-toggle' });
+        try { renderFavoriteThreadsMenu(); } catch (e) {}
+      };
+      $('#sp_enableThreadHistory').off('change.xdexHistoryToggle').on('change.xdexHistoryToggle', () => {
+        applyHistoryToggleImmediately('enableThreadHistory', '浏览历史');
+      });
+      $('#sp_enablePostHistory').off('change.xdexHistoryToggle').on('change.xdexHistoryToggle', () => {
+        applyHistoryToggleImmediately('enablePostHistory', '发言历史');
+      });
       // 深色开关：切换时先加页面过渡类保证平滑，样式由 syncInputs/save 回调接管
       $('#sp_enableCustomDarkTheme')
         .off('change.xdexDarkToggle')
@@ -3909,8 +3933,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
-        sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
-        sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
+        sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式。关闭后不再记录新的浏览数据（已有数据保留），侧边栏入口隐藏',
+        sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式。关闭后不再在发送消息后自动记录（手动添加不受影响，已有数据保留），侧边栏入口隐藏',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧图标按钮可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
         sp_imageViewerSeparators: '在各页图片之间显示红色分隔线与“第N页”页码标识；关闭以获得更纯净的阅图体验',
@@ -4064,6 +4088,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
         'enableImageContextMenu',
+        'enableThreadHistory',
+        'enablePostHistory',
         'enableLinkBlank',
         'enableAutoUrlLinkify',
         'enableQuotePreview',
@@ -24501,7 +24527,52 @@ function 注册自动保存编辑() {
       });
     }, delay);
   }
+  // ★ 轻量确认（发言历史关闭时专用）：只通过 getLastPost 重试链取回新串地址用于跳转，
+// 完全不写发言历史 store（无 upsert/update/广播）。
+  function confirmPostHistoryUrlOnly(fd, options) {
+    const type = options && options.isReply ? 'reply' : 'thread';
+    const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
+    const contentText = normalizePostHistoryText(contentRaw);
+    const contentHash = hashPostHistoryText(contentText);
+    const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
+    const title = fd && fd.get ? String(fd.get('title') || '') : '';
+    const probes = {
+      status: 'pending', type, localId: '', id: '', postId: '', resto,
+      threadId: type === 'reply' ? resto : '',
+      title, contentText, contentHash, userHash: '',
+      submittedAt: Date.now()
+    };
+    const delays = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS;
+    return new Promise((resolve) => {
+      const attemptFetch = (attempt) => {
+        const delay = delays[attempt];
+        if (delay == null) { resolve(null); return; }
+        setTimeout(() => {
+          fetchLastPostHistoryPost({ localId: 'url-only', attempt }).then(post => {
+            // 复用主链同源匹配判据（null 安全；usedIds 用空集——只确认不落库）
+            if (!postHistoryMatchesSnapshot(post, probes, new Set())) {
+              attemptFetch(attempt + 1);
+              return;
+            }
+            const id = String(post.id || '').trim();
+            resolve(id ? { url: buildPostHistoryUrl(type, id, String(post.resto || resto || '').trim()), id } : null);
+          }).catch(() => { attemptFetch(attempt + 1); });
+        }, delay);
+      };
+      attemptFetch(0);
+    });
+  }
   function snapshotSubmittedPostHistory(fd, options) {
+    // 发言历史已关闭：不在发送消息后自动记录。但发串跳转（postAfterAction=jump/refresh）
+    // 依赖确认后的地址——走"只确认不落库"的轻量路径（getLastPost 重试取 id，不写 store）。
+    if (!isPostHistoryEnabledNow()) {
+      const isReplyDisabled = !!(options && options.isReply);
+      return {
+        snapshot: null,
+        localId: null,
+        confirmPromise: isReplyDisabled ? Promise.resolve(null) : confirmPostHistoryUrlOnly(fd, options)
+      };
+    }
     const type = options && options.isReply ? 'reply' : 'thread';
     const submittedAt = Date.now();
     const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
@@ -25039,6 +25110,7 @@ function 注册自动保存编辑() {
     return saved;
   }
   function touchThreadHistoryCurrentLocation(options = {}) {
+    if (!isThreadHistoryEnabledNow()) return getThreadHistoryStore(); // 浏览历史已关闭：不更新位置
     const parsed = parseThreadHistoryUrl(options.url || location.href);
     if (!parsed) return getThreadHistoryStore();
     const key = getThreadHistoryKey(parsed.mode, parsed.threadId);
@@ -25068,6 +25140,7 @@ function 注册自动保存编辑() {
     return saved;
   }
   function recordThreadHistoryProgress(options = {}) {
+    if (!isThreadHistoryEnabledNow()) return getThreadHistoryStore(); // 浏览历史已关闭：不记录翻页进度
     const parsed = parseThreadHistoryUrl(options.url || location.href);
     if (!parsed) return getThreadHistoryStore();
     const record = extractThreadHistoryRecord(document) || {
@@ -25324,7 +25397,29 @@ function 注册自动保存编辑() {
     window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
     window.addEventListener('pagehide', () => cancelThreadHistoryDwellTimer(true), { passive: true });
   }
+  // ★ 历史功能开关读取（即时生效：优先 SettingPanel.state，未初始化时回退 defaults）
+  function isThreadHistoryEnabledNow() {
+    try {
+      const sp = typeof SettingPanel !== 'undefined' ? SettingPanel : null;
+      if (!sp) return true;
+      const state = sp.state || {};
+      if (typeof state.enableThreadHistory === 'boolean') return state.enableThreadHistory;
+      const defaults = sp.defaults || {};
+      return defaults.enableThreadHistory !== false;
+    } catch (e) { return true; }
+  }
+  function isPostHistoryEnabledNow() {
+    try {
+      const sp = typeof SettingPanel !== 'undefined' ? SettingPanel : null;
+      if (!sp) return true;
+      const state = sp.state || {};
+      if (typeof state.enablePostHistory === 'boolean') return state.enablePostHistory;
+      const defaults = sp.defaults || {};
+      return defaults.enablePostHistory !== false;
+    } catch (e) { return true; }
+  }
   function recordCurrentThreadHistory(attempt = 0, options = {}) {
+    if (!isThreadHistoryEnabledNow()) return; // 浏览历史已关闭：不再自动记录（已有数据保留）
     const record = extractThreadHistoryRecord(document);
     if (!record) {
       const parsed = parseThreadHistoryUrl(location.href);
@@ -27661,17 +27756,19 @@ function 注册自动保存编辑() {
     if (oldSubscriptionFeed) oldSubscriptionFeed.remove();
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
-    const threadHistoryNode = createThreadHistoryMenuNode();
-    const postHistoryNode = createPostHistoryMenuNode();
+    // 历史开关关闭时对应入口不出现（已有数据保留，仅隐藏入口）
+    const threadHistoryNode = isThreadHistoryEnabledNow() ? createThreadHistoryMenuNode() : null;
+    const postHistoryNode = isPostHistoryEnabledNow() ? createPostHistoryMenuNode() : null;
     const subscriptionFeedNode = createSubscriptionFeedMenuNode();
     const timeline = Array.from(menu.children).find((li) => {
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
       return header && (header.textContent || '').trim() === '时间线';
     });
     menu.insertBefore(node, timeline || menu.firstChild);
-    menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
-    menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
-    menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
+    let insertAfter = node;
+    if (threadHistoryNode) { menu.insertBefore(threadHistoryNode, timeline || insertAfter.nextSibling); insertAfter = threadHistoryNode; }
+    if (postHistoryNode) { menu.insertBefore(postHistoryNode, timeline || insertAfter.nextSibling); insertAfter = postHistoryNode; }
+    menu.insertBefore(subscriptionFeedNode, timeline || insertAfter.nextSibling);
   }
   // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，指向最近查看页，允许低于最远访问页）
   function syncFavoriteThreadsLinks() {
@@ -30045,6 +30142,8 @@ function initReplyParamScrollTo() {
     applyImageHideMode: '图片隐藏模式应用',
     imageViewerSeparators: '阅图模式分隔线',
     enableDraft: '草稿功能',
+    enableThreadHistory: '浏览历史',
+    enablePostHistory: '发言历史',
     timeDisplayMode: '时间显示方式',
     extendQuote: '拓展引用格式',
     extendQuoteAvailabilityDetection: '引用号检测',
