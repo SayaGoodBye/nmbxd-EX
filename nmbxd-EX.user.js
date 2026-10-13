@@ -823,6 +823,15 @@ function xdexEarlyDarkEnabled() {
       if (postAfterSelect) {
         postAfterSelect.value = (this.state && this.state.postAfterAction === 'refresh') ? 'refresh' : 'jump';
       }
+      // 快速回复默认模式（跨页/重开面板回填）
+      const replyModeSelect = document.getElementById('sp_replyModeDefault');
+      if (replyModeSelect) {
+        replyModeSelect.value = (this.state && this.state.replyModeDefault === '发串') ? '发串' : '回复';
+      }
+      const replyExtraSelect = document.getElementById('sp_replyExtraDefault');
+      if (replyExtraSelect) {
+        replyExtraSelect.value = (this.state && this.state.replyExtraDefault === '连续') ? '连续' : '临时';
+      }
     },
     init() {
       const saved = GM_getValue(this.key, {});
@@ -872,6 +881,19 @@ function xdexEarlyDarkEnabled() {
           try { refreshFilterDisplay(this.state); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
           try { if (typeof applyImageViewerSeparatorSetting === 'function') applyImageViewerSeparatorSetting(); } catch (e) {}
+          // 发送前确认（跨页同步）：按最新 state 运行时注入/清理串内检查区
+          try {
+            if (this.state.enableCookieSwitch && this.state.enableCookieConfirm) {
+              const _tid = typeof PageType !== 'undefined' && PageType.getThreadId ? PageType.getThreadId(false) : '';
+              const _short = _tid ? String(_tid).slice(0, 8) : '';
+              if (_short) {
+                if (typeof initThreadCookiePref === 'function') initThreadCookiePref(_short);
+                if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(_short);
+              }
+            } else if (typeof clearCookieCheckSwitch === 'function') {
+              clearCookieCheckSwitch();
+            }
+          } catch (e) {}
         }
       });
     },
@@ -1635,7 +1657,7 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck" class="xdex-switch" role="switch"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch" role="switch"><label for="sp_enableThreadHistory"> 浏览历史</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch" role="switch"><label for="sp_enablePostHistory"> 发言历史</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch" role="switch"><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select></div>
                 <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
                 <!-- 以下是默认勾选项不可更改 -->
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
@@ -1660,7 +1682,6 @@ function xdexEarlyDarkEnabled() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
@@ -2071,7 +2092,6 @@ function xdexEarlyDarkEnabled() {
       this.syncInputs();
       const reloadRequiredSettingKeys = [
         'enableCookieSwitch',
-        'enableCookieConfirm',
         'disableWatermark',
         'enablePaginationDuplication',
         'updatePreviewCookie',
@@ -2080,9 +2100,6 @@ function xdexEarlyDarkEnabled() {
         'enableUpdateCheck',
         'enableAutoCookieRefresh',
         'enableAutoCookieRefreshToast',
-        'interceptReplyFormUnvcode',
-        'interceptReplyFormU200B',
-        'interceptReplyFormAutoCompress',
         'enableSeamlessPaging',
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
@@ -2096,8 +2113,17 @@ function xdexEarlyDarkEnabled() {
         'disableAutoQuote',
         'enableCustomDarkTheme'
       ];
+      // 即时保存项：从"刷新提示"清单移出（change 即保存），但「保存并刷新」按钮仍须收集它们，
+      // 保证无论用户是否触发过 change，点击按钮后所有面板修改都在刷新后生效
+      const immediateSaveSettingKeys = [
+        'enableCookieConfirm',
+        'interceptReplyFormUnvcode',
+        'interceptReplyFormU200B',
+        'interceptReplyFormAutoCompress'
+      ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
+        immediateSaveSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
         // 深色模式：布尔开关 → light/dark 语义值
         this.state.enableCustomDarkTheme = $('#sp_enableCustomDarkTheme').is(':checked') ? 'dark' : 'light';
         // 固定启用：不受面板勾选状态影响
@@ -2136,6 +2162,56 @@ function xdexEarlyDarkEnabled() {
       });
       $('#sp_enablePostHistory').off('change.xdexHistoryToggle').on('change.xdexHistoryToggle', () => {
         applyHistoryToggleImmediately('enablePostHistory', '发言历史');
+      });
+      // ★ 发送链开关：即时保存（消费点每次从 GM 重读：doSubmit / finishSubmitImageProcessing）
+      // ——无需刷新，下次发送即生效；跨页同步由 GM 存储监听自然完成。
+      const saveSendChainToggleImmediately = (key, label) => {
+        const checked = $('#sp_' + key).is(':checked');
+        this.state[key] = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        toast(label + (checked ? '已开启' : '已关闭') + '（下次发送生效）', 1400, { queue: false, key: 'send-chain-toggle' });
+      };
+      const sendChainToggleLabels = {
+        interceptReplyFormUnvcode: 'unvcode',
+        interceptReplyFormU200B: '零宽空格优先',
+        interceptReplyFormAutoCompress: '自动压缩图片'
+      };
+      Object.keys(sendChainToggleLabels).forEach((key) => {
+        $('#sp_' + key).off('change.xdexSendChainToggle').on('change.xdexSendChainToggle', () => {
+          saveSendChainToggleImmediately(key, sendChainToggleLabels[key]);
+        });
+      });
+      // ★ 发送前确认（串内饼干使用情况）：即时保存 + 运行时注入/清理检查区
+      $('#sp_enableCookieConfirm').off('change.xdexCookieConfirmToggle').on('change.xdexCookieConfirmToggle', () => {
+        const checked = $('#sp_enableCookieConfirm').is(':checked');
+        this.state.enableCookieConfirm = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('发送前确认', e); }
+        try {
+          if (checked && this.state.enableCookieSwitch) {
+            const tid = typeof PageType !== 'undefined' && PageType.getThreadId ? PageType.getThreadId(false) : '';
+            const shortTid = tid ? String(tid).slice(0, 8) : '';
+            if (shortTid) {
+              if (typeof initThreadCookiePref === 'function') initThreadCookiePref(shortTid);
+              if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(shortTid);
+            }
+          } else {
+            if (typeof clearCookieCheckSwitch === 'function') clearCookieCheckSwitch();
+          }
+        } catch (e) {}
+        toast('发送前确认' + (checked ? '已开启' : '已关闭') + '（下次发送生效）', 1400, { queue: false, key: 'cookie-confirm-toggle' });
+      });
+      // ★ 快速回复默认模式：即时保存（消费点读 SettingPanel.state：打开表单/切换模式时生效）
+      const saveReplyDefaultImmediately = (key, label, isExtra) => {
+        const val = $('#sp_' + key).val();
+        this.state[key] = val;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        toast(label + '已保存：' + val, 1400, { queue: false, key: 'reply-default-toggle' });
+      };
+      $('#sp_replyModeDefault').off('change.xdexReplyDefault').on('change.xdexReplyDefault', () => {
+        saveReplyDefaultImmediately('replyModeDefault', '板块页默认模式', false);
+      });
+      $('#sp_replyExtraDefault').off('change.xdexReplyDefault').on('change.xdexReplyDefault', () => {
+        saveReplyDefaultImmediately('replyExtraDefault', '回复默认模式', true);
       });
       // 深色开关：切换时先加页面过渡类保证平滑，样式由 syncInputs/save 回调接管
       $('#sp_enableCustomDarkTheme')
