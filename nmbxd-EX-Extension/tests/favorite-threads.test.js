@@ -61,6 +61,8 @@ function testSettingsPanelFixedFavoriteThreadsItem() {
   assert(script.includes('id="sp_enableThreadHistory" class="xdex-switch" role="switch"'), 'settings panel must show browsing history as a user toggle');
   assert(script.includes('<label for="sp_enableThreadHistory"> 浏览历史</label>'), 'browsing history switch must use 浏览历史 label');
   assert(script.indexOf('id="sp_enableImageContextMenu"') < script.indexOf('id="sp_enableThreadHistory"'), 'history toggles must be placed below the update/image-menu row');
+  // 发言历史与「关闭引用 / 发串后跳转」保持同一行组（原始布局组合）
+  assert(script.indexOf('id="sp_enablePostHistory"') < script.indexOf('id="sp_disableAutoQuote"') && script.indexOf('id="sp_disableAutoQuote"') < script.indexOf('id="sp_postAfterAction"'), 'post history toggle must stay in the same row as disableAutoQuote and postAfterAction');
   assert(script.includes("sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页'"), 'fixed favorite threads switch must describe history-linked jumps');
   assert(script.includes("sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式"), 'browsing history switch must have hover description');
   assert(!script.includes('id="sp_favoriteThreads" class="xdex-switch fixed-on"'), 'fixed favorite threads switch must not reuse sp_favoriteThreads data id');
