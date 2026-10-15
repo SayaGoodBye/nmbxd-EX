@@ -61,8 +61,8 @@ function testPostHistorySidebarMenu() {
   assertContains("setXDexSidebarExLabel(link, '我的发言')", 'post history sidebar menu must use 我的发言 label with native EX sub badge');
   assertContains('function openPostHistorySettingsPanel()', 'must define post history settings panel opener');
   assertContains("openSettingsPanelModuleTab('posts')", 'post history sidebar must open the posts settings module');
-  assertContains('const postHistoryNode = createPostHistoryMenuNode()', 'renderFavoriteThreadsMenu must create post history menu node');
-  assertContains("menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);", 'post history sidebar must be inserted after browsing history');
+  assertContains("const postHistoryNode = isPostHistoryEnabledNow() ? createPostHistoryMenuNode() : null", 'renderFavoriteThreadsMenu must create post history menu node only when enabled');
+  assertContains('if (postHistoryNode) { menu.insertBefore(postHistoryNode, timeline || insertAfter.nextSibling); insertAfter = postHistoryNode; }', 'post history sidebar must be inserted after browsing history when enabled');
   assertContains('function createSubscriptionFeedMenuNode()', 'must define subscription feed sidebar menu node factory');
   assertContains("li.id = 'xdex-subscription-feed-menu'", 'subscription feed sidebar menu must have a stable id');
   assertContains("setXDexSidebarExLabel(link, '我的订阅')", 'subscription feed sidebar menu must use 我的订阅 label with native EX sub badge');
@@ -74,7 +74,7 @@ function testPostHistorySidebarMenu() {
   assertContains("openSettingsPanelModuleTab('feeds')", 'subscription feed sidebar must open the feeds settings module');
   assertContains("function openSettingsPanelModuleTab(moduleName)", 'shared settings tab helper must exist for sidebar openers');
   assertContains('const subscriptionFeedNode = createSubscriptionFeedMenuNode()', 'renderFavoriteThreadsMenu must create subscription feed menu node');
-  assertContains("menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);", 'subscription feed sidebar must be inserted after post history');
+  assertContains("menu.insertBefore(subscriptionFeedNode, timeline || insertAfter.nextSibling);", 'subscription feed sidebar must be inserted after post history');
 }
 
 // ─── Batch rendering optimization ────────────────────────────────────────────

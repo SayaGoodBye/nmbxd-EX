@@ -128,7 +128,9 @@ function testExtensionRuntimeDescriptor() {
     document: {
       createElement() { return {}; },
       head: { appendChild() {} },
-      documentElement: { appendChild() {} }
+      documentElement: { appendChild() {} },
+      // showExtensionToast 的 error 通道会挂 pointerdown/keydown 驻留监听
+      addEventListener() {}, removeEventListener() {}
     }
   };
   context.globalThis = context;
@@ -173,7 +175,9 @@ function testGmInfoMetadataMatchesUserscriptHeader() {
     document: {
       createElement() { return {}; },
       head: { appendChild() {} },
-      documentElement: { appendChild() {} }
+      documentElement: { appendChild() {} },
+      // showExtensionToast 的 error 通道会挂 pointerdown/keydown 驻留监听
+      addEventListener() {}, removeEventListener() {}
     }
   };
   context.globalThis = context;
@@ -432,7 +436,13 @@ function testPostHistoryStorageAndCompletionContract() {
   const completionStart = upstream.indexOf('function completePostHistorySnapshot(localId, snapshot, attempt = 0)');
   const completionBody = upstream.slice(completionStart, upstream.indexOf('function snapshotSubmittedPostHistory', completionStart));
   assert(completionBody.includes('fetchLastPostHistoryPost({ localId, attempt })') && completionBody.includes('completePostHistoryFromThreadFallback(localId, snapshot)'), 'completion must include getLastPost and fallback calls');
-  assert(completionBody.includes('completePostHistoryFromThreadFallback(localId, confirmedSnapshot)') && completionBody.includes("const confirmedResto = String(post.resto || snapshot.resto || '').trim();") && completionBody.includes('const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });'), 'completion must verify reply pages with the real resto returned by getLastPost so board-page replies scan the correct thread');
+  // 主 confirm 成功后的 thread fallback 经 idle 错峰调度（schedulePostHistoryThreadFallback）：
+  // 字段回填保留（fid/forumName/page/title 等 getLastPost 不返回），但存储写错开发送后的滚动敏感窗口。
+  assert(completionBody.includes('schedulePostHistoryThreadFallback(localId, confirmedSnapshot)'), 'confirmed reply must schedule thread fallback for field backfill');
+  assert(upstream.includes('function schedulePostHistoryThreadFallback(localId, snapshot)'), 'idle-scheduled fallback helper must exist');
+  assert(upstream.includes('requestIdleCallback(() => setTimeout(run, 0), { timeout: IDLE_DELAY_MS + 3000 })'), 'fallback must yield to idle before running');
+  // 字段回填队列必须在页面隐藏/关闭时兜底落盘（flushOnLeave 先字段后 persist）
+  assert(upstream.includes('try { flushPostHistoryFieldPatches(); } catch (e) {}\n      flushPostHistoryStorePersist();'), 'pagehide must flush field patches before persist debounce');
   assert(completionBody.indexOf('completePostHistoryFromThreadFallback(localId, snapshot)') < completionBody.indexOf('fetchLastPostHistoryPost({ localId, attempt })'), 'thread fallback must be in the retry-exhausted branch before scheduled getLastPost attempts');
   assert(upstream.includes("const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api'"), 'post history thread fallback must define api.nmb.best as the primary thread API source');
   assert(upstream.includes('`${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`'), 'thread fallback must use api.nmb.best/api/thread?id={threadId}&page={page} as the primary request URL');
@@ -720,7 +730,7 @@ function testPostHistoryRefImageContract() {
 
 function testSeamlessAppendedHDImageContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
-  const applyStart = upstream.indexOf('function applyPageEnhancements(root, cfg)');
+  const applyStart = upstream.indexOf('function applyPageEnhancements(root, cfg, hotNodes)');
   const applyBody = upstream.slice(applyStart, upstream.indexOf('\n  function ', applyStart + 10));
   assert(applyBody.includes("liveCfg.enableHDImageAndLayoutFix") && applyBody.includes('enableHDImageAndLayoutFix(root)'), 'applyPageEnhancements must prepare HD image URLs and bindings');
 
@@ -1046,11 +1056,15 @@ function createGmCompatStorageContext() {
     document: {
       createElement() { return { style: {}, remove() {} }; },
       head: { appendChild() {} },
-      documentElement: { appendChild() {} }
+      documentElement: { appendChild() {} },
+      // showExtensionToast 的 error 通道会挂 pointerdown/keydown 驻留监听
+      addEventListener() {}, removeEventListener() {}
     },
     location: { href: 'https://www.nmbxd1.com/t/12345678', origin: 'https://www.nmbxd1.com' },
     URL,
     setTimeout(fn) { return fn(); },
+    // error 通道的驻留/宽限计时器需要 clearTimeout
+    clearTimeout() {},
     addEventListener(type, fn) {
       const list = listeners.get(type) || [];
       list.push(fn);
@@ -1175,7 +1189,7 @@ function testGifCompressionDiagnosticsContract() {
   assert(compressSource.includes('const GIF_MAX_ATTEMPTS = 3') || upstream.includes('const GIF_MAX_ATTEMPTS = 3'), 'GIF maximum attempt count must remain 3');
   assert(compressSource.includes("const args = ['-O3', `--lossy=${Math.round(lossy)}`, '--colors', String(Math.round(colors))]"), 'GIF optimization command must retain -O3 and existing lossy/colors construction');
   assert(compressSource.includes('const remain = GIF_MAX_ATTEMPTS - (i + 1);') && compressSource.includes('const predictedScale = scale * Math.sqrt(maxBytes / Math.max(blob.size, 1)) * safety;') && compressSource.includes('scale = clampNumber(nextScale, 0.16, 0.98)'), 'GIF oversize adjustment must use remaining-attempt-aware scale prediction');
-  assert(upstream.includes("toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000)"), 'existing compression failure toast text and call must remain unchanged');
+  assert(upstream.includes("toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 0, { type: 'error' })"), 'existing compression failure toast must keep its text and now persist as an error toast');
 }
 
 function testUserscriptRuntimeLogHelper() {

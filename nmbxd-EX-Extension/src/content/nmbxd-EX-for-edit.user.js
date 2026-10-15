@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      4.1.1
+// @version      4.2.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -37,7 +37,8 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    ### 新增\n\n - 添加自定义深/浅色模式。\n - 实现引用号可用性检测功能拓展，已失效引用：浅色；本串引用号：实线；其他主串引用号：虚线。\n - 为添加板块页「获取最新回复」按钮，在回复场景下也可手动触发增量刷新。\n - 添加阅图模式「分隔线」开关，关闭后获得无割裂的纯净阅图体验。\n\n ### 优化\n\n - 拓展引用浮窗中添加主串的跳转按钮。\n - 统一当前的图标UI。\n - “饼干偏好”按钮提示作用饼干是否为当前串默认饼干。\n - 浏览历史/发言历史检索性能优化。\n ### 修复\n\n - 修复浏览记录与常用串链接构造中最近查看页、最远访问页、已知总页数之间的逻辑矛盾，解决 WebDAV 同步后浏览历史页码回退问题。\n - 修复连续点击同一引用号导致的多层拓展引用浮窗出现的问题。\n - 修复无缝翻页时偶现的加载多次同一页的问题。\n - 修复在 WebDAV 同步后由于发言历史自动渲染导致的引用号可用性检测被持续触发的问题。\n - 修复原站点部分颜文字丢失的问题。\n
+// @changelog    ### 新增\n\n - “管理”中新增“测试”版块。\n\n ### 优化\n\n - 切换饼干后焦点立刻回到输入框，避免输入被打断。\n - 报错内容的toast显示样式更醒目，显示时间更长。\n - 允许关闭“浏览历史/发言历史”设置，关闭时不会清空删除已存在的数据。\n - 包含分组的设置项支持拖拽排序。\n - 打开包含r=的链接时直接跳转到r=回复所在的位置。\n - 部分设置项支持开启/关闭后即时生效。\n\n ### 修复\n\n - 修复深色模式下拓展引用浮窗中链接颜色不正确的问题。\n - 修复在版块页快捷回复时，点击“连续/临时”按钮进行切换时时可能关闭回复浮窗的问题。\n - 修复设置面板中“我的订阅”模块中缺失“添加订阅号”按钮的问题。\n - 修复WebDAV在向远端同步时由于发生错误导致以当前浏览量作为增量累加的问题。\n - 修复回收站中手动恢复的条目仍显示在回收站中的问题；修复被恢复的条目在浏览历史中依旧显示回收站图标的问题。\n - 修复串内页草稿无法删除以及在版块页错误保存草稿的问题。\n
+
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -156,7 +157,7 @@ function xdexEarlyDarkEnabled() {
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info *,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content *{color:#d9d0d0 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-tips.uk-text-danger{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote font[color="#789922"]{color:#b5d06d !important;}' +
-        ':root.xdex-custom-dark .qp-overlay-quote a{color:#3e8eec !important;}' +
+        ':root.xdex-custom-dark .qp-overlay-quote a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info a{color:#3e8eec !important;}' +
         ':root.xdex-custom-dark .kaomoji-item:hover{background:#3a3d40 !important;}' +
         '@keyframes xdex-icon-sync-spin{to{transform:rotate(360deg)}}' +
         '.xdex-icon-loading .xdex-icon-sync{animation:xdex-icon-sync-spin .8s linear infinite}' +
@@ -279,11 +280,18 @@ function xdexEarlyDarkEnabled() {
   function isCurrentRefreshStatus(generation) {
     return generation === refreshStatusGeneration;
   }
-  function showRefreshStatus(msg, duration = 900) {
-    return toast(msg, duration, { queue: false, key: 'refresh-status' });
+  function showRefreshStatus(msg, duration = 900, type = '') {
+    // type='error'：红框 + 无操作 30s 驻留 / 操作后 5s 渐隐（与全局 error 语义一致）；
+    // 复用 refresh-status 节点，后续任何刷新状态提示（正在刷新/已更新）会自动顶掉它
+    return toast(msg, duration, { queue: false, key: 'refresh-status', type });
   }
 
   function toast(msg, duration = 1800, options = {}) {
+    if (options.type === 'error') {
+      // ★ 错误提示强制走立即通道（不排队），红框 + 驻留到下次用户交互（见 showImmediateToast）
+      showImmediateToast(msg, duration, options.key, 'error');
+      return;
+    }
     if (options.queue === false) {
       showImmediateToast(msg, duration, options.key);
       return;
@@ -312,8 +320,9 @@ function xdexEarlyDarkEnabled() {
       showNextToast(); // ✅ 显示下一个
     });
   }
-  function showImmediateToast(msg, duration = 900, key = 'default') {
+  function showImmediateToast(msg, duration = 900, key = 'default', type = '') {
     const safeKey = String(key || 'default').replace(/[^a-z0-9_-]/gi, '-');
+    if (safeKey === 'refresh-status') console.log('[toast]', msg); // 刷新状态提示同步输出到控制台（对齐通用 toast 路径）
     let $t = $(`#xdex-immediate-toast-${safeKey}`);
     if (!$t.length) {
       $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
@@ -329,14 +338,141 @@ function xdexEarlyDarkEnabled() {
         fontWeight: 'bold',
       });
     }
+    if (type === 'error') {
+      // ★ 错误提示：红框 + 醒目样式；不自动消失，驻留到下次用户交互（点击/键盘/焦点切换），30s 保险上限
+      $t.css({
+        border: '1px solid #e74c3c',
+        boxShadow: '0 0 0 1px rgba(231,76,60,.4), 0 4px 16px rgba(0,0,0,.55)',
+        fontWeight: 'bold',
+      });
+    }
     const el = $t[0];
+    // ★ 复用节点时先清理上一代的驻留监听/计时器：
+    // 「错误 toast 可被下一条同为 error 的 toast 顶掉」由此实现——顶掉一刻起旧监听即刻失效，
+    // 若等到下次交互才清理会造成 document 捕获相监听器 + 30s 计时器永久泄漏
+    if (el.__xdexToastDismissCleanup) {
+      el.__xdexToastDismissCleanup();
+      if (el.__xdexToastError) {
+        try { console.log('[xdex error toast] 关闭原因: 被同 key 的新 toast 顶掉'); } catch (e) {}
+      }
+      el.__xdexToastDismissCleanup = null;
+    }
+    // 上一轮是错误、本轮不是 → 清除遗留的红框样式（refresh-status 专属样式见上方重新设置，无冲突）
+    if (el.__xdexToastError && type !== 'error') {
+      $t.css({ border: '', boxShadow: '', fontWeight: '' });
+      if (safeKey === 'refresh-status') {
+        $t.css({
+          background: '#242424',
+          boxShadow: '0 4px 16px rgba(0,0,0,.55)',
+          fontWeight: 'bold',
+        });
+      }
+    }
+    el.__xdexToastError = (type === 'error');
     const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
     el.__xdexImmediateToastSeq = seq;
     $t.stop(true, false).text(msg).show();
+    // 淡出被 stop(true,false) 打断时 style.opacity 会冻结在中间值，而 jQuery 的 .show() 不恢复不透明度，
+    // 导致「上一条正在淡出时下发的新消息」整段偏淡甚至近乎不可见 → 显式复位
+    $t.css('opacity', 1);
+    if (type === 'error') {
+      dismissOnNextInteraction($t, el, seq);
+      return $t;
+    }
     $t.delay(duration).fadeOut(160, () => {
       if (el.__xdexImmediateToastSeq === seq) $t.remove();
     });
     return $t;
+  }
+
+  // ★ 错误 toast 语义
+  // 无操作驻留 30 秒（比普通 toast 的 1.8s 长得多，核心目的：提醒窗口拉长，避免一闪而过）；
+  // 用户发生键鼠操作后，进入 5 秒渐隐宽限（给足看清内容的时间，不是瞬间消失）；
+  // 挂载后 1 秒武装期内忽略交互（提交后的连续击键/点击不误关）；同 key 新 error 顶掉旧 error。
+  const ERROR_TOAST_MAX_HOLD_MS = 30000;            // 无操作驻留上限
+  const ERROR_TOAST_FADE_AFTER_INTERACT_MS = 5000;  // 操作后的渐隐宽限
+  // ★ 挂载后 1 秒内的 pointerdown/keydown 不关闭 toast：
+  // 「含有非法词语」等错误出现在提交动作之后，用户往往正在继续打字或点击（keydown/pointerdown
+  // 紧随 toast 出现），若立即武装会把刚弹出的提示秒关——实测「消失得很快」的主因。
+  const ERROR_TOAST_ARM_DELAY_MS = 1000;
+  function dismissOnNextInteraction($t, el, seq) {
+    const dismiss = (reason) => {
+      // ★ 消失原因诊断：无论哪条路径关闭，都输出原因（排查「红框很快消失」用）
+      try { console.log(`[xdex error toast] 关闭原因: ${reason}`); } catch (e) {}
+      $t.css('opacity', 1); // fadeOut 需要从完全不透明起步
+      $t.fadeOut(160, () => {
+        if (el.__xdexImmediateToastSeq === seq) $t.remove();
+      });
+    };
+    let holdTimer = 0;
+    let fadeTimer = 0;
+    let armed = false;
+    let armTimer = 0;
+    let interacted = false;
+    let pointerH, keyH; // 保存「已挂载」的包裹引用，移除时才能精确匹配
+    const clearListeners = () => {
+      if (pointerH) document.removeEventListener('pointerdown', pointerH, true);
+      if (keyH) document.removeEventListener('keydown', keyH, true);
+      pointerH = keyH = null;
+    };
+    const cleanup = () => {
+      clearListeners();
+      window.clearTimeout(holdTimer);
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(armTimer);
+      // 节点级清理钩子已执行 → 清掉，避免下次复用重复触发
+      if (el.__xdexToastDismissCleanup === cleanup) el.__xdexToastDismissCleanup = null;
+    };
+    // 交互后的 5 秒渐隐宽限：清监听与 30s 驻留，改由宽限计时器接管
+    const startFadeGrace = () => {
+      clearListeners();
+      window.clearTimeout(holdTimer);
+      fadeTimer = window.setTimeout(() => {
+        dismiss(`${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒宽限期满，渐隐`);
+        cleanup();
+      }, ERROR_TOAST_FADE_AFTER_INTERACT_MS);
+    };
+    // 传递 seq，比对代看守：若期间同 key 又来了新消息（含下一条 error 顶掉），本 toast 已不再是最新
+    const guarded = (fn) => () => {
+      if (!armed) return;            // 武装期内忽略（弹出的同一手势/连续击键不关）
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      fn();
+    };
+    const onPointer = (e) => {
+      // ★ 只认「左键点击本页内容」：右键/中键（菜单、滚轮按下）、滚动条拖动都不算。
+      // 实测反馈：单纯移动鼠标（拖滚动条浏览）不应关闭提示。
+      if (e.button !== 0) return;
+      if (interacted) return;
+      interacted = true;
+      startFadeGrace();
+      console.log(`[xdex error toast] 检测到鼠标左键点击 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (target=${e.target && e.target.tagName || '?'}, isTrusted=${e.isTrusted})`);
+    };
+    const onKey = (e) => {
+      if (interacted) return;
+      interacted = true;
+      startFadeGrace();
+      console.log(`[xdex error toast] 检测到键盘按键 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (key=${e.key || '?'}, isTrusted=${e.isTrusted})`);
+    };
+    pointerH = (e) => {
+      if (!armed) return;
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      onPointer(e);
+    };
+    keyH = (e) => {
+      if (!armed) return;
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      onKey(e);
+    };
+    // ★ 提前关闭只认「明确指向本页的操作」：pointerdown / keydown。
+    // 不监听 focusin——发送失败后脚本恢复输入框焦点、输入法切换、Alt+Tab 回窗口等
+    // 都会产生 focusin，会在用户还没看到提示时就把它关掉（实测「红框很快消失」的主因）。
+    document.addEventListener('pointerdown', pointerH, true);
+    document.addEventListener('keydown', keyH, true);
+    armTimer = window.setTimeout(() => { armed = true; }, ERROR_TOAST_ARM_DELAY_MS);
+    // ★ 无操作 30 秒驻留上限（从挂载起算；交互后由 5s 渐隐宽限接管，本计时器被 startFadeGrace 清除）
+    holdTimer = window.setTimeout(() => { dismiss(`无操作到达 ${ERROR_TOAST_MAX_HOLD_MS / 1000} 秒驻留上限，自动消失`); cleanup(); }, ERROR_TOAST_MAX_HOLD_MS);
+    // 清理钩子挂到节点：showImmediateToast 复用它时能立刻停止旧监听/计时器（顶掉语义）
+    el.__xdexToastDismissCleanup = cleanup;
   }
   const Utils = {
       // 逗号(中英)分隔，支持转义 \, \， \\
@@ -517,6 +653,8 @@ function xdexEarlyDarkEnabled() {
       applyImageHideMode: 'default', // default | blur | noimage | tips
       imageViewerSeparators: true, // 阅图模式：显示页码分隔线与“第N页”标识
       enableDraft: true,
+      enableThreadHistory: true,   // 浏览历史：关闭后不再自动记录（已有数据保留，侧边栏入口隐藏）
+      enablePostHistory: true,     // 发言历史：关闭后不再在发送消息后自动记录（手动添加不受影响）
       timeDisplayMode: 'relative', // relative | exact
       extendQuote: true, // 拓展引用格式
       extendQuoteAvailabilityDetection: true, // 检测引用串是否存在
@@ -537,6 +675,9 @@ function xdexEarlyDarkEnabled() {
       blockedKeywords: [],
       favoriteThreads: [],
       subscriptionFeeds: [],    // [{desc, uuid}, ...]
+      // 分组顺序元数据：{ [分组字段名]: { order: [语义键...], at: 时间戳 } }
+      // 用于把「拖拽排序」作为可传播设置随 WebDAV/导入导出同步（静默合并，不触发冲突弹窗）
+      groupOrderMeta: {},
       blockDisplayMode: 'hide'  // fold = 折叠 | hide = 隐藏
     },
     state: {},
@@ -683,16 +824,25 @@ function xdexEarlyDarkEnabled() {
       if (postAfterSelect) {
         postAfterSelect.value = (this.state && this.state.postAfterAction === 'refresh') ? 'refresh' : 'jump';
       }
+      // 快速回复默认模式（跨页/重开面板回填）
+      const replyModeSelect = document.getElementById('sp_replyModeDefault');
+      if (replyModeSelect) {
+        replyModeSelect.value = (this.state && this.state.replyModeDefault === '发串') ? '发串' : '回复';
+      }
+      const replyExtraSelect = document.getElementById('sp_replyExtraDefault');
+      if (replyExtraSelect) {
+        replyExtraSelect.value = (this.state && this.state.replyExtraDefault === '连续') ? '连续' : '临时';
+      }
     },
     init() {
       const saved = GM_getValue(this.key, {});
       const isFirstInit = Object.keys(saved).length === 0; // 判断是否首次初始化
-      console.log('init读取的原始数据:', JSON.stringify(saved));
+      // console.log('init读取的原始数据:', JSON.stringify(saved));
           this.state = Object.assign({}, this.defaults, saved);
           if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
       // 该功能为固定启用项：避免历史配置把它保存为 false 导致下拉无法生效
       this.state.enableImageHideMode = true;
-      console.log('init合并后的state:', JSON.stringify(this.state));
+      // console.log('init合并后的state:', JSON.stringify(this.state));
       // 兼容迁移：屏蔽饼干到组结构
       this.state.markedGroups = spData('normalizeMarkedGroups', this.state.markedGroups);
       this.state.blockedCookies = spData('normalizeBlockedGroups', this.state.blockedCookies);
@@ -708,7 +858,7 @@ function xdexEarlyDarkEnabled() {
           needCleanup = true;
         }
       });
-      console.log('init清理后的state:', JSON.stringify(this.state));
+      // console.log('init清理后的state:', JSON.stringify(this.state));
       // 只在首次初始化或需要清理废弃字段时才保存
       if (isFirstInit || needCleanup) {
         console.log('首次初始化或需要清理，执行保存');
@@ -732,6 +882,21 @@ function xdexEarlyDarkEnabled() {
           try { refreshFilterDisplay(this.state); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
           try { if (typeof applyImageViewerSeparatorSetting === 'function') applyImageViewerSeparatorSetting(); } catch (e) {}
+          // 引用号拓展（跨页同步）：开启时对当前页重跑一次（幂等）
+          try { if (this.state.extendQuote !== false && typeof extendQuote === 'function') extendQuote(document); } catch (e) {}
+          // 发送前确认（跨页同步）：按最新 state 运行时注入/清理串内检查区
+          try {
+            if (this.state.enableCookieSwitch && this.state.enableCookieConfirm) {
+              const _tid = typeof PageType !== 'undefined' && PageType.getThreadId ? PageType.getThreadId(false) : '';
+              const _short = _tid ? String(_tid).slice(0, 8) : '';
+              if (_short) {
+                if (typeof initThreadCookiePref === 'function') initThreadCookiePref(_short);
+                if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(_short);
+              }
+            } else if (typeof clearCookieCheckSwitch === 'function') {
+              clearCookieCheckSwitch();
+            }
+          } catch (e) {}
         }
       });
     },
@@ -1494,6 +1659,8 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar" class="xdex-switch" role="switch"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck" class="xdex-switch" role="switch"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
+                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch" role="switch"><label for="sp_enableThreadHistory"> 浏览历史</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch" role="switch"><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select></div>
                 <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
                 <!-- 以下是默认勾选项不可更改 -->
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_interceptReplyForm" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_interceptReplyForm"> 拦截回复中间页</label><input type="checkbox" id="sp_interceptReplyFormAutoCompress" class="xdex-switch" role="switch"><label for="sp_interceptReplyFormAutoCompress"> 自动压缩图片</label></div>
@@ -1518,8 +1685,6 @@ function xdexEarlyDarkEnabled() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadHistory"> 浏览历史</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select><input type="hidden" name="sp_enablePostHistory" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
@@ -1613,7 +1778,8 @@ function xdexEarlyDarkEnabled() {
                   <div class="sp_fold_head" data-btn="#btn_sp_subscriptionFeeds,#btn_group_subscriptionFeeds"
                       style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;">
                     <span>我的订阅</span>
-                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:auto;" title="保存">${XDEX_ICON_SAVE}</button>
+                    <button id="btn_group_subscriptionFeeds" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="添加订阅号">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_subscriptionFeeds" class="sp_save xdex-btn-hidden xdex-icon-btn" data-id="sp_subscriptionFeeds" style="margin-left:4px;" title="保存">${XDEX_ICON_SAVE}</button>
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div id="subscription-feed-inputs-container"></div>
@@ -1886,7 +2052,14 @@ function xdexEarlyDarkEnabled() {
       $('#sp_panel_tab_slot').off('click', '[data-sp-module]').on('click', '[data-sp-module]', (e) => {
         e.preventDefault();
         logThreadHistory('panel tab clicked', { module: $(e.currentTarget).data('spModule') });
-        setSettingsPanelModule($(e.currentTarget).data('spModule'));
+        const clickedModule = $(e.currentTarget).data('spModule');
+        // 功能关闭时进入对应 tab：error toast 提示不再接受新数据写入（数据仍可查看）
+        if (clickedModule === 'history' && !isThreadHistoryEnabledNow()) {
+          toast('浏览历史已关闭：不会记录新的浏览数据，已有数据仍可查看', 0, { type: 'error', key: 'thread-history-disabled' });
+        } else if (clickedModule === 'posts' && !isPostHistoryEnabledNow()) {
+          toast('发言历史已关闭：不会自动记录新的发言数据，已有数据仍可查看', 0, { type: 'error', key: 'post-history-disabled' });
+        }
+        setSettingsPanelModule(clickedModule);
         if ($(e.currentTarget).data('spModule') === 'history') renderThreadHistoryModuleSoon();
         if ($(e.currentTarget).data('spModule') === 'posts') renderPostHistoryModuleSoon();
         if ($(e.currentTarget).data('spModule') === 'feeds') renderSubscriptionFeedModule();
@@ -1922,7 +2095,6 @@ function xdexEarlyDarkEnabled() {
       this.syncInputs();
       const reloadRequiredSettingKeys = [
         'enableCookieSwitch',
-        'enableCookieConfirm',
         'disableWatermark',
         'enablePaginationDuplication',
         'updatePreviewCookie',
@@ -1931,24 +2103,30 @@ function xdexEarlyDarkEnabled() {
         'enableUpdateCheck',
         'enableAutoCookieRefresh',
         'enableAutoCookieRefreshToast',
-        'interceptReplyFormUnvcode',
-        'interceptReplyFormU200B',
-        'interceptReplyFormAutoCompress',
-        'enableSeamlessPaging',
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
         'enableImageContextMenu',
         'enableLinkBlank',
         'enableAutoUrlLinkify',
         'enableQuotePreview',
+        'toggleSidebar',
+        'enableCustomDarkTheme'
+      ];
+      // 即时保存项：从"刷新提示"清单移出（change 即保存），但「保存并刷新」按钮仍须收集它们，
+      // 保证无论用户是否触发过 change，点击按钮后所有面板修改都在刷新后生效
+      const immediateSaveSettingKeys = [
+        'enableCookieConfirm',
+        'interceptReplyFormUnvcode',
+        'interceptReplyFormU200B',
+        'interceptReplyFormAutoCompress',
+        'disableAutoQuote',
         'extendQuote',
         'extendQuoteAvailabilityDetection',
-        'toggleSidebar',
-        'disableAutoQuote',
-        'enableCustomDarkTheme'
+        'enableSeamlessPaging'
       ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
+        immediateSaveSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
         // 深色模式：布尔开关 → light/dark 语义值
         this.state.enableCustomDarkTheme = $('#sp_enableCustomDarkTheme').is(':checked') ? 'dark' : 'light';
         // 固定启用：不受面板勾选状态影响
@@ -1974,6 +2152,104 @@ function xdexEarlyDarkEnabled() {
       $(reloadRequiredSettingSelector)
         .off('change.xdexReloadSettingSave')
         .on('change.xdexReloadSettingSave', saveReloadRequiredSettingsImmediately);
+      // 历史开关：即时生效（无需刷新）——更新 state + 持久化 + toast + 重渲染侧边栏入口
+      const applyHistoryToggleImmediately = (key, label) => {
+        const checked = $('#sp_' + key).is(':checked');
+        this.state[key] = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        toast(label + (checked ? '已开启' : '已关闭'), 1400, { queue: false, key: 'history-toggle' });
+        try { renderFavoriteThreadsMenu(); } catch (e) {}
+      };
+      $('#sp_enableThreadHistory').off('change.xdexHistoryToggle').on('change.xdexHistoryToggle', () => {
+        applyHistoryToggleImmediately('enableThreadHistory', '浏览历史');
+      });
+      $('#sp_enablePostHistory').off('change.xdexHistoryToggle').on('change.xdexHistoryToggle', () => {
+        applyHistoryToggleImmediately('enablePostHistory', '发言历史');
+      });
+      // ★ 发送链开关：即时保存（消费点每次从 GM 重读：doSubmit / finishSubmitImageProcessing）
+      // ——无需刷新，下次发送即生效；跨页同步由 GM 存储监听自然完成。
+      const saveSendChainToggleImmediately = (key, label) => {
+        const checked = $('#sp_' + key).is(':checked');
+        this.state[key] = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        toast(label + (checked ? '已开启' : '已关闭') + '（下次发送生效）', 1400, { queue: false, key: 'send-chain-toggle' });
+      };
+      const sendChainToggleLabels = {
+        interceptReplyFormUnvcode: 'unvcode',
+        interceptReplyFormU200B: '零宽空格优先',
+        interceptReplyFormAutoCompress: '自动压缩图片'
+      };
+      Object.keys(sendChainToggleLabels).forEach((key) => {
+        $('#sp_' + key).off('change.xdexSendChainToggle').on('change.xdexSendChainToggle', () => {
+          saveSendChainToggleImmediately(key, sendChainToggleLabels[key]);
+        });
+      });
+      // ★ 发送前确认（串内饼干使用情况）：即时保存 + 运行时注入/清理检查区
+      $('#sp_enableCookieConfirm').off('change.xdexCookieConfirmToggle').on('change.xdexCookieConfirmToggle', () => {
+        const checked = $('#sp_enableCookieConfirm').is(':checked');
+        this.state.enableCookieConfirm = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('发送前确认', e); }
+        try {
+          if (checked && this.state.enableCookieSwitch) {
+            const tid = typeof PageType !== 'undefined' && PageType.getThreadId ? PageType.getThreadId(false) : '';
+            const shortTid = tid ? String(tid).slice(0, 8) : '';
+            if (shortTid) {
+              if (typeof initThreadCookiePref === 'function') initThreadCookiePref(shortTid);
+              if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(shortTid);
+            }
+          } else {
+            if (typeof clearCookieCheckSwitch === 'function') clearCookieCheckSwitch();
+          }
+        } catch (e) {}
+        toast('发送前确认' + (checked ? '已开启' : '已关闭') + '（下次发送生效）', 1400, { queue: false, key: 'cookie-confirm-toggle' });
+      });
+      // ★ 快速回复默认模式：即时保存（消费点读 SettingPanel.state：打开表单/切换模式时生效）
+      const saveReplyDefaultImmediately = (key, label, isExtra) => {
+        const val = $('#sp_' + key).val();
+        this.state[key] = val;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        toast(label + '已保存：' + val, 1400, { queue: false, key: 'reply-default-toggle' });
+      };
+      $('#sp_replyModeDefault').off('change.xdexReplyDefault').on('change.xdexReplyDefault', () => {
+        saveReplyDefaultImmediately('replyModeDefault', '板块页默认模式', false);
+      });
+      $('#sp_replyExtraDefault').off('change.xdexReplyDefault').on('change.xdexReplyDefault', () => {
+        saveReplyDefaultImmediately('replyExtraDefault', '回复默认模式', true);
+      });
+      // ★ A 类即时项：消费点运行时读 GM/state，改完即生效
+      // 关闭引用（载入编辑判定读 getFilterConfig()，每次读 GM）——完全即时
+      $('#sp_disableAutoQuote').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        const checked = $('#sp_disableAutoQuote').is(':checked');
+        this.state.disableAutoQuote = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('关闭引用', e); }
+        toast('关闭引用' + (checked ? '已开启' : '已关闭') + '（下次插入引用号时生效）', 1400, { queue: false, key: 'immediate-toggle' });
+      });
+      // 引用号拓展 + 可用性检测：getQuoteAvailabilityState() 每次读最新 state → 新内容即时生效；
+      // 开启时对当前页面重跑一次（幂等）；关闭时当前页已有拓展保留至刷新（无文本备份，不可逆）
+      const applyQuoteTogglesImmediately = (key, label) => {
+        const checked = $('#sp_' + key).is(':checked');
+        this.state[key] = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        try {
+          if (checked && typeof extendQuote === 'function') extendQuote(document);
+          else if (typeof refreshQuoteAvailability === 'function') refreshQuoteAvailability(document);
+        } catch (e) {}
+        toast(label + (checked ? '已开启（已重新渲染当前页面引用号）' : '已关闭（当前页已有拓展将保留至刷新）'), 1400, { queue: false, key: 'immediate-toggle' });
+      };
+      $('#sp_extendQuote').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        applyQuoteTogglesImmediately('extendQuote', '引用号拓展');
+      });
+      $('#sp_extendQuoteAvailabilityDetection').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        applyQuoteTogglesImmediately('extendQuoteAvailabilityDetection', '引用号可用性检测');
+      });
+      // 无缝翻页：右栏「下一页」按钮路径（isSeamlessPagingEnabled 实时读 state）即时生效；
+      // 触底观察器启动期装载，关闭本次不卸载（保留既有行为，toast 说明）
+      $('#sp_enableSeamlessPaging').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        const checked = $('#sp_enableSeamlessPaging').is(':checked');
+        this.state.enableSeamlessPaging = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('无缝翻页', e); }
+        toast('无缝翻页' + (checked ? '已开启（下一页按钮即时生效）' : '已关闭（触底观察器保留至刷新）'), 1400, { queue: false, key: 'immediate-toggle' });
+      });
       // 深色开关：切换时先加页面过渡类保证平滑，样式由 syncInputs/save 回调接管
       $('#sp_enableCustomDarkTheme')
         .off('change.xdexDarkToggle')
@@ -2384,6 +2660,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         e.stopPropagation();
         saveThreadCookieWhitelistGroups();
       });
+      // ===== 分组行拖拽排序注册（拖动结束即保存 + 写入 groupOrderMeta 供跨端传播；失败自动回滚） =====
+      installRowDragSorting({ containerSelector: '#marked-inputs-container', rowSelector: '.marked-row', field: 'markedGroups', onSorted: () => saveMarkedGroups() });
+      installRowDragSorting({ containerSelector: '#blocked-inputs-container', rowSelector: '.blocked-row', field: 'blockedCookies', onSorted: () => saveBlockedGroups() });
+      installRowDragSorting({ containerSelector: '#thread-cookie-whitelist-inputs-container', rowSelector: '.thread-cookie-whitelist-row', field: 'threadCookieWhitelistGroups', onSorted: () => saveThreadCookieWhitelistGroups() });
+      installRowDragSorting({ containerSelector: '#blocked-keyword-inputs-container', rowSelector: '.blocked-keyword-row', field: 'blockedKeywords', onSorted: () => saveBlockedKeywordGroups() });
+      installRowDragSorting({ containerSelector: '#favorite-thread-inputs-container', rowSelector: '.favorite-thread-row', field: 'favoriteThreads', onSorted: () => saveFavoriteThreads() });
+      installRowDragSorting({ containerSelector: '#subscription-feed-inputs-container', rowSelector: '.subscription-feed-row', field: 'subscriptionFeeds', onSorted: () => saveSubscriptionFeeds() });
       const closeMarkedColorPopovers = () => {
         $('#marked-inputs-container .marked-color-popover').hide();
       };
@@ -2861,6 +3144,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, importedSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, importedSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
+        // 顺序传播：按 groupOrderMeta 的 at 新者胜重排六个分组（静默，不弹窗）
+        mergeGroupOrdersInto(result, localSettings, importedSettings);
         return result;
       }
       // WebDAV「保留本地上传」专用：标量项以本地为准（result 以 localSettings 为底），
@@ -2874,6 +3159,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, remoteSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, remoteSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, remoteSettings.threadCookieWhitelistGroups);
+        // 顺序传播：同 full-import，按 groupOrderMeta 的 at 新者胜重排
+        mergeGroupOrdersInto(result, localSettings, remoteSettings);
         return result;
       }
       function mergeThreadHistoryStore(localStore, importedStore) {
@@ -2991,7 +3278,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               name: (newer.name || '').trim() ? newer.name : (localItem.name || remoteItem.name),
             };
           } else if (localItem) {
-            mergedItem = Object.assign({}, localItem, { visitCount: mergedCount });
+            // 远端无此 key（从未有过，或被其他端的裸上传覆盖）时，本地值是唯一真相。
+            // 不能沿用 mergedCount(=0+本地−基线)：已同步过的条目会被算成 0 而清零
+            mergedItem = Object.assign({}, localItem, { visitCount: localCount });
           } else if (remoteItem) {
             mergedItem = Object.assign({}, remoteItem, { visitCount: mergedCount });
           }
@@ -3141,14 +3430,17 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         let overwritten = 0;
         const newRegistry = new Set(getDraftRegistry());
         Object.keys(items).forEach((key) => {
-          const ck = canonicalDraftKey(key);
-          if (!ck) return;
+          const rawPath = String(key || '').slice('xdex_draft:'.length);
+          // ★ 远端键规范化：旧槽（/t/{tid}/page/N 等）并入串级单槽；非串内页（/f/ 等）跳过
+          const canonicalPath = normalizeDraftKeyFromPath(rawPath) || (rawPath.indexOf('/t/') === 0 ? rawPath : '');
+          if (!canonicalPath) return;
+          const ck = getDraftStorageKey(canonicalPath);
           // 远端已删除(账本有) → 压制;
           // 远端无删除账本但本地残留删除账本 → 本地账本失效放行(远端有内容=翻案)
-          if (remoteDeletions[ck]) return;
+          if (remoteDeletions[ck] || remoteDeletions[canonicalDraftKey(key)]) return;
           const clean = normalizeDraftExportText(items[key]);
           if (!clean) return;
-          const existing = readDraftValue(ck.slice('xdex_draft:'.length));
+          const existing = readDraftValue(canonicalPath);
           if (existing === items[key]) return;
           if (existing) overwritten++;
           else imported++;
@@ -3264,7 +3556,17 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           let mode = 'merge';
           if (options.threadHistoryMode === 'webdav-delta') {
             // WebDAV：基于基线计算独立贡献，不直接累加
-            const baselines = getWebdavHistoryBaselines();
+            let baselines = getWebdavHistoryBaselines();
+            // 迁移兜底：基线从未建立（功能首次引入/基线丢失）但本端此前同步过时，本地存储已是
+            // 历史合并结果；若按 baseline=0 计算，整份旧计数会被当成新增，导致各端逐轮倍增
+            if (!baselines.threadHistory) {
+              let syncedBefore = 0;
+              try { syncedBefore = Number((GM_getValue(WEBDAV_CONFIG_KEY, null) || {}).lastSyncAt) || 0; } catch (e) {}
+              if (syncedBefore > 0) {
+                baselines = saveWebdavHistoryBaselinesFromStore(local, baselines);
+                console.log('[webdav] 基线缺失且本端曾同步过：已按当前本地值重建基线，避免旧计数被计为新增');
+              }
+            }
             merged = mergeThreadHistoryStoreWebdav(local, normalizeThreadHistoryStore(payload.threadHistory), baselines);
             merged = setThreadHistoryStore(merged);
             saveWebdavHistoryBaselinesFromStore(merged, baselines);
@@ -3744,8 +4046,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
-        sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式',
-        sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式',
+        sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式。关闭后不再记录新的浏览数据（已有数据保留），侧边栏入口隐藏',
+        sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式。关闭后不再在发送消息后自动记录（手动添加不受影响，已有数据保留），侧边栏入口隐藏',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧图标按钮可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
         sp_imageViewerSeparators: '在各页图片之间显示红色分隔线与“第N页”页码标识；关闭以获得更纯净的阅图体验',
@@ -3899,6 +4201,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
         'enableImageContextMenu',
+        'enableThreadHistory',
+        'enablePostHistory',
         'enableLinkBlank',
         'enableAutoUrlLinkify',
         'enableQuotePreview',
@@ -4142,8 +4446,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="thread-cookie-whitelist-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="thread-cookie-whitelist-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.25fr) minmax(0,1.35fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="thread-cookie-whitelist-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="thread-cookie-whitelist-threads-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号1,串号2" value="${Utils.escapeHTML ? Utils.escapeHTML(threadText) : threadText}">
           <input class="thread-cookie-whitelist-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
@@ -4154,8 +4459,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-input" style="width:100%;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${placeholder}" value="${Utils.escapeHTML ? Utils.escapeHTML(value || '') : (value || '')}">
         </div>
       </div>`;
@@ -4178,8 +4484,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="blocked-keyword-row" style="position:relative;margin:10px 0 8px;" data-regex="${regexOn ? '1' : '0'}">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="blocked-keyword-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <div style="display:flex;align-items:center;gap:8px;">
             <input class="blocked-keyword-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="${safePlaceholder}" value="${safeValue}">
             <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;">
@@ -4189,6 +4496,244 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           </div>
         </div>
       </div>`;
+  }
+  // ===== 分组顺序传播（拖拽排序作为可传播设置） =====
+  // 设计：state.groupOrderMeta[分组字段] = { order: [语义键...], at: 时间戳 }
+  //  - 语义键与该分组合并函数的匹配键一致（双键：desc 优先，cookies 兜底）
+  //  - 合并规则：两端都有则 at 新者胜；order 中不存在的项追加末尾；已失效的键丢弃
+  //  - 静默传播：groupOrderMeta 在 WEBDAV_SETTINGS_SKIP_KEYS 中，不触发冲突弹窗
+  const GROUP_ORDER_FIELDS = ['markedGroups', 'blockedCookies', 'threadCookieWhitelistGroups', 'blockedKeywords', 'favoriteThreads', 'subscriptionFeeds'];
+  // 分组类型 → 键提取（与合并函数保持一致）
+  function groupOrderKeysOf(field, item) {
+    if (!item || typeof item !== 'object') return [];
+    const keys = [];
+    const desc = String(item.desc || item.name || '').trim();
+    if (desc) keys.push('d:' + desc);
+    // 各分组的存储结构（与 collect/save 函数写入的字段一致）：
+    //   markedGroups/blockedCookies: {desc, color?, cookies:[...]}
+    //   threadCookieWhitelistGroups: {desc, threads:[...], cookies:[...]}
+    //   blockedKeywords:             {value, regex}
+    //   favoriteThreads:             {desc, threadId}
+    //   subscriptionFeeds:           {desc, uuid}
+    const joinList = (v) => (Array.isArray(v) ? v : String(v == null ? '' : v).split(/\s*,\s*/))
+      .map((x) => String(x).trim()).filter(Boolean).join(',');
+    if (field === 'markedGroups' || field === 'blockedCookies') {
+      const ck = joinList(item.cookies);
+      if (ck) keys.push('c:' + ck);
+    } else if (field === 'threadCookieWhitelistGroups') {
+      const th = joinList(item.threads);
+      if (th) keys.push('t:' + th);
+    } else if (field === 'favoriteThreads') {
+      const tid = String(item.threadId || '').trim();
+      if (tid) keys.push('i:' + tid);
+    } else if (field === 'subscriptionFeeds') {
+      const uuid = String(item.uuid || '').trim();
+      if (uuid) keys.push('u:' + uuid);
+    } else if (field === 'blockedKeywords') {
+      const v = String(item.value || '').trim();
+      if (v) keys.push('k:' + (item.regex ? 'r:' : '') + v);
+    }
+    return keys;
+  }
+  // 数组 → 键序列（取每项的首个可用键，用于写入 order）
+  function groupOrderSnapshot(field, arr) {
+    const out = [];
+    (Array.isArray(arr) ? arr : []).forEach((item) => {
+      const keys = groupOrderKeysOf(field, item);
+      if (keys.length) out.push(keys[0]);
+    });
+    return out;
+  }
+  // 按 order 键序列重排数组：命中的按 order 排序，未命中的追加末尾（保持原相对顺序）
+  function applyGroupOrder(field, arr, order) {
+    const list = Array.isArray(arr) ? arr.slice() : [];
+    if (!Array.isArray(order) || !order.length) return list;
+    const used = new Set();
+    const result = [];
+    order.forEach((key) => {
+      for (let i = 0; i < list.length; i++) {
+        if (used.has(i)) continue;
+        const keys = groupOrderKeysOf(field, list[i]);
+        // 双键匹配：order 中的键命中该项任一键即可（兼容「后补备注」后键变化）
+        if (keys.indexOf(key) !== -1) { used.add(i); result.push(list[i]); return; }
+      }
+    });
+    list.forEach((item, i) => { if (!used.has(i)) result.push(item); });
+    return result;
+  }
+  // 合并两端顺序元数据：at 新者胜；返回 {order, at} 或 null（两端都无）
+  function mergeGroupOrderMeta(localMeta, remoteMeta) {
+    const l = localMeta && typeof localMeta === 'object' ? localMeta : null;
+    const r = remoteMeta && typeof remoteMeta === 'object' ? remoteMeta : null;
+    if (!l && !r) return null;
+    if (!l) return r;
+    if (!r) return l;
+    const lat = Number(l.at) || 0;
+    const rat = Number(r.at) || 0;
+    if (rat > lat) return r;
+    if (lat > rat) return l;
+    // 时间相同：优先更长（覆盖更多项）的序列，保证结果稳定
+    const lo = Array.isArray(l.order) ? l.order : [];
+    const ro = Array.isArray(r.order) ? r.order : [];
+    return ro.length > lo.length ? r : l;
+  }
+  // 对六个分组字段统一应用顺序合并（local/remote 均为 settings 对象）
+  function mergeGroupOrdersInto(result, localSettings, remoteSettings) {
+    const localMeta = (localSettings && localSettings.groupOrderMeta) || {};
+    const remoteMeta = (remoteSettings && remoteSettings.groupOrderMeta) || {};
+    const mergedMeta = {};
+    GROUP_ORDER_FIELDS.forEach((field) => {
+      const picked = mergeGroupOrderMeta(localMeta[field], remoteMeta[field]);
+      if (picked) mergedMeta[field] = picked;
+      if (result[field] && picked) {
+        result[field] = applyGroupOrder(field, result[field], picked.order);
+      }
+    });
+    if (Object.keys(mergedMeta).length) result.groupOrderMeta = mergedMeta;
+  }
+
+  // ===== 分组行拖拽排序（标记/屏蔽饼干、只看饼干、屏蔽关键词、常用串、订阅号共用） =====
+  // 设计：
+  //  - 手柄只在行左上角「六点」区域响应，输入框/色块/删除按钮完全不受影响；
+  //  - 拖动中实时 insertBefore 重排（视觉即时反馈），松手后重编号徽标并调 save 回调落盘；
+  //  - save 失败（校验不过）时回调返回 false → 调用方负责 syncInputs() 回滚到 state 顺序；
+  //  - 与 beginMarkedColorDrag 并存：事件命名空间独立（.rowDrag vs .markedColorDrag）。
+  function buildRowDragHandleHtml() {
+    return `<span class="xdex-row-drag-handle" title="拖动排序" style="position:absolute;left:4px;top:50%;transform:translateY(-50%);width:14px;height:22px;display:flex;align-items:center;justify-content:center;cursor:grab;z-index:2;color:#8a7566;opacity:.8;user-select:none;touch-action:none;">${XDEX_SVG_GRIP}</span>`;
+  }
+  // 行内序号徽标重写（拖动后调用；仅改显示文本，存储中无序号字段）
+  function renumberRowBadges($container, rowSelector) {
+    $container.find(rowSelector).each(function (idx) {
+      const $row = $(this);
+      const $badge = $row.children('span').first();
+      if ($badge.length && /^#\d+$/.test(($badge.text() || '').trim())) $badge.text('#' + (idx + 1));
+    });
+  }
+  // 从行 DOM 提取语义键（与 groupOrderKeysOf 的格式一致：d:/c:/t:/i:/u:/k:）
+  // 用于拖拽结束时按新 DOM 顺序记录 groupOrderMeta（此刻 state 仍是旧顺序）
+  // class 名与各 collect 函数读取的输入框保持一致
+  function rowOrderKeyFromDom(field, $row) {
+    try {
+      let desc = '';
+      if (field === 'markedGroups') desc = String($row.find('.marked-desc-input').val() || '').trim();
+      else if (field === 'blockedCookies') desc = String($row.find('.blocked-desc-input').val() || '').trim();
+      else if (field === 'threadCookieWhitelistGroups') desc = String($row.find('.thread-cookie-whitelist-desc-input').val() || '').trim();
+      else if (field === 'blockedKeywords') desc = String($row.find('.blocked-keyword-desc-input').val() || '').trim();
+      else if (field === 'favoriteThreads') desc = String($row.find('.favorite-thread-desc-input').val() || '').trim();
+      else if (field === 'subscriptionFeeds') desc = String($row.find('.subscription-feed-desc-input').val() || '').trim();
+      if (desc) return 'd:' + desc;
+      if (field === 'markedGroups' || field === 'blockedCookies') {
+        const sel = field === 'markedGroups' ? '.marked-cookies-input' : '.blocked-cookies-input';
+        const ck = String($row.find(sel).val() || '').trim().split(/\s*,\s*/).filter(Boolean).join(',');
+        if (ck) return 'c:' + ck;
+      } else if (field === 'threadCookieWhitelistGroups') {
+        const t = String($row.find('.thread-cookie-whitelist-threads-input').val() || '').trim().split(/\s*,\s*/).filter(Boolean).join(',');
+        if (t) return 't:' + t;
+      } else if (field === 'favoriteThreads') {
+        // 与 collectFavoriteThreadsFromPanel 一致：用规范化后的 threadId（DOM 里是原始输入）
+        const raw = String($row.find('.favorite-thread-id-input').val() || '').trim();
+        let tid = raw;
+        try { if (typeof normalizeFavoriteThreadInput === 'function') tid = normalizeFavoriteThreadInput(raw) || raw; } catch (e) {}
+        if (tid) return 'i:' + tid;
+      } else if (field === 'subscriptionFeeds') {
+        const u = String($row.find('.subscription-feed-uuid-input').val() || '').trim();
+        if (u) return 'u:' + u;
+      } else if (field === 'blockedKeywords') {
+        const v = String($row.find('.blocked-keyword-input').val() || '').trim();
+        const isRegex = $row.attr('data-regex') === '1';
+        if (v) return 'k:' + (isRegex ? 'r:' : '') + v;
+      }
+    } catch (e) {}
+    return null;
+  }
+  // 通用拖拽安装：containerSelector 内 rowSelector 行按手柄拖动排序
+  // field:    分组字段名（写入 state.groupOrderMeta[field] 供跨端传播顺序）
+  // onSorted: 排序落盘回调，返回 false 表示失败（由调用方回滚）
+  function installRowDragSorting({ containerSelector, rowSelector, field, onSorted }) {
+    const $container = $(containerSelector);
+    if (!$container.length) return;
+    $container.off('mousedown.rowDrag touchstart.rowDrag', '.xdex-row-drag-handle')
+      .on('mousedown.rowDrag touchstart.rowDrag', '.xdex-row-drag-handle', function (startEvent) {
+        const isTouch = startEvent.type.indexOf('touch') === 0;
+        if (!isTouch && startEvent.button !== 0) return; // 仅左键
+        startEvent.preventDefault();
+        startEvent.stopPropagation();
+        const $handle = $(this);
+        const $row = $handle.closest(rowSelector);
+        if (!$row.length || $container.find(rowSelector).length < 2) return; // 单行无需排序
+        const rowHeight = $row.outerHeight(true);
+        const dragOffsetY = (isTouch
+          ? (startEvent.originalEvent.touches[0].clientY)
+          : startEvent.clientY) - $row[0].getBoundingClientRect().top;
+        $row.css({ opacity: 0.55, boxShadow: '0 6px 16px rgba(0,0,0,0.25)' });
+        $handle.css('cursor', 'grabbing');
+        $('body').css('user-select', 'none');
+
+        const moveNs = isTouch ? 'touchmove.rowDrag' : 'mousemove.rowDrag';
+        const endNs = isTouch ? 'touchend.rowDrag touchcancel.rowDrag' : 'mouseup.rowDrag';
+        const getPoint = (evt) => {
+          const oe = evt.originalEvent || evt;
+          const touch = oe.touches && oe.touches[0];
+          const changed = oe.changedTouches && oe.changedTouches[0];
+          return touch || changed || oe;
+        };
+        const onMove = (evt) => {
+          evt.preventDefault();
+          const point = getPoint(evt);
+          const y = point.clientY;
+          // 以「被拖行中点」判定目标插入位置
+          const draggedMid = y - dragOffsetY + rowHeight / 2;
+          let $target = null;
+          $container.find(rowSelector).each(function () {
+            if (this === $row[0]) return;
+            const rect = this.getBoundingClientRect();
+            if (draggedMid < rect.top + rect.height / 2) { $target = $(this); return false; }
+          });
+          if ($target && $target.length) {
+            if ($target[0] !== $row[0].nextElementSibling) $target.before($row);
+          } else {
+            $container.append($row);
+          }
+        };
+        const onEnd = () => {
+          $(document).off('.rowDrag');
+          $row.css({ opacity: '', boxShadow: '' });
+          $handle.css('cursor', 'grab');
+          $('body').css('user-select', '');
+          renumberRowBadges($container, rowSelector);
+          // 先按新 DOM 顺序记录 groupOrderMeta（save 成功后即随设置落盘；失败则随后回滚）
+          let wroteOrder = false;
+          if (field && typeof SettingPanel !== 'undefined' && SettingPanel.state) {
+            try {
+              // ★ 必须从 DOM 提取（此刻 state[field] 仍是旧顺序）；
+              //   每行的语义键从行内输入框读取，与 groupOrderKeysOf 的键格式保持一致
+              const order = [];
+              $container.find(rowSelector).each(function () {
+                const key = rowOrderKeyFromDom(field, $(this));
+                if (key) order.push(key);
+              });
+              if (order.length) {
+                if (!SettingPanel.state.groupOrderMeta || typeof SettingPanel.state.groupOrderMeta !== 'object') {
+                  SettingPanel.state.groupOrderMeta = {};
+                }
+                SettingPanel.state.groupOrderMeta[field] = { order, at: Date.now() };
+                wroteOrder = true;
+              }
+            } catch (e) {}
+          }
+          if (typeof onSorted === 'function') {
+            const ok = onSorted();
+            if (ok === false) {
+              // 校验失败：save 未写入也未重绘 → 回滚 DOM 与顺序元数据到 state 顺序
+              if (wroteOrder && field && SettingPanel.state.groupOrderMeta) {
+                try { delete SettingPanel.state.groupOrderMeta[field]; } catch (e) {}
+              }
+              try { SettingPanel.syncInputs(); } catch (e) {}
+            }
+          }
+        };
+        $(document).off('.rowDrag').on(moveNs, onMove).on(endNs, onEnd);
+      });
   }
   function buildCookieGroupTwoFieldRowHtml(type, index, group = {}) {
     const desc = group.desc || '';
@@ -4236,8 +4781,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
     return `
       <div class="${type}-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="${type}-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:${gridTemplateColumns};gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="${type}-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="${type}-cookies-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="3-8位饼干ID1,饼干ID2" value="${Utils.escapeHTML ? Utils.escapeHTML(cookieText) : cookieText}">
 ${markedSwatchHtml}
@@ -5640,7 +6186,9 @@ ${markedSwatchHtml}
         dropdown.__focusBackTarget = focusBackTarget || dropdown.__focusBackTarget || document.activeElement || null;
         dropdown.value = item.dataset.value || '';
         dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+        // 先移除菜单再交还焦点：菜单若仍在文档中，焦点会落到即将被移除的按钮上
         closeCookieShortcutMenu();
+        if (typeof restorePostTextareaFocus === 'function') restorePostTextareaFocus();
       });
       menu.appendChild(item);
     });
@@ -5682,15 +6230,24 @@ ${markedSwatchHtml}
     logCookieDropdownShortcutStage('custom-menu-opened', { options: options.length, value: dropdown.value });
     return true;
   }
+  // 把焦点交回发帖输入框（多处共用：切换饼干成功后、快捷菜单选择瞬间、弹窗取消等）
+  function restorePostTextareaFocus() {
+    const textarea = document.querySelector('textarea.h-post-form-textarea');
+    if (textarea && typeof textarea.focus === 'function') {
+      try { textarea.focus(); } catch (e) {}
+    }
+  }
   function switch_cookie(cookie, opts = {}){
     const silent = !!opts.silent;
     const onDone = typeof opts.onDone === 'function' ? opts.onDone : null;
     const onFail = typeof opts.onFail === 'function' ? opts.onFail : null;
     if(!cookie || !cookie.id) {
-      if (!silent) toast('无效的饼干信息！');
+      if (!silent) toast('无效的饼干信息！', 0, { type: 'error' });
       onFail && onFail();
       return;
     }
+    // ★ 选择即回归焦点：不等网络往返，避免换饼期间（网络延迟时）阻塞用户输入
+    if (opts.focusBackNow) restorePostTextareaFocus();
     $.get(`https://www.nmbxd1.com/Member/User/Cookie/switchTo/id/${cookie.id}.html`)
       .done(()=>{
         if (!silent) toast('切换成功! 当前饼干为 '+abbreviateName(cookie.name));
@@ -5700,17 +6257,12 @@ ${markedSwatchHtml}
         updateDropdownUI(getCookiesList());
         removeDateString();
         updatePreviewCookieId();
-        // 切换成功后，将焦点移回到 textarea
-        const textarea = document.querySelector('textarea.h-post-form-textarea');
-        if (textarea) {
-          setTimeout(() => {
-            textarea.focus();
-          }, 100); // 延迟100ms确保UI更新完成
-        }
+        // 切换成功后，将焦点移回到 textarea（兜底：即时恢复可能被后续 UI 更新打断）
+        setTimeout(() => { restorePostTextareaFocus(); }, 100);
         onDone && onDone(cookie);
       })
       .fail(()=>{
-        if (!silent) toast('切换失败，请重试');
+        if (!silent) toast('切换失败，请重试', 0, { type: 'error' });
         onFail && onFail();
       });
   }
@@ -5747,7 +6299,7 @@ ${markedSwatchHtml}
       method:'GET',
       url:'https://www.nmbxd1.com/Member/User/Cookie/index.html',
       onload: async r=>{
-        if(r.status!==200){ toast('刷新失败 HTTP '+r.status); return cb&&cb(); }
+        if(r.status!==200){ toast('刷新失败 HTTP '+r.status, 0, { type: 'error' }); return cb&&cb(); }
         const doc=new DOMParser().parseFromString(r.responseText,'text/html');
         const rows=doc.querySelectorAll('tbody>tr'), list={};
         rows.forEach(row=>{
@@ -5821,7 +6373,7 @@ ${markedSwatchHtml}
         cb&&cb();
       },
       onerror:()=>{
-        toast('刷新失败，网络错误'); cb&&cb();
+        toast('刷新失败，网络错误', 0, { type: 'error' }); cb&&cb();
       }
     });
   }
@@ -6285,8 +6837,9 @@ ${markedSwatchHtml}
       const sel = $(this).val();
       const l = getCookiesList();
       if(!Object.keys(l).length) return showLoginPrompt();
-      if(!sel) return toast('请选择饼干');
-      l[sel] ? switch_cookie(l[sel]) : toast('饼干信息无效');
+      if(!sel) return toast('请选择饼干', 0, { type: 'error' });
+      // focusBackNow：选择瞬间即交还焦点，不等 switch_cookie 的网络往返
+      l[sel] ? switch_cookie(l[sel], { focusBackNow: true }) : toast('饼干信息无效', 0, { type: 'error' });
       scheduleCookieDropdownFocusRestore(this, 120);
       if (!this.__focusBackTarget) delete this.__openedValue;
     });
@@ -6578,6 +7131,7 @@ ${markedSwatchHtml}
           titlePag = pag;
           titlePag.dataset.xdexTitleClone = '1';
         } else {
+          console.info('[X岛-EX][页首页码] 去重：移除多余标题页码栏 (prev=' + (pag.previousElementSibling ? pag.previousElementSibling.tagName + '.' + String(pag.previousElementSibling.className).split(' ')[0] : 'null') + ')');
           pag.remove();
         }
       });
@@ -6594,6 +7148,7 @@ ${markedSwatchHtml}
       titlePag = sourcePags[0].cloneNode(true);
       titlePag.dataset.xdexTitleClone = '1';
       tit.parentNode.insertBefore(titlePag, tit.nextSibling);
+      console.info('[X岛-EX][页首页码] 已创建页首页码栏 (来源=' + (sourcePags[0].previousElementSibling ? sourcePags[0].previousElementSibling.tagName : '?') + ')');
     }
     if (titlePag && titlePag.isConnected) {
       rebuildPaginationPages(titlePag);
@@ -7031,6 +7586,14 @@ ${markedSwatchHtml}
     try {
       if (typeof tryReplaceRightSidebarEarly === 'function') tryReplaceRightSidebarEarly();
     } catch (e) {}
+    try {
+      // tag 30：测试板块侧边栏入口（每次页面加载 / 局部增强都会补挂，含观察器兜底）
+      if (typeof installTestBoardSidebarLinkObserver === 'function') installTestBoardSidebarLinkObserver();
+      // tag 30：测试版主串列表守护（抢在站点内联脚本移除前装好 removedNodes 守护器）
+      if (typeof installTestBoardListGuard === 'function') installTestBoardListGuard();
+      // tag 30：测试版主串列表恢复兜底（守护器失手时网络拉取放回）
+      if (typeof restoreTestBoardThreadList === 'function') restoreTestBoardThreadList();
+    } catch (e) {}
     // 顶栏刷新点击：越早越好，不依赖 batch2
     try {
       if (typeof installOverrideTopImageClickEarly === 'function') installOverrideTopImageClickEarly();
@@ -7217,7 +7780,19 @@ ${markedSwatchHtml}
     }
   }
   const startupPerfDebug = (() => {
-    const AUTO_COLLECTION_ENABLED = false;
+    // 现场取证开关：默认关闭（关闭时 record/mark 全是空调用，无额外开销）。
+    // 开启方式（无需改源码）：
+    //   localStorage.setItem('xdexPerfCollect','1') 后刷新页面；或控制台执行 __xdexPerfCollectOn() 再刷新
+    // 关闭：__xdexPerfCollectOff() 后刷新，或 localStorage.removeItem('xdexPerfCollect')
+    let AUTO_COLLECTION_ENABLED = false;
+    try {
+      AUTO_COLLECTION_ENABLED = (typeof localStorage !== 'undefined' && localStorage.getItem('xdexPerfCollect') === '1');
+    } catch (e) {}
+    try {
+      window.__xdexPerfCollectOn = () => { try { localStorage.setItem('xdexPerfCollect', '1'); } catch (e) {} console.log('[XDEX perf] 采集已开启，请刷新页面后复现操作'); };
+      window.__xdexPerfCollectOff = () => { try { localStorage.removeItem('xdexPerfCollect'); } catch (e) {} console.log('[XDEX perf] 采集已关闭，请刷新页面'); };
+      window.__xdexPerfCollectState = () => ({ enabled: AUTO_COLLECTION_ENABLED, report: 'window.__xdexStartupPerfReport()', reset: 'window.__xdexStartupPerfReset()', capture: 'window.__xdexPerfCapture("场景名")', list: 'window.__xdexPerfRounds()', print: 'window.__xdexPerfPrint()', clear: 'window.__xdexPerfClear()' });
+    } catch (e) {}
     const LONG_TASK_MS = 50;
     const LOG_TASK_MS = 16;
     const AUTO_REPORT_AFTER_MS = 60000;
@@ -7276,7 +7851,19 @@ ${markedSwatchHtml}
       }
       return event;
     }
+    // ★ 零开销快路径：关闭采集时直接转发调用，不读时钟、不构造 meta。
+    // 热路径（滚动/观察器回调）上的埋点全部依赖这条早退，否则每帧两次 performance.now 会变成常驻成本。
+    function begin() {
+      return AUTO_COLLECTION_ENABLED ? now() : null;
+    }
+    // 与 begin 配对：token 为 null（未开启采集）时立即返回；
+    // 用 `token == null` 而非 falsy 判断，避免 performance.now() 早期返回 0 被误判为「未计时」
+    function finish(label, token, meta) {
+      if (!AUTO_COLLECTION_ENABLED || token == null) return;
+      record(label, now() - token, meta);
+    }
     function measure(label, fn, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return fn();
       const started = now();
       try {
         return fn();
@@ -7285,6 +7872,7 @@ ${markedSwatchHtml}
       }
     }
     async function measureAsync(label, fn, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return fn();
       const started = now();
       try {
         return await fn();
@@ -7293,6 +7881,7 @@ ${markedSwatchHtml}
       }
     }
     function measureObserver(label, mutations, fn, meta) {
+      if (!AUTO_COLLECTION_ENABLED) return fn();
       let result;
       const started = now();
       try {
@@ -7368,6 +7957,147 @@ ${markedSwatchHtml}
       console.log('[XDEX startup perf] reset');
       return 'reset';
     }
+    // ==================== 场景记录与导出（真机测量用） ====================
+    // 设计：每轮测量 = 一次 reset → 一次操作 → 一次 capture(name) 留档。
+    // 留档只做「归档 + 精简」，不改变统计口径；导出的 JSON 用于跨版本/跨场景对照。
+    const rounds = [];
+    // 只保留判读所需的字段，避免导出体积随 events/browserEvents 膨胀
+    const MEASURED_LABELS = [
+      'hdLazy.onScrollFrame', 'hdLazy.measureQueue',                   // D：滚动帧内成本
+      'seamless.runUserScrollFrame',                                    // D：无缝翻页判定
+      'applyPageEnhancements.total', 'applyPageEnhancements.syncPreprocess', // A/B/C/D：增强收口
+      'refresh.checkNext.syncDom',                                      // C：刷新按钮 / 末页旁路
+      'refresh.postReply.syncDom',                                      // A：串内页发送后刷新
+      // B：板块页/时间线发送后增量刷新（Step 5-8 的同步 DOM 工作与两处全文档调用）
+      'boardQuickReply.total',
+      'boardQuickReply.step5.measure', 'boardQuickReply.step6.insert', 'boardQuickReply.step7.compensate',
+      'boardQuickReply.step8.post', 'boardQuickReply.buildNode',
+      'boardQuickReply.deferred.refreshFilter', 'boardQuickReply.deferred.enablePostExpand', 'boardQuickReply.deferred.total',
+      // B：await 分段（区分「网络耗时」与「桥接阻塞」——整链 7.5s 而同步 DOM 仅 ~28ms）
+      'boardQuickReply.await.p1', 'boardQuickReply.await.tail', 'boardQuickReply.await.prev',
+      'refreshFilterDisplay', 'applyFilters',                           // 过滤（作用域是否放大）
+      'seamless.loadNext.total', 'seamless.loadNext.applyPageEnhancements',
+      'seamless.loadNextBoard.total', 'seamless.loadNextBoard.applyPageEnhancements',
+      'enableHDImageAndLayoutFix', 'enableHDImageAndLayoutFix.pending',
+      'highlightPO', 'initContent'
+    ];
+    function collectScenario(round) {
+      const observers = [];
+      let observerTotal = 0;
+      round.stats.forEach(s => {
+        if (s.label.indexOf('observer.create:') === 0) {
+          observers.push({ name: s.label.slice('observer.create:'.length), count: s.count });
+          observerTotal += s.count;
+        }
+      });
+      const frames = round.browserEvents.filter(e => e.label === 'browser:long-animation-frame');
+      const blocking = frames.reduce((a, e) => a + (e.blockingDuration || 0), 0);
+      // ★ 长帧归因汇总：按脚本来源聚合 duration 与 forcedStyleAndLayout，
+      // 定位「未归因阻塞」属于哪个脚本/函数（LoAF scripts[] 提供）
+      const scriptAgg = new Map();
+      frames.forEach(f => (f.scripts || []).forEach(s => {
+        const key = `${s.src || '?'}::${s.fn || s.invoker || '?'}`;
+        const acc = scriptAgg.get(key) || { src: s.src, fn: s.fn, invoker: s.invoker, duration: 0, forcedStyleAndLayout: 0, times: 0 };
+        acc.duration += s.duration || 0;
+        acc.forcedStyleAndLayout += s.forcedStyleAndLayout || 0;
+        acc.times += 1;
+        scriptAgg.set(key, acc);
+      }));
+      const topScripts = Array.from(scriptAgg.values())
+        .map(s => ({ ...s, duration: Number(s.duration.toFixed(2)), forcedStyleAndLayout: Number(s.forcedStyleAndLayout.toFixed(2)) }))
+        .sort((a, b) => (b.duration + b.forcedStyleAndLayout) - (a.duration + a.forcedStyleAndLayout))
+        .slice(0, 12);
+      return {
+        // ★ 关键字段前置：控制台复制时容易从尾部截断，而 blocking/LoAF 归因是排障的核心依据
+        scenario: round.scenario,
+        blockingDurationMs: Number(blocking.toFixed(2)),
+        longAnimationFrames: frames.length,
+        longTasks: round.browserEvents.filter(e => e.label === 'browser:longtask').length,
+        topLoafScripts: topScripts,
+        observerCreates: observers,
+        observerCreateTotal: observerTotal,
+        at: new Date(round.at).toISOString(),
+        version: round.version,
+        page: round.page,
+        elapsedMs: round.elapsed,
+        measured: round.stats.filter(s => MEASURED_LABELS.indexOf(s.label) !== -1),
+        allLabels: round.stats.map(s => ({ label: s.label, count: s.count, total: s.total, max: s.max }))
+      };
+    }
+    // capture(name)：把当前累计统计按场景名留档并清空，返回该场景的精简摘要
+    function capture(name) {
+      if (!name) {
+        console.warn('[XDEX perf] capture(name) 需要场景名，例如 capture("D-scroll")');
+        return null;
+      }
+      const round = {
+        scenario: name,
+        at: Date.now(),
+        version: (typeof VERSION !== 'undefined' ? VERSION : 'unknown'),
+        page: location.pathname + location.search,
+        stats: report({ table: false }).stats,
+        elapsed: Number((now() - startedAt).toFixed(2)),
+        browserEvents: browserEvents.slice()
+      };
+      const scenario = collectScenario(round);
+      rounds.push(scenario);
+      reset();
+      console.log(`[XDEX perf] 已留档「${name}」：${scenario.measured.length} 个测量标签，`
+        + `${scenario.observerCreateTotal} 个观察器创建，${scenario.longAnimationFrames} 个长帧`);
+      // ★ 单行摘要：控制台复制大对象时常被截断，这里把判读所需的三个数压缩成一行
+      const hot = scenario.measured.slice(0, 3)
+        .map(m => `${m.label.replace(/^boardQuickReply\./, '')}=${m.total}`).join(' ');
+      console.log(`[XDEX perf] 摘要 blocking=${scenario.blockingDurationMs}ms 长帧=${scenario.longAnimationFrames}`
+        + ` 观察器=${scenario.observerCreateTotal} | ${hot}`);
+      if (scenario.topLoafScripts.length) {
+        console.log('[XDEX perf] 长帧归因 TOP（duration+forcedLayout，含强制布局）:');
+        console.table(scenario.topLoafScripts.map(s => ({
+          src: s.src, fn: s.fn || s.invoker, times: s.times,
+          duration: s.duration, forcedLayout: s.forcedStyleAndLayout
+        })));
+      }
+      console.table(scenario.measured.map(m => ({ label: m.label, count: m.count, total: m.total, max: m.max })));
+      return scenario;
+    }
+    // export()：返回全部留档的 JSON 字符串（便于整段复制）；dumps 保留挂到 window 供 DevTools copy()
+    function exportAll() {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        userAgent: (typeof navigator !== 'undefined' && navigator.userAgent) || '',
+        viewport: (typeof window !== 'undefined') ? { w: window.innerWidth, h: window.innerHeight } : null,
+        rounds
+      };
+      const json = JSON.stringify(payload, null, 2);
+      try { window.__xdexPerfDump = json; } catch (e) {}
+      return json;
+    }
+    // print()：把 JSON 直接展开输出到控制台（剪贴板 API 需用户手势/受页面策略限制，不可靠，故不采用）。
+    // 同时输出对象本体：DevTools 里可右键「Copy object」拿到结构化副本。
+    function printAll() {
+      const json = exportAll();
+      console.log('[XDEX perf] 导出 JSON（%d bytes，可直接从下方选中复制）：', json.length);
+      console.log(json);
+      console.log('[XDEX perf] 结构化对象（右键可 Copy object）：');
+      console.log(JSON.parse(json));
+      return json;
+    }
+    function listRounds() {
+      console.table(rounds.map(r => ({
+        scenario: r.scenario,
+        version: r.version,
+        page: r.page,
+        measured: r.measured.length,
+        observers: r.observerCreateTotal,
+        longFrames: r.longAnimationFrames,
+        blockingMs: r.blockingDurationMs
+      })));
+      return rounds;
+    }
+    function clearRounds() {
+      rounds.length = 0;
+      console.log('[XDEX perf] 留档已清空');
+      return 'cleared';
+    }
     function installBrowserObservers() {
       if (typeof PerformanceObserver === 'undefined' || !PerformanceObserver.supportedEntryTypes) return;
       const supported = PerformanceObserver.supportedEntryTypes;
@@ -7404,7 +8134,17 @@ ${markedSwatchHtml}
                 duration: Number(entry.duration.toFixed(2)),
                 renderStart: entry.renderStart ? Number(entry.renderStart.toFixed(2)) : 0,
                 styleAndLayoutStart: entry.styleAndLayoutStart ? Number(entry.styleAndLayoutStart.toFixed(2)) : 0,
-                blockingDuration: entry.blockingDuration ? Number(entry.blockingDuration.toFixed(2)) : 0
+                blockingDuration: entry.blockingDuration ? Number(entry.blockingDuration.toFixed(2)) : 0,
+                // ★ 归因：LoAF 的 scripts[] 给出每段脚本的 URL/入口函数与其中「强制样式与布局」耗时。
+                // 590ms 级未归因阻塞靠它定位，比逐个加埋点快。
+                scripts: Array.from(entry.scripts || []).map(s => ({
+                  src: String(s.sourceURL || '').split('/').pop() || '(inline)',
+                  fn: String(s.sourceFunctionName || ''),
+                  invoker: String(s.invoker || ''),
+                  duration: Number((s.duration || 0).toFixed(2)),
+                  forcedStyleAndLayout: Number((s.forcedStyleAndLayoutDuration || 0).toFixed(2)),
+                  pause: Number((s.pauseDuration || 0).toFixed(2))
+                })).sort((a, b) => (b.duration + b.forcedStyleAndLayout) - (a.duration + a.forcedStyleAndLayout))
               };
               browserEvents.push(item);
               console.log('[XDEX browser perf]', item);
@@ -7414,11 +8154,23 @@ ${markedSwatchHtml}
         } catch (e) {}
       }
     }
-    const api = { measure, measureAsync, measureObserver, record, recordObserver, mark, report, reset, summarizeRoot };
+    const api = { measure, measureAsync, measureObserver, begin, finish, record, recordObserver, mark, report, reset, summarizeRoot,
+      capture, exportAll, printAll, listRounds, clearRounds };
     window.__xdexStartupPerfReport = report;
     window.__xdexStartupPerfReset = reset;
     target.__xdexStartupPerfReport = report;
     target.__xdexStartupPerfReset = reset;
+    // 真机测量入口：capture(场景名) 留档 / listRounds() 查看 / print() 展开输出
+    window.__xdexPerfCapture = capture;
+    window.__xdexPerfRounds = listRounds;
+    window.__xdexPerfExport = exportAll;
+    window.__xdexPerfPrint = printAll;
+    window.__xdexPerfClear = clearRounds;
+    target.__xdexPerfCapture = capture;
+    target.__xdexPerfRounds = listRounds;
+    target.__xdexPerfExport = exportAll;
+    target.__xdexPerfPrint = printAll;
+    target.__xdexPerfClear = clearRounds;
     if (AUTO_COLLECTION_ENABLED) {
       installBrowserObservers();
       setTimeout(() => {
@@ -7533,17 +8285,34 @@ ${markedSwatchHtml}
     try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
     try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
   }
-  function applyPageEnhancements(root, cfg) {
+  function applyPageEnhancements(root, cfg, hotNodes) {
     const getLatestCfg = () => getPageEnhancementConfig(cfg);
     let liveCfg = getLatestCfg();
-    preprocessPageEnhancementsBeforeInsert(root, liveCfg);
+    // ★ 同步段埋点：插入前的预增强（URL 链接化 / 引用扩展）属同步成本，与下面的异步段分开计量
+    startupPerfDebug.measure('applyPageEnhancements.syncPreprocess', () => preprocessPageEnhancementsBeforeInsert(root, liveCfg), { root: root === document ? 'document' : 'scoped' });
     setTimeout(() => {
+      // ★ 埋点覆盖全部 4 个调用点（板块增量刷新 / 快速回复 / 无缝翻页两种）：
+      // 本函数体是 setTimeout 异步，外层 measure 只能量到同步的 preprocess 部分（数十微秒），
+      // 真正耗时在这段回调里，故计时点必须放在回调内部。
+      const __perfToken = startupPerfDebug.begin();
       liveCfg = getLatestCfg();
       try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(root)); } catch (e) {}
       // 只处理本次新增内容（root=新克隆/目标回复区），避免无缝翻页后对全页既有内容重复编号与重标 Po
       try { if (typeof highlightPO === 'function') highlightPO(root); } catch (e) {}
-      try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
-      try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
+      // ★ HD 两函数是布局读写热点（handleGeneralElements 对每元素 读布局+写样式 交错强制重排）。
+      // root 为「含旧回复的容器」（发送后/手动刷新路径）时必须限定本次新增节点（hotNodes），
+      // 否则旧回复全部重跑 → 长串数百次强制重排 = 插入后卡顿主源。
+      // root 为纯新内容（无缝翻页克隆）时 hotNodes 为空 → 保持原行为跑 root。
+      if (Array.isArray(hotNodes) && hotNodes.length) {
+        for (const hot of hotNodes) {
+          const hotScope = hot.closest && hot.closest('.h-threads-item-reply') || hot;
+          try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(hotScope); } catch (e) {}
+          try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(hotScope); } catch (e) {}
+        }
+      } else {
+        try { if (liveCfg && liveCfg.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(root); } catch (e) {}
+        try { if (liveCfg && liveCfg.enableHDImage && typeof enableHDImage === 'function') enableHDImage(root); } catch (e) {}
+      }
       try {
         if (typeof applyImageHideMode === 'function') {
           if (liveCfg && liveCfg.enableImageHideMode) {
@@ -7557,7 +8326,9 @@ ${markedSwatchHtml}
       try { if (liveCfg && liveCfg.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(root); } catch (e) {}
       try { if (liveCfg && liveCfg.extendQuote && typeof extendQuote === 'function') extendQuote(root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
-      try { refreshFilterDisplay(liveCfg, document); } catch (e) {}
+      // 作用域必须与上方各步骤一致传 root：传 document 会在每次局部刷新/快速回复/翻页时
+      // 对整条串的全部回复重跑「重置PO布局 → 过滤 → 重算PO布局」，成本随串长度线性放大
+      try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
       try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
       try { if (typeof initContent === 'function') initContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
@@ -7569,6 +8340,15 @@ ${markedSwatchHtml}
       // if (typeof preventContentOverflow === 'function') {
       //   try { preventContentOverflow(document); } catch (e) {}
       // }
+      // ★ meta 带 root 标识与回复数：用于判断成本是否随串长/DOM 规模放大（R2/R3/R4 的核心指标）
+      startupPerfDebug.finish('applyPageEnhancements.total', __perfToken, () => {
+        const el = root && root.nodeType === 1 ? root : null;
+        return {
+          root: el ? (el.className ? String(el.className).slice(0, 60) : el.nodeName) : 'none',
+          replies: el && el.querySelectorAll ? el.querySelectorAll('.h-threads-item-reply-main').length : -1,
+          doc: root === document
+        };
+      });
     }, 50);
   }
   function isEnhanceIslandAutoTitlePage() {
@@ -7822,7 +8602,16 @@ ${markedSwatchHtml}
         obs.observe(sentinel);
         return obs;
       }
+      // ★ 滚动高频：本回调每次都读 scrollTop/scrollHeight，未合并会让滚动期间每帧重复强制布局。
+      // 与同文件 bindScrollListener 的写法对齐：一帧只处理一次，滚动中不重复读取布局。
+      let userScrollFrameId = 0;
       function onUserScroll() {
+        if (userScrollFrameId) return;
+        if (typeof requestAnimationFrame !== 'function') { runUserScrollFrame(); return; }
+        userScrollFrameId = requestAnimationFrame(() => { userScrollFrameId = 0; runUserScrollFrame(); });
+      }
+      function runUserScrollFrame() {
+        const __perfToken = startupPerfDebug.begin();
         hasUserInteracted = true;
         const curTop = window.pageYOffset || document.documentElement.scrollTop || 0;
         lastUserScrollDir = (curTop > lastScrollTop) ? 1 : (curTop < lastScrollTop ? -1 : lastUserScrollDir);
@@ -7840,6 +8629,8 @@ ${markedSwatchHtml}
             observerFrozen = false;
           }
         }
+        // ★ 热路径埋点：滚动帧内成本 + 触发次数（frozen 短路时耗时≈0，靠 count 识别）
+        startupPerfDebug.finish('seamless.runUserScrollFrame', __perfToken, () => ({ frozen: !!observerFrozen }));
       }
       function onWheel(e) {
         hasUserInteracted = true;
@@ -7997,7 +8788,7 @@ ${markedSwatchHtml}
           const list = getRealThreadsList(document);
           if (!list) {
             console.warn('[refreshReplies] 未找到 .h-threads-list');
-            showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
+            showRefreshStatus('刷新回复失败，该串可能已被删除', 0, 'error');
             return done && done({ status: "error" });
           }
           const pageAttr = maxCloned > 0 ? maxCloned : 0;
@@ -8005,7 +8796,7 @@ ${markedSwatchHtml}
           const targetReplies = ensured.targetReplies;
           if (!targetReplies) {
             console.warn('[refreshReplies] 未找到 .h-threads-item，无法创建回复区');
-            toast('刷新回复失败，未找到串容器');
+            toast('刷新回复失败，未找到串容器', 0, { type: 'error' });
             return done && done({ status: "error" });
           }
           if (ensured.created) {
@@ -8028,13 +8819,13 @@ ${markedSwatchHtml}
               const newList = getRealThreadsList(doc);
               if (!newList) {
                 console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-list');
-                showRefreshStatus('刷新回复失败，该串可能已被删除', 1800);
+                showRefreshStatus('刷新回复失败，该串可能已被删除', 0, 'error');
                 return done && done({ status: "error" });
               }
               const newReplies = newList.querySelector('.h-threads-item-replies');
               if (!newReplies) {
                 console.warn('[refreshReplies] 抓取页面中未找到 .h-threads-item-replies');
-                toast('刷新回复失败，页面无回复内容');
+                toast('刷新回复失败，页面无回复内容', 0, { type: 'error' });
                 return done && done({ status: "error" });
               }
               stripSystemTipReplies(newReplies);
@@ -8045,6 +8836,9 @@ ${markedSwatchHtml}
                 console.warn('预处理过滤失败', e);
               }
               // Phase2：增量 append 走共享核（对齐旧：不过滤 9999999 在比较集合中的行为差异，由 strip 先清 new 侧）
+              // ★ 计时点：只覆盖「响应到达后的同步 DOM 处理」（merge → applyPageEnhancements 同步段 → 回复统计）。
+              // 网络往返被有意排除——卡顿来自脚本同步工作，不是 fetch。
+              const __perfToken = startupPerfDebug.begin();
               const merge = appendMissingRepliesByThreadsId(targetReplies, newReplies, {
                 replyOnly: false,
                 excludeSystemOnOld: false,
@@ -8054,7 +8848,7 @@ ${markedSwatchHtml}
               const pagSync = prepareAndSyncBottomPagination(doc);
               const newPag = pagSync.newPag;
               try { if (typeof reinitForNewContent === 'function') reinitForNewContent(targetReplies); } catch (e) {}
-              applyPageEnhancements(targetReplies, cfg);
+              applyPageEnhancements(targetReplies, cfg, merge.appendedNodes);
               const allReplies = Array.from(targetReplies.querySelectorAll('.h-threads-item-reply'));
               const userReplies = allReplies.filter(el => el.getAttribute('data-threads-id') !== '9999999');
               const userCount = userReplies.length;
@@ -8062,6 +8856,11 @@ ${markedSwatchHtml}
                 const pag = newPag || doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination') || doc.querySelector('ul.uk-pagination');
                 return pag ? parseLastPageFromPagination(pag) : null;
               })();
+              if (__perfToken != null) startupPerfDebug.finish('refresh.checkNext.syncDom', __perfToken, () => ({
+                replies: userCount,
+                updated: !!hasUpdate,
+                domPages: document.querySelectorAll('.h-threads-item-replies[data-cloned-page]').length
+              }));
               if (userCount < 19) {
                 const result = { status: 'last', hasUpdate };
                 if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
@@ -8084,7 +8883,7 @@ ${markedSwatchHtml}
             })
             .catch(err => {
               console.error('refreshRepliesAndCheckNext error:', err);
-          if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新回复区失败', 1800);
+          if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新回复区失败', 0, 'error');
           if (typeof done === 'function') done({ status: 'error' });
             });
         } catch (err) {
@@ -8117,7 +8916,7 @@ ${markedSwatchHtml}
           prepareForceLoadNext(result.nextPage);
           setTimeout(() => loadNext(refreshGeneration), 50);
         } else if (result.status === 'last') {
-          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新');
+          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', 1800); // 结果提示给足阅读时间（原 900ms 偏短，易漏看后重复刷新）
         }
       }
       // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）
@@ -8194,6 +8993,8 @@ ${markedSwatchHtml}
           // 浮窗若为新建元素则无此标记，仍会被观察，保留「晚出现的浮窗也能被挂上」的行为
           if (el.__xdexSeamlessOverlayObserved) return;
           el.__xdexSeamlessOverlayObserved = true;
+          // ★ 计数埋点（H1-H3 真机验收判据）：实例数应恒定，不随开关浮窗次数增长
+          startupPerfDebug.record('observer.create:overlay', 0, { tag: 'qp-overlay' });
           const obs = new MutationObserver(() => {
             updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
@@ -8223,6 +9024,8 @@ ${markedSwatchHtml}
             seamlessPagObserver.disconnect();
           }
           // 新建 observer 监听底部分页栏的变化
+          // ★ 计数埋点（H2 真机验收判据）：同目标复用时不重建，调用多次也应为 1
+          startupPerfDebug.record('observer.create:pag', 0, { tag: 'bottom-pagination' });
           seamlessPagObserver = new MutationObserver(() => {
             updateSeamlessRefreshBtnDisplay(btn, getSeamlessBottomPagination());
           });
@@ -8235,6 +9038,8 @@ ${markedSwatchHtml}
         observeBottomPagination();
         // 每次 DOM 可能插入新分页栏时，重新绑定监听（只挂一次，回调内复用同一分页栏观察器逻辑）
         if (!seamlessGlobalObserver) {
+          // ★ 计数埋点（H1 真机验收判据）：body 级观察器必须恒为 1，不得随翻页/刷新次数增长
+          startupPerfDebug.record('observer.create:body', 0, { tag: 'document.body' });
           seamlessGlobalObserver = new MutationObserver(() => {
             observeBottomPagination();
           });
@@ -8329,7 +9134,7 @@ ${markedSwatchHtml}
         try {
           const res = await startupPerfDebug.measureAsync('seamless.loadNext.fetch', () => fetch(nextUrl, { credentials: 'same-origin' }), { nextPageNum, nextUrl });
           if (!res.ok) {
-              if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新失败，网络错误', 1800);
+              if (isCurrentRefreshStatus(activeGeneration)) showRefreshStatus('刷新失败，网络错误', 0, 'error');
               return;
           }
           const html = await startupPerfDebug.measureAsync('seamless.loadNext.responseText', () => res.text(), { nextPageNum });
@@ -8394,7 +9199,7 @@ ${markedSwatchHtml}
             }
         } catch (e) {
           console.warn('seamless paging loadNext error:', e);
-          toast('加载失败，请稍后重试');
+          toast('加载失败，请稍后重试', 0, { type: 'error' });
           return;
         } finally {
           loading = false;
@@ -8472,12 +9277,17 @@ ${markedSwatchHtml}
               startupPerfDebug.measure('seamless.loadNextBoard.applyPageEnhancements', () => applyPageEnhancements(listClone, cfg), { nextPageNum });
               // ============================================
               // 更新底部分页条
+              // ★ 测试版块页：守护放回的原生分页（页1高亮）插在列表1 之后、
+              //   本函数又把 pagClone(页2) 插到列表1 之后 → 出现「页1 + 页2」两条相邻分页栏。
+              //   修复：找出**除 titlePag 与 pagClone 外**的原生分页（守护放回的那条），
+              //   replaceWith 前先打 xdexSeamlessReplaced 豁免标记——守护器见标记即放行，
+              //   否则 replaceWith 的移除会触发放回死循环。
               const allPaginations = document.querySelectorAll('ul.uk-pagination.uk-pagination-left.h-pagination');
-              if (allPaginations.length > 0) {
-                const lastPagination = allPaginations[allPaginations.length - 1];
-                if (lastPagination && lastPagination !== pagClone) {
-                  lastPagination.replaceWith(pagClone.cloneNode(true));
-                }
+              for (const oldPag of allPaginations) {
+                if (oldPag === pagClone) continue;
+                if (oldPag.dataset && oldPag.dataset.xdexTitleClone === '1') continue; // 页首页码不动
+                oldPag.dataset.xdexSeamlessReplaced = '1';
+                oldPag.replaceWith(pagClone.cloneNode(true));
               }
             } else {
               startupPerfDebug.measure('seamless.loadNextBoard.insertDom', () => lastList.insertAdjacentElement('afterend', listClone), { nextPageNum });
@@ -8780,6 +9590,7 @@ ${markedSwatchHtml}
     // 单次遍历产出分类、优先级与 visible/ahead 计数，供本轮 processQueue 全程复用；
     // 取代原“排序逐项回查 rect + 每个候选扫全队列”的 O(N²) 布局读取
     function measureQueue() {
+      const __perfToken = startupPerfDebug.begin();
       const meta = new Map();
       const vh = window.innerHeight || document.documentElement.clientHeight || 0;
       let aheadCount = 0;
@@ -8792,6 +9603,8 @@ ${markedSwatchHtml}
         if (m.kind === 'ahead') aheadCount++;
         else if (m.kind === 'visible') visibleCount++;
       }
+      // ★ 队列长度即 rect 读取次数，是判断成本是否随图片数放大的唯一依据
+      startupPerfDebug.finish('hdLazy.measureQueue', __perfToken, () => ({ rects: queue.length, ahead: aheadCount, visible: visibleCount }));
       return { meta, aheadCount, visibleCount };
     }
     function getSnapPriority(snap, img) {
@@ -8850,9 +9663,11 @@ ${markedSwatchHtml}
     // }
     let scrollFrameId = 0;
     function onScrollFrame() {
+      const __perfToken = startupPerfDebug.begin();
       const currentY = window.scrollY || window.pageYOffset || 0;
       updateScrollMetrics(currentY);
       processQueue();
+      startupPerfDebug.finish('hdLazy.onScrollFrame', __perfToken, () => ({ queue: queue.length, activeLoads }));
     }
     function bindScrollListener() {
       if (scrollListenerBound) return;
@@ -9251,16 +10066,57 @@ ${markedSwatchHtml}
         // 如果图片未激活
         if (!imgBox.classList.contains('h-active')) {
           const currentWidth = msgMain.offsetWidth;
+          // ★ 未参与布局（隐藏/游离）时量不到宽度，此刻不做判定也不置锁
+          if (!currentWidth) {
+            // ★ 事件驱动补判定：pending 队列对每个节点只处理一次，若插入时容器尚不可测量（所在容器
+            // 隐藏/未布局完成），该回复要等下一次全文档 pass（window.load 或触底增量更新）才有机会
+            // 补写，期间一直保持窄列。这里用 ResizeObserver 精确等「容器从 0 宽变为有实际尺寸」的
+            // 那一次回调：量到宽度即按正常流程写入并置锁、随后断开观察；仍为 0 宽（继续隐藏）则不
+            // 动作也不轮询。永久隐藏的回复只会有一次 0 尺寸初始回调，无后续开销。
+            if (typeof ResizeObserver === 'function' && !msgMain.__xdexExpandWidthRO) {
+              // ★ 计数埋点：本分支为「容器未布局」的兜底，每个未布局容器挂一个；
+              // 数量即「未布局带图回复数」，多图长串应关注其总数
+              startupPerfDebug.record('observer.create:expandWidthRO', 0, { tag: 'msg-main' });
+              const ro = new ResizeObserver(() => {
+                if (!msgMain.offsetWidth) return; // 仍不可测量（含 observe 时的 0 尺寸初始回调）
+                ro.disconnect();
+                msgMain.__xdexExpandWidthRO = null;
+                if (msgMain.isConnected && msgMain.__imageWidthExpanded !== true) {
+                  handleImageLayout.expandMsgWidthIfImageExists(msgMain);
+                }
+              });
+              ro.observe(msgMain);
+              msgMain.__xdexExpandWidthRO = ro;
+            }
+            return;
+          }
           const maxMsgWidth = this.getMaxMsgWidth(msgMain);
-          const targetWidth = Math.min(currentWidth + 80, maxMsgWidth);
+          // ★ 加宽量 = 固定预算（getExpandedWidthBudget）：按「本步骤之后仍会改变容器宽度的操作」的
+          // 最坏叠加一次性算入并写入，不做实时测量，之后不再重算，避免渲染后的反复横向变化
+          const targetWidth = Math.min(currentWidth + this.getExpandedWidthBudget(), maxMsgWidth);
+          // ★ 目标宽度非法则不写入也不置锁（写入无效值时浏览器会丢弃该声明，锁却已置位 → 该回复永久不加宽）
+          if (!Number.isFinite(targetWidth) || targetWidth <= 0) return;
           // 保存原始宽度，便于之后恢复
           if (msgMain.__originalWidth === undefined) {
             msgMain.__originalWidth = msgMain.style.width || '';
           }
           msgMain.style.width = targetWidth + 'px';
-          // ☆ 新增：标记已经扩展过，防止重复调用时继续加宽
+          // ☆ 新增：标记已经扩展过，防止重复调用时继续加宽（仅在成功写入宽度后置位）
           msgMain.__imageWidthExpanded = true;
         }
+      },
+      // ★ 加宽预算（固定常数，不做实时测量）：按「本步骤之后仍会改变 main 容器宽度的操作」的最坏叠加取值，
+      // 一次写入后不再重算，避免渲染后的反复横向变化。构成：
+      // - 图片加载形态切换 ≈ 200px：原图（image/）与缩略图（thumb/）两种形式的非激活预览宽度均为固定值
+      //   （原图 ≈ 270px，缩略图按长边缩放、竖长图最窄 ≈ 70px，如 PDF 长页 90 → 270），最坏差 ≈ 200px
+      // - 相对时间形态演化 ≈ 101px：最短形态「今天(四)N秒前」(≈5.7em) → 最坏「N年前 YYYY-MM-DD(四)HH:MM:SS」
+      //   (≈13.4em)，差 ≈ 7.75em，按信息行 ~13px 字号折算（跨年只变数字，宽度不再增长）
+      // - 饼干大小写 ≈ 18px：饼干为 7 位，全大写 ID 在非等宽字体下比小写宽（按 7 字符 ID 估）
+      // - 饼干标记内边距 6px：markAllCookies 给 ID 文本加 0 3px，可能晚于本步骤生效
+      // 不产生增量的项（预算 0）：编号/Po 标记（只改 3em 定宽的图标单元格）、去除无标题/无名氏（只收窄，
+      // 且已在本步骤前生效）。观感调整只需改这一个返回值。
+      getExpandedWidthBudget() {
+        return (270 - 70) + 101 + 18 + 6; // ≈ 325px（270/70 = 原图/缩略图形式的预览宽常数）
       },
       // 预计算图片在所有旋转角度下的尺寸
       precalculateImageSizes(naturalWidth, naturalHeight, maxWidth) {
@@ -9807,11 +10663,24 @@ ${markedSwatchHtml}
           }
           // 监听 class 变化
           if (!imgBox.__overflowObserver) {
+            // ★ 计数埋点：每个带图回复盒一个（单图复杂度），数量应≈带图回复数且不随滚动/翻页重复创建
+            startupPerfDebug.record('observer.create:hdImageBox', 0, { tag: 'img-box' });
             const observer = new MutationObserver(mutations => {
               startupPerfDebug.measureObserver('hdImageBox', mutations, () => {
               mutations.forEach(mutation => {
                 if (mutation.attributeName === 'class') {
                   handleImageLayout.handleActiveImageBox(imgBox);
+                  // ★ 图片收起（h-active 被移除）后补一次首次判定：展开态下首次判定会被跳过，
+                  // 而收起时补写容器宽度的旧逻辑（约 9517-9530，注释掉的死代码）缺失，缺这一步该回复将永久不加宽。
+                  // 已参与过加宽的回复无需重算：预算已在首次判定时一次算入后续变化的最坏增量，
+                  // min-width 语义下收起后内容回落只会让表格回到该宽度，不会突破。
+                  // 复用该图片盒已有的 class observer，事件驱动，不做周期性扫描。
+                  if (!imgBox.classList.contains('h-active')) {
+                    const replyMain = imgBox.closest('.h-threads-item-reply-main');
+                    if (replyMain && replyMain.__imageWidthExpanded !== true) {
+                      handleImageLayout.expandMsgWidthIfImageExists(replyMain);
+                    }
+                  }
                 }
               });
               }, () => ({ imgBoxes: 1 }));
@@ -9835,6 +10704,12 @@ ${markedSwatchHtml}
         scope.querySelectorAll('.h-threads-item-reply-main').forEach(msgMain => {
           replyMains.push(msgMain);
         });
+      }
+      // ★ 向上取证：pending 标记常落在 reply-main 的后代（.h-threads-img-box / .h-threads-img-a /
+      // .h-threads-img / .h-threads-content）上，仅向下查找会漏掉所属 reply-main（该回复永远不加宽）
+      const upwardMain = scope.closest && scope.closest('.h-threads-item-reply-main');
+      if (upwardMain && upwardMain !== scope) {
+        replyMains.push(upwardMain);
       }
       replyMains.forEach(msgMain => {
         handleImageLayout.expandMsgWidthIfImageExists(msgMain);
@@ -9860,9 +10735,13 @@ ${markedSwatchHtml}
       if (_cfg.hideEmptyTitleEmail && typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail(root);
     } catch (e) {}
     expandReplyMainWidths(root);
+    // 注：后续增强（相对时间/饼干标记等）造成的宽度变化已按最坏增量算入加宽预算（getExpandedWidthBudget），
+    // 一次写入后不再重算，避免渲染后的反复横向变化。
     // ==================== 全局监听 ====================
     // 监听 DOM 变化
     if (root === document && !enableHDImageAndLayoutFix.__globalObserver) {
+      // ★ 计数埋点：全局 DOM 观察器必须恒为 1，不得随增量刷新/翻页重复创建
+      startupPerfDebug.record('observer.create:hdGlobal', 0, { tag: 'hd-global' });
       const observer = new MutationObserver(mutations => {
         startupPerfDebug.measureObserver('hdGlobal', mutations, () => {
         mutations.forEach(mutation => {
@@ -9929,7 +10808,10 @@ ${markedSwatchHtml}
         const node = queue.shift();
         queued.delete(node);
         if (node && node.isConnected) {
-          enableHDImageAndLayoutFix(node);
+          // ★ 标记常落在 reply-main 的后代（图片盒/锚/图片/正文）上：直接以该后代为 root 会导致
+          // 其所属 reply-main 不在作用域内（既不加宽、也绑不上图片控件），故提升到最近的整条回复
+          const scope = (node.closest && node.closest('.h-threads-item-reply')) || node;
+          enableHDImageAndLayoutFix(scope);
           processed++;
         }
       }
@@ -10299,7 +11181,14 @@ ${markedSwatchHtml}
       const $top = $stack.children('.qp-quote').last();
       if (!$top.length) { $overlay.fadeOut(160); return; }
       // 1) 如果点击发生在最上层引用框内部，忽略
-      if ($(e.target).closest($top).length) return;
+      //    必须用派发时定格的 composedPath 判定：冒泡途中控件若替换了自身内容，e.target 会脱离文档，
+      //    closest($top) 随即失效、被误判成「点了框外」而误关引用浮窗（jQuery 事件需取 originalEvent）
+      const nativeEv = e.originalEvent || e;
+      const evPath = typeof nativeEv.composedPath === 'function' ? nativeEv.composedPath() : null;
+      const inTopQuote = evPath
+          ? evPath.indexOf($top[0]) !== -1
+          : !!(e.target && e.target.closest && e.target.closest($top[0]));
+      if (inTopQuote) return;
       // 2) 如果正在/刚刚拖拽或拉伸，避免误触关闭
       if ($top.hasClass('is-dragging') || $top.hasClass('is-resizing') ||
           $('.qp-quote.is-dragging').length || $('.qp-quote.is-resizing').length ||
@@ -12527,12 +13416,13 @@ ${markedSwatchHtml}
       });
     };
     const observer = new MutationObserver(scheduleSync);
+    // 先挂到 window 再 observe：early open 复用同一实例；赋值与 attributeFilter 保持相邻（契约测试就近断言）
+    window.__xdexDarkReaderThemeObserver = observer;
     observer.observe(document.documentElement, {
       attributes: true,
       // DR 实际写入含 fr-init-once 与 style 内联变量（实测）→ 必须盯，否则开 DR 后仍浅色
       attributeFilter: ['data-darkreader-mode', 'data-darkreader-scheme', 'fr-init-once', 'style', 'class'],
     });
-    window.__xdexDarkReaderThemeObserver = observer;
     return observer;
   }
   // 设置面板/登录框/历史等共用 :root.xdex-darkreader-active。
@@ -12840,7 +13730,13 @@ ${markedSwatchHtml}
           document.body.appendChild(overlay);
           // 点击遮罩关闭（点内容不关闭，且允许事件冒泡到 document 以触发引用弹窗）
           overlay.addEventListener('click', function (e) {
-            if (e.target.closest('.qp-quote')) {
+            // 冒泡途中若有控件替换了自身内容（如 .js-extra 切换图标），e.target 会脱离文档，
+            // closest('.qp-quote') 随即失效、被误判成「点了遮罩」；改用派发时定格的 composedPath 判定
+            const evPath = typeof e.composedPath === 'function' ? e.composedPath() : null;
+            const inQuote = evPath
+                ? evPath.some(el => el && el.classList && el.classList.contains('qp-quote'))
+                : !!(e.target && e.target.closest && e.target.closest('.qp-quote'));
+            if (inQuote) {
                 return; // 点击在内容区：不关闭，也不阻止冒泡
             }
             // 如果正在调整 textarea 大小，不关闭浮窗
@@ -13856,7 +14752,7 @@ ${markedSwatchHtml}
         }, false);
       } catch (err) {
         console.warn('[interceptReplyForm] refreshCookies after success failed', err);
-        toast('回复已发送，但饼干刷新失败，请刷新页面');
+        toast('回复已发送，但饼干刷新失败，请刷新页面', 0, { type: 'error' });
       }
     }
   }
@@ -14959,12 +15855,12 @@ ${markedSwatchHtml}
       apng = apngJsLib(arrayBuffer);
     } catch (e) {
       console.warn('[compressApngToSize] parseAPNG 失败，降级到静态压缩:', e.message);
-      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 0, { type: 'error' });
       return compressImageToSize(file, maxSizeKB);
     }
     if (apng instanceof Error) {
       console.warn('[compressApngToSize] parseAPNG 返回错误:', apng.message);
-      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 3000);
+      toast('APNG 解码失败，将转为静态图片压缩（动画会丢失）', 0, { type: 'error' });
       return compressImageToSize(file, maxSizeKB);
     }
     const { width, height } = apng;
@@ -15549,10 +16445,10 @@ ${markedSwatchHtml}
               window.open(confirmed.url, '_blank');
               toast('已在新标签页打开新串');
             } else {
-              toast('新串已发送，但未能确认地址');
+              toast('新串已发送，但未能确认地址', 0, { type: 'error' });
             }
           }).catch(() => {
-            toast('新串已发送，确认地址超时');
+            toast('新串已发送，确认地址超时', 0, { type: 'error' });
           });
         } else if (postAction === 'refresh' && confirmPromise) {
           // refresh 模式：等待发言历史确认后，跳转板块第一页顶部
@@ -15627,7 +16523,7 @@ ${markedSwatchHtml}
           console.log(`[interceptReplyForm] 动画WebP→APNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
           if (convertedFile.size > 2048 * 1024) {
             console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，用 APNG 压缩`);
-            toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 3000);
+            toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 0, { type: 'error' });
             const compressResult = await compressApngToSize(convertedFile, 2048, {
               onProgress: (progress) => {
                 if (progress.error) {
@@ -15678,7 +16574,7 @@ ${markedSwatchHtml}
           // 打印解析到的 success / error 节点，便于调试未触发 toast 的情况
           console.log('[interceptReplyForm] parsed successMsg:', successMsg, 'errorMsg:', errorMsg);
           if (response.kind === 'fallback-error') {
-            toast(response.message);
+            toast(response.message, 0, { type: 'error', key: 'send-error' });
             return;
           }
           if (successMsg) {
@@ -15755,7 +16651,7 @@ ${markedSwatchHtml}
                     return;
                   } catch (convertErr) {
                     console.error('[interceptReplyForm] 图片格式转换失败:', convertErr);
-                    toast(convertErr && convertErr.message ? convertErr.message : '图片格式转换失败，请手动转换为 JPG/PNG 后再试', 3000);
+                    toast(convertErr && convertErr.message ? convertErr.message : '图片格式转换失败，请手动转换为 JPG/PNG 后再试', 0, { type: 'error' });
                     return;
                   } finally {
                     finishSubmitImageProcessing(form);
@@ -15771,7 +16667,7 @@ ${markedSwatchHtml}
             if (errorKind === 'image-size') {
               if (!cfg.interceptReplyFormAutoCompress) {
                 try {
-                  toast(msg);
+                  toast(msg, 0, { type: 'error', key: 'send-error' });
                 } catch (e) {
                   console.warn('[interceptReplyForm] toast error for image-size message:', msg, e);
                 }
@@ -15798,7 +16694,7 @@ ${markedSwatchHtml}
                   return;
                 } catch (compressErr) {
                   console.error('[interceptReplyForm] 图片压缩失败:', compressErr);
-                  toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 3000);
+                  toast(compressErr && compressErr.message ? compressErr.message : '图片压缩失败，请手动压缩后再试', 0, { type: 'error' });
                   return;
                 } finally {
                   finishSubmitImageProcessing(form);
@@ -15823,7 +16719,7 @@ ${markedSwatchHtml}
                   return;
                 } catch (reencodeErr) {
                   console.error('[interceptReplyForm] GIF重编码失败:', reencodeErr);
-                  toast('GIF重编码失败，请手动处理');
+                  toast('GIF重编码失败，请手动处理', 0, { type: 'error' });
                   return;
                 } finally {
                   finishSubmitImageProcessing(form);
@@ -15833,7 +16729,7 @@ ${markedSwatchHtml}
             // 如果不是"含有非法词语"的特殊情况，直接提示并返回，避免被后续分支忽略
             if (errorKind !== 'illegal-word') {
               try {
-                toast(msg);
+                toast(msg, 0, { type: 'error', key: 'send-error' });
               } catch (e) {
                 console.warn('[interceptReplyForm] toast error for message:', msg, e);
               }
@@ -15847,7 +16743,7 @@ ${markedSwatchHtml}
                   form.__illegalRetryCountU200B = (form.__illegalRetryCountU200B || 0);
                   // 新增：检查是否已经重试过
                   if (form.__illegalRetryCountU200B >= 1) {
-                    toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 3000);
+                    toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 0, { type: 'error', key: 'send-error' });
                     restoreOriginalSubmitContent(form);
                     form.__originalContent = null;
                     form.__illegalRetryCountU200B = 0;
@@ -15873,7 +16769,7 @@ ${markedSwatchHtml}
                     form.__originalContent = currentInput;
                   }
                   if (form.__illegalRetryCount >= maxRetriesAll) {
-                    toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 3000);
+                    toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 0, { type: 'error', key: 'send-error' });
                     restoreOriginalSubmitContent(form);
                     resetCacheForFailedContent(form.__originalContent);
                     form.__originalContent = null;
@@ -15896,17 +16792,17 @@ ${markedSwatchHtml}
                     doSubmit(newFD, false);
                     return;
                   }
-                  toast(msg);
+                  toast(msg, 0, { type: 'error', key: 'send-error' });
                 }
               } else {
-                toast(msg);
+                toast(msg, 0, { type: 'error', key: 'send-error' });
               }
             }
           }
         })
         .catch((err) => {
           console.error('[interceptReplyForm] fetch error:', err);
-          toast(formatSubmitNetworkError(err));
+          toast(formatSubmitNetworkError(err), 0, { type: 'error', key: 'send-error' });
         });
       }
       // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
@@ -15933,7 +16829,7 @@ ${markedSwatchHtml}
           if (!f.__submitting) return;
           if (f.__submitImageProcessing) return;
           f.__submitting = false;
-          toast('提交可能失败，请检查网络，或者刷新后重试');
+          toast('提交可能失败，请检查网络，或者刷新后重试', 0, { type: 'error' });
         }, SUBMIT_LOCK_TIMEOUT_MS);
       }
       function beginSubmitImageProcessing(f) {
@@ -15976,7 +16872,7 @@ ${markedSwatchHtml}
             const _cookieList = getCookiesList();
             if (!findCookieByHash(_cookieList, _pref.hash)) {
               // 默认饼干已失效
-              toast('本串默认饼干已失效，请重新选择');
+              toast('本串默认饼干已失效，请重新选择', 0, { type: 'error' });
               showCookieConfirmDialog(_threadId, (selectedHash) => {
                 setThreadCookiePref(_threadId, selectedHash);
                 if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
@@ -16165,6 +17061,10 @@ ${markedSwatchHtml}
             return;
           }
           const cfg2 = (typeof getConfig === 'function') ? getConfig() : null;
+          // ★ 计时点：串内页「发送后刷新」的同步 DOM 处理（fragment 预增强 → merge → 逐节点后处理）。
+          // 本路径与刷新按钮的 refreshRepliesAndCheckNext 是两条独立实现，需分别计量。
+          // 网络往返已排除在计时点之外。
+          const __perfToken = startupPerfDebug.begin();
           const fragment = document.createElement('div');
           fragment.innerHTML = newReplies.innerHTML;
           stripSystemTipReplies(fragment);
@@ -16184,6 +17084,40 @@ ${markedSwatchHtml}
             excludeSystemOnNew: true
           });
           const appendedNodes = merge.appendedNodes;
+          // ★ 借道回填（串内页）：从本次 fetch 的页面提取 fid/页码，把 pending 发言历史
+          // 记录的字段立即补齐（零新增请求）。fid 取表单 hidden input[name=fid]。
+          try {
+            const inlineFid = normalizePostHistoryFid(doc.querySelector('form input[name="fid"]') ? doc.querySelector('form input[name="fid"]').value : '');
+            // 发送时所在页：用户在 /t/xxx/page/N 发送，新回复就在该页（fetch 的就是当前页）
+            const inlinePage = (parseThreadHistoryUrl(location.href) || {}).page || 0;
+            if (inlineFid && appendedNodes.length) {
+              appendedNodes.forEach((node) => {
+                const rid = String(node.getAttribute('data-threads-id') || '').trim();
+                if (!rid || rid === '9999999') return;
+                const store = getPostHistoryStore();
+                const now = Date.now();
+                Object.keys(store.items).forEach((localId) => {
+                  const item = store.items[localId];
+                  if (!item || item.status !== 'pending' || item.type !== 'reply') return;
+                  if (String(item.id || '') !== rid) return;
+                  if (now - (Number(item.submittedAt) || 0) > 180000) return;
+                  const titleEl = node.querySelector('.h-threads-info-title');
+                  const emailEl = node.querySelector('.h-threads-info-email');
+                  // 站点渲染的「无标题/无名氏」是占位符不是真实值，不入队
+                  const rawTitle = titleEl ? String(titleEl.textContent || '').trim() : '';
+                  const rawEmail = emailEl ? String(emailEl.textContent || '').trim() : '';
+                  postHistoryFieldPatchQueue.set(localId, {
+                    fid: inlineFid,
+                    forumName: getPostHistoryForumNameByFid(inlineFid) || '',
+                    page: Math.max(1, Number(inlinePage) || Number(item.page) || 0),
+                    title: rawTitle && rawTitle !== '无标题' ? rawTitle : '',
+                    email: rawEmail && rawEmail !== '无名氏' ? rawEmail : ''
+                  });
+                  schedulePostHistoryFieldPatchFlush();
+                });
+              });
+            }
+          } catch (e) {}
           try {
             if (typeof hideEmptyTitleAndEmail === 'function') {
               appendedNodes.forEach(n => { try { hideEmptyTitleAndEmail($(n)); } catch (_) {} });
@@ -16195,10 +17129,17 @@ ${markedSwatchHtml}
               appendedNodes.forEach(n => { try { enablePostExpand(n); } catch (_) {} });
             }
           } catch (e) {}
+          // ★ 计时收尾：只覆盖响应到达后的同步 DOM 工作，不含下面的 50ms 异步增强段
+          // （异步段已由 applyPageEnhancements.total 单独记录）
+          startupPerfDebug.finish('refresh.postReply.syncDom', __perfToken, () => ({
+            replies: targetReplies.querySelectorAll ? targetReplies.querySelectorAll('.h-threads-item-reply').length : -1,
+            appended: (appendedNodes && appendedNodes.length) || 0,
+            domPages: document.querySelectorAll('.h-threads-item-replies[data-cloned-page]').length
+          }));
           setTimeout(() => {
             try {
               if (typeof applyPageEnhancements === 'function') {
-                applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === 'function' ? getConfig() : null));
+                applyPageEnhancements(targetReplies, cfg2 || (typeof getConfig === 'function' ? getConfig() : null), appendedNodes);
               } else {
                 try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(targetReplies)); } catch (e) {}
                 try { if (typeof highlightPO === 'function') highlightPO(targetReplies); } catch (e) {}
@@ -16246,9 +17187,12 @@ ${markedSwatchHtml}
               }
             }
           }
+          // 过滤兜底改为 scoped：只重算本次新增的回复区。全文档调用会对整页所有回复
+          // 重跑过滤/PO 注释列重算（串越长越慢），且 50ms 后 applyPageEnhancements(targetReplies)
+          // 内部还会 scoped 调一次，全文档版是冗余的（发送后既有回复的过滤状态不变，无需重算）。
           try {
             if (cfg2 && typeof applyFilters === 'function') {
-              try { refreshFilterDisplay(cfg2); } catch (e) {}
+              try { refreshFilterDisplay(cfg2, targetReplies); } catch (e) {}
             }
           } catch (e) {}
           if (typeof done === 'function') done();
@@ -17716,8 +18660,18 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   // 统一生成草稿存储用的 key
   // 统一：草稿 key 生成
+  // ★ 草稿键规范化：草稿是「串级」共享数据，同一串在任何页面/任何页码回复都读写同一槽。
+  //   /t/{tid}、/t/{tid}/page/N、/Forum/po/id/{tid}/... → 统一为 '/t/{tid}'
+  //   非串内页（/f/xxx 板块页、时间线、搜索页等）→ 返回空串，草稿功能整体短路
+  //   （只有串内才有草稿：板块页发串表单不保存/不载入草稿）
   function getDraftKey() {
-    return window.location.pathname;
+    return normalizeDraftKeyFromPath(window.location.pathname);
+  }
+  function normalizeDraftKeyFromPath(pathname) {
+    const path = String(pathname || '');
+    const parsed = parseThreadHistoryUrl(path);
+    if (!parsed || !parsed.threadId) return '';
+    return '/t/' + parsed.threadId;
   }
   function getDraftStorageKey(pathname = getDraftKey()) {
     return `xdex_draft:${pathname}`;
@@ -17842,6 +18796,88 @@ ${markedSwatchHtml}
     deleteDraftSafe(pathname);
     return legacyValue;
   }
+  // ★ 草稿槽规范化迁移：历史版本按 location.pathname 存草稿，同一串产生多个槽
+  //（/t/{tid}、/t/{tid}/page/N、/Forum/po/id/{tid}/page/N 各一份）。本函数把
+  // 所有旧槽合并进规范槽 '/t/{tid}'：
+  //  - 规范槽已有内容 → 保留；否则取「registry 中位置最靠后」（最近首次保存）的非空旧槽
+  //  - 被清理的旧槽：GM_deleteValue + 登记删除账本（防 WebDAV 同步复活）
+  //  - 非串内页旧槽（/f/xxx、时间线等）：草稿功能已不覆盖这些页面，直接清理（含空值槽）
+  // 仅在首次调用时执行一次（GM 标记）；失败静默不阻塞。
+  function migrateDraftSlotsToCanonical() {
+    try {
+      if (GM_getValue('xdex_draft_slots_migrated_v1', false)) return;
+      const registry = getDraftRegistry();
+      const keys = new Set(registry.slice());
+      try {
+        if (typeof GM_listValues === 'function') {
+          GM_listValues().forEach((k) => { if (typeof k === 'string' && k.indexOf('xdex_draft:') === 0) keys.add(k); });
+        }
+      } catch (_) {}
+      // 按规范槽分组（registry 顺序保序：越靠后越新）
+      const groups = new Map(); // canonical -> [{storageKey, value}]
+      keys.forEach((storageKey) => {
+        const pathname = String(storageKey || '').slice('xdex_draft:'.length);
+        if (!pathname) return;
+        let value = '';
+        try { value = GM_getValue(storageKey, ''); } catch (_) { value = ''; }
+        if (typeof value !== 'string') value = '';
+        const canonical = normalizeDraftKeyFromPath(pathname);
+        const target = canonical || ''; // 非串内页 → 空组（统一清理）
+        if (!groups.has(target)) groups.set(target, []);
+        groups.get(target).push({ storageKey, value, pathname });
+      });
+      const registrySet = new Set(registry);
+      let changed = false;
+      groups.forEach((slots, canonical) => {
+        if (!canonical) {
+          // 非串内页槽：全部清理（空值或历史残留都清）
+          slots.forEach((slot) => {
+            try { deleteDraftSafe(slot.storageKey); } catch (_) {}
+            registrySet.delete(slot.storageKey);
+            changed = true;
+          });
+          return;
+        }
+        const canonicalStorageKey = getDraftStorageKey(canonical);
+        let canonicalValue = '';
+        try { canonicalValue = GM_getValue(canonicalStorageKey, ''); } catch (_) {}
+        if (typeof canonicalValue !== 'string') canonicalValue = '';
+        // 合并：规范槽优先；否则取 registry 顺序最靠后的非空槽（最近保存）
+        let picked = canonicalValue ? null : null;
+        let pickedFrom = canonicalStorageKey;
+        if (!canonicalValue) {
+          for (let i = slots.length - 1; i >= 0; i--) {
+            if (slots[i].value) { picked = slots[i]; pickedFrom = slots[i].storageKey; break; }
+          }
+        }
+        const finalValue = canonicalValue || (picked ? picked.value : '');
+        if (finalValue && !canonicalValue) {
+          try {
+            GM_setValue(canonicalStorageKey, finalValue);
+            registrySet.add(canonicalStorageKey);
+            removeDraftDeletion(canonicalStorageKey);
+            changed = true;
+          } catch (_) {}
+        }
+        // 清理所有非规范槽
+        slots.forEach((slot) => {
+          if (slot.storageKey === canonicalStorageKey) return;
+          try { deleteDraftSafe(slot.storageKey); } catch (_) {}
+          registrySet.delete(slot.storageKey);
+          changed = true;
+        });
+      });
+      // 清理 registry 中已无值的键
+      const nextRegistry = Array.from(registrySet).filter((k) => {
+        try { const v = GM_getValue(k, ''); return typeof v === 'string' && v !== ''; } catch (_) { return false; }
+      });
+      if (changed || nextRegistry.length !== registry.length) saveDraftRegistry(nextRegistry);
+      GM_setValue('xdex_draft_slots_migrated_v1', true);
+      if (changed) console.info('[X岛-EX][草稿] 槽位规范化迁移完成');
+    } catch (e) {
+      console.warn('[X岛-EX][草稿] 槽位迁移失败', e);
+    }
+  }
   // 统一：安全删除草稿（有 GM_deleteValue 用之；否则写空串兜底）
   // ── 草稿删除账本: WebDAV 双向同步时传播"草稿被删除"状态 ──
   // 语义与分组设置删除账本一致: 删除总是赢, 重新编辑即翻案
@@ -17872,8 +18908,9 @@ ${markedSwatchHtml}
     try { GM_setValue('xdex_draft_deletions', store); } catch (_) {}
   }
   function deleteDraftSafe(key) {
+    if (!key) key = getDraftKey();
+    if (!key) return; // 非串内页（草稿键为空）无草稿可删，避免空键误删/空账本登记
     try {
-      if (!key) key = getDraftKey();
       if (typeof GM_deleteValue === 'function') {
         GM_deleteValue(key);
       } else if (typeof GM_setValue === 'function') {
@@ -18182,6 +19219,8 @@ ${markedSwatchHtml}
   // 草稿：发帖成功清空（拦截模式优先）
   function 清空编辑(key) {
     if (!isDraftEnabled()) return;
+    if (!key) key = getDraftKey();
+    if (!key) return; // 非串内页无草稿可清
     if (key) {
       deleteDraftSafe(getDraftStorageKey(key));
       deleteDraftSafe(key);
@@ -18207,6 +19246,7 @@ ${markedSwatchHtml}
       if (!isDraftEnabled()) return;
       if (!正文框.length) return;
       const key = getDraftKey();
+      if (!key) return; // 非串内页（板块页等）无草稿
       const migratedLegacy = migrateLegacyDraftIfNeeded(key);
       let draft = readDraftValue(key);
       if (!draft && migratedLegacy) draft = migratedLegacy;
@@ -18279,7 +19319,8 @@ function 注册自动保存编辑() {
       return startupPerfDebug.measure('enhanceIsland.saveDraftAndPreview', () => {
       if (!正文框.length) return;
       if (isDraftEnabled()) {
-        saveDraftValue(getDraftKey(), 正文框.val());
+        const draftKey = getDraftKey();
+        if (draftKey) saveDraftValue(draftKey, 正文框.val());
       }
       renderContent(正文框.val());
       const box = $('.h-preview-box');
@@ -18638,6 +19679,8 @@ function 注册自动保存编辑() {
     function 未知() {
       if (cfg.enablePasteImage) 注册粘贴图片();
     }
+    // ★ 草稿槽规范化迁移（串级共享单槽；一次性，GM 标记防重）
+    try { migrateDraftSlotsToCanonical(); } catch (e) {}
     // 一级路径解析（支持 m 前缀）
     const 一层路径 = 路径分块[0] === 'm' ? 路径分块[1] : 路径分块[0];
     // 入口分流（与原脚本一致）
@@ -18991,6 +20034,13 @@ function 注册自动保存编辑() {
     // 切换逻辑（保留原版 setMode，外部依赖不变）
     const $modeBtns = $row.find('.js-mode'); // 兼容原代码（若不存在不会报错）
     function setMode(mode, {silent = false} = {}) {
+      // 保留用户手动选择的 临时/连续：发串 分支会 .empty() 掉整排按钮并把 extra 置 null，
+      // 切回 回复 时按钮 DOM 与 window.replyModeState 都已无值，只能靠 $row 上持久化的值还原，
+      // 否则每次 发串↔回复 往返都会把用户的选择打回默认（首帧无历史值 → 仍走默认）
+      const prevExtra = $row.find('.js-extra').attr('data-extra')
+        || $row.data('xdexLastExtra')
+        || (window.replyModeState && window.replyModeState.extra)
+        || null;
       $modeBtns.removeClass('active').filter('[data-mode="'+mode+'"]').addClass('active');
       if (mode === '发串') {
       $formPost.attr('action', '/Home/Forum/doPostThread.html');
@@ -19090,15 +20140,20 @@ function 注册自动保存编辑() {
           });
           // “临时/连续”按钮
           const $btnExtra = $('<button type="button" class="js-extra xdex-reply-mode-btn" data-extra="临时" title=\'当前为"临时"回复模式，点击切换为"连续"回复模式\'>').html(XDEX_SVG_STOPWATCH);
-          $btnExtra.on('click', function(){
+          $btnExtra.on('click', function(e){
+            // 下面会用 .html() 替换被点击的图标本身：若不阻断冒泡，遮罩处理器拿到的 e.target
+            // 已脱离文档，closest('.qp-quote') 判定失效，会把这次点击误判为「点了遮罩」而关闭浮窗
+            e.stopPropagation();
             const cur = $(this).attr('data-extra');
             if (cur === '临时') {
               $(this).attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
               window.replyModeState = { mode: '回复', extra: '连续' };
+              $row.data('xdexLastExtra', '连续'); // 持久化用户选择，供 发串→回复 往返后还原
               toast('已切换到 连续 回复模式');
             } else {
               $(this).attr('data-extra','临时').html(XDEX_SVG_STOPWATCH).attr('title','当前为"临时"回复模式，点击切换为"连续"回复模式');
               window.replyModeState = { mode: '回复', extra: '临时' };
+              $row.data('xdexLastExtra', '临时'); // 持久化用户选择，供 发串→回复 往返后还原
               toast('已切换到 临时 回复模式');
             }
             emitReplyModeChange();
@@ -19108,7 +20163,11 @@ function 注册自动保存编辑() {
           $extra.append($wrapper);
         }
         $extra.show();
-        window.replyModeState = { mode: '回复', extra: '临时' };
+        // 新建的按钮固定是 临时 图标，这里按 prevExtra 还原（无历史值时保持 临时，再由下方初始状态块应用设置项默认）
+        if (prevExtra === '连续') {
+          $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
+        }
+        window.replyModeState = { mode: '回复', extra: prevExtra === '连续' ? '连续' : '临时' };
         // 只有在没有自动填充时，才显示默认切换提示
         if (!autofilled && !silent) {
           toast('已切换到 回复 模式');
@@ -19124,11 +20183,14 @@ function 注册自动保存编辑() {
     }
     // 绑定模式按钮（原先存在的行为）
     $modeBtns.on('click', function(){ setMode($(this).attr('data-mode')); });
+    // 记录本行按钮上已有的 临时/连续（'临时' 表示用户手动选过；本函数可重复执行，如无缝加载后重跑）
+    // 下方三处初始状态分支据此避免用设置项默认值覆盖用户的选择
+    const rowPrevExtra = $row.find('.js-extra').attr('data-extra') || $row.data('xdexLastExtra') || null;
     // 初始状态：如果是时间线则强制 回复 模式（silent），否则默认静默发串
     if (isTimeline) {
       setMode('回复', {silent: true});
-      // extra 模式
-      if (SettingPanel.state.replyExtraDefault === '连续') {
+      // extra 模式（rowPrevExtra 为 '临时' 说明用户手动选过，不再用设置项默认覆盖）
+      if (SettingPanel.state.replyExtraDefault === '连续' && rowPrevExtra !== '临时') {
         // 模拟点击一次“临时/连续”按钮，或者直接设置
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
@@ -19142,20 +20204,20 @@ function 注册自动保存编辑() {
         const toastKey = 'xdex_' + _boardName + '_post_mode_toast_date';
         const lastShown = typeof GM_getValue === 'function' ? GM_getValue(toastKey, '') : '';
         if (lastShown !== today) {
-          toast(_boardName + '版块默认为"发串"模式，请注意', 7112, { queue: false, key: 'board-post-mode-notice' });
+          toast(_boardName + '版块默认为"发串"模式，请注意', 0, { type: 'error', key: 'board-post-mode-notice' });
           if (typeof GM_setValue === 'function') GM_setValue(toastKey, today);
         }
       } catch (e) {
-        toast(_boardName + '版块默认为"发串"模式，请注意', 7112, { queue: false, key: 'board-post-mode-notice' });
+        toast(_boardName + '版块默认为"发串"模式，请注意', 0, { type: 'error', key: 'board-post-mode-notice' });
       }
-      if (SettingPanel.state.replyExtraDefault === '连续') {
+      if (SettingPanel.state.replyExtraDefault === '连续' && rowPrevExtra !== '临时') {
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
     } else {
       setMode(SettingPanel.state.replyModeDefault, {silent: true});
-      // extra 模式
-      if (SettingPanel.state.replyExtraDefault === '连续') {
+      // extra 模式（rowPrevExtra 为 '临时' 说明用户手动选过，不再用设置项默认覆盖）
+      if (SettingPanel.state.replyExtraDefault === '连续' && rowPrevExtra !== '临时') {
         window.replyModeState.extra = '连续';
         $row.find('.js-extra').attr('data-extra','连续').html(XDEX_SVG_INFINITY).attr('title','当前为"连续"回复模式，点击切换为"临时"回复模式');
       }
@@ -19314,10 +20376,17 @@ function 注册自动保存编辑() {
           ? SettingPanel.state : null;
         const REPLY_PER_PAGE = 19;
         const API_BASE = 'https://api.nmb.best/api';
+        // ★ 整链计时：板块页/时间线发送后增量刷新（B 场景）。
+        // 注意用 begin/finish 而非 measure：本函数是 async，measure 只能量到首个 await 之前，
+        // 真正的同步 DOM 工作（Step 5-8）在多个 await 之后的续体里。
+        const __perfToken = startupPerfDebug.begin();
         (async () => {
           try {
             // Step 1: 拉取第1页获取 ReplyCount → 计算末页页码
+            // ★ 逐段计时：整链 7.5s 而同步 DOM 仅 ~28ms，必须确认耗时是网络还是「桥接阻塞」
+            const __tA1 = startupPerfDebug.begin();
             const p1Resp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=1', 'json');
+            startupPerfDebug.finish('boardQuickReply.await.p1', __tA1, () => ({}));
             const p1Raw = p1Resp && (p1Resp.response || p1Resp.responseText);
             const p1 = typeof p1Raw === 'string' ? JSON.parse(p1Raw) : p1Raw;
             if (!p1 || p1.success === false) throw new Error((p1 && p1.error) || 'API error');
@@ -19326,11 +20395,16 @@ function 注册自动保存编辑() {
             const opUserHash = String((p1 && (p1.user_hash || p1.UserHash)) || '');
             const tailPage = Math.max(1, Math.ceil(replyCount / REPLY_PER_PAGE));
             // Step 2: 拉取末页
+            const __tA2 = startupPerfDebug.begin();
             const tResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + tailPage, 'json');
+            startupPerfDebug.finish('boardQuickReply.await.tail', __tA2, () => ({ page: tailPage }));
             const tRaw = tResp && (tResp.response || tResp.responseText);
             const t = typeof tRaw === 'string' ? JSON.parse(tRaw) : tRaw;
             if (!t || t.success === false) throw new Error((t && t.error) || 'API error');
             let tailReplies = (Array.isArray(t.Replies) ? t.Replies : []).filter(r => r && Number(r.id) !== 9999999);
+            // ★ 借道回填：本次请求的数据已含刚发回复与 thread 顶层 fid——立即补齐
+            // pending 发言历史记录的 fid/forumName/page/title（零新增请求，字段即刻安全）
+            try { enrichPendingPostHistoryFromThreadData(t, tailReplies, tailPage); } catch (e) {}
             // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
             const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
             if (!allOldNodes.length) return;
@@ -19350,7 +20424,9 @@ function 注册自动保存编辑() {
               } else {
                 // lastOldId 不在末页 → 需要拉倒数第二页填补间隙
                 if (tailPage > 1) {
+                  const __tA3 = startupPerfDebug.begin();
                   const pResp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=' + (tailPage - 1), 'json');
+                  startupPerfDebug.finish('boardQuickReply.await.prev', __tA3, () => ({ page: tailPage - 1 }));
                   const pRaw = pResp && (pResp.response || pResp.responseText);
                   const p = typeof pRaw === 'string' ? JSON.parse(pRaw) : pRaw;
                   const prevReplies = (Array.isArray(p && p.Replies) ? p.Replies : []).filter(r => r && Number(r.id) !== 9999999);
@@ -19381,6 +20457,8 @@ function 注册自动保存编辑() {
             }
             if (!newReplies.length) { if (fromButton) toast('已是最新回复'); return; }
             // Step 5: 保存滚动位置（插入前）
+            // ★ 强制同步布局热点：每个 node 读一次 getBoundingClientRect + offsetHeight
+            const __t5 = startupPerfDebug.begin();
             const scrollEl = document.scrollingElement || document.documentElement;
             const scrollTopBefore = scrollEl.scrollTop;
             const viewportTop = scrollTopBefore;
@@ -19393,7 +20471,13 @@ function 注册自动保存编辑() {
                 height: node.offsetHeight
               };
             });
+            startupPerfDebug.finish('boardQuickReply.step5.measure', __t5, () => ({ nodes: allOldNodes.length }));
             // Step 6: 遍历所有匹配节点，每个节点独立增量追加
+            // ★ 每次 appendChild 都会触发 document.body 子树的多个观察器（hdGlobal 等），
+            // 插入 N 条 = N 轮全页观察器回调，是「发送后卡顿」的首要嫌疑
+            const __t6 = startupPerfDebug.begin();
+            let __inserted = 0;
+            const appendedNodes = [];
             for (const node of allOldNodes) {
               let rc = node.querySelector('.h-threads-item-replies');
               // 无回复区（新串未展开过回复）→ 创建容器，否则增量刷新会被静默跳过
@@ -19412,11 +20496,14 @@ function 注册自动保存编辑() {
               for (const reply of newReplies) {
                 if (!existingIds.has(String(reply.id))) {
                   const el = buildApiReplyNode(reply, tid, opUserHash);
-                  if (el) rc.appendChild(el);
+                  if (el) { rc.appendChild(el); appendedNodes.push(el); __inserted++; }
                 }
               }
             }
+            startupPerfDebug.finish('boardQuickReply.step6.insert', __t6, () => ({ nodes: allOldNodes.length, inserted: __inserted }));
             // Step 7: 计算视口上方节点增长的高度，补偿滚动位置
+            // ★ 又一次强制同步布局：读取每个 node 的 offsetHeight + 写 scrollTop
+            const __t7 = startupPerfDebug.begin();
             // 只有完全在视口上方（bottom <= viewportTop）的节点增长才需要补偿
             let heightAddedAbove = 0;
             for (let i = 0; i < allOldNodes.length; i++) {
@@ -19428,24 +20515,55 @@ function 注册自动保存编辑() {
               }
             }
             scrollEl.scrollTop = scrollTopBefore + heightAddedAbove;
+            startupPerfDebug.finish('boardQuickReply.step7.compensate', __t7, () => ({ nodes: allOldNodes.length, addedAbove: heightAddedAbove }));
             // Step 8: 后处理增强（所有匹配节点）
+            const __t8 = startupPerfDebug.begin();
             for (const node of allOldNodes) {
               try { if (typeof hideEmptyTitleAndEmail === 'function') hideEmptyTitleAndEmail($(node)); } catch (err) {}
               try { if (typeof markAllCookies === 'function') markAllCookies(getFilterConfig().markedGroups || [], node); } catch (err) {}
             }
+            startupPerfDebug.finish('boardQuickReply.step8.post', __t8, () => ({ nodes: allOldNodes.length }));
             // 延迟执行其他增强
             setTimeout(() => {
+              // ★ deferred 只处理本次新增的回复（appendedNodes）：
+              // 旧回复在首载/前次刷新已处理过（各函数幂等锁保证不重复）。
+              // 原实现遍历 allOldNodes（整条串）→ enableHDImageAndLayoutFix 对整串所有元素
+              // 读布局+写样式（getBoundingClientRect×每元素，读 写 读 交错强制重排），
+              // 再叠加 refreshFilterDisplay 全文档过滤重算——「插入后卡顿」的主源。
+              // 对齐串内页行为（applyPageEnhancements 只处理新增内容）。
+              if (!appendedNodes.length) return;
+              const __td = startupPerfDebug.begin();
+              // ── A 组：需串级作用域（highlightPO 的楼层编号要遍历 .h-threads-item-replies 容器，
+              //    以单条新回复为 scope 会空转 → 新回复无编号/无 Po 标，实测截图问题）。
+              //    highlightPO 是纯 DOM 文本/样式写、无布局读，对整串跑成本低。
               for (const node of allOldNodes) {
                 try { if (typeof highlightPO === 'function') highlightPO(node); } catch (err) {}
-                try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(node); } catch (err) {}
-                try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(node); } catch (err) {}
+              }
+              // ── B 组：布局读写热点，严格限定本次新增回复（旧回复不再重跑——
+              //    enableHDImageAndLayoutFix 的 handleGeneralElements 对每元素
+              //    读布局+写样式交错，整串重跑会强制重排数百次 = 插入后卡顿主源）
+              for (const node of appendedNodes) {
+                const replyScope = node.closest('.h-threads-item-reply') || node;
+                try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(replyScope); } catch (err) {}
+                try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(replyScope); } catch (err) {}
                 try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(node); } catch (err) {}
                 try { if (cfg2 && cfg2.extendQuote && typeof extendQuote === 'function') extendQuote(node); } catch (err) {}
                 try { if (typeof initContent === 'function') initContent(node); } catch (err) {}
                 try { if (typeof initExtendedContent === 'function') initExtendedContent(node); } catch (err) {}
               }
-              try { if (cfg2) refreshFilterDisplay(cfg2); } catch (err) {}
-              try { if (typeof enablePostExpand === 'function') enablePostExpand(document); } catch (err) {}
+              // ── D 组：过滤与展开按钮按串节点跑（轻量 DOM 遍历/样式写，无布局读；
+              //    新回复的过滤结果可能影响串的展开/折叠形态）
+              const __tf = startupPerfDebug.begin();
+              for (const node of allOldNodes) {
+                try { if (cfg2) refreshFilterDisplay(cfg2, node); } catch (err) {}
+              }
+              startupPerfDebug.finish('boardQuickReply.deferred.refreshFilter', __tf, () => ({ nodes: allOldNodes.length }));
+              const __tp = startupPerfDebug.begin();
+              for (const node of allOldNodes) {
+                try { if (typeof enablePostExpand === 'function') enablePostExpand(node); } catch (err) {}
+              }
+              startupPerfDebug.finish('boardQuickReply.deferred.enablePostExpand', __tp, () => ({ nodes: allOldNodes.length }));
+              startupPerfDebug.finish('boardQuickReply.deferred.total', __td, () => ({ nodes: appendedNodes.length }));
             }, 50);
             if (fromButton) toast('已更新 ' + newReplies.length + ' 条回复');
             if (e.type === 'tempReplySuccess') currentReplyTid = null;
@@ -19454,6 +20572,8 @@ function 注册自动保存编辑() {
             toast('刷新板块串失败');
           }
         })().finally(() => {
+          // ★ 整链收尾：含全部 await 等待与 Step 5-8 同步工作；与 LoAF 的 blockingDuration 对照
+          startupPerfDebug.finish('boardQuickReply.total', __perfToken, () => ({ fromButton }));
           if (btn) { btn.disabled = false; btn.classList.remove('xdex-icon-loading'); }
           if (fromButton) _boardRefreshInflight.delete(String(tid));
         });
@@ -19513,8 +20633,11 @@ function 注册自动保存编辑() {
             + '<div class="h-threads-content">' + contentHtml + '</div>'
           + '</div>'
         + '</div>';
+        // ★ 逐条计时：innerHTML 解析成本。Step 6 内循环调用，条数多时累加可观
+        const __tok = startupPerfDebug.begin();
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
+        startupPerfDebug.finish('boardQuickReply.buildNode', __tok, () => ({ html: html.length, hasImg: !!imgRaw }));
         return tmp.firstChild || null;
       }
     }
@@ -21791,8 +22914,9 @@ function 注册自动保存编辑() {
     return `
       <div class="favorite-thread-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="favorite-thread-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="favorite-thread-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="favorite-thread-id-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="串号或串链接" value="${Utils.escapeHTML ? Utils.escapeHTML(threadId) : threadId}">
         </div>
@@ -21804,8 +22928,9 @@ function 注册自动保存编辑() {
     return `
       <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
+        ${buildRowDragHandleHtml()}
         <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
-        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
           <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
         </div>
@@ -22518,10 +23643,147 @@ function 注册自动保存编辑() {
     logPostHistory('store notify', { source, remote: !!remote });
     schedulePostHistoryLiveRender(source, remote);
   }
+  // ★ 发言历史持久化写合并：150ms 窗口内的多次全量写只落盘最后一次。
+  // 背景：每次 GM_setValue 都触发整键序列化
+  //（QwQNT 下还有 localStorage 镜像 stringify + IPC 结构化克隆 + 主进程处理），
+  // 导入/WebDAV 合并路径会在同一时刻连续写 threadHistory + postHistory 等多个大键，
+  // 确认链（snapshot→confirm）也会产生多次全量写。合并窗口显著削减同 tick 连环写的总量。
+  // 一致性：postHistoryStoreCache 在调用方视角始终立即更新（读不受窗口影响）；
+  // 窗口到期才真正 GM_setValue，跨标签广播与 GM_addValueChangeListener 随真实写触发。
+  const POST_HISTORY_PERSIST_DEBOUNCE_MS = 150;
+  let postHistoryPersistTimer = 0;
+  let postHistoryPersistPending = null;
+  function flushPostHistoryStorePersist() {
+    if (postHistoryPersistTimer) {
+      clearTimeout(postHistoryPersistTimer);
+      postHistoryPersistTimer = 0;
+    }
+    if (postHistoryPersistPending === null) return;
+    const pending = postHistoryPersistPending;
+    postHistoryPersistPending = null;
+    try {
+      GM_setValue(POST_HISTORY_STORAGE_KEY, pending);
+    } catch (e) {
+      console.warn('[postHistory] persist flush failed', e);
+    }
+  }
+  function schedulePostHistoryStorePersist(normalized) {
+    postHistoryPersistPending = normalized;
+    if (postHistoryPersistTimer) return;
+    postHistoryPersistTimer = setTimeout(() => {
+      postHistoryPersistTimer = 0;
+      flushPostHistoryStorePersist();
+    }, POST_HISTORY_PERSIST_DEBOUNCE_MS);
+  }
+  // 页面关闭/隐藏前兜底落盘，避免窗口期内最后一次写丢失
+  if (typeof document !== 'undefined' && !window.__xdexPostHistoryPersistFlushBound) {
+    window.__xdexPostHistoryPersistFlushBound = true;
+    const flushOnLeave = () => {
+      // 页面隐藏/关闭：先把字段回填队列落盘（借道回填可能刚入队），再冲 persist 防抖窗口
+      try { flushPostHistoryFieldPatches(); } catch (e) {}
+      flushPostHistoryStorePersist();
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushOnLeave();
+    });
+    // pagehide 已覆盖导航/关闭时机；不挂 beforeunload——它在导航关键路径上，
+    // 同步大对象 stringify+localStorage 写会拖慢「打开新网页」的旧页面卸载
+    window.addEventListener('pagehide', flushOnLeave);
+  }
+  // ★ 发言历史字段回填队列：thread fallback 拿到缺失字段（fid/forumName/page）后不立即
+  // 全量写 store，而是入队；下一次任意 setPostHistoryStore 时免费合并，或 30s 空闲兜底
+  // 一次性落盘。消除「回填 = 一次 2.9MB 全量写 + 2 轮广播」在发送后窗口内的额外卡顿。
+  const postHistoryFieldPatchQueue = new Map();
+  let postHistoryFieldPatchTimer = 0;
+  const POST_HISTORY_FIELD_PATCH_FLUSH_MS = 1500;
+  function applyPostHistoryFieldPatches(store) {
+    if (!postHistoryFieldPatchQueue.size) return store;
+    postHistoryFieldPatchQueue.forEach((patch, localId) => {
+      const item = store.items && store.items[localId];
+      if (!item) { postHistoryFieldPatchQueue.delete(localId); return; }
+      Object.keys(patch).forEach(key => {
+        const cur = item[key];
+        const val = patch[key];
+        // 只补缺失/空值，不覆盖已有数据
+        if (cur === undefined || cur === null || cur === '' || cur === 0) item[key] = val;
+      });
+      postHistoryFieldPatchQueue.delete(localId);
+    });
+    return store;
+  }
+  function flushPostHistoryFieldPatches() {
+    if (!postHistoryFieldPatchQueue.size) return;
+    if (postHistoryFieldPatchTimer) { clearTimeout(postHistoryFieldPatchTimer); postHistoryFieldPatchTimer = 0; }
+    const store = getPostHistoryStore();
+    if (!postHistoryFieldPatchQueue.size) return;
+    applyPostHistoryFieldPatches(store);
+    setPostHistoryStore(store);
+  }
+  function schedulePostHistoryFieldPatchFlush() {
+    if (postHistoryFieldPatchTimer) return;
+    postHistoryFieldPatchTimer = setTimeout(() => {
+      postHistoryFieldPatchTimer = 0;
+      try {
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(() => { try { flushPostHistoryFieldPatches(); } catch (e) {} }, { timeout: POST_HISTORY_FIELD_PATCH_FLUSH_MS + 3500 });
+          return;
+        }
+      } catch (e) { /* 回退直接执行 */ }
+      try { flushPostHistoryFieldPatches(); } catch (e) {}
+    }, POST_HISTORY_FIELD_PATCH_FLUSH_MS);
+  }
+    // ★ 借道确认：发送链已拉取的 thread 数据直接回填 pending 记录的缺失字段。
+  // 零新增请求、字段立即落盘（替代原 fallback 的独立 API 链与延迟写）。
+  // threadObj: /api/thread 响应对象（顶层含 fid）；replies: 含刚发回复的 Replies 数组；
+  // page: 该回复所在页码；snapshotConstraint: 可选 { threadId } 限定串。
+  function enrichPendingPostHistoryFromThreadData(threadObj, replies, page) {
+    try {
+      const store = getPostHistoryStore();
+      const now = Date.now();
+      const PENDING_TTL_MS = 180000;
+      const fid = getPostHistoryPostFid(threadObj) || '';
+      let enriched = 0;
+      (replies || []).forEach((reply) => {
+        const rid = String(reply && reply.id || '').trim();
+        if (!rid) return;
+        Object.keys(store.items).forEach((localId) => {
+          const item = store.items[localId];
+          if (!item || item.status !== 'pending' || item.type !== 'reply') return;
+          if (String(item.threadId || '') !== String(threadObj && threadObj.id || '')) return;
+          if (now - (Number(item.submittedAt) || 0) > PENDING_TTL_MS) return;
+          if (String(item.id || '') === rid || (!item.id && postHistoryMatchesSnapshot(reply, item, new Set()))) {
+            const cand = buildPostHistoryThreadCandidate(reply, threadObj, page);
+            postHistoryFieldPatchQueue.set(localId, {
+              fid: fid || getPostHistoryPostFid(cand) || '',
+              forumName: getPostHistoryForumNameByFid(fid) || '',
+              page: Math.max(1, Number(cand.page) || page || 0),
+              title: String(cand.title || ''),
+              name: String(cand.name || ''),
+              email: String(cand.email || '')
+            });
+            enriched += 1;
+          }
+        });
+      });
+      if (enriched > 0) {
+        logPostHistory('inline enrich', { count: enriched, page });
+        schedulePostHistoryFieldPatchFlush();
+      }
+      return enriched;
+    } catch (e) {
+      logPostHistory('inline enrich error', { error: e && e.message ? e.message : String(e) }, 'warn');
+      return 0;
+    }
+  }
   function setPostHistoryStore(store) {
+    // 先把排队的字段回填合并进本次写（0 额外写）
+    if (postHistoryFieldPatchQueue.size) {
+      try { applyPostHistoryFieldPatches(store); } catch (e) { /* 合并失败不阻塞主写 */ }
+      if (postHistoryFieldPatchTimer) { clearTimeout(postHistoryFieldPatchTimer); postHistoryFieldPatchTimer = 0; }
+    }
     const normalized = normalizePostHistoryStore(store);
-    GM_setValue(POST_HISTORY_STORAGE_KEY, normalized);
     postHistoryStoreCache = normalized;
+    schedulePostHistoryStorePersist(normalized);
     notifyPostHistoryStoreChanged('local-write', false);
     return normalized;
   }
@@ -23049,6 +24311,19 @@ function 注册自动保存编辑() {
     return null;
   }
   const POST_HISTORY_THREAD_PAGE_RETRY_DELAYS = [5000, 15000, 30000, 60000, 120000];
+  // 主路径确认后的 thread 尾页回退调度：错峰到空闲时段，避免发送后的存储写敏感窗口。
+  // 只调度一次（pending 标记防重复）；页面在此期间关闭则放弃（字段缺口无碍主数据）。
+  function schedulePostHistoryThreadFallback(localId, snapshot) {
+    const run = () => { try { completePostHistoryFromThreadFallback(localId, snapshot, 0); } catch (e) { logPostHistory('thread fallback schedule error', { localId, error: e && e.message ? e.message : String(e) }, 'warn'); } };
+    const IDLE_DELAY_MS = 5000;
+    try {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => setTimeout(run, 0), { timeout: IDLE_DELAY_MS + 3000 });
+        return;
+      }
+    } catch (e) { /* 回退 setTimeout */ }
+    setTimeout(run, IDLE_DELAY_MS);
+  }
   async function completePostHistoryFromThreadFallback(localId, snapshot, retryAttempt) {
     if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
       logPostHistory('thread fallback exhausted', { localId, reason: 'unsupported-snapshot', snapshot: summarizePostHistorySnapshot(snapshot) }, 'warn');
@@ -23064,7 +24339,26 @@ function 注册自动保存编辑() {
         const post = findPostHistoryThreadFallbackMatch(pageData, snapshot, usedIds);
         if (post) {
           logPostHistory('thread fallback confirmed', { localId, page, retryAttempt: retryAttempt || 0, candidate: summarizePostHistoryCandidate(post) });
-          confirmPostHistorySnapshot(localId, post);
+          // ★ 只回填主路径拿不到的字段（fid/forumName/page/title 等），入队等待合并写：
+          // 不再走 confirmPostHistorySnapshot（那会整包 update + 再次状态翻转 = 又一次
+          // 2.9MB 全量存储写 + 2 轮广播，实测是发送后卡顿的残留源）。条目状态仍为
+          // 主路径已写的 confirmed，无字段翻转风险。
+          // 借道回填通常已补齐字段（fid 非空）→ 无缺口则跳过，避免一次空的全量写
+          const existingItem = getPostHistoryStore().items[localId];
+          const needsBackfill = !existingItem || !existingItem.fid || !existingItem.page;
+          if (needsBackfill) {
+            postHistoryFieldPatchQueue.set(localId, {
+              fid: getPostHistoryPostFid(post) || '',
+              forumName: getPostHistoryForumNameByFid(getPostHistoryPostFid(post)) || '',
+              page: Math.max(1, Number(post.page) || 0),
+              title: String(post.title || ''),
+              name: String(post.name || ''),
+              email: String(post.email || '')
+            });
+            schedulePostHistoryFieldPatchFlush();
+          }
+          const resolver = postHistoryConfirmationMap.get(localId);
+          if (resolver) { try { resolver({ localId, fromFallback: true }); postHistoryConfirmationMap.delete(localId); } catch (e) {} }
           return true;
         }
       }
@@ -23332,8 +24626,13 @@ function 注册自动保存编辑() {
         const confirmedResto = String(post.resto || snapshot.resto || '').trim();
         const confirmedSnapshot = Object.assign({}, snapshot, { id, postId: id, resto: confirmedResto, threadId: confirmedResto });
         confirmPostHistorySnapshot(localId, post);
+        // ★ 主路径确认后仍需 thread 尾页回退：getLastPost 不返回 fid/forumName/page/title
+        //   等字段（实测历史条目缺「技术支持/所在页」等），fallback 的 thread 页 candidate
+        //   负责补齐。但它会再次 confirm → 一次全量存储写 + 2 轮跨标签广播（每次广播
+        //   渲染端 valuesEqual 双 stringify 大对象）——错峰到空闲时段执行，避免叠加在
+        //   发送后 0-3s 的滚动敏感窗口（实测该窗口内 3 次全量写 = 持续卡顿）。
         if (confirmedSnapshot.type === 'reply') {
-          completePostHistoryFromThreadFallback(localId, confirmedSnapshot);
+          schedulePostHistoryThreadFallback(localId, confirmedSnapshot);
         }
       }).catch(e => {
         logPostHistory('completion retry', { localId, attempt, nextAttempt: attempt + 1, error: e && e.message ? e.message : String(e) }, 'warn');
@@ -23341,7 +24640,52 @@ function 注册自动保存编辑() {
       });
     }, delay);
   }
+  // ★ 轻量确认（发言历史关闭时专用）：只通过 getLastPost 重试链取回新串地址用于跳转，
+// 完全不写发言历史 store（无 upsert/update/广播）。
+  function confirmPostHistoryUrlOnly(fd, options) {
+    const type = options && options.isReply ? 'reply' : 'thread';
+    const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
+    const contentText = normalizePostHistoryText(contentRaw);
+    const contentHash = hashPostHistoryText(contentText);
+    const resto = fd && fd.get ? String(fd.get('resto') || '').trim() : '';
+    const title = fd && fd.get ? String(fd.get('title') || '') : '';
+    const probes = {
+      status: 'pending', type, localId: '', id: '', postId: '', resto,
+      threadId: type === 'reply' ? resto : '',
+      title, contentText, contentHash, userHash: '',
+      submittedAt: Date.now()
+    };
+    const delays = POST_HISTORY_GET_LAST_POST_RETRY_DELAYS;
+    return new Promise((resolve) => {
+      const attemptFetch = (attempt) => {
+        const delay = delays[attempt];
+        if (delay == null) { resolve(null); return; }
+        setTimeout(() => {
+          fetchLastPostHistoryPost({ localId: 'url-only', attempt }).then(post => {
+            // 复用主链同源匹配判据（null 安全；usedIds 用空集——只确认不落库）
+            if (!postHistoryMatchesSnapshot(post, probes, new Set())) {
+              attemptFetch(attempt + 1);
+              return;
+            }
+            const id = String(post.id || '').trim();
+            resolve(id ? { url: buildPostHistoryUrl(type, id, String(post.resto || resto || '').trim()), id } : null);
+          }).catch(() => { attemptFetch(attempt + 1); });
+        }, delay);
+      };
+      attemptFetch(0);
+    });
+  }
   function snapshotSubmittedPostHistory(fd, options) {
+    // 发言历史已关闭：不在发送消息后自动记录。但发串跳转（postAfterAction=jump/refresh）
+    // 依赖确认后的地址——走"只确认不落库"的轻量路径（getLastPost 重试取 id，不写 store）。
+    if (!isPostHistoryEnabledNow()) {
+      const isReplyDisabled = !!(options && options.isReply);
+      return {
+        snapshot: null,
+        localId: null,
+        confirmPromise: isReplyDisabled ? Promise.resolve(null) : confirmPostHistoryUrlOnly(fd, options)
+      };
+    }
     const type = options && options.isReply ? 'reply' : 'thread';
     const submittedAt = Date.now();
     const contentRaw = fd && fd.get ? String(fd.get('content') || '') : '';
@@ -23879,6 +25223,7 @@ function 注册自动保存编辑() {
     return saved;
   }
   function touchThreadHistoryCurrentLocation(options = {}) {
+    if (!isThreadHistoryEnabledNow()) return getThreadHistoryStore(); // 浏览历史已关闭：不更新位置
     const parsed = parseThreadHistoryUrl(options.url || location.href);
     if (!parsed) return getThreadHistoryStore();
     const key = getThreadHistoryKey(parsed.mode, parsed.threadId);
@@ -23908,6 +25253,7 @@ function 注册自动保存编辑() {
     return saved;
   }
   function recordThreadHistoryProgress(options = {}) {
+    if (!isThreadHistoryEnabledNow()) return getThreadHistoryStore(); // 浏览历史已关闭：不记录翻页进度
     const parsed = parseThreadHistoryUrl(options.url || location.href);
     if (!parsed) return getThreadHistoryStore();
     const record = extractThreadHistoryRecord(document) || {
@@ -24164,7 +25510,29 @@ function 注册自动保存编辑() {
     window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
     window.addEventListener('pagehide', () => cancelThreadHistoryDwellTimer(true), { passive: true });
   }
+  // ★ 历史功能开关读取（即时生效：优先 SettingPanel.state，未初始化时回退 defaults）
+  function isThreadHistoryEnabledNow() {
+    try {
+      const sp = typeof SettingPanel !== 'undefined' ? SettingPanel : null;
+      if (!sp) return true;
+      const state = sp.state || {};
+      if (typeof state.enableThreadHistory === 'boolean') return state.enableThreadHistory;
+      const defaults = sp.defaults || {};
+      return defaults.enableThreadHistory !== false;
+    } catch (e) { return true; }
+  }
+  function isPostHistoryEnabledNow() {
+    try {
+      const sp = typeof SettingPanel !== 'undefined' ? SettingPanel : null;
+      if (!sp) return true;
+      const state = sp.state || {};
+      if (typeof state.enablePostHistory === 'boolean') return state.enablePostHistory;
+      const defaults = sp.defaults || {};
+      return defaults.enablePostHistory !== false;
+    } catch (e) { return true; }
+  }
   function recordCurrentThreadHistory(attempt = 0, options = {}) {
+    if (!isThreadHistoryEnabledNow()) return; // 浏览历史已关闭：不再自动记录（已有数据保留）
     const record = extractThreadHistoryRecord(document);
     if (!record) {
       const parsed = parseThreadHistoryUrl(location.href);
@@ -24334,9 +25702,10 @@ function 注册自动保存编辑() {
     deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
     // 回收站标识: 该串原始浏览数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    // 已恢复(revivedAt)的墓碑不算「在回收站中」——与 getThreadHistoryTombstoneList 的过滤条件保持一致
     if (typeof getThreadHistoryStore === 'function') {
       const tomb = (getThreadHistoryStore().tombstones || {})[result.key];
-      if (tomb && !tomb.purged) {
+      if (tomb && !tomb.purged && !tomb.revivedAt) {
         const mark = document.createElement('button');
         mark.type = 'button';
         mark.className = 'xdex-history-tombstone-mark';
@@ -24467,6 +25836,8 @@ function 注册自动保存编辑() {
   // ===== 共享 SVG 图标（统一视觉，替代字符"×"等占位） =====
   const XDEX_SVG_X = '<svg viewBox="0 0 24 24" style="display:block;width:11px;height:11px;margin:auto;" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_TRASH = '<svg viewBox="0 0 24 24" style="display:block;width:13px;height:13px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+  // 分组行拖拽手柄图标（六点：2 列 × 3 行，点距紧凑，参考常见拖拽手柄样式）
+  const XDEX_SVG_GRIP = '<svg viewBox="0 0 10 16" style="display:block;width:10px;height:16px;margin:auto;" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3" r="1.3"></circle><circle cx="7.5" cy="3" r="1.3"></circle><circle cx="2.5" cy="8" r="1.3"></circle><circle cx="7.5" cy="8" r="1.3"></circle><circle cx="2.5" cy="13" r="1.3"></circle><circle cx="7.5" cy="13" r="1.3"></circle></svg>';
   // 回复模式行按钮图标（16px，与刷新饼干等 xdex-icon-btn 图标同尺寸）
   const XDEX_SVG_X_ICON = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
   const XDEX_SVG_STOPWATCH = '<svg viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13.6" r="7.4"></circle><path d="M12 13.6V9.8"></path><path d="M9.2 2.4h5.6"></path><path d="M12 2.4v3.8"></path><path d="M17.9 8.2l1.7-1.7"></path></svg>';
@@ -24491,7 +25862,9 @@ function 注册自动保存编辑() {
     const store = getThreadHistoryStore();
     const tombs = store.tombstones || {};
     let arr = Object.keys(tombs)
-      .filter((key) => !tombs[key].purged)
+      // 排除已彻底删除(purged)与已恢复(revivedAt)的墓碑：
+      // 恢复后墓碑保留(revivedAt 供 WebDAV 传播、record 已清空)但不应再出现在回收站视图
+      .filter((key) => !tombs[key].purged && !tombs[key].revivedAt)
       .map((key) => Object.assign({ key }, tombs[key]));
       const nowTs = Date.now();
       if (threadHistoryRecycleSort === 'due24h') {
@@ -24955,9 +26328,10 @@ function 注册自动保存编辑() {
     deleteButton.innerHTML = XDEX_SVG_X;
     main.appendChild(deleteButton);
     // 回收站标识: 该发言原始数据存于回收站时展示, 点击跳转定位（墓碑数据层就绪后自动生效）
+    // 已恢复(revivedAt)的墓碑不算「在回收站中」——与 getPostHistoryTombstoneList 的过滤条件保持一致
     if (typeof getPostHistoryStore === 'function') {
       const tomb = (getPostHistoryStore().tombstones || {})[result.key];
-      if (tomb && !tomb.purged) {
+      if (tomb && !tomb.purged && !tomb.revivedAt) {
         const mark = document.createElement('button');
         mark.type = 'button';
         mark.className = 'xdex-post-history-tombstone-mark';
@@ -25022,7 +26396,9 @@ function 注册自动保存编辑() {
     const store = getPostHistoryStore();
     const tombs = store.tombstones || {};
     let arr = Object.keys(tombs)
-      .filter((key) => !tombs[key].purged)
+      // 排除已彻底删除(purged)与已恢复(revivedAt)的墓碑：
+      // 恢复后墓碑保留(revivedAt 供 WebDAV 传播、record 已清空)但不应再出现在回收站视图
+      .filter((key) => !tombs[key].purged && !tombs[key].revivedAt)
       .map((key) => Object.assign({ key }, tombs[key]));
       const nowTs = Date.now();
       if (postHistoryRecycleSort === 'due24h') {
@@ -26493,17 +27869,19 @@ function 注册自动保存编辑() {
     if (oldSubscriptionFeed) oldSubscriptionFeed.remove();
     const items = getFavoriteThreadsConfig().favoriteThreads || [];
     const node = createFavoriteThreadsMenuNode(items, wasOpen);
-    const threadHistoryNode = createThreadHistoryMenuNode();
-    const postHistoryNode = createPostHistoryMenuNode();
+    // 历史开关关闭时对应入口不出现（已有数据保留，仅隐藏入口）
+    const threadHistoryNode = isThreadHistoryEnabledNow() ? createThreadHistoryMenuNode() : null;
+    const postHistoryNode = isPostHistoryEnabledNow() ? createPostHistoryMenuNode() : null;
     const subscriptionFeedNode = createSubscriptionFeedMenuNode();
     const timeline = Array.from(menu.children).find((li) => {
       const header = li && li.querySelector ? li.querySelector(':scope > .h-nav-parent-header, :scope > a') : null;
       return header && (header.textContent || '').trim() === '时间线';
     });
     menu.insertBefore(node, timeline || menu.firstChild);
-    menu.insertBefore(threadHistoryNode, timeline || node.nextSibling);
-    menu.insertBefore(postHistoryNode, timeline || threadHistoryNode.nextSibling);
-    menu.insertBefore(subscriptionFeedNode, timeline || postHistoryNode.nextSibling);
+    let insertAfter = node;
+    if (threadHistoryNode) { menu.insertBefore(threadHistoryNode, timeline || insertAfter.nextSibling); insertAfter = threadHistoryNode; }
+    if (postHistoryNode) { menu.insertBefore(postHistoryNode, timeline || insertAfter.nextSibling); insertAfter = postHistoryNode; }
+    menu.insertBefore(subscriptionFeedNode, timeline || insertAfter.nextSibling);
   }
   // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，指向最近查看页，允许低于最远访问页）
   function syncFavoriteThreadsLinks() {
@@ -28383,6 +29761,34 @@ function 注册自动保存编辑() {
     const hrefMatch = href.match(/(?:[?&]r=|No\.)(\d{4,8})/i);
     return hrefMatch ? hrefMatch[1] : '';
   }
+  // ★ ?page=N&r=ID 链接定位：打开页面时滚动到 r= 对应回复并尽量在视野中居中。
+// 独立于「关闭引用」开关（开关只控制剥引用，定位是浏览体验）。
+// 判定用 data-threads-id（r= 号即回复号），不依赖站点的 selected 标记时序；
+// 图片/相对时间等增强会改变高度，定位后二次校准。
+function initReplyParamScrollTo() {
+    try {
+      const params = new URLSearchParams(location.search);
+      const rParam = params.get('r');
+      if (!rParam || params.get('page') === null || !/^\d{6,8}$/.test(rParam)) return;
+      const scrollTarget = () => document.querySelector('[data-threads-id="' + rParam + '"]');
+      let attempts = 0;
+      const tryScroll = () => {
+        const el = scrollTarget();
+        if (el) {
+          el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          // 二次校准：图片/懒加载/字体就绪后高度变化会偏离居中
+          setTimeout(() => {
+            try {
+              if (el.isConnected) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+            } catch (e) {}
+          }, 800);
+          return;
+        }
+        if (++attempts <= 20) setTimeout(tryScroll, 300);
+      };
+      tryScroll();
+    } catch (e) { /* 定位失败不影响页面 */ }
+  }
   function initDisableAutoQuote() {
     const rParam = new URLSearchParams(location.search).get('r');
     if (!rParam) return;
@@ -28733,7 +30139,30 @@ function 注册自动保存编辑() {
     if (r.status === 0) return { ok: false, message: '请求失败' };
     // 404/405/207 等均说明服务器可达且认证通过（目录无 index / 不支持 GET 均属正常）
     if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(r.status) >= 0) {
-      return { ok: true, message: '连接成功（HTTP ' + r.status + '）' };
+      // ★ 目录可达 ≠ 同步文件可读写：同步实际请求的是 base + WEBDAV_SYNC_FILE。
+      //   这里追加一次文件级探测，让「连接成功」真正覆盖同步路径。
+      //   预期结果：200（文件已存在）/ 404（尚未上传，属正常）/ 207 / 301 / 302 / 405
+      //   失败即返回具体原因，避免「测试连接成功但同步 HTTP 0」的困惑
+      const fileUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
+      console.log('[webdav] 检查同步文件请求', { method: 'GET', url: fileUrl });
+      const rf = await webdavRequest({ url: fileUrl, method: 'GET', headers });
+      if (rf.unavailable) return { ok: false, message: '同步文件探测：GM_xmlhttpRequest 不可用' };
+      if (rf.callError) return { ok: false, message: '同步文件探测异常：' + rf.callError };
+      if (rf.hanging) return { ok: false, message: '同步文件探测无响应（脚本管理器未触发回调）' };
+      if (rf.networkError) {
+        const fmsg = rf.errorMessage || '';
+        if (/denied|not allowed|connect/i.test(fmsg)) {
+          return { ok: false, message: '同步文件被脚本管理器拦截：请授权该 WebDAV 域名（或加入 @connect）' + (fmsg ? '（' + fmsg.slice(0, 120) + '）' : '') };
+        }
+        return { ok: false, message: '同步文件网络错误：无法访问 ' + WEBDAV_SYNC_FILE + (fmsg ? '（' + fmsg.slice(0, 160) + '）' : '') };
+      }
+      if (rf.timeout) return { ok: false, message: '同步文件探测超时（目录可达，但文件请求超时）' };
+      if (rf.status === 401 || rf.status === 403) return { ok: false, message: '同步文件认证失败（HTTP ' + rf.status + '）' };
+      if (rf.status === 0) return { ok: false, message: '同步文件请求失败（HTTP 0）：' + (rf.timeout ? '超时' : '网络层错误，请查看控制台 [webdav] 日志') };
+      if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(rf.status) >= 0) {
+        return { ok: true, message: '连接成功（目录 HTTP ' + r.status + '，同步文件 HTTP ' + rf.status + '）' };
+      }
+      return { ok: false, message: '同步文件异常响应 HTTP ' + rf.status + (rf.statusText ? ' ' + rf.statusText : '') };
     }
     return { ok: false, message: '异常响应 HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : '') };
   }
@@ -28772,7 +30201,9 @@ function 注册自动保存编辑() {
   const WEBDAV_SETTINGS_SKIP_KEYS = new Set([
     'enableImageHideMode', 'interceptReplyForm', 'updateReplyNumbers', 'replaceRightSidebar',
     'enablePostExpandAll', 'kaomojiEnhancer', 'enableImageViewerMode', 'autoSelectReportReason',
-    'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory', 'enableSubscriptionFeed'
+    'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory',
+    // 分组顺序元数据：走静默合并（at 新者胜），不参与差异弹窗判定
+    'groupOrderMeta', 'enableSubscriptionFeed'
   ]);
   function sameSettingValue(a, b) {
     if (a === b) return true;
@@ -28798,6 +30229,61 @@ function 注册自动保存编辑() {
     }
     return false;
   }
+  // 设置键 → 中文短名称（用于 WebDAV 冲突弹窗等需要简明标识的场景；与 spDescriptions 的键对应）
+  const SETTING_LABELS = {
+    enableCookieSwitch: '饼干切换器',
+    enableCookieConfirm: '发送前饼干确认',
+    disableWatermark: '取消默认水印',
+    enablePaginationDuplication: '添加页首页码',
+    updatePreviewCookie: '预览框显示真实饼干',
+    hideEmptyTitleEmail: '隐藏空标题/无名氏',
+    enableExternalImagePreview: '外部图床预览',
+    enableAutoCookieRefresh: '自动刷新饼干',
+    enableAutoCookieRefreshToast: '自动刷新提示',
+    interceptReplyFormUnvcode: 'unvcode替换模式',
+    interceptReplyFormU200B: '零宽空格模式',
+    interceptReplyFormAutoCompress: '自动压缩图片',
+    enableSeamlessPaging: '无缝翻页',
+    enableAutoSeamlessPaging: '自动无缝翻页',
+    enableHDImageAndLayoutFix: '原图加载与布局修复',
+    enableLinkBlank: '链接新标签页打开',
+    enableAutoUrlLinkify: '网址自动转链接',
+    enableQuotePreview: '优化引用弹窗',
+    enableUpdateCheck: '自动检查更新',
+    enableImageContextMenu: '图片右键菜单',
+    enableImageHideMode: '图片显示模式',
+    applyImageHideMode: '图片隐藏模式应用',
+    imageViewerSeparators: '阅图模式分隔线',
+    enableDraft: '草稿功能',
+    enableThreadHistory: '浏览历史',
+    enablePostHistory: '发言历史',
+    timeDisplayMode: '时间显示方式',
+    extendQuote: '拓展引用格式',
+    extendQuoteAvailabilityDetection: '引用号检测',
+    enablePostExpandAll: '展开/收起长串',
+    kaomojiSort: '颜文字排序',
+    toggleSidebar: '自动收起侧边栏',
+    enableCustomDarkTheme: '深色模式',
+    dockDisplayMode: '扩展坞显示模式',
+    postAfterAction: '发串后行为',
+    disableAutoQuote: '禁用自动引用',
+    threadCookieWhitelistGroups: '只看饼干分组',
+    threadCookieWhitelistDisplayMode: '只看饼干显示模式',
+    poAnnotationSideDisplayMode: '批注侧栏显示模式',
+    replyModeDefault: '默认回复模式',
+    replyExtraDefault: '默认回复附加项',
+    markedGroups: '标记饼干分组',
+    blockedCookies: '屏蔽饼干分组',
+    blockedKeywords: '屏蔽关键词分组',
+    favoriteThreads: '常用串分组',
+    subscriptionFeeds: '订阅号分组',
+    groupOrderMeta: '分组排序',
+    blockDisplayMode: '屏蔽显示方式',
+  };
+  // 取设置项中文名（未知键回退为原键名）
+  function getSettingLabel(key) {
+    return SETTING_LABELS[key] || key;
+  }
   function webdavShowSettingsConflictDialog(diffInfo) {
     // 三选：采用远端 / 保留本地上传 / 取消本次同步（Promise 化）
     return new Promise((resolve) => {
@@ -28806,7 +30292,16 @@ function 注册自动保存编辑() {
       const panel = document.createElement('div');
       // 使用设置面板的 dark reader 兼容变量
       panel.style.cssText = 'background:var(--xdex-sp-panel-bg, #FFFFEE);color:var(--foreground, #333);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 8px 24px var(--xdex-sp-shadow, rgba(0,0,0,.3));padding:16px 18px;max-width:min(460px,92vw);font-size:13px;line-height:1.6;';
-      const sample = diffInfo.diff.slice(0, 6).join('、') + (diffInfo.diff.length > 6 ? '…' : '');
+      // 中文名 + 加粗醒目色（多个用顿号分隔；超过 6 个折叠为省略号）
+      const labelOf = (k) => {
+        const name = getSettingLabel(k);
+        const changed = name !== k; // 未收录的键保持原样（不加醒目色）
+        return changed
+          ? `<b style="color:var(--xdex-conflict-key, #C0392B);font-weight:700;">${name}</b>`
+          : `<b style="font-weight:700;">${name}</b>`;
+      };
+      const shown = diffInfo.diff.slice(0, 6).map(labelOf).join('、');
+      const sample = shown + (diffInfo.diff.length > 6 ? '…' : '');
       panel.innerHTML = ''
         + '<div style="font-size:15px;font-weight:700;margin-bottom:8px;">检测到设置与远端不同</div>'
         + '<div style="margin-bottom:4px;">共 ' + diffInfo.diff.length + ' 项：' + sample + (diffInfo.localIsDefault ? '（本地当前为默认设置）' : '') + '</div>'
@@ -28865,6 +30360,7 @@ function 注册自动保存编辑() {
       return { ok: false, status: 0, missingUtils: true };
     }
     const built = utils.buildFullExportFile(webdavFullSelection());
+    let historyMerged = false; // 本次上传是否经过“基线增量”合并；裸上传需另行推进基线
     // 上传前先拉取远端（若存在）：浏览历史按“基线增量”合并、发言历史按 postId/指纹归一化合并，
     // 避免全量覆盖其他端已贡献的独立记录
     let existing = null;
@@ -28889,6 +30385,7 @@ function 注册自动保存编辑() {
             // 下轮 delta = max(0, 本地旧值 − 基线) 归零，本端新增计数会被静默吞掉
             setThreadHistoryStore(merged);
             if (utils.saveWebdavHistoryBaselinesFromStore) utils.saveWebdavHistoryBaselinesFromStore(merged, baselines);
+            historyMerged = true;
           }
           if (built.file.payload.postHistory && utils.mergePostHistoryStore && parsed.data.payload.postHistory) {
             // local=本端待上传数据，imported=远端数据（归一化合并，保留本端 key 优先）
@@ -28921,7 +30418,21 @@ function 注册自动保存编辑() {
       // 全量导出体积较大，放宽 PUT 超时（默认 10s 对慢速上行易超时）
       timeout: 30000
     });
-    return { ok: put.status >= 200 && put.status < 300, status: put.status };
+    const putOk = put.status >= 200 && put.status < 300;
+    // 裸上传（远端缺失或内容无效，未经上面的“基线增量”合并）成功后必须把基线推进到本次上传值：
+    // 否则该端基线停留在缺失/旧值，下一轮双向合并会把整份本地计数当成新增再加一遍（多端倍增）
+    if (putOk && !historyMerged && built.file.payload && built.file.payload.threadHistory
+        && typeof utils.saveWebdavHistoryBaselinesFromStore === 'function') {
+      try {
+        utils.saveWebdavHistoryBaselinesFromStore(
+          built.file.payload.threadHistory,
+          typeof utils.getWebdavHistoryBaselines === 'function' ? utils.getWebdavHistoryBaselines() : {}
+        );
+      } catch (e) {
+        console.warn('[webdav] 裸上传后推进基线失败', e);
+      }
+    }
+    return { ok: putOk, status: put.status };
   }
   async function webdavSyncCore(cfg, silent) {
     const notify = (t) => { if (!silent && typeof toast === 'function') toast(t); };
@@ -28953,8 +30464,20 @@ function 注册自动保存编辑() {
       return { ok: false, reason: 'upload-failed' };
     }
     if (remote.status !== 200) {
-      setWebdavStatus('读取远端失败（HTTP ' + remote.status + '）');
-      notify('WebDAV 读取远端失败：HTTP ' + remote.status);
+      // 区分 status:0 的成因（超时/网络层错误/管理器未回调），给出可操作的提示
+      let reason = '';
+      if (remote.status === 0) {
+        if (remote.timeout) reason = remote.hanging ? '请求无响应（脚本管理器未触发回调）' : '请求超时';
+        else if (remote.networkError) {
+          const m = remote.errorMessage || '';
+          reason = /denied|not allowed|connect/i.test(m) ? '请求被脚本管理器拦截（请授权域名）' : ('网络错误' + (m ? '：' + m.slice(0, 120) : ''));
+        }
+        else if (remote.callError) reason = '调用异常：' + remote.callError;
+        else reason = '网络层错误（详见控制台 [webdav] 日志）';
+      }
+      const detail = remote.status === 0 ? '（HTTP 0：' + reason + '）' : '（HTTP ' + remote.status + '）';
+      setWebdavStatus('读取远端失败' + detail);
+      notify('WebDAV 读取远端失败' + detail);
       return { ok: false, reason: 'remote-read' };
     }
     // 远端存在：按导出时间 last-write-wins
@@ -29314,6 +30837,267 @@ function 注册自动保存编辑() {
   });
 
   /* --------------------------------------------------
+   * tag 30. 测试板块增强：侧边栏入口 + 主串列表恢复
+   * -------------------------------------------------- */
+  // 测试版（fid=122）不在站点公开的侧边栏列表里（与值班室同组但被隐藏），补一个入口。
+  // 链接与样式与同组其他链接（值班室、三百人委员会等）完全一致。
+  // ★ 当前页/串来自测试板块时，同时展开「管理」分组（服务端不知道该板块属于侧边栏哪个分组，
+  //   不会加 uk-open；值班室等默认板块则会展开——这里补齐一致体验）。
+  // 识别判据（覆盖版块页与串内页）：
+  //   1) URL 路径以 /f/测试 开头（版块页；复用 PageType 统一解析）
+  //   2) 发串表单隐藏域 input[name=fid][value=122]（版块页与串内页均有表单）
+  //   3) 面包屑中存在 /f/%E6%B5%8B%E8%AF%95 链接（版块页；串内页面包屑不含板块）
+  //   4) forum-info 脚本的 forum.id === '122'（仅版块页）
+  //   5) 串内页兜底：当前串号 ∈ 测试版串号集合（showf API 拉取，1h 缓存）
+  //      —— 串内页 URL/表单/面包屑/forum-info 均不含板块信息，只能靠串号归属判定
+  function isTestBoardContext() {
+    try {
+      // 仅 /f/测试（值班室虽同属特殊板块，但不是测试上下文）
+      if (/^\/f\/%E6%B5%8B%E8%AF%95(?:\/|$)/i.test(location.pathname)
+        || /^\/f\/测试(?:\/|$)/.test(decodeURIComponent(location.pathname))) return true;
+      if (document.querySelector('#h-post-form input[name="fid"][value="122"], form input[name="fid"][value="122"]')) return true;
+      // ★ 串内页主判据：面包屑含板块链接（服务端会输出当前串所属板块）。
+      //   href 可能是编码态（/f/%E6%B5%8B%E8%AF%95）或明文态（/f/测试），逐链接解码后比对
+      const bc = document.querySelector('.uk-breadcrumb');
+      if (bc) {
+        const links = bc.querySelectorAll('a[href^="/f/"]');
+        for (const a of links) {
+          const href = a.getAttribute('href') || '';
+          let decoded = href;
+          try { decoded = decodeURIComponent(href); } catch (e) {}
+          if (/^\/f\/测试(?:\/|$)/.test(decoded)) return true;
+        }
+      }
+      const info = document.getElementById('forum-info');
+      if (info && /"id"\s*:\s*"122"/.test(info.textContent)) return true;
+    } catch (e) {}
+    return false;
+  }
+  // 展开「管理」分组（与站点服务端对默认板块的 uk-open 行为对齐）
+  // ⚠️ UIkit 竞态：站点内联脚本 ready 时会初始化 nav 组件并按服务端初始状态重设高度——
+  // 我们在 early pass 加的 uk-open/height 会被它覆盖（实测版块页 uk-open 丢失、串内页 height 归 0）。
+  // 因此展开分两段：立即设一次；ready 后延迟（500ms/1200ms）再重申，并使用具体像素高度
+  // （原生展开态是 height:130px 这类具体值，UIkit 对 auto 支持不佳）。
+  function expandAdminGroupIfTestBoard(alreadyMatched) {
+    if (!alreadyMatched && !isTestBoardContext()) return false;
+    const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
+    if (!menu) return false;
+    const groupLi = Array.from(menu.children).find((li) => {
+      if (!li || !li.querySelector) return false;
+      const header = li.querySelector(':scope > .h-nav-parent-header, :scope > a.h-nav-parent-header');
+      return header && (header.textContent || '').trim() === '管理';
+    });
+    if (!groupLi) return false;
+    const applyExpand = () => {
+      groupLi.classList.add('uk-open');
+      groupLi.setAttribute('aria-expanded', 'true');
+      const wrap = groupLi.querySelector(':scope > div');
+      if (wrap) {
+        wrap.classList.remove('uk-hidden');
+        const sub = wrap.querySelector('ul.uk-nav-sub');
+        // 使用具体像素高度（对齐原生展开态 height:130px 的形态），随内容自适应
+        const h = sub && sub.scrollHeight ? sub.scrollHeight + 'px' : 'auto';
+        wrap.style.height = h;
+      }
+      // 链接样式对齐原生当前版块：ultimate-bold-correct + li.h-active
+      // 判定用「测试板块上下文」整体（版块页与串内页均算——串内页面包屑指向测试板块，
+      // 原生对值班室串内页同样高亮其板块链接）
+      const link = groupLi.querySelector('a[data-xdex-test-board-link]');
+      if (link) {
+        const active = isTestBoardContext();
+        link.classList.toggle('ultimate-bold-correct', active);
+        if (active && link.parentElement) link.parentElement.classList.add('h-active');
+      }
+    };
+    applyExpand();
+    // 重申：覆盖 UIkit 组件初始化的覆盖（ready 后 500ms / 1200ms 各一次）
+    const reassert = () => { try { applyExpand(); } catch (e) {} };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => { setTimeout(reassert, 500); setTimeout(reassert, 1200); }, { once: true });
+    } else {
+      setTimeout(reassert, 500);
+      setTimeout(reassert, 1200);
+    }
+    return true;
+  }
+  function ensureTestBoardSidebarLink() {
+    const menu = document.getElementById('h-menu-content') || document.querySelector('.h-menu-content');
+    if (!menu) return false;
+    const contextMatched = isTestBoardContext();
+    // 幂等：已存在则跳过（同时保证展开状态被应用）
+    if (menu.querySelector('a[data-xdex-test-board-link]')) { expandAdminGroupIfTestBoard(contextMatched); return true; }
+    // 定位「管理」分组：<li class="uk-parent"> > a.h-nav-parent-header 文本为「管理」
+    const groupLi = Array.from(menu.children).find((li) => {
+      if (!li || !li.querySelector) return false;
+      const header = li.querySelector(':scope > .h-nav-parent-header, :scope > a.h-nav-parent-header');
+      return header && (header.textContent || '').trim() === '管理';
+    });
+    if (!groupLi) return false;
+    const sub = groupLi.querySelector(':scope > ul.uk-nav-sub')
+      || groupLi.querySelector(':scope > div > ul.uk-nav-sub')
+      || groupLi.querySelector('ul.uk-nav-sub');
+    if (!sub) return false;
+    // 以「三百人委员会」为锚点插到其后；找不到锚点则追加到子列表末尾
+    const anchor = Array.from(sub.children).find((li) => {
+      const a = li.querySelector && li.querySelector(':scope > a');
+      return a && (a.textContent || '').trim() === '三百人委员会';
+    });
+    const li = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = 'https://www.nmbxd1.com/f/%E6%B5%8B%E8%AF%95';
+    link.textContent = '测试';
+    link.setAttribute('data-xdex-test-board-link', '1');
+    li.appendChild(link);
+    if (anchor && anchor.nextSibling) sub.insertBefore(li, anchor.nextSibling);
+    else sub.appendChild(li);
+    expandAdminGroupIfTestBoard(contextMatched);
+    return true;
+  }
+  // 侧边栏可能晚于脚本渲染（站点异步构建），装观察器兜底补挂
+  function installTestBoardSidebarLinkObserver() {
+    ensureTestBoardSidebarLink();
+    if (installTestBoardSidebarLinkObserver.__installed) return;
+    installTestBoardSidebarLinkObserver.__installed = true;
+    const observer = new MutationObserver(() => {
+      ensureTestBoardSidebarLink();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+  // ★ 测试版主串列表守护（v2）：
+  // 站点内联脚本对 /f/测试 的处理是「无条件 remove() 主串列表与分页，再请求 /Admin/Api/isManager，
+  // 仅管理员放回」。但服务端对已登录用户正常下发了完整列表（含主串），移除只发生在客户端。
+  //
+  // v2 方案（取代 v1 的「事后拉取放回」）：
+  // 文档起始即装 MutationObserver 守护 document.documentElement，监听 removedNodes——
+  // .h-threads-list / .h-pagination 一旦被移除，立刻在原父容器的原位置放回**同一个节点**。
+  // 优点：
+  //   1. 移除与放回发生在同一帧内，肉眼无闪变；
+  //   2. 节点是服务端原始 DOM，早期增强 pass（回复编号/PO标记/页码扩充等）正常作用；
+  //   3. 原始分页结构完好，无缝翻页可用；零额外网络请求；
+  //   4. 站点管理员分支的 container.append(threadList) 是移动语义（jQuery append），
+  //      节点已在容器内时为先 remove 后 append，位置可能挪到容器末尾，无实质影响。
+  function installTestBoardListGuard() {
+    if (!PageType.isSpecialBoard()) return;
+    if (installTestBoardListGuard.__installed) return;
+    installTestBoardListGuard.__installed = true;
+    const GUARD_SEL = '.h-threads-list, .h-pagination';
+    // 只守护主内容区（#h-content）内的列表与分页：
+    // 站点脚本 $(".h-pagination") 会把侧边栏/管理分组里的分页也一并移除——那是站点自身行为，
+    // 管理员放回分支也只处理主内容区，我们不越界代管，避免节点被放回错误容器。
+    const inMainContent = (node) => !!(node.closest && node.closest('#h-content'));
+    // ★ 结构化锚定（站点真实结构，见 /f/测试 原始 HTML）：
+    //   #h-post-form（含 form[action=doPostThread]）→ <hr>（hr①）→ .h-threads-list → .h-pagination
+    //   → <script id="forum-info">（其前有 <hr>，hr②）→ #h-footer
+    // 列表应放回 hr① 之后；分页放回列表之后。不再依赖通用位置表（同批次多个 removal 时失效）。
+    const findListAnchor = () => {
+      const container = document.querySelector('.uk-container');
+      if (!container) return null;
+      const form = container.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]')
+        || container.querySelector('#h-post-form');
+      if (!form) return null;
+      // hr① = 表单容器之后的第一个 <hr>
+      let node = form.parentElement === container ? form : container.querySelector('#h-post-form');
+      while (node && node.nextElementSibling) {
+        node = node.nextElementSibling;
+        if (node.tagName === 'HR') return { hr: node, container };
+      }
+      return { hr: null, container }; // 无 hr①：插在表单容器之后
+    };
+    const placeList = (list) => {
+      const anchor = findListAnchor();
+      if (!anchor) return false;
+      try {
+        if (anchor.hr && anchor.hr.parentElement === anchor.container) {
+          anchor.container.insertBefore(list, anchor.hr.nextSibling);
+        } else {
+          anchor.container.insertBefore(list, anchor.hr || null);
+        }
+        // 分页紧跟列表之后（若分页节点游离，一并归位）
+        const navi = document.querySelector('.h-pagination');
+        if (navi && navi.parentElement !== list.parentElement) {
+          list.parentElement.insertBefore(navi, list.nextSibling);
+        }
+        return true;
+      } catch (e) { return false; }
+    };
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (!mutation.removedNodes || !mutation.removedNodes.length) continue;
+        for (const node of mutation.removedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (!node.matches || !node.matches(GUARD_SEL)) continue;
+          // ★ 只守护「站点原生分页」：enablePaginationDuplication 克隆的页首页码（titlePag）
+          //   不在守护范围——它的插入/移除由页码功能自己管理，守护器若放回会与其去重逻辑死循环
+          if (node.dataset && node.dataset.xdexTitleClone === '1') continue;
+          // 无缝翻页接管标记：replaceWith 更新页码前的有意移除，守护器放行
+          if (node.dataset && node.dataset.xdexSeamlessReplaced === '1') continue;
+          // 列表：结构化放回（hr① 之后）
+          if (node.classList.contains('h-threads-list')) {
+            if (placeList(node)) console.info('[X岛-EX][测试版列表] 已守护放回（hr① 下方）');
+            continue;
+          }
+          // 分页：结构化放回列表之后（页底）
+          if (node.classList.contains('h-pagination')) {
+            const list = document.querySelector('#h-content .h-threads-list');
+            const container = document.querySelector('.uk-container');
+            try {
+              if (list && list.parentElement === container) {
+                container.insertBefore(node, list.nextSibling);
+                console.info('[X岛-EX][测试版分页] 已守护放回页底 (items=' + node.querySelectorAll('li').length + ')');
+              } else if (container) {
+                const info = container.querySelector('script#forum-info');
+                container.insertBefore(node, info || document.getElementById('h-footer') || null);
+                console.info('[X岛-EX][测试版分页] 已守护放回（列表未就位，暂放 forum-info 前）');
+              } else {
+                console.info('[X岛-EX][测试版分页] 未找到 .uk-container，跳过');
+              }
+            } catch (e) {
+              console.warn('[X岛-EX][测试版分页] 放回失败', e);
+            }
+          }
+        }
+      }
+    });
+    const start = () => {
+      if (!document.documentElement) { setTimeout(start, 25); return; }
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    };
+    start();
+  }
+  // ★ 兜底：守护器万一失手（极端竞态/父容器销毁），ready+400ms 后检查一次并网络拉取放回。
+  // 正常情况下守护器已放回节点，这里直接返回；保留 v1 逻辑作为最后防线。
+  function restoreTestBoardThreadList() {
+    if (!PageType.isSpecialBoard()) return;
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => setTimeout(restoreTestBoardThreadList, 400), { once: true });
+      return;
+    }
+    setTimeout(restoreTestBoardThreadList.__attempt, 400);
+  }
+  restoreTestBoardThreadList.__attempt = function __attempt() {
+    if (!PageType.isSpecialBoard()) return;
+    if (document.querySelector('.h-threads-list')) return; // 已有列表（管理员或已守护恢复）
+    if (restoreTestBoardThreadList.__running) return;
+    restoreTestBoardThreadList.__running = true;
+    const container = document.querySelector('.uk-container');
+    if (!container) { restoreTestBoardThreadList.__running = false; return; }
+    fetch(location.href, { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('HTTP ' + res.status))))
+      .then((html) => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const list = doc.querySelector('.h-threads-list');
+        if (!list) return; // 服务端也没给（未登录等），保持站点原状
+        if (document.querySelector('.h-threads-list')) return; // 竞态：站点脚本已放回
+        const navi = doc.querySelector('.h-pagination');
+        container.appendChild(list);
+        if (navi) container.appendChild(navi);
+        console.info('[X岛-EX] 测试版主串列表已通过兜底拉取恢复');
+      })
+      .catch((e) => console.warn('[X岛-EX] 测试版列表恢复失败', e))
+      .finally(() => { restoreTestBoardThreadList.__running = false; });
+  };
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   // 注册设置面板依赖到 XDex
@@ -29397,6 +31181,7 @@ function 注册自动保存编辑() {
     SettingPanel.init();
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
+    initReplyParamScrollTo();                                      //?page&r=链接定位到对应回复
     initDisableAutoQuote(); //关闭引用：阻止URL中?r=参数自动插入引用号
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干

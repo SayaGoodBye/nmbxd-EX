@@ -89,7 +89,8 @@ const POST_FNS = ['normalizePostHistoryStatus', 'normalizePostHistoryType', 'nor
   'normalizeHistorySearchValue', 'getPostHistoryForumSearchText', 'buildPostHistorySearchText',
   'getPostHistorySearchFieldText', 'parsePostHistorySearchQuery', 'createDefaultPostHistoryStore',
   'postHistoryIndexFingerprint', 'buildPostHistoryIndexEntry', 'normalizePostHistoryStore',
-  'getPostHistoryStore', 'setPostHistoryStore', 'searchPostHistory', 'notifyPostHistoryStoreChanged'];
+  'getPostHistoryStore', 'setPostHistoryStore', 'searchPostHistory', 'notifyPostHistoryStoreChanged',
+  'schedulePostHistoryStorePersist', 'flushPostHistoryStorePersist'];
 
 const consts = [
   extractConst('const THREAD_HISTORY_STORAGE_KEY'), extractConst('const THREAD_HISTORY_STORE_VERSION'),
@@ -113,6 +114,15 @@ function syncFavoriteThreadsLinks() {}
 function logThreadHistory() {}
 function logPostHistory() {}
 const window = { dispatchEvent() {}, addEventListener() {} };
+const document = { visibilityState: 'visible', addEventListener() {} };
+const POST_HISTORY_PERSIST_DEBOUNCE_MS = 150;
+let postHistoryPersistTimer = 0;
+let postHistoryPersistPending = null;
+const postHistoryFieldPatchQueue = new Map();
+let postHistoryFieldPatchTimer = 0;
+const POST_HISTORY_FIELD_PATCH_FLUSH_MS = 30000;
+function applyPostHistoryFieldPatches(store) { return store; }
+function schedulePostHistoryFieldPatchFlush() {}
 let postHistoryActiveType = 'reply';
 const GM = { v: {} };
 function GM_getValue(k, d) { return k in GM.v ? JSON.parse(JSON.stringify(GM.v[k])) : d; }
@@ -171,7 +181,8 @@ function oldSearchPost(query, type) {
 }
 `;
 
-const ctx = { console, Math, Date, JSON, Number, RegExp, Object, Array, String, Number, isNaN, parseInt, Infinity, NaN };
+const ctx = { console, Math, Date, JSON, Number, RegExp, Object, Array, String, Number, isNaN, parseInt, Infinity, NaN,
+  setTimeout, clearTimeout };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
 vm.runInNewContext(

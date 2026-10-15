@@ -18,10 +18,10 @@ function handleInfoIdClick({ text, inPreviewBox, ctrlKey, metaKey, shiftKey, tex
 }
 
 function testScriptContainsPlaceholderGuard() {
-  assert(script.includes('isPreviewPlaceholderInfoId'), 'script must define preview placeholder guard helper');
-  assert(script.includes("anchor.closest('.h-preview-box')"), 'guard must detect preview box ancestry');
-  assert(script.includes("text === 'No.9999999'"), 'guard must specifically ignore No.9999999');
-  assert(script.includes('if (isPreviewPlaceholderInfoId(e.currentTarget))'), 'quote handler must use the guard before insertion');
+  // 8033c9f 重构：isPreviewPlaceholderInfoId 辅助被移除，守卫改为直接 closest('.h-preview-box') 判断
+  // （预览占位编号保留 href 以兼容站点 attr(href).replace，不再依赖 href 推断）
+  assert(script.includes("e.currentTarget.closest('.h-preview-box')"), 'quote handler must detect preview box ancestry');
+  assert(script.includes("target.closest('.h-preview-box')"), 'auto quote pass-through must also exclude preview placeholders');
 }
 
 function testCurrentBehaviorShowsBug() {
