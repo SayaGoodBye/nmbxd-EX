@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      4.1.1
+// @version      4.2.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -37,7 +37,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    ### 新增\n\n - 添加自定义深/浅色模式。\n - 实现引用号可用性检测功能拓展，已失效引用：浅色；本串引用号：实线；其他主串引用号：虚线。\n - 为添加板块页「获取最新回复」按钮，在回复场景下也可手动触发增量刷新。\n - 添加阅图模式「分隔线」开关，关闭后获得无割裂的纯净阅图体验。\n\n ### 优化\n\n - 拓展引用浮窗中添加主串的跳转按钮。\n - 统一当前的图标UI。\n - “饼干偏好”按钮提示作用饼干是否为当前串默认饼干。\n - 浏览历史/发言历史检索性能优化。\n ### 修复\n\n - 修复浏览记录与常用串链接构造中最近查看页、最远访问页、已知总页数之间的逻辑矛盾，解决 WebDAV 同步后浏览历史页码回退问题。\n - 修复连续点击同一引用号导致的多层拓展引用浮窗出现的问题。\n - 修复无缝翻页时偶现的加载多次同一页的问题。\n - 修复在 WebDAV 同步后由于发言历史自动渲染导致的引用号可用性检测被持续触发的问题。\n - 修复原站点部分颜文字丢失的问题。\n
+// @changelog    ### 新增\n\n - “管理”中新增“测试”版块。\n\n ### 优化\n\n - 切换饼干后焦点立刻回到输入框，避免输入被打断。\n - 报错内容的toast显示样式更醒目，显示时间更长。\n - 允许关闭“浏览历史/发言历史”设置，关闭时不会清空删除已存在的数据。\n - 包含分组的设置项支持拖拽排序。\n - 打开包含r=的链接时直接跳转到r=回复所在的位置。\n\n ### 修复\n\n - 修复深色模式下拓展引用浮窗中链接颜色不正确的问题。\n - 修复在版块页快捷回复时，点击“连续/临时”按钮进行切换时时可能关闭回复浮窗的问题。\n - 修复设置面板中“我的订阅”模块中缺失“添加订阅号”按钮的问题。\n - 修复WebDAV在向远端同步时由于发生错误导致以当前浏览量作为增量累加的问题。\n - 修复回收站中手动恢复的条目仍显示在回收站中的问题；修复被恢复的条目在浏览历史中依旧显示回收站图标的问题。\n - 修复串内页草稿无法删除以及在版块页错误保存草稿的问题。
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -881,6 +881,8 @@ function xdexEarlyDarkEnabled() {
           try { refreshFilterDisplay(this.state); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
           try { if (typeof applyImageViewerSeparatorSetting === 'function') applyImageViewerSeparatorSetting(); } catch (e) {}
+          // 引用号拓展（跨页同步）：开启时对当前页重跑一次（幂等）
+          try { if (this.state.extendQuote !== false && typeof extendQuote === 'function') extendQuote(document); } catch (e) {}
           // 发送前确认（跨页同步）：按最新 state 运行时注入/清理串内检查区
           try {
             if (this.state.enableCookieSwitch && this.state.enableCookieConfirm) {
@@ -2100,17 +2102,13 @@ function xdexEarlyDarkEnabled() {
         'enableUpdateCheck',
         'enableAutoCookieRefresh',
         'enableAutoCookieRefreshToast',
-        'enableSeamlessPaging',
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
         'enableImageContextMenu',
         'enableLinkBlank',
         'enableAutoUrlLinkify',
         'enableQuotePreview',
-        'extendQuote',
-        'extendQuoteAvailabilityDetection',
         'toggleSidebar',
-        'disableAutoQuote',
         'enableCustomDarkTheme'
       ];
       // 即时保存项：从"刷新提示"清单移出（change 即保存），但「保存并刷新」按钮仍须收集它们，
@@ -2119,7 +2117,11 @@ function xdexEarlyDarkEnabled() {
         'enableCookieConfirm',
         'interceptReplyFormUnvcode',
         'interceptReplyFormU200B',
-        'interceptReplyFormAutoCompress'
+        'interceptReplyFormAutoCompress',
+        'disableAutoQuote',
+        'extendQuote',
+        'extendQuoteAvailabilityDetection',
+        'enableSeamlessPaging'
       ];
       const collectReloadRequiredSettingsFromPanel = () => {
         reloadRequiredSettingKeys.forEach(k => { this.state[k] = $('#sp_' + k).is(':checked'); });
@@ -2212,6 +2214,40 @@ function xdexEarlyDarkEnabled() {
       });
       $('#sp_replyExtraDefault').off('change.xdexReplyDefault').on('change.xdexReplyDefault', () => {
         saveReplyDefaultImmediately('replyExtraDefault', '回复默认模式', true);
+      });
+      // ★ A 类即时项：消费点运行时读 GM/state，改完即生效
+      // 关闭引用（载入编辑判定读 getFilterConfig()，每次读 GM）——完全即时
+      $('#sp_disableAutoQuote').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        const checked = $('#sp_disableAutoQuote').is(':checked');
+        this.state.disableAutoQuote = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('关闭引用', e); }
+        toast('关闭引用' + (checked ? '已开启' : '已关闭') + '（下次插入引用号时生效）', 1400, { queue: false, key: 'immediate-toggle' });
+      });
+      // 引用号拓展 + 可用性检测：getQuoteAvailabilityState() 每次读最新 state → 新内容即时生效；
+      // 开启时对当前页面重跑一次（幂等）；关闭时当前页已有拓展保留至刷新（无文本备份，不可逆）
+      const applyQuoteTogglesImmediately = (key, label) => {
+        const checked = $('#sp_' + key).is(':checked');
+        this.state[key] = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed(label, e); }
+        try {
+          if (checked && typeof extendQuote === 'function') extendQuote(document);
+          else if (typeof refreshQuoteAvailability === 'function') refreshQuoteAvailability(document);
+        } catch (e) {}
+        toast(label + (checked ? '已开启（已重新渲染当前页面引用号）' : '已关闭（当前页已有拓展将保留至刷新）'), 1400, { queue: false, key: 'immediate-toggle' });
+      };
+      $('#sp_extendQuote').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        applyQuoteTogglesImmediately('extendQuote', '引用号拓展');
+      });
+      $('#sp_extendQuoteAvailabilityDetection').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        applyQuoteTogglesImmediately('extendQuoteAvailabilityDetection', '引用号可用性检测');
+      });
+      // 无缝翻页：右栏「下一页」按钮路径（isSeamlessPagingEnabled 实时读 state）即时生效；
+      // 触底观察器启动期装载，关闭本次不卸载（保留既有行为，toast 说明）
+      $('#sp_enableSeamlessPaging').off('change.xdexImmediateToggle').on('change.xdexImmediateToggle', () => {
+        const checked = $('#sp_enableSeamlessPaging').is(':checked');
+        this.state.enableSeamlessPaging = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('无缝翻页', e); }
+        toast('无缝翻页' + (checked ? '已开启（下一页按钮即时生效）' : '已关闭（触底观察器保留至刷新）'), 1400, { queue: false, key: 'immediate-toggle' });
       });
       // 深色开关：切换时先加页面过渡类保证平滑，样式由 syncInputs/save 回调接管
       $('#sp_enableCustomDarkTheme')
