@@ -1,5 +1,10 @@
 'use strict';
 
+// 串导出模块（纯函数 + 任务队列）；测试沙箱可能不提供 importScripts
+if (typeof importScripts === 'function') {
+  try { importScripts('thread-export.js', 'thread-export-tasks.js'); } catch (e) { console.warn('[X岛-EX] 导出模块加载失败', e); }
+}
+
 const IMAGE_MENU_COPY_ANIMATED = 'xdex-copy-gif-apng';
 // const IMAGE_MENU_COPY_THREAD_LINK = 'xdex-copy-thread-link';
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen/offscreen.html';
@@ -36,8 +41,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type.startsWith('xdex:export:')) {
+    if (typeof xdexExportHandleMessage !== 'function') {
+      sendResponse({ ok: false, error: 'export modules unavailable' });
+      return true;
+    }
+    Promise.resolve(xdexExportHandleMessage(message, sender))
+      .then((result) => {
+        if (result === null) { sendResponse({ ok: false, error: 'unknown export message' }); return; }
+        sendResponse(result);
+      })
+      .catch((err) => {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      });
+
+    return true;
+  }
+
   return false;
 });
+
+// SW 启动/重装后恢复未完成的导出任务（并补一次 badge）
+chrome.runtime.onStartup.addListener(() => {
+  xdexExportResumeTasks().catch(() => {});
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  xdexExportResumeTasks().catch(() => {});
+});
+
+// 每分钟 alarm 续跑（MV3 SW 被回收后由 alarm 唤醒）
+if (chrome.alarms && chrome.alarms.onAlarm) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    xdexExportHandleAlarm(alarm);
+  });
+}
+
+// SW 顶层启动即尝试续跑（每次 SW 实例化都会执行）
+if (typeof xdexExportResumeTasks === 'function') {
+  xdexExportResumeTasks().catch(() => {});
+}
+
+// 图标点击 → 打开导出管理页（无 default_popup）
+if (chrome.action && chrome.action.onClicked) {
+  chrome.action.onClicked.addListener(() => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('export/export.html') });
+  });
+}
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!info || !info.srcUrl) return;
@@ -139,16 +189,42 @@ function logImageMenuStage(stage, detail, tabId) {
   });
 }
 
+// 默认超时：与主脚本 webdavRequest 的默认值一致，避免请求永久挂起
+const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
+
 async function handleRequest(details, sender) {
   const method = details && details.method ? details.method : 'GET';
   const responseType = details && details.responseType ? details.responseType : 'text';
   const headers = await buildRequestHeaders(details, sender);
-  const response = await fetch(details.url, {
-    method,
-    headers,
-    body: method.toUpperCase() === 'GET' ? undefined : details.data,
-    credentials: 'include'
-  });
+
+  // 超时必须由调用方透传进来（gm-compat → 这里）。没有超时的 fetch 在服务器
+  // 不响应时会一直挂着，调用方只能靠自己的兜底计时器，表现为「未触发回调」。
+  const timeoutMs = (details && typeof details.timeout === 'number' && details.timeout > 0)
+    ? details.timeout
+    : DEFAULT_REQUEST_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    try { controller.abort(); } catch (_e) {}
+  }, timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(details.url, {
+      method,
+      headers,
+      body: method.toUpperCase() === 'GET' ? undefined : details.data,
+      credentials: 'include',
+      signal: controller.signal
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    // 超时与网络错误要区分开：前者可重试/可提示检查服务器，后者多为不可达
+    if (err && (err.name === 'AbortError' || /abort/i.test(String(err && err.message)))) {
+      throw new Error(`请求超时（${timeoutMs}ms）`);
+    }
+    throw err;
+  }
+  clearTimeout(timer);
 
   const responseHeaders = Array.from(response.headers.entries())
     .map(([key, value]) => `${key}: ${value}`)
@@ -400,8 +476,8 @@ async function ensureOffscreenDocument() {
   if (await hasOffscreenDocument()) return;
   await chrome.offscreen.createDocument({
     url: OFFSCREEN_DOCUMENT_PATH,
-    reasons: ['CLIPBOARD'],
-    justification: 'Write selected X岛 image data to the clipboard from the extension context.'
+    reasons: ['CLIPBOARD', 'BLOBS'],
+    justification: 'Write selected X岛 image data to the clipboard and create download blob URLs from the extension context.'
   });
 }
 

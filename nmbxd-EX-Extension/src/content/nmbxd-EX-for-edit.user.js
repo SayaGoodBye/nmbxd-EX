@@ -1,4 +1,4 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
 // @version      4.2.0
@@ -38,7 +38,6 @@
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
 // @changelog    ### 新增\n\n - “管理”中新增“测试”版块。\n\n ### 优化\n\n - 切换饼干后焦点立刻回到输入框，避免输入被打断。\n - 报错内容的toast显示样式更醒目，显示时间更长。\n - 允许关闭“浏览历史/发言历史”设置，关闭时不会清空删除已存在的数据。\n - 包含分组的设置项支持拖拽排序。\n - 打开包含r=的链接时直接跳转到r=回复所在的位置。\n - 部分设置项支持开启/关闭后即时生效。\n\n ### 修复\n\n - 修复深色模式下拓展引用浮窗中链接颜色不正确的问题。\n - 修复在版块页快捷回复时，点击“连续/临时”按钮进行切换时时可能关闭回复浮窗的问题。\n - 修复设置面板中“我的订阅”模块中缺失“添加订阅号”按钮的问题。\n - 修复WebDAV在向远端同步时由于发生错误导致以当前浏览量作为增量累加的问题。\n - 修复回收站中手动恢复的条目仍显示在回收站中的问题；修复被恢复的条目在浏览历史中依旧显示回收站图标的问题。\n - 修复串内页草稿无法删除以及在版块页错误保存草稿的问题。\n
-
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -579,6 +578,8 @@ function xdexEarlyDarkEnabled() {
     btn.innerHTML = expanded ? XDEX_ICON_CHEVRON_DOWN : XDEX_ICON_CHEVRON_LEFT;
     btn.title = expanded ? '点击收起' : '点击展开';
   }
+  // 导出串：折角文档 + 两条文字线（与页面内「导」按钮同一图形）
+  const XDEX_EXPORT_ICON = '<svg class="xdex-icon-export" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7.5z"/><path d="M14.5 2.5v5h5"/><path d="M8.5 12h7M8.5 16.5h4.5"/></svg>';
   const XDEX_ICON_IMAGE = '<svg class="xdex-icon-image" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
@@ -1688,6 +1689,7 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadExport" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadExport"> 导出串</label><button type="button" id="sp_openThreadExport" class="xdex-icon-btn" style="margin-left:4px;" title="打开导出窗口">${XDEX_EXPORT_ICON}</button></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -2302,6 +2304,25 @@ function xdexEarlyDarkEnabled() {
           openImageViewerFromSettingsPanel();
         } else if (typeof toast === 'function') {
           toast('当前页面不支持阅图模式');
+        }
+      });
+      // 设置面板内打开导出窗口：串页可用（与「导」按钮同一入口）
+      $('#sp_openThreadExport').off('click').on('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          if (typeof xdexExportRuntimeAvailable === 'function' && !xdexExportRuntimeAvailable()) {
+            toast('导出需安装扩展版 X岛-EX，或脚本猫后台导出脚本');
+            return;
+          }
+          if (typeof xdexExportOpenDialog === 'function') {
+            xdexExportOpenDialog('');
+          } else {
+            toast('导出功能尚未就绪，请稍后重试');
+          }
+        } catch (err) {
+          console.warn('[X岛-EX] 打开导出窗口失败', err);
+          toast('打开导出窗口失败');
         }
       });
       // 屏蔽显示模式：即时切换并即时生效（折叠/隐藏）
@@ -2954,6 +2975,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         updateMarkedRowSwatch($row, normalized);
         $popover.hide();
+        // 直接复用「保存」(sp_save / #btn_sp_marked) 的那条路径：收集 → 持久化 → syncInputs
+        // → refreshFilterDisplay（即时生效，无需刷新）。
+        // 此前这里只改了 .marked-color-value 隐藏字段就关闭弹窗，颜色不会落盘。
+        saveMarkedGroups();
         return false;
       });
       // ========== 导入/导出配置 ==========
@@ -4049,6 +4074,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式。关闭后不再记录新的浏览数据（已有数据保留），侧边栏入口隐藏',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式。关闭后不再在发送消息后自动记录（手动添加不受影响，已有数据保留），侧边栏入口隐藏',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
+        sp_enableThreadExport: '导出串：把当前串（或指定串号）导出为 Markdown / TXT 文件。支持批量串号、页码范围与「只看 PO」；任务在后台按顺序执行，页面可关闭。右侧图标按钮可直接打开导出窗口',
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧图标按钮可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
         sp_imageViewerSeparators: '在各页图片之间显示红色分隔线与“第N页”页码标识；关闭以获得更纯净的阅图体验',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
@@ -11024,7 +11050,8 @@ ${markedSwatchHtml}
       style.textContent = `
         .qp-overlay-quote {
           position: fixed; inset: 0;
-          z-index: 9999; /* 降低层级 */
+          /* 10004：高于导出串弹窗(10001)与设置面板(9999) —— 弹窗内点串号时引用浮窗必须盖在弹窗上 */
+          z-index: 10004;
           background: rgba(0,0,0,.45);
           display: none;
         }
@@ -11043,7 +11070,7 @@ ${markedSwatchHtml}
           width: 30px; height: 30px; padding: 0;
           display: inline-flex; align-items: center; justify-content: center;
           background: var(--xdex-qp-reset-bg, rgba(0,0,0,.6));
-          border: 1px solid var(--xdex-qp-reset-border, rgba(255,255,255,.35)); border-radius: 8px; cursor: pointer; z-index: 10000;
+          border: 1px solid var(--xdex-qp-reset-border, rgba(255,255,255,.35)); border-radius: 8px; cursor: pointer; z-index: 10005; /* 高于 .qp-overlay-quote(10004) */
           user-select: none;
           color: var(--xdex-qp-reset-color, #fff);
         }
@@ -28817,7 +28844,7 @@ function 注册自动保存编辑() {
   function syncImageViewerButtonForHideMode(mode) {
     const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
     ensureImageViewerButtonStyle();
-    const btn = document.querySelector('.xdex-image-viewer-btn');
+    const btn = document.getElementById('xdex-image-viewer-btn');
     if (!btn) return;
     const finalMode = (mode === 'blur' || mode === 'noimage' || mode === 'tips') ? mode : 'default';
     btn.classList.remove('xdex-iv-btn-hidden', 'xdex-iv-btn-blur', 'xdex-iv-btn-tips');
@@ -28874,10 +28901,10 @@ function 注册自动保存编辑() {
     ensureImageViewerButtonStyle();
     const threadId = getCurrentThreadIdForImageViewer();
     if (!threadId) return;
-    let btn = document.querySelector('.xdex-image-viewer-btn');
+    let btn = document.getElementById('xdex-image-viewer-btn');
     if (!btn) {
       const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
-      const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">').html(IMAGE_VIEWER_ICON_SVG);
+      const $btn = $('<button type="button" id="xdex-image-viewer-btn" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">').html(IMAGE_VIEWER_ICON_SVG);
       $btn.on('click', () => openImageViewer(threadId));
       $('body').append($btn);
       btn = $btn[0];
@@ -29557,7 +29584,8 @@ function 注册自动保存编辑() {
     if (!document.getElementById('xdex-detail-quote-zfix')) {
       const zfix = document.createElement('style');
       zfix.id = 'xdex-detail-quote-zfix';
-      zfix.textContent = '#h-ref-view{z-index:10003!important}.qp-overlay-quote{z-index:10002!important}.qp-close-all{z-index:10003!important}.qp-stack{z-index:10003!important}';
+      // 详情层(10001)与导出串弹窗(10001)之上：遮罩 10006、窗体/关闭钮 10007、原生框 20000 已够
+      zfix.textContent = '#h-ref-view{z-index:10007!important}.qp-overlay-quote{z-index:10006!important}.qp-close-all{z-index:10007!important}.qp-stack{z-index:10007!important}';
       document.head.appendChild(zfix);
     }
     // 标记饼干
@@ -30047,6 +30075,21 @@ function initReplyParamScrollTo() {
       }).finally(() => webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY));
     }, 300);
   }
+  // WebDAV 请求全局限流：同步一次会连续发多个请求（读远端 / 上传前拉取 / PUT），
+  // 部分 WebDAV 服务（或反向代理）对连续同连接请求会拒绝/挂起，表现为
+  // 「第 1 次成功、第 2 次超时、第 3 次 HTTP 0」。这里强制最小间隔，串行化发车。
+  const WEBDAV_MIN_REQUEST_GAP_MS = 400;
+  let webdavLastRequestAt = 0;
+  let webdavRequestChain = Promise.resolve();
+  function webdavThrottle() {
+    const run = webdavRequestChain.then(() => {
+      const wait = webdavLastRequestAt + WEBDAV_MIN_REQUEST_GAP_MS - Date.now();
+      return wait > 0 ? new Promise((r) => setTimeout(r, wait)) : Promise.resolve();
+    }).then(() => { webdavLastRequestAt = Date.now(); });
+    webdavRequestChain = run.catch(() => {});
+    return run;
+  }
+
   function webdavRequest(details) {
     return new Promise((resolve) => {
       if (typeof GM_xmlhttpRequest !== 'function') {
@@ -30090,7 +30133,11 @@ function initReplyParamScrollTo() {
         ontimeout: () => settle({ ok: false, status: 0, timeout: true })
       };
       try {
-        GM_xmlhttpRequest(req);
+        // 过限流闸门后再发车（闸门是 Promise，不阻塞本次 settle 逻辑）
+        webdavThrottle().then(() => { try { GM_xmlhttpRequest(req); } catch (err) {
+          console.error('[webdav] GM_xmlhttpRequest 调用异常', err);
+          settle({ ok: false, status: 0, callError: err && err.message ? String(err.message) : String(err) });
+        } });
       } catch (err) {
         console.error('[webdav] GM_xmlhttpRequest 调用异常', err);
         settle({ ok: false, status: 0, callError: err && err.message ? String(err.message) : String(err) });
@@ -30099,6 +30146,24 @@ function initReplyParamScrollTo() {
       setTimeout(() => settle({ ok: false, status: 0, timeout: true, hanging: true }), (details.timeout || 10000) + 3000);
     });
   }
+  // 带重试的 WebDAV 请求：连续请求时偶发「超时 / HTTP 0」多为连接被复用或服务端瞬时拒绝，
+  // 退避后重试一次通常即可成功。只重试网络层失败（status 0），不重试 4xx/5xx。
+  async function webdavRequestRetry(details, attempts) {
+    const max = Math.max(1, attempts || 2);
+    let last = null;
+    for (let i = 0; i < max; i += 1) {
+      last = await webdavRequest(details);
+      const retriable = last && last.status === 0 && (last.timeout || last.hanging || last.networkError);
+      if (!retriable) return last;
+      if (i < max - 1) {
+        const backoff = 800 * (i + 1);
+        console.warn('[webdav] 请求失败，' + backoff + 'ms 后重试', { url: details.url, method: details.method, attempt: i + 1 });
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+    return last;
+  }
+
   function buildWebdavAuthHeader(cfg) {
     const raw = cfg.username + ':' + cfg.password;
     return 'Basic ' + btoa(unescape(encodeURIComponent(raw)));
@@ -30144,11 +30209,21 @@ function initReplyParamScrollTo() {
       //   预期结果：200（文件已存在）/ 404（尚未上传，属正常）/ 207 / 301 / 302 / 405
       //   失败即返回具体原因，避免「测试连接成功但同步 HTTP 0」的困惑
       const fileUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
-      console.log('[webdav] 检查同步文件请求', { method: 'GET', url: fileUrl });
-      const rf = await webdavRequest({ url: fileUrl, method: 'GET', headers });
+      // 文件探测用 HEAD：只需状态码（200 存在 / 404 不存在），不需要响应体。
+      // 某些 WebDAV 对「不存在的文件」的 GET 会长时间挂起（后端尝试生成/索引），
+      // 用 HEAD 能显著降低这种风险；HEAD 不被支持时再退回 GET。
+      console.log('[webdav] 检查同步文件请求', { method: 'HEAD', url: fileUrl });
+      let rf = await webdavRequest({ url: fileUrl, method: 'HEAD', headers, timeout: 8000 });
+      if (rf.status === 405 || rf.status === 501) {
+        console.log('[webdav] HEAD 不被支持，退回 GET', { status: rf.status });
+        rf = await webdavRequest({ url: fileUrl, method: 'GET', headers, timeout: 8000 });
+      }
       if (rf.unavailable) return { ok: false, message: '同步文件探测：GM_xmlhttpRequest 不可用' };
       if (rf.callError) return { ok: false, message: '同步文件探测异常：' + rf.callError };
-      if (rf.hanging) return { ok: false, message: '同步文件探测无响应（脚本管理器未触发回调）' };
+      if (rf.hanging) {
+        return { ok: false, message: '同步文件探测无响应：服务器对 ' + WEBDAV_SYNC_FILE + ' 的请求在 8s 内没有返回。'
+          + '目录本身可达，说明地址与认证没问题；请确认该 WebDAV 服务允许读取/创建文件（部分服务对不存在的文件会长时间挂起）' };
+      }
       if (rf.networkError) {
         const fmsg = rf.errorMessage || '';
         if (/denied|not allowed|connect/i.test(fmsg)) {
@@ -30365,7 +30440,7 @@ function initReplyParamScrollTo() {
     // 避免全量覆盖其他端已贡献的独立记录
     let existing = null;
     try {
-      existing = await webdavRequest({ url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE, method: 'GET', headers });
+      existing = await webdavRequestRetry({ url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE, method: 'GET', headers, timeout: 15000 });
     } catch (e) {}
     if (existing && existing.status >= 200 && existing.status < 300 && built.file.payload) {
       try {
@@ -30410,7 +30485,7 @@ function initReplyParamScrollTo() {
         console.warn('[webdav] 上传前合并历史失败，按原样上传', e);
       }
     }
-    const put = await webdavRequest({
+    const put = await webdavRequestRetry({
       url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE,
       method: 'PUT',
       headers,
@@ -30437,15 +30512,12 @@ function initReplyParamScrollTo() {
   async function webdavSyncCore(cfg, silent) {
     const notify = (t) => { if (!silent && typeof toast === 'function') toast(t); };
     setWebdavStatus('同步中……');
-    const conn = await checkWebdavConnection(cfg);
-    if (!conn.ok) {
-      setWebdavStatus(conn.message);
-      if (!silent) notify('WebDAV 同步失败：' + conn.message);
-      return { ok: false, reason: 'connection' };
-    }
+    // 不再单独调用 checkWebdavConnection：它本身要发 2 个请求（目录 + 文件），
+    // 而紧接着的 GET 远端已经能覆盖「可达性 + 认证 + 文件状态」，省下这 2 个请求可显著
+    // 降低连续请求造成的服务端压力（此前一次同步最多 5 个请求紧挨着发）。
     const headers = { Authorization: buildWebdavAuthHeader(cfg) };
     const remoteUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
-    const remote = await webdavRequest({ url: remoteUrl, method: 'GET', headers });
+    const remote = await webdavRequestRetry({ url: remoteUrl, method: 'GET', headers, timeout: 15000 });
     if (remote.status === 404) {
       // 远端无数据：上传本地
         const up = await webdavUploadLocal(cfg, headers);
@@ -31098,6 +31170,1090 @@ function initReplyParamScrollTo() {
   };
 
   /* --------------------------------------------------
+   * tag 31. 串内容导出（扩展后台任务）
+   * -------------------------------------------------- */
+  // 页面内提供：sp_btn 下方的「导」按钮 + 提交弹窗 + 缩略进度条。
+  // 任务由扩展 Service Worker 在后台执行（页面可关闭），进度经 chrome.storage 同步。
+  // 非扩展环境（Tampermonkey / QwQNT）暂不提供实现（分支留空）。
+  const XDEX_EXPORT_TASKS_KEY = 'xdex-export-tasks';
+  const XDEX_EXPORT_UI_ID = 'xdex-export-ui';
+
+  // 扩展环境：内容脚本里可直接用 chrome.runtime（与主脚本同处 ISOLATED world）
+  function xdexExportExtensionAvailable() {
+    try {
+      return !!(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage);
+    } catch (e) { return false; }
+  }
+
+  // 脚本猫桥接：主脚本不声明 @storageName，仅经 DOM 事件与独立的桥接脚本通信。
+  // 为什么不用 window 属性握手：脚本猫给每个脚本独立的沙箱 window（沙箱属性写入不会
+  // 泄漏到 unsafeWindow），主脚本读不到桥接写在自己 window 上的对象。
+  // DOM 是共享的，因此以 documentElement 上的标记作为存在性信号，
+  // 请求/响应一律走 DOM 事件（不需要任何跨沙箱的函数引用）。
+  function xdexExportBridge() {
+    try {
+      const root = document.documentElement;
+      const mark = root && root.dataset ? root.dataset.xdexExportBridge : '';
+      if (mark) return { available: true, version: mark };
+    } catch (e) { /* 忽略 */ }
+    try {
+      const w = (typeof unsafeWindow !== 'undefined' && unsafeWindow) ? unsafeWindow : null;
+      const b = w ? w.__xdexExportBridge : null;
+      if (b && b.available) return b;
+    } catch (e) { /* 忽略 */ }
+    return null;
+  }
+
+  function xdexExportRuntimeAvailable() {
+    return xdexExportExtensionAvailable() || !!xdexExportBridge();
+  }
+
+  function xdexExportExtensionSend(message) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          const err = chrome.runtime.lastError;
+          if (err) { reject(new Error(err.message)); return; }
+          if (!response) { reject(new Error('扩展后台无响应')); return; }
+          if (response.ok === false) { reject(new Error(response.error || '操作失败')); return; }
+          resolve(response.data);
+        });
+      } catch (e) { reject(e); }
+    });
+  }
+
+  // 经桥接脚本转发：请求用 DOM 事件送出去，响应也用 DOM 事件送回来，
+  // 桥接负责与后台脚本交换共享存储。requestId 用于把异步响应配回本次调用。
+  // timeoutMs：快速请求 30s；submit 只等「受理回执」（后台接到即回，抓取在其后台继续），
+  // 因此给 60s 兜底即可 —— 不像以前那样不设超时，避免后台未运行时永久卡在「正在提交…」。
+  // 进度由 list 轮询呈现（按需启停，无任务时不轮询）。
+  function xdexExportBridgeSend(bridge, message, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const requestId = 'xdex-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      let settled = false;
+      const finish = (fn, arg) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        document.removeEventListener('xdex:export-result', onResult);
+        fn(arg);
+      };
+      const onResult = (ev) => {
+        const d = (ev && ev.detail) || {};
+        if (d.requestId !== requestId) return;
+        if (d.ok === false) finish(reject, new Error(d.error || '导出操作失败'));
+        else finish(resolve, d.data);
+      };
+      const timer = timeoutMs > 0
+        ? setTimeout(() => finish(reject, new Error(
+            '后台脚本无响应（超时）——请确认「X岛-EX · 脚本猫后台导出」已在脚本猫里【运行/启用】')), timeoutMs)
+        : null;
+      document.addEventListener('xdex:export-result', onResult);
+      try {
+        // 直接派发 DOM 事件（DOM 跨沙箱共享）；若桥接对象恰好可用则优先用它的方法
+        if (bridge && typeof bridge.request === 'function') {
+          bridge.request(message.type, message.details || {}, requestId);
+        } else {
+          document.dispatchEvent(new CustomEvent('xdex:export-request', {
+            detail: { type: String(message.type || ''), details: message.details || {}, requestId }
+          }));
+        }
+      } catch (e) { finish(reject, e); }
+    });
+  }
+
+  // HTML → 纯文本（用于从主串正文里取标题）。
+  // 采用「去标签 + 折叠空白」这一最小规则，以便与扩展端/脚本猫后台的实现逐字一致。
+  function xdexExportHtmlToPlain(html) {
+    return String(html == null ? '' : html).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // 标题取用规则（与后台落盘命名用的是同一套）：
+  //   有标题且不是「无标题」→ 用原标题；
+  //   否则取主串正文的「第一句话」—— 到第一个句末标点（含）为止，没有则整段；最后统一截到 40 字。
+  function xdexExportPickTitle(title, contentHtml) {
+    const t = String(title || '').trim();
+    if (t && t !== '无标题') return t;
+    const text = xdexExportHtmlToPlain(contentHtml);
+    if (!text) return '';
+    const m = text.match(/^[^。！？!?]{1,60}[。！？!?]/);
+    return (m ? m[0] : text).slice(0, 40).trim();
+  }
+
+  // 检索限流：批量检索时按顺序、按最小间隔发请求，避免短时间对站点发太多请求
+  const XDEX_EXPORT_PROBE_MIN_INTERVAL_MS = 1000;
+  let xdexExportProbeLastAt = 0;
+  let xdexExportProbeChain = Promise.resolve();
+  function xdexExportProbeThrottle() {
+    const run = xdexExportProbeChain
+      .then(() => {
+        const wait = xdexExportProbeLastAt + XDEX_EXPORT_PROBE_MIN_INTERVAL_MS - Date.now();
+        return wait > 0 ? new Promise((r) => setTimeout(r, wait)) : Promise.resolve();
+      })
+      .then(() => { xdexExportProbeLastAt = Date.now(); });
+    xdexExportProbeChain = run.catch(() => {});
+    return run;
+  }
+
+  // 本地探测：脚本猫环境下直接用主脚本自己的 GM_xmlhttpRequest 取串信息，
+  // 无需后台脚本参与 —— 这样「检索」在后台未运行/未启用时依然可用。
+  function xdexExportLocalProbe(details) {
+    const tid = String((details && details.tid) || '').trim();
+    if (!/^\d{4,9}$/.test(tid)) return Promise.reject(new Error('串号格式不正确'));
+    const headers = (typeof getPostHistoryApiCookieHeaders === 'function') ? getPostHistoryApiCookieHeaders() : null;
+    const url = `https://api.nmb.best/api/thread?id=${encodeURIComponent(tid)}&page=1`;
+    return xdexExportProbeThrottle().then(() => gmRequest(url, 'text', headers)).then((resp) => {
+      const raw = resp && (resp.response !== undefined ? resp.response : resp.responseText);
+      let data = raw;
+      if (typeof raw === 'string') {
+        const text = raw.trim();
+        // 站点在串不存在时返回 JSON 字符串字面量或裸文本，都要解出可读文案
+        if (text.startsWith('"')) {
+          try { throw new Error(JSON.parse(text)); } catch (e) { if (e instanceof Error) throw e; }
+        }
+        if (!text.startsWith('{') && !text.startsWith('[')) {
+          throw new Error(text || '接口返回了无法解析的内容');
+        }
+        try { data = JSON.parse(text); } catch (e) { throw new Error('接口返回的 JSON 无法解析'); }
+      }
+      if (!data || data.success === false) {
+        throw new Error((data && data.error) || '接口返回错误');
+      }
+      const totalReplies = Number(data.ReplyCount != null ? data.ReplyCount : data.reply_count) || 0;
+      return {
+        tid,
+        // 检索展示与后台落盘命名使用同一套标题规则：无标题时取主串第一句话
+        title: xdexExportPickTitle(data.title, data.content),
+        rawTitle: String(data.title || '').trim(),
+        fid: String(data.fid || '').trim(),
+        totalPages: Math.max(1, Math.ceil(totalReplies / 19)),
+        totalReplies
+      };
+    });
+  }
+
+  // 快速请求（probe/list/cancel）超时短；submit 只等受理回执，给足 offscreen 冷启动余量
+  const XDEX_EXPORT_BRIDGE_TIMEOUT_MS = 30000;
+  const XDEX_EXPORT_BRIDGE_ACK_TIMEOUT_MS = 60000;
+
+  function xdexExportSend(message) {
+    if (xdexExportExtensionAvailable()) return xdexExportExtensionSend(message);
+    const bridge = xdexExportBridge();
+    if (bridge) {
+      // 检索不依赖后台脚本：主脚本自己就能取串信息（后台未启用时也能用）
+      if (message && message.type === 'xdex:export:probe') {
+        return xdexExportLocalProbe(message.details || {});
+      }
+      // 后台对 submit 是「立即回执」（抓取在其后台继续），所以这里等的是受理回执，
+      // 给一个兜底超时即可 —— 后台未运行时给提示而不是永久卡在「正在提交…」。
+      return xdexExportBridgeSend(bridge, message, XDEX_EXPORT_BRIDGE_ACK_TIMEOUT_MS);
+    }
+    return Promise.reject(new Error('导出需要扩展版 X岛-EX 或脚本猫桥接脚本'));
+  }
+
+  // 解析用户输入的串号：支持 `67024789`、`No.67024789`、URL、`67024789?r=x&page=23`，
+  // 逗号/换行/空格分隔批量。返回 { tid, raw, ok, error }
+  function xdexExportParseTidList(input) {
+    const parts = String(input == null ? '' : input)
+      .split(/[,\n\uFF0C;；]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    return parts.map((raw) => {
+      let text = raw;
+      // 完整 URL：取路径中的 /t/{id} 或 /Forum/po/id/{id}
+      const urlMatch = text.match(/\/t\/(\d{4,9})/) || text.match(/\/Forum\/po\/id\/(\d{4,9})/);
+      if (urlMatch) {
+        return { tid: urlMatch[1], raw, ok: true, error: '' };
+      }
+      // 去掉 No. / # 前缀，去掉 ?query 与 &page= 尾部
+      text = text.replace(/^(?:No\.?|＃|#)\s*/i, '').split(/[?&\s]/)[0];
+      // 允许 `67024789-67024790` 之类只取首段
+      const numMatch = text.match(/^(\d{4,9})/);
+      if (numMatch) {
+        return { tid: numMatch[1], raw, ok: true, error: '' };
+      }
+      return { tid: '', raw, ok: false, error: '无法识别的串号' };
+    });
+  }
+
+  function xdexExportCurrentTid() {
+    try {
+      const m = String(location.pathname || '').match(/\/(?:t|Forum\/po\/id)\/(\d{4,9})/);
+      return m ? m[1] : '';
+    } catch (e) { return ''; }
+  }
+
+  function xdexExportEscapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // ---- 缩略进度条（sp_btn 下方导出按钮之下）----
+  // 任务进度百分比与状态文案（缩略条主行与展开列表共用）
+  // 任务本次的「计划页数」：提交 1-10 时是 10，而不是该串的总页数 323。
+  //   to > 0 → 区间长度；to === 0（全部页哨兵）→ 用该串总页数减去起始页偏移。
+  function xdexExportMiniPlannedPages(task) {
+    const from = Math.max(1, Number(task.from) || 1);
+    const to = Math.max(0, Number(task.to) || 0);
+    const total = Number(task.totalPages) || 0;
+    if (to > 0) return Math.max(0, to - from + 1);
+    if (total > 0) return Math.max(0, total - from + 1);
+    return 0;
+  }
+
+  function xdexExportMiniPercent(task) {
+    const done = (task.progress && task.progress.donePages) ? task.progress.donePages.length : 0;
+    // 分母必须是「本次计划页数」。三层来源，逐级回退：
+    //   1) progress.totalPages（后台抓到首页后 / 新版入队时写入）
+    //   2) 由提交区间（task.from/to）推算
+    // 注意：绝不能用 task.totalPages —— 那是「该串的总页数」，会把 1-10 显示成 0/323。
+    const planned = Number(task.progress && task.progress.totalPages)
+      || xdexExportMiniPlannedPages(task)
+      || Number(task.progress && task.progress.totalPages) /* 0 → 保持 0 */;
+    return { done, total: planned, percent: planned > 0 ? Math.min(100, Math.round((done / planned) * 100)) : 0 };
+  }
+  function xdexExportMiniLabel(task) {
+    const { done, total } = xdexExportMiniPercent(task);
+    if (task.status === 'done') return '已完成';
+    if (task.status === 'failed') return task.error ? `失败：${task.error}` : '失败';
+    if (task.status === 'canceled') return `已取消（已导出 ${done} 页）`;
+    return `${done}/${total || '?'}`;
+  }
+  // 任务标题：优先任务自带 title，退回串号
+  function xdexExportMiniTitle(task) {
+    const t = String(task.title || '').trim();
+    return t && t !== '无标题' ? t : `串${task.tid}`;
+  }
+
+  function xdexExportRenderMini(task, moreCount) {
+    const mini = document.getElementById('xdex-export-mini');
+    if (!mini) return;
+    if (!task) {
+      mini.style.display = 'none';
+      mini.innerHTML = '';
+      return;
+    }
+    const { percent } = xdexExportMiniPercent(task);
+    mini.style.display = 'block';
+    mini.innerHTML = ''
+      + `<div class="xdex-export-mini-head">`
+      + `<span class="xdex-export-mini-title" title="${xdexExportEscapeHtml(xdexExportMiniTitle(task))}">${xdexExportEscapeHtml(xdexExportMiniTitle(task))}</span>`
+      + `<span class="xdex-export-mini-tid">No.${xdexExportEscapeHtml(task.tid)}</span>`
+      + `<button type="button" class="xdex-export-mini-btn" data-act="expand" title="${moreCount > 0 ? (xdexExportMiniExpanded ? '收起' : '展开全部任务') : '仅一个任务'}">${moreCount > 0 ? '+' + moreCount + ' ' : ''}${xdexExportMiniExpanded && moreCount > 0 ? '▴' : '▾'}</button>`
+      + `<button type="button" class="xdex-export-mini-btn" data-act="cancel" title="取消任务（已下载的页会照常导出）">×</button></div>`
+      + `<div class="xdex-export-mini-track"><div class="xdex-export-mini-fill" style="width:${percent}%"></div></div>`
+      + `<div class="xdex-export-mini-label">${xdexExportEscapeHtml(xdexExportMiniLabel(task))}</div>`;
+  }
+
+  // 缩略条展开态（轮询重渲染时保持，否则每秒会被 innerHTML 重写折叠）
+  let xdexExportMiniExpanded = false;
+
+  function xdexExportRenderMiniList(tasks) {
+    const mini = document.getElementById('xdex-export-mini');
+    if (!mini) return;
+    if (!tasks || !tasks.length) { xdexExportMiniExpanded = false; xdexExportRenderMini(null, 0); return; }
+    const active = tasks.filter((t) => t.status === 'running' || t.status === 'queued');
+    const list = active.length ? active : tasks.slice(0, 1);
+    // 多任务：显示第一个，点击「+N ▾」展开其余
+    xdexExportRenderMini(list[0], Math.max(0, list.length - 1));
+    const expandBtn = mini.querySelector('[data-act="expand"]');
+    if (expandBtn && list.length > 1) {
+      expandBtn.addEventListener('click', () => {
+        xdexExportMiniExpanded = !xdexExportMiniExpanded;
+        xdexExportRenderMiniList(tasks);
+      });
+    }
+    // 保持展开态（重渲染后重新挂载展开列表）
+    if (xdexExportMiniExpanded && list.length > 1) {
+      xdexExportRenderMiniMore(mini, list);
+    }
+    const cancelBtn = mini.querySelector('[data-act="cancel"]');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        xdexExportSend({ type: 'xdex:export:cancel', details: { id: list[0].id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+    }
+  }
+
+  // 展开列表：每个任务都显示「标题 + 串号 + 进度条 + 状态」，并各自带取消按钮
+  function xdexExportRenderMiniMore(mini, tasks) {
+    const existing = mini.querySelector('.xdex-export-mini-more');
+    if (existing) existing.remove();
+    const more = document.createElement('div');
+    more.className = 'xdex-export-mini-more';
+    tasks.slice(1).forEach((task) => {
+      const { percent } = xdexExportMiniPercent(task);
+      const title = xdexExportMiniTitle(task);
+
+      const row = document.createElement('div');
+      row.className = 'xdex-export-mini-more-row';
+
+      // 头部：标题 + 串号 + 取消按钮（全部用 DOM 构造，避免 innerHTML 后再查询）
+      const head = document.createElement('div');
+      head.className = 'xdex-export-mini-more-head';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'xdex-export-mini-more-title';
+      titleEl.textContent = title;
+      titleEl.title = title;
+      const tidEl = document.createElement('span');
+      tidEl.className = 'xdex-export-mini-more-tid';
+      tidEl.textContent = `No.${task.tid}`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'xdex-export-mini-btn';
+      btn.title = '取消任务（已下载的页会照常导出）';
+      btn.textContent = '×';
+      btn.addEventListener('click', () => {
+        xdexExportSend({ type: 'xdex:export:cancel', details: { id: task.id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+      head.appendChild(titleEl);
+      head.appendChild(tidEl);
+      head.appendChild(btn);
+
+      // 进度条
+      const track = document.createElement('div');
+      track.className = 'xdex-export-mini-more-track';
+      const fill = document.createElement('div');
+      fill.className = 'xdex-export-mini-more-fill';
+      fill.style.width = `${percent}%`;
+      track.appendChild(fill);
+
+      // 状态文案
+      const label = document.createElement('div');
+      label.className = 'xdex-export-mini-more-label';
+      label.textContent = xdexExportMiniLabel(task);
+
+      row.appendChild(head);
+      row.appendChild(track);
+      row.appendChild(label);
+      more.appendChild(row);
+    });
+    mini.appendChild(more);
+  }
+
+  // 进度轮询按需启停：无在跑任务即停止，避免在未使用导出功能时长期空转。
+  let xdexExportIdleTicks = 0;
+  let xdexExportStallSig = '';
+  let xdexExportStallSince = 0;
+  // 僵死判定阈值：按「单页最坏耗时」的 2 倍取值。
+  //   fetchText 超时 20s，且每页最多按顺序试 3 个 Cookie 来源 → 单页最坏 60s；
+  //   正常下载时状态约每 0.3~1s 就变一次（每抓完一页写一次进度）。
+  //   因此「连续 2 分钟毫无变化」对正常下载是不可能的，可据此判定僵死。
+  const XDEX_EXPORT_STALL_MS = 2 * 60 * 1000;
+  function xdexExportEnsureProgressPolling() {
+    if (xdexExportPollTimer) return;
+    let inFlight = false;
+    xdexExportPollTimer = setInterval(() => {
+      if (document.hidden || inFlight) return;
+      // 首次未知（本页尚未取过状态）→ 探测一次；之后按是否有在跑任务决定是否继续
+      const st = xdexExportLastState;
+      const active = (st === null) || !!(st.tasks && st.tasks.length);
+      if (!active) {
+        xdexExportIdleTicks += 1;
+        if (xdexExportIdleTicks >= 2) {
+          clearInterval(xdexExportPollTimer);
+          xdexExportPollTimer = null;
+          xdexExportIdleTicks = 0;
+        }
+        return;
+      }
+      xdexExportIdleTicks = 0;
+      // 僵死保护：任务表连续 XDEX_EXPORT_STALL_MS 毫无变化则停止轮询
+      const sig = (st.tasks || []).map((t) => `${t.id}:${t.status}:${(t.progress && t.progress.donePages ? t.progress.donePages.length : 0)}`).join('|');
+      if (sig !== xdexExportStallSig) {
+        xdexExportStallSig = sig;
+        xdexExportStallSince = Date.now();
+      } else if (Date.now() - xdexExportStallSince > XDEX_EXPORT_STALL_MS) {
+        // 判定僵死：停止轮询，并清掉缩略条 —— 否则会一直显示一个永远不动的任务
+        clearInterval(xdexExportPollTimer);
+        xdexExportPollTimer = null;
+        xdexExportLastState = null;
+        try { xdexExportRenderMiniList([]); } catch (_e) { /* 忽略 */ }
+        console.warn('[X岛-EX 导出] 任务进度长时间无变化，已停止轮询并隐藏进度条');
+        return;
+      }
+      inFlight = true;
+      Promise.resolve(xdexExportRefreshState()).catch(() => {}).then(() => { inFlight = false; });
+    }, 3000);
+  }
+
+  let xdexExportPollTimer = null;
+  let xdexExportLastState = null;
+
+  async function xdexExportRefreshState() {
+    if (!xdexExportRuntimeAvailable()) return;
+    try {
+      const state = await xdexExportSend({ type: 'xdex:export:list' });
+      if (!state) return;
+      xdexExportLastState = state;
+      xdexExportRenderMiniList(state.tasks || []);
+      xdexExportRenderDialogTasks(state.tasks || []);
+      // 弹窗历史 = 任务表 history（与导出页「历史任务」同源），直接渲染
+      try { xdexExportRenderDialogHistory(state.history || []); } catch (e) { /* 忽略 */ }
+    } catch (e) { /* 扩展上下文失效时静默 */ }
+  }
+
+  // 把弹窗里的串号元素接入引用体系：
+  //   渲染为 <font color="#789922">No.xxx</font>（与原站引用号同构）并包进 .h-threads-content 容器，
+  //   再对该容器调用 initExtendedContent —— 由此获得与串内引用一致的行为：
+  //   悬停原生引用浮窗、点击展开拓展引用浮窗、可用性检测等。
+  function xdexExportAttachQuoteRef(el, tid) {
+    if (!el) return;
+    el.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'h-threads-content';
+    container.style.display = 'inline';
+    const font = document.createElement('font');
+    font.setAttribute('color', '#789922');
+    font.textContent = `No.${tid}`;
+    container.appendChild(font);
+    el.appendChild(container);
+    try {
+      if (typeof initExtendedContent === 'function') initExtendedContent(el);
+      else if (typeof extendQuote === 'function') extendQuote(el);
+    } catch (e) { /* 引用功能不可用时静默（显示为纯文本链接色） */ }
+  }
+
+  // 弹窗内的任务队列：与缩略条同源（state.tasks 中 running/queued 的任务）。
+  // 头部一行呈现：左「任务队列」/ 中「当前任务 + 进度」/ 右「任务总数」，可折叠。
+  function xdexExportRenderDialogTasks(tasks) {
+    const box = document.getElementById('xdex-export-dialog-tasks');
+    if (!box) return;
+    const list = (tasks || []).filter((t) => t && (t.status === 'running' || t.status === 'queued'));
+    const statusEl = document.getElementById('xdex-export-queue-status');
+    const countEl = document.getElementById('xdex-export-queue-count');
+    if (countEl) countEl.textContent = list.length ? `共 ${list.length} 个` : '';
+    if (statusEl) {
+      const cur = list.find((t) => t.status === 'running') || list[0];
+      if (cur) {
+        const { done, total } = xdexExportMiniPercent(cur);
+        statusEl.textContent = `${xdexExportMiniTitle(cur)}　${done}/${total || '?'}`;
+      } else {
+        statusEl.textContent = '暂无进行中的任务';
+      }
+    }
+    if (!list.length) {
+      box.textContent = '暂无进行中的任务';
+      box.className = 'xdex-export-dialog-tasks empty';
+      return;
+    }
+    box.className = 'xdex-export-dialog-tasks';
+    box.innerHTML = '';
+    list.forEach((task) => {
+      const { percent } = xdexExportMiniPercent(task);
+      const row = document.createElement('div');
+      row.className = 'xdex-export-dialog-task';
+
+      const head = document.createElement('div');
+      head.className = 'xdex-export-dialog-task-head';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'xdex-export-dialog-task-title';
+      titleEl.textContent = xdexExportMiniTitle(task);
+      titleEl.title = titleEl.textContent;
+      const tidEl = document.createElement('span');
+      tidEl.className = 'xdex-export-dialog-task-tid';
+      xdexExportAttachQuoteRef(tidEl, task.tid);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'xdex-export-dialog-btn tiny';
+      btn.textContent = '中止';
+      btn.title = '取消任务（已下载的页会照常导出）';
+      btn.addEventListener('click', () => {
+        xdexExportSend({ type: 'xdex:export:cancel', details: { id: task.id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+      head.appendChild(titleEl);
+      head.appendChild(tidEl);
+      head.appendChild(btn);
+
+      const track = document.createElement('div');
+      track.className = 'xdex-export-dialog-task-track';
+      const fill = document.createElement('div');
+      fill.className = 'xdex-export-dialog-task-fill';
+      fill.style.width = `${percent}%`;
+      track.appendChild(fill);
+
+      const meta = document.createElement('div');
+      meta.className = 'xdex-export-dialog-task-meta';
+      meta.textContent = xdexExportMiniLabel(task);
+
+      row.appendChild(head);
+      row.appendChild(track);
+      row.appendChild(meta);
+      box.appendChild(row);
+    });
+  }
+
+  // ---- 提交弹窗 ----
+  // 弹窗状态：关闭后保留，重开时恢复（串号输入、格式、页码范围、只看PO、检索结果、状态文案）
+  const xdexExportDialogState = {
+    tid: '',
+    format: 'md',
+    from: '',
+    to: '',
+    poOnly: false,
+    probed: new Map(),
+    probeText: '',
+    statusText: '',
+    statusTone: '',
+    queueExpanded: false,   // 任务队列默认折叠（与历史记录一致）
+    historyExpanded: false  // 历史记录默认折叠，避免每次打开都占很大篇幅
+  };
+
+  // 弹窗内的历史记录：**直接复用任务表的 history**（与扩展导出页「历史任务」同一份数据），
+  // 因此天然同步：任务完成自动出现、导出页删除/清空后弹窗下次刷新即一致。
+  // 展示为同款式（标题 + 串号 + 状态 + 删除按钮），默认折叠。
+  function xdexExportRenderDialogHistory(list) {
+    const box = document.getElementById('xdex-export-dialog-history');
+    if (!box) return;
+    const items = Array.isArray(list) ? list : [];
+    const countEl = document.getElementById('xdex-export-history-count');
+    if (countEl) countEl.textContent = items.length ? `共 ${items.length} 条` : '';
+    box.className = 'xdex-export-dialog-tasks' + (items.length ? '' : ' empty');
+    if (!items.length) {
+      box.textContent = '（暂无历史）';
+      return;
+    }
+    box.innerHTML = '';
+    const statusMap = { done: '已完成', failed: '失败', canceled: '已取消', interrupted: '已中断' };
+    items.forEach((task) => {
+      const row = document.createElement('div');
+      row.className = 'xdex-export-dialog-task';
+
+      const head = document.createElement('div');
+      head.className = 'xdex-export-dialog-task-head';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'xdex-export-dialog-task-title';
+      titleEl.textContent = xdexExportMiniTitle(task);
+      titleEl.title = titleEl.textContent;
+      const tidEl = document.createElement('span');
+      tidEl.className = 'xdex-export-dialog-task-tid';
+      xdexExportAttachQuoteRef(tidEl, task.tid);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'xdex-export-dialog-btn tiny';
+      del.textContent = '删除';
+      del.title = '删除这条历史记录';
+      del.addEventListener('click', () => {
+        // 与导出页「删除记录」同一条消息：任务表 history 删除后两处一致
+        xdexExportSend({ type: 'xdex:export:remove-history', details: { id: task.id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+      head.appendChild(titleEl);
+      head.appendChild(tidEl);
+      head.appendChild(del);
+
+      const meta = document.createElement('div');
+      meta.className = 'xdex-export-dialog-task-meta';
+      const parts = [statusMap[task.status] || task.status || ''];
+      if (task.filename) parts.push(task.filename);
+      else if (task.error) parts.push(task.error);
+      if (task.finishedAt) parts.push(new Date(task.finishedAt).toLocaleString());
+      meta.textContent = parts.filter(Boolean).join('　');
+
+      row.appendChild(head);
+      row.appendChild(meta);
+      box.appendChild(row);
+    });
+  }
+
+
+  function xdexExportOpenDialog(prefillTid) {
+    if (!xdexExportRuntimeAvailable()) {
+      toast('导出需安装扩展版 X岛-EX，或脚本猫桥接脚本', 2400, { type: 'error', key: 'export-needs-extension' });
+      return;
+    }
+    const tid = prefillTid || xdexExportCurrentTid();
+    if (document.getElementById('xdex-export-dialog')) return;
+    const dialog = document.createElement('div');
+    dialog.id = 'xdex-export-dialog';
+    dialog.innerHTML = ''
+      + '<div class="xdex-export-dialog-panel">'
+      + '  <div class="xdex-export-dialog-head"><span>导出串</span>'
+      + '    <span class="xdex-export-dialog-head-btns">'
+      + '      <button type="button" class="xdex-export-dialog-icon" data-act="min" title="最小化">−</button>'
+      + '      <button type="button" class="xdex-export-dialog-icon" data-act="close" title="关闭（任务继续）">×</button>'
+      + '    </span></div>'
+      + '  <div class="xdex-export-dialog-body">'
+      + '    <div class="xdex-export-dialog-row">'
+      + `      <input id="xdex-export-tid" type="text" placeholder="串号 / No.67024789 / 链接，可逗号批量" value="${xdexExportEscapeHtml(tid)}">`
+      + '      <button type="button" class="xdex-export-dialog-btn" data-act="probe">检索</button>'
+      + '    </div>'
+      + '    <div id="xdex-export-probe" class="xdex-export-dialog-info"></div>'
+      + '    <div class="xdex-export-dialog-row">'
+      + '      <span class="xdex-export-dialog-label">总页码</span><span id="xdex-export-total" class="xdex-export-dialog-value">—</span>'
+      + '      <span class="xdex-export-dialog-label">格式</span>'
+      + '      <select id="xdex-export-format"><option value="md">Markdown</option><option value="txt">TXT</option></select>'
+      + '    </div>'
+      + '    <div class="xdex-export-dialog-row">'
+      + '      <span class="xdex-export-dialog-label">下载</span>'
+      + '      <input id="xdex-export-from" type="number" min="1" placeholder="起始" class="xdex-export-dialog-num">'
+      + '      <span>-</span>'
+      + '      <input id="xdex-export-to" type="number" min="1" placeholder="结束" class="xdex-export-dialog-num">'
+      + '      <button type="button" class="xdex-export-dialog-btn primary" data-act="submit">开始</button>'
+      + '      <label class="xdex-export-dialog-switch" for="xdex-export-po" title="只导出主串（PO）自己的发言">'
+      + '        <input id="xdex-export-po" type="checkbox" class="xdex-switch" role="switch"><span>只看 PO</span></label>'
+      + '    </div>'
+      + '    <div id="xdex-export-status" class="xdex-export-dialog-info"></div>'
+      + '    <div class="xdex-export-dialog-queue">'
+      + '      <div class="xdex-export-dialog-queue-head" data-act="toggle-queue" role="button" tabindex="0">'
+      + '        <span class="q-title">任务队列</span>'
+      + '        <span class="q-status" id="xdex-export-queue-status">暂无进行中的任务</span>'
+      + '        <span class="q-count" id="xdex-export-queue-count"></span>'
+      + '        <span class="q-caret" id="xdex-export-queue-caret"></span>'
+      + '      </div>'
+      + '      <div id="xdex-export-dialog-tasks" class="xdex-export-dialog-tasks"></div>'
+      + '    </div>'
+      + '    <div class="xdex-export-dialog-queue collapsed" id="xdex-export-dialog-history-box">'
+      + '      <div class="xdex-export-dialog-queue-head" data-act="toggle-history" role="button" tabindex="0">'
+      + '        <span class="q-title">历史记录</span>'
+      + '        <span class="q-count" id="xdex-export-history-count"></span>'
+      + '        <span class="q-caret" id="xdex-export-history-caret"></span>'
+      + '      </div>'
+      + '      <div id="xdex-export-dialog-history" class="xdex-export-dialog-tasks"></div>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>';
+    document.body.appendChild(dialog);
+
+    const q = (sel) => dialog.querySelector(sel);
+    const status = (text, tone) => {
+      const el = q('#xdex-export-status');
+      el.textContent = text || '';
+      el.dataset.tone = tone || '';
+      xdexExportDialogState.statusText = text || '';
+      xdexExportDialogState.statusTone = tone || '';
+    };
+    // 已检索通过的串号集合：跨弹窗开关复用（存在模块级状态里）
+    const probed = xdexExportDialogState.probed;
+
+    // 回填上次的输入与结果，避免每次打开都从零开始
+    try {
+      const st = xdexExportDialogState;
+      if (st.format) q('#xdex-export-format').value = st.format;
+      if (st.from) q('#xdex-export-from').value = st.from;
+      if (st.to) q('#xdex-export-to').value = st.to;
+      q('#xdex-export-po').checked = !!st.poOnly;
+      if (st.probeText) {
+        q('#xdex-export-probe').textContent = st.probeText;
+      } else {
+        // 未检索前给一句说明，避免信息栏空着显得突兀
+        const ph = q('#xdex-export-probe');
+        ph.textContent = '填写串号后点「检索」，这里会显示每个串的标题、总页数与回复数（支持 No.67024789 / 链接 / 逗号批量）';
+        ph.dataset.tone = 'placeholder';
+      }
+      if (st.statusText) status(st.statusText, st.statusTone);
+      if (probed.size === 1) q('#xdex-export-total').textContent = String(Array.from(probed.values())[0].totalPages);
+      else if (probed.size > 1) q('#xdex-export-total').textContent = `${probed.size} 个串`;
+      xdexExportRenderDialogTasks(xdexExportLastState && xdexExportLastState.tasks);
+      if (xdexExportExtensionAvailable()) {
+        // 扩展环境：历史在任务表（chrome.storage），拉一次最新
+        xdexExportSend({ type: 'xdex:export:list' }).then((st) => {
+          if (st) { xdexExportLastState = st; xdexExportRenderDialogHistory(st.history || []); }
+        }).catch(() => {});
+      } else {
+        // 脚本猫端：历史同样在后台任务表里。本页可能还没跑过 list（按需轮询是空的），
+        // 所以也要主动取一次，否则「修改前」由其它页面/会话产生的记录看不到。
+        xdexExportSend({ type: 'xdex:export:list' }).then((st) => {
+          if (st) { xdexExportLastState = st; xdexExportRenderDialogHistory(st.history || []); }
+        }).catch(() => {
+          // 后台未运行时退回最近一次已知状态
+          xdexExportRenderDialogHistory(xdexExportLastState && xdexExportLastState.history);
+        });
+      }
+    } catch (_e) { /* 忽略 */ }
+
+    // 输入变化即写回状态
+    const rememberInputs = () => {
+      const st = xdexExportDialogState;
+      st.tid = q('#xdex-export-tid').value;
+      st.format = q('#xdex-export-format').value;
+      st.from = q('#xdex-export-from').value;
+      st.to = q('#xdex-export-to').value;
+      st.poOnly = q('#xdex-export-po').checked;
+    };
+    ['#xdex-export-tid', '#xdex-export-format', '#xdex-export-from', '#xdex-export-to', '#xdex-export-po'].forEach((sel) => {
+      const el = q(sel);
+      if (!el) return;
+      el.addEventListener('input', rememberInputs);
+      el.addEventListener('change', rememberInputs);
+    });
+
+    const closeDialog = () => { rememberInputs(); dialog.remove(); };
+    // 点击遮罩（面板以外区域）关闭
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) closeDialog(); });
+
+    // 任务队列折叠（参照设置面板 WebDAV 行的折叠交互）
+    const queueBox = q('.xdex-export-dialog-queue');
+    const applyQueueExpanded = () => {
+      if (!queueBox) return;
+      const expanded = !!xdexExportDialogState.queueExpanded;
+      queueBox.classList.toggle('collapsed', !expanded);
+      // 与「常用串EX」同一个箭头函数：展开→向下，收起→向左
+      try {
+        if (typeof setPostExpandToggleVisual === 'function') {
+          setPostExpandToggleVisual(q('#xdex-export-queue-caret'), expanded);
+        }
+      } catch (_e) { /* 忽略 */ }
+    };
+    if (queueBox) {
+      q('[data-act="toggle-queue"]').addEventListener('click', () => {
+        xdexExportDialogState.queueExpanded = !xdexExportDialogState.queueExpanded;
+        applyQueueExpanded();
+      });
+    }
+    applyQueueExpanded();
+
+    // 历史记录折叠（默认折叠；箭头与任务队列同款）
+    const historyBox = q('#xdex-export-dialog-history-box');
+    const applyHistoryExpanded = () => {
+      if (!historyBox) return;
+      const expanded = !!xdexExportDialogState.historyExpanded;
+      historyBox.classList.toggle('collapsed', !expanded);
+      try {
+        if (typeof setPostExpandToggleVisual === 'function') {
+          setPostExpandToggleVisual(q('#xdex-export-history-caret'), expanded);
+        }
+      } catch (_e) { /* 忽略 */ }
+    };
+    if (historyBox) {
+      q('[data-act="toggle-history"]').addEventListener('click', () => {
+        xdexExportDialogState.historyExpanded = !xdexExportDialogState.historyExpanded;
+        applyHistoryExpanded();
+      });
+    }
+    applyHistoryExpanded();
+
+    q('[data-act="close"]').addEventListener('click', closeDialog);
+    q('[data-act="min"]').addEventListener('click', closeDialog);
+
+    // 范围输入：留空即全部页（from=1, to=0）
+    const readRange = () => {
+      const from = Math.max(0, Number(q('#xdex-export-from').value) || 0);
+      const to = Math.max(0, Number(q('#xdex-export-to').value) || 0);
+      return { from: from || 1, to: to || 0 };
+    };
+
+    // 校验用户填写的页码区间是否真实存在（依据检索到的总页数）。
+    // 只填一端时另一端自动补全：只填起始 → 到最后一页；只填结束 → 从第 1 页。
+    const validateRange = (info) => {
+      const rawFrom = q('#xdex-export-from').value.trim();
+      const rawTo = q('#xdex-export-to').value.trim();
+      const total = Number(info && info.totalPages) || 0;
+      if (!rawFrom && !rawTo) return { ok: true, from: 1, to: 0, all: true };
+      const fromN = Number(rawFrom);
+      const toN = Number(rawTo);
+      if (rawFrom && (!Number.isFinite(fromN) || fromN < 1)) return { ok: false, error: '起始页必须是 ≥1 的整数' };
+      if (rawTo && (!Number.isFinite(toN) || toN < 1)) return { ok: false, error: '结束页必须是 ≥1 的整数' };
+      const from = rawFrom ? Math.floor(fromN) : 1;
+      const to = rawTo ? Math.floor(toN) : (total || 0);
+      if (total && from > total) return { ok: false, error: `起始页 ${from} 超出总页数 ${total}` };
+      if (total && to > total) return { ok: false, error: `结束页 ${to} 超出总页数 ${total}` };
+      if (to && to < from) return { ok: false, error: `结束页 ${to} 小于起始页 ${from}` };
+      return { ok: true, from, to, all: false };
+    };
+
+    q('[data-act="probe"]').addEventListener('click', async () => {
+      const list = xdexExportParseTidList(q('#xdex-export-tid').value.trim() || xdexExportCurrentTid());
+      if (!list.length) { status('请输入串号', 'error'); return; }
+      probed.clear();
+      status('正在检索…');
+      const oks = [];
+      const fails = [];
+      for (const item of list) {
+        if (!item.ok) { fails.push(`${item.raw}：${item.error}`); continue; }
+        try {
+          const info = await xdexExportSend({ type: 'xdex:export:probe', details: { tid: item.tid } });
+          probed.set(item.tid, info);
+          oks.push(`✓《${info.title || `串${item.tid}`}》 ${item.tid} 共 ${info.totalPages} 页 / ${info.totalReplies} 回复`);
+        } catch (e) {
+          fails.push(`✗ ${item.tid} 不可下载：${e.message}`);
+        }
+      }
+      const probeEl = q('#xdex-export-probe');
+      probeEl.textContent = oks.concat(fails).join('\n');
+      probeEl.dataset.tone = fails.length ? 'error' : 'ok';
+      xdexExportDialogState.probeText = probeEl.textContent;
+      if (probed.size === 1) {
+        const only = Array.from(probed.values())[0];
+        q('#xdex-export-total').textContent = String(only.totalPages);
+      } else {
+        q('#xdex-export-total').textContent = probed.size ? `${probed.size} 个串` : '—';
+      }
+      status(fails.length ? `${fails.length} 个串不可下载，其余可正常加入` : `检索完成：${oks.length} 个串可下载`, fails.length ? 'error' : 'ok');
+    });
+
+    q('[data-act="submit"]').addEventListener('click', async () => {
+      const list = xdexExportParseTidList(q('#xdex-export-tid').value.trim() || xdexExportCurrentTid());
+      if (!list.length) { status('请输入串号', 'error'); return; }
+      const bothEmpty = !q('#xdex-export-from').value.trim() && !q('#xdex-export-to').value.trim();
+      const format = q('#xdex-export-format').value;
+      const poOnly = q('#xdex-export-po').checked;
+      // 已经检索过的不再重复检索：只对「尚未检索」的串补检
+      const listOk = list.filter((x) => x.ok);
+      const needProbe = listOk.filter((x) => !probed.get(x.tid));
+      status(needProbe.length ? `正在检索 ${needProbe.length} 个未检索的串…` : '正在提交…');
+      const done = [];
+      const fails = [];
+      const infos = [];
+      for (const item of list) {
+        if (!item.ok) { fails.push(`${item.raw}：${item.error}`); continue; }
+        // 复用已有检索结果；没有才去检索
+        let info = probed.get(item.tid);
+        if (!info) {
+          try {
+            info = await xdexExportSend({ type: 'xdex:export:probe', details: { tid: item.tid } });
+            probed.set(item.tid, info);
+          } catch (e) { fails.push(`${item.tid} 不可下载：${e.message}`); continue; }
+        }
+        // 页码区间校验（依据该串的总页数）
+        const chk = validateRange(info);
+        if (!chk.ok) { fails.push(`${item.tid} 页码范围无效：${chk.error}`); continue; }
+        if (bothEmpty || chk.all) {
+          infos.push(`《${info.title || `串${item.tid}`}》 ${item.tid} 共 ${info.totalPages} 页 / ${info.totalReplies} 回复 → 全量导出`);
+        }
+        try {
+          await xdexExportSend({
+            type: 'xdex:export:submit',
+            details: {
+              tid: item.tid,
+              title: info.title || '',
+              fid: info.fid || '',
+              totalPages: info.totalPages || 0,
+              from: chk.from,
+              to: chk.to,
+              format,
+              poOnly
+            }
+          });
+          done.push(`${item.tid}（${chk.from}-${chk.all ? info.totalPages : chk.to} 页）`);
+        } catch (e) { fails.push(`${item.tid} 提交失败：${e.message}`); }
+      }
+      const parts = [];
+      if (infos.length) parts.push(infos.join('\n'));
+      if (done.length) parts.push(`已加入导出队列 ${done.length} 个：${done.join('、')}`);
+      if (fails.length) parts.push(`失败 ${fails.length} 个：${fails.join('；')}`);
+      status(parts.join('｜'), fails.length ? 'error' : 'ok');
+      if (infos.length) q('#xdex-export-probe').textContent = infos.join('\n');
+      xdexExportIdleTicks = 0;
+      xdexExportEnsureProgressPolling();
+      await xdexExportRefreshState();
+    });
+  }
+
+  // ---- 按钮 + 样式注入 ----
+  function xdexExportInstallUi() {
+    if (!xdexExportRuntimeAvailable()) return; // 扩展与脚本猫桥接均不可用：不注入
+    if (document.getElementById('xdex-export-ui')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-export-ui';
+    style.textContent = ''
+      // 外观复用阅图模式按钮 .xdex-image-viewer-btn（+ 站点 active 类 ultimate-bold-correct），
+      // 这里只覆盖定位到 sp_btn 正下方
+      + '#xdex-export-btn{top:54px;right:10px;}'
+      + '#xdex-export-mini{position:fixed;top:96px;right:10px;z-index:10000;width:172px;padding:8px;border-radius:10px;'
+      + 'background:rgba(255,255,238,.97);border:1px solid #bfa58f;box-shadow:0 2px 10px rgba(0,0,0,.18);display:none;'
+      + 'font:12px/1.5 "Microsoft YaHei",sans-serif;color:#4a3a30;}'
+      + '.xdex-export-mini-head{display:flex;align-items:center;gap:4px;}'
+      + '.xdex-export-mini-tid{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.xdex-export-mini-track{height:6px;border-radius:999px;background:rgba(143,74,47,.15);overflow:hidden;margin:5px 0 3px;}'
+      + '.xdex-export-mini-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#8f4a2f,#1f6f74);transition:width .2s ease;}'
+      + '.xdex-export-mini-label{color:#8a7566;text-align:right;}'
+      + '.xdex-export-mini-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px;}'
+      // 展开列表：整块纵向排列（标题行 / 进度条 / 状态），每行之间留白
+      + '.xdex-export-mini-more{margin-top:6px;padding-top:6px;border-top:1px dashed #bfa58f;display:flex;flex-direction:column;gap:9px;max-height:46vh;overflow:auto;}'
+      + '.xdex-export-mini-more-row{display:block;}'
+      + '.xdex-export-mini-more-head{display:flex;align-items:center;gap:4px;}'
+      + '.xdex-export-mini-more-title{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.xdex-export-mini-more-tid{color:#8a7566;white-space:nowrap;font-size:11.5px;}'
+      + '.xdex-export-mini-more-track{height:5px;border-radius:999px;background:rgba(143,74,47,.15);overflow:hidden;margin:4px 0 2px;}'
+      + '.xdex-export-mini-more-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#8f4a2f,#1f6f74);transition:width .2s ease;}'
+      + '.xdex-export-mini-more-label{color:#8a7566;text-align:right;font-size:11.5px;}'
+      // 缩略条的展开/中止按钮：做成有边框的小胶囊，提升可点性与辨识度
+      + '.xdex-export-mini-btn{min-width:20px;height:18px;padding:0 5px;border:1px solid #bfa58f;border-radius:999px;background:#fffaf4;cursor:pointer;'
+      + 'color:#683520;font:11px/1 "Microsoft YaHei",sans-serif;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;}'
+      + '.xdex-export-mini-btn:hover{background:#f0e0d6;border-color:#8f4a2f;}'
+      + '.xdex-export-mini-btn[data-act="cancel"]{color:#9d3026;border-color:#d9a79f;}'
+      + '.xdex-export-mini-btn[data-act="cancel"]:hover{background:#f7e2df;border-color:#9d3026;}'
+      + '.xdex-export-mini-btn[data-act="expand"]{font-weight:700;}'
+      + '#xdex-export-dialog{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.35);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;}'
+      + '.xdex-export-dialog-panel{width:min(680px,calc(100vw - 32px));background:#FFFFEE;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.28);overflow:hidden;font:14px/1.6 "Microsoft YaHei",sans-serif;color:#2b211c;}'
+      + '.xdex-export-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#F0E0D6;font-weight:700;}'
+      + '.xdex-export-dialog-head-btns{display:flex;gap:6px;}'
+      + '.xdex-export-dialog-icon{border:none;background:transparent;cursor:pointer;font:16px/1 "Microsoft YaHei",sans-serif;color:#8a7566;padding:2px 6px;border-radius:6px;}'
+      + '.xdex-export-dialog-icon:hover{background:rgba(0,0,0,.08);}'
+      + '.xdex-export-dialog-body{padding:14px;display:flex;flex-direction:column;gap:10px;}'
+      + '.xdex-export-dialog-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}'
+      + '.xdex-export-dialog-row input[type=text]{flex:1;min-width:0;padding:6px 10px;border:1px solid #bfa58f;border-radius:8px;box-sizing:border-box;}'
+      + '.xdex-export-dialog-row select{padding:6px 8px;border:1px solid #bfa58f;border-radius:8px;}'
+      + '.xdex-export-dialog-num{width:76px;padding:6px 8px;border:1px solid #bfa58f;border-radius:8px;box-sizing:border-box;}'
+      + '.xdex-export-dialog-btn{padding:6px 14px;border:1px solid #bfa58f;border-radius:999px;background:#fff;cursor:pointer;font-weight:700;color:#683520;}'
+      + '.xdex-export-dialog-btn.primary{background:#8f4a2f;border-color:#683520;color:#fffaf4;}'
+      + '.xdex-export-dialog-label{color:#8a7566;}'
+      + '.xdex-export-dialog-value{font-weight:700;}'
+      + '.xdex-export-dialog-info{min-height:18px;font-size:12px;color:#8a7566;white-space:pre-wrap;}'
+      + '.xdex-export-dialog-info[data-tone=error]{color:#9d3026;}'
+      + '.xdex-export-dialog-info[data-tone=ok]{color:#1f6f74;}'
+      + '.xdex-export-dialog-info[data-tone=placeholder]{color:#a2917f;font-style:italic;}'
+      + '.xdex-export-dialog-check{display:flex;align-items:center;gap:6px;color:#8a7566;font-size:13px;}'
+      // 「只看 PO」直接沿用设置面板的 .xdex-switch 规则：选择器与声明逐字一致，
+      // 且与面板一样不做暗色覆盖 —— 两处开关必须表现完全相同。
+      + '.xdex-switch { appearance:none; width:34px; height:18px; flex:0 0 34px; border:1px solid #a98f7a; border-radius:999px; background:#EE0000; cursor:pointer; position:relative; box-sizing:border-box; transition:background .18s ease,border-color .18s ease; }'
+      + '.xdex-switch::before { content:""; position:absolute; width:14px; height:14px; left:1px; top:1px; border-radius:50%; background:#FFFFEE; box-shadow:0 1px 2px rgba(0,0,0,.24); transition:transform .18s ease; }'
+      + '.xdex-switch:checked { background:#66CCFF; border-color:#7da6bf; }'
+      + '.xdex-switch:checked::before { transform:translateX(16px); }'
+      + '.xdex-switch:focus-visible { outline:2px solid #cc1105; outline-offset:2px; }'
+      + '.xdex-switch:disabled { opacity:1; cursor:default; }'
+      + '.xdex-export-dialog-switch{display:flex;align-items:center;gap:6px;color:#8a7566;font-size:13px;cursor:pointer;user-select:none;}'
+      // 弹窗内任务队列
+      + '.xdex-export-dialog-queue{margin-top:2px;border-top:1px dashed #d9c8bb;padding-top:8px;}'
+      // 队列头部：参照设置面板「WebDAV 备份/同步」行的排布（左标题 / 中状态 / 右计数与折叠）
+      + '.xdex-export-dialog-queue-head{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:2px 0;}'
+      + '.xdex-export-dialog-queue-head .q-title{font-weight:700;}'
+      + '.xdex-export-dialog-queue-head .q-status{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8a7566;font-size:12px;text-align:center;}'
+      // 历史区没有 q-status，由 q-count 吃掉剩余空间并把箭头推到最右
+      + '.xdex-export-dialog-queue-head .q-count{color:#8a7566;font-size:12px;white-space:nowrap;margin-left:auto;}'
+      + '.xdex-export-dialog-queue-head .q-caret{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;color:#8a7566;}'
+      + '.xdex-export-dialog-queue-head:hover .q-caret{color:#683520;}'
+      + '.xdex-export-dialog-queue-head .q-caret .xdex-icon-chevron{display:block;width:16px;height:16px;}'
+      + '.xdex-export-dialog-tasks{display:flex;flex-direction:column;gap:8px;max-height:26vh;overflow:auto;margin-top:8px;}'
+      + '.xdex-export-dialog-queue.collapsed .xdex-export-dialog-tasks{display:none;}'
+      + '.xdex-export-dialog-tasks.empty{color:#a2917f;font-size:12px;display:flex;align-items:center;justify-content:center;padding:6px 0;}'
+      + '.xdex-export-dialog-task{border:1px solid #e3d5c8;border-radius:8px;padding:6px 8px;background:#fffdf6;}'
+      + '.xdex-export-dialog-task-head{display:flex;align-items:center;gap:6px;}'
+      + '.xdex-export-dialog-task-title{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.xdex-export-dialog-task-tid{color:#8a7566;font-size:12px;white-space:nowrap;}'
+      + '.xdex-export-dialog-task-track{height:6px;border-radius:999px;background:rgba(143,74,47,.15);overflow:hidden;margin:5px 0 3px;}'
+      + '.xdex-export-dialog-task-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#8f4a2f,#1f6f74);transition:width .2s ease;}'
+      + '.xdex-export-dialog-task-meta{color:#8a7566;font-size:12px;text-align:right;}'
+      + '.xdex-export-dialog-btn.tiny{padding:2px 8px;font-size:12px;}'
+      // ── 暗色（DarkReader 激活或脚本自定义深色）：逐项覆盖，避免 DR 反转导致配色错乱 ──
+      + ':root.xdex-darkreader-active #xdex-export-mini{background:rgba(43,44,45,.97);border-color:#5a4d42;color:#d9d0d0;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-label,'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more-tid,'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more-label{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-track,'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more-track{background:rgba(255,255,255,.14);}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn{background:#3a3b3c;border-color:#5a4d42;color:#d9d0d0;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn:hover{background:#4a4b4c;border-color:#00ffcc;color:#00ffcc;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn[data-act="cancel"]{color:#e08a80;border-color:#7a4a44;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn[data-act="cancel"]:hover{background:#5a2f2a;border-color:#EE0000;color:#ff9a90;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more{border-top-color:#5a4d42;}'
+      + ':root.xdex-darkreader-active #xdex-export-dialog{background:rgba(0,0,0,.55);}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-panel{background:#2b2c2d;color:#e6dede;color-scheme:dark;box-shadow:0 8px 30px rgba(0,0,0,.6);}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-head{background:#3a2f28;color:#e6dede;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-row input[type=text],'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-row select,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-num{background:#1f2021;border-color:#5a4d42;color:#e6dede;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-btn{background:#3a3b3c;border-color:#5a4d42;color:#d9d0d0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-btn:hover{border-color:#00ffcc;color:#00ffcc;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-btn.primary{background:#7a3f28;border-color:#a05a3a;color:#fff5ef;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-icon{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-icon:hover{background:rgba(255,255,255,.12);}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-label,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-value,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-check,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-switch{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info[data-tone=error]{color:#ff9a90;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info[data-tone=ok]{color:#5fd6b0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info[data-tone=placeholder]{color:#8a7f80;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue{border-top-color:#5a4d42;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head:hover .q-caret{color:#00ffcc;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head .q-status,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head .q-count,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head .q-caret,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-subtitle,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-tasks.empty,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task-tid,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task-meta{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task{background:#232425;border-color:#3a3b3c;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task-track{background:rgba(255,255,255,.14);}';
+    document.head.appendChild(style);
+
+    // 复用阅图模式按钮样式（确保基础样式已注入）
+    if (typeof ensureImageViewerButtonStyle === 'function') ensureImageViewerButtonStyle();
+    const btn = document.createElement('button');
+    btn.id = 'xdex-export-btn';
+    btn.type = 'button';
+    btn.className = 'xdex-image-viewer-btn ultimate-bold-correct';
+    btn.title = '导出串';
+    btn.setAttribute('aria-label', '导出串');
+    // 图标：折角文档 + 两条文字线（"文档 + 内容"的语义），
+    // 与阅图按钮同规范：不带 width/height，由 .xdex-image-viewer-btn svg 统一设为 18×18。
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
+      + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M14.5 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7.5z"/>'
+      + '<path d="M14.5 2.5v5h5"/>'
+      + '<path d="M8.5 12h7M8.5 16.5h4.5"/>'
+      + '</svg>';
+    btn.addEventListener('click', () => xdexExportOpenDialog(''));
+    document.body.appendChild(btn);
+
+    const mini = document.createElement('div');
+    mini.id = 'xdex-export-mini';
+    document.body.appendChild(mini);
+
+    // 进度订阅：
+    //  - 扩展环境由 chrome.storage.onChanged 驱动（实时），无需轮询；
+    //  - 脚本猫桥接没有存储事件转发，只能轮询兜底。
+    // 桥接下 submit 会在后台连续抓取（大串可达数分钟），1s 轮询会让后台同时处理
+    // 大量 list 请求，因此间隔放宽到 3s，且同一时刻只允许一个在途请求。
+    // 进度订阅：
+    //  - 扩展环境由 chrome.storage.onChanged 驱动（实时），无需轮询；
+    //  - 脚本猫桥接没有存储事件转发，只能轮询。
+    // 关键：**没有在跑的任务时不轮询** —— 轮询一轮要经桥接往返（多次跨脚本写入、
+    // 两个 800ms 兜底轮询、若干 DOM 事件），常驻空转在普通浏览时纯属浪费。
+    // 仅当用户在本页提交过任务后才启动，任务清空后自动停止。
+    if (!xdexExportExtensionAvailable()) {
+      xdexExportEnsureProgressPolling();
+      xdexExportRefreshState(); // 立即探测一次：本页可能是中途打开的，后台可能已有任务
+    } else {
+      // 扩展环境：任务表变化由 chrome.storage.onChanged 推送（原生机制，零轮询开销）。
+      // 此前注释声称由 onChanged 驱动，但从未订阅 —— 导致扩展端弹窗进度/历史不自动更新。
+      try {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area !== 'local' || !changes) return;
+            const hit = Object.keys(changes).some((k) => k === 'xdex-export-tasks' || k === 'xdex-export-dialog-history');
+            if (hit) xdexExportRefreshState();
+          });
+        }
+      } catch (e) { /* 忽略 */ }
+      xdexExportRefreshState();
+    }
+  }
+
+  // 非扩展环境：保留调用点（分支留空，等待后续实现）
+  function xdexExportInit() {
+    try {
+      // 启动诊断：便于在页面控制台确认当前装的是哪个版本、通道是否就绪
+      try {
+        console.log('[X岛-EX 导出] 通道诊断',
+          '扩展=' + xdexExportExtensionAvailable(),
+          '桥接=' + !!xdexExportBridge(),
+          '按需轮询=' + (typeof xdexExportEnsureProgressPolling === 'function'),
+          '受理回执超时=' + (typeof XDEX_EXPORT_BRIDGE_ACK_TIMEOUT_MS === 'number'));
+      } catch (_e) { /* 忽略 */ }
+      if (xdexExportRuntimeAvailable()) { xdexExportInstallUi(); return; }
+      // 桥接脚本与主脚本同为 document-start，加载顺序不确定：
+      // 若桥接尚未就绪，则监听其就绪事件后补注入（已就绪的情况上面已处理）
+      const onBridgeReady = () => {
+        document.removeEventListener('xdex:export-bridge-ready', onBridgeReady);
+        try { if (xdexExportRuntimeAvailable()) xdexExportInstallUi(); } catch (_e) {}
+      };
+      document.addEventListener('xdex:export-bridge-ready', onBridgeReady);
+    } catch (e) { console.warn('[X岛-EX] 导出功能初始化失败', e); }
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   // 注册设置面板依赖到 XDex
@@ -31229,6 +32385,7 @@ function initReplyParamScrollTo() {
     autoSelectReportReason();                                        //举报理由默认选择“其他”
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
     renderFavoriteThreadsMenu();                                      //常用串
+    xdexExportInit();                                                //串内容导出（扩展后台任务）
     if (isThreadHistoryPageActive()) {
       recordCurrentThreadHistory(0, { reason: 'initial-load', countVisit: true });
       installThreadHistoryReactivationTracking(true);

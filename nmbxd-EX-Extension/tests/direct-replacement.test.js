@@ -1510,6 +1510,10 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   const context = {
     console,
     URL,
+    // SW 用 AbortController + 计时器实现请求超时，沙箱需提供这两个 API
+    AbortController,
+    setTimeout,
+    clearTimeout,
     chrome: {
       runtime: {
         onInstalled: { addListener() {} },

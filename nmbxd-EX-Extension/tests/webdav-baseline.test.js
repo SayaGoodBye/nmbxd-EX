@@ -75,6 +75,8 @@ function makeSandbox(activeRef) {
       sandbox.__putCount += 1;
       return { status: 201 };
     },
+    // 生产代码走 webdavRequestRetry（带退避重试）；测试里退化为直接调用桩，语义等价
+    webdavRequestRetry: async (details) => sandbox.webdavRequest(details),
     getWebdavUtils: () => sandbox.__utils,
     __remote: { valid: true, store: null },
     __putCount: 0,
