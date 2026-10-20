@@ -307,12 +307,14 @@ function xdexEarlyDarkEnabled() {
     const { msg, duration } = toastQueue.shift();
     console.log('[toast]', msg);
     // ✅ 每次创建一个新的 toast 节点
+    // 多行支持：white-space:pre-wrap 保留 \n 与缩进（同时仍自动换行长行）；
+    // 文本一律走 .text() 转义，避免消息里的 < > 被当成 HTML（此前是裸插值，且全仓无调用方传 HTML）
     const $t = $(`<div class="ae-toast" style="
       position:fixed;top:10px;left:50%;transform:translateX(-50%);
       background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
-      border-radius:5px;z-index:10099;display:none;font-size:14px;">
-      ${msg}
-    </div>`);
+      border-radius:5px;z-index:10099;display:none;font-size:14px;
+      white-space:pre-wrap;max-width:min(92vw,600px);text-align:left;line-height:1.45;
+      word-break:break-word;overflow-wrap:anywhere;"></div>`).text(msg);
     $('body').append($t);
     $t.fadeIn(240).delay(duration).fadeOut(240, () => {
       $t.remove();     // ✅ 动画结束后删除节点
@@ -327,7 +329,9 @@ function xdexEarlyDarkEnabled() {
       $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
         position:fixed;top:10px;left:50%;transform:translateX(-50%);
         background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
-        border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
+        border-radius:5px;z-index:10099;display:none;font-size:14px;
+        white-space:pre-wrap;max-width:min(92vw,600px);text-align:left;line-height:1.45;
+        word-break:break-word;overflow-wrap:anywhere;"></div>`);
       $('body').append($t);
     }
     if (safeKey === 'refresh-status') {
