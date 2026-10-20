@@ -680,6 +680,10 @@ function xdexEarlyDarkEnabled() {
       blockedKeywords: [],
       favoriteThreads: [],
       subscriptionFeeds: [],    // [{desc, uuid}, ...]
+      // 默认订阅号：'' = 未设置（点击“订阅EX”时每次弹窗选择）
+      // updatedAt 用于 WebDAV / 导入导出按修改时间戳合并（新者胜；从未设置过则任一方有值即覆盖）
+      defaultSubscriptionFeedUuid: '',
+      defaultSubscriptionFeedUpdatedAt: 0,
       // 分组顺序元数据：{ [分组字段名]: { order: [语义键...], at: 时间戳 } }
       // 用于把「拖拽排序」作为可传播设置随 WebDAV/导入导出同步（静默合并，不触发冲突弹窗）
       groupOrderMeta: {},
@@ -1690,7 +1694,7 @@ function xdexEarlyDarkEnabled() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label><button type="button" id="sp_openDefaultSubscriptionFeed" class="xdex-edit-default-btn" style="margin-left:4px;" title="设置默认订阅号">${XDEX_ICON_GEAR}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadExport" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadExport"> 导出串</label><button type="button" id="sp_openThreadExport" class="xdex-icon-btn" style="margin-left:4px;" title="打开导出窗口">${XDEX_EXPORT_ICON}</button></div>
@@ -2485,6 +2489,19 @@ function xdexEarlyDarkEnabled() {
         $('#subscription-feed-inputs-container').append(spUi('buildSubscriptionFeedRowHtml', nextIndex));
         $('#subscription-feed-inputs-container .subscription-feed-row').last().find('.subscription-feed-desc-input').focus();
       });
+      // 「我的订阅」旁的齿轮：滚动到订阅号折叠区并展开（默认订阅号在行内设置）
+      $('#sp_openDefaultSubscriptionFeed').off('click').on('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const $fold = $('#subscription-feed-inputs-container').closest('.sp_fold');
+        if (!$fold.length) return;
+        const $body = $fold.find('.sp_fold_body');
+        if (!$body.is(':visible')) $fold.find('.sp_fold_head').first().trigger('click');
+        setTimeout(() => {
+          try { $fold[0].scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+          catch (err) { try { $fold[0].scrollIntoView(); } catch (e2) {} }
+        }, 80);
+      });
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
         const parsed = collectMarkedGroupsFromPanel();
         if (!parsed) return false;
@@ -2672,6 +2689,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const parsed = spUi('collectSubscriptionFeedsFromPanel');
         if (!parsed) return false;
         this.state.subscriptionFeeds = parsed;
+        // 默认订阅号指向的 uuid 已被删除/修改 → 清空默认（打时间戳，供跨端“新者胜”）
+        const defUuid = String(this.state.defaultSubscriptionFeedUuid || '').trim();
+        if (defUuid && !parsed.some((item) => String(item.uuid || '').trim() === defUuid)) {
+          this.state.defaultSubscriptionFeedUuid = '';
+          this.state.defaultSubscriptionFeedUpdatedAt = Date.now();
+        }
         GM_setValue(this.key, this.state);
         this.syncInputs();
         toast(fromDelete ? '已删除订阅号' : '订阅号已保存');
@@ -2681,6 +2704,36 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         e.stopPropagation();
         saveSubscriptionFeeds();
       });
+      // 默认订阅号开关（每行一个，互斥；最多存在一个默认）
+      $('#subscription-feed-inputs-container').off('change.subscriptionDefault', '.subscription-feed-default')
+        .on('change.subscriptionDefault', '.subscription-feed-default', (e) => {
+          const $sw = $(e.currentTarget);
+          const $row = $sw.closest('.subscription-feed-row');
+          const uuid = String($row.find('.subscription-feed-uuid-input').val() || '').trim();
+          if ($sw.is(':checked')) {
+            if (!uuid) {
+              $sw.prop('checked', false);
+              toast('请先填写订阅号');
+              return;
+            }
+            const savedUuids = ((typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [])
+              .map((item) => String(item.uuid || '').trim());
+            if (!savedUuids.includes(uuid)) {
+              $sw.prop('checked', false);
+              toast('请先保存该订阅号，再设为默认');
+              return;
+            }
+            setDefaultSubscriptionFeedUuid(uuid);
+            const feed = (((typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds) || [])
+              .find((item) => String(item.uuid || '').trim() === uuid);
+            toast(`已将默认订阅号设为「${(feed && feed.desc) || uuid}」`);
+          } else {
+            if (getDefaultSubscriptionFeedUuid() === uuid) {
+              setDefaultSubscriptionFeedUuid('');
+              toast('已取消默认订阅号');
+            }
+          }
+        });
       $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
         e.stopPropagation();
         saveThreadCookieWhitelistGroups();
@@ -3173,6 +3226,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, importedSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, importedSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
+        // 默认订阅号：按 updatedAt 新者胜（从未设置过则任一方有值即覆盖）
+        const defFeed = mergeDefaultSubscriptionFeedSetting(localSettings, importedSettings);
+        result.defaultSubscriptionFeedUuid = defFeed.uuid;
+        result.defaultSubscriptionFeedUpdatedAt = defFeed.updatedAt;
         // 顺序传播：按 groupOrderMeta 的 at 新者胜重排六个分组（静默，不弹窗）
         mergeGroupOrdersInto(result, localSettings, importedSettings);
         return result;
@@ -3188,6 +3245,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, remoteSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, remoteSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, remoteSettings.threadCookieWhitelistGroups);
+        // 默认订阅号：同 full-import，按 updatedAt 新者胜
+        const defFeed = mergeDefaultSubscriptionFeedSetting(localSettings, remoteSettings);
+        result.defaultSubscriptionFeedUuid = defFeed.uuid;
+        result.defaultSubscriptionFeedUpdatedAt = defFeed.updatedAt;
         // 顺序传播：同 full-import，按 groupOrderMeta 的 at 新者胜重排
         mergeGroupOrdersInto(result, localSettings, remoteSettings);
         return result;
@@ -22953,9 +23014,43 @@ function 注册自动保存编辑() {
         </div>
       </div>`;
   }
+  // 默认订阅号读写：'' = 未设置（点“订阅EX”时每次弹窗选择）
+  // 读取时校验 uuid 仍存在于订阅号列表，避免删除订阅号后残留失效默认值
+  function getDefaultSubscriptionFeedUuid() {
+    try {
+      const state = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
+        ? SettingPanel.state
+        : (GM_getValue(SettingPanel.key, {}) || {});
+      const uuid = String(state.defaultSubscriptionFeedUuid || '').trim();
+      if (!uuid) return '';
+      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+      return feeds.some((f) => String((f && f.uuid) || '').trim() === uuid) ? uuid : '';
+    } catch (e) {
+      return '';
+    }
+  }
+  // 写入默认订阅号并打时间戳；取消默认（''）同样打时间戳，供跨端按“新者胜”判定
+  function setDefaultSubscriptionFeedUuid(uuid) {
+    try {
+      const next = String(uuid || '').trim();
+      const base = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
+        ? SettingPanel.state
+        : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      base.defaultSubscriptionFeedUuid = next;
+      base.defaultSubscriptionFeedUpdatedAt = Date.now();
+      if (typeof SettingPanel !== 'undefined' && SettingPanel) SettingPanel.state = base;
+      GM_setValue(SettingPanel.key, base);
+      try { if (SettingPanel && typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs(); } catch (e) {}
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   function buildSubscriptionFeedRowHtml(index, item = {}) {
     const desc = item.desc || '';
     const uuid = item.uuid || '';
+    const isDefault = !!uuid && uuid === getDefaultSubscriptionFeedUuid();
+    const checkedAttr = isDefault ? ' checked' : '';
     return `
       <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
@@ -22963,7 +23058,13 @@ function 注册自动保存编辑() {
         <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <input class="subscription-feed-uuid-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
+            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;">
+              <input type="checkbox" id="subscription-feed-default-${index}" class="xdex-switch subscription-feed-default" role="switch"${checkedAttr}>
+              <label for="subscription-feed-default-${index}" style="font-size:12px;color:#6f5d50;user-select:none;">默认</label>
+            </div>
+          </div>
         </div>
       </div>`;
   }
@@ -28013,17 +28114,6 @@ function 注册自动保存编辑() {
     `;
     document.head.appendChild(style);
   }
-  function getCurrentSubscriptionFeedLabel() {
-    const uuid = subscriptionFeedCurrentUuid || '';
-    if (!uuid) return '';
-    try {
-      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
-      const feed = feeds.find((f) => f.uuid === uuid);
-      return feed && feed.desc ? feed.desc : uuid;
-    } catch (e) {
-      return uuid;
-    }
-  }
   function resolveSubscriptionFeedUuid() {
     const panelSelectedUuid = String($('#sp_feeds_selector').val() || '').trim();
     if (panelSelectedUuid) return panelSelectedUuid;
@@ -28037,6 +28127,189 @@ function 注册自动保存编辑() {
     const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
     return feeds.length ? feeds[0].uuid : '';
   }
+  // 订阅到指定订阅号（默认值直订 / 弹窗选择共用）
+  function subscribeThreadToFeed(tid, uuid) {
+    const targetTid = String(tid || '').trim();
+    const targetUuid = String(uuid || '').trim();
+    if (!targetTid || !targetUuid) return;
+    const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+    const feed = feeds.find((f) => String((f && f.uuid) || '').trim() === targetUuid);
+    const label = (feed && feed.desc) ? feed.desc : ((feed && feed.uuid) || targetUuid);
+    GM_xmlhttpRequest({
+      method: 'POST',
+      url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      data: `uuid=${encodeURIComponent(targetUuid)}&tid=${encodeURIComponent(targetTid)}`,
+      onload: (resp) => {
+        if (resp.status >= 200 && resp.status < 300) {
+          invalidateSubscriptionFeedSession(targetUuid, 'add-feed');
+          toast(`已订阅 No.${targetTid} 到「${label}」`);
+        } else {
+          toast(`订阅失败 (${resp.status})`);
+        }
+      },
+      onerror: () => toast('订阅失败，网络错误')
+    });
+  }
+
+  // 选择订阅号弹窗：未设置默认订阅号时，点击“订阅EX”每次弹出。
+  // 结构对齐 showCookieConfirmDialog：标题 + 串号（接入引用格式）+ 列表（每行尾部带“默认”开关与默认金标）
+  // + 键盘上下选择/Enter 确认 + 下限高度、列表滚动；无用量统计等订阅场景不需要的元素。
+  function showSubscriptionFeedPicker(tid) {
+    const targetTid = String(tid || '').trim();
+    if (!targetTid) return;
+    if (document.getElementById('subscription-feed-picker-modal')) return;
+    const feeds = ((typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [])
+      .filter((f) => f && String(f.uuid || '').trim());
+    if (!feeds.length) { toast('请先在设置中添加一个订阅号'); return; }
+    let selectedUuid = String(feeds[0].uuid || '').trim();
+    let focusedIndex = 0;
+    const $m = $(`
+      <div id="subscription-feed-picker-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">
+        <div class="subscription-feed-picker-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.4);"></div>
+        <div class="subscription-feed-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="subscription-feed-picker-title" style="position:relative;display:flex;flex-direction:column;width:420px;max-width:calc(100vw - 32px);min-height:min(280px, calc(100vh - 32px));max-height:min(80vh, calc(100vh - 32px));box-sizing:border-box;background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow:hidden;">
+          <h3 id="subscription-feed-picker-title" style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);flex:0 0 auto;">选择订阅号</h3>
+          <p style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted-foreground, #666);font-size:13px;flex:0 0 auto;">
+            <span>订阅 <span id="subscription-feed-picker-tid"></span> 到：</span>
+            <span id="subscription-feed-picker-default-label" style="color:#ffb300;font-size:11px;white-space:nowrap;"></span>
+          </p>
+          <div id="subscription-feed-picker-list" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:2px;"></div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--xdex-sp-border, #ddd);font-size:12px;line-height:1.45;color:var(--muted-foreground, #888);flex:0 0 auto;">设为默认后，之后点击“订阅EX”将直接订阅到默认订阅号，不再弹窗二次确认；如需按分类分别订阅，建议保持关闭。</div>
+          <div id="subscription-feed-picker-actions" style="display:flex;align-items:center;gap:4px;margin-top:10px;flex:0 0 auto;">
+            <button id="subscription-feed-picker-ok" type="button" style="flex:1;padding:6px 10px;">订阅</button>
+            <button id="subscription-feed-picker-cancel" type="button" style="padding:6px 16px;flex-shrink:0;">取消</button>
+          </div>
+        </div>
+      </div>`);
+    const $list = $m.find('#subscription-feed-picker-list');
+    const feedLabel = (feed) => (feed && feed.desc) ? feed.desc : ((feed && feed.uuid) || '');
+    // 主按钮文案：选中项 + 是否为默认（与饼干二次确认一致）
+    const updateOk = () => {
+      const feed = feeds.find((f) => String(f.uuid || '').trim() === selectedUuid);
+      const isDefault = getDefaultSubscriptionFeedUuid() === selectedUuid;
+      $m.find('#subscription-feed-picker-ok').text(`订阅到「${feedLabel(feed) || selectedUuid}」` + (isDefault ? '（默认）' : ''));
+    };
+    // 右上金色「默认: xxx」文本 + 各行的默认金标/开关选中态
+    const refreshDefaultVisuals = () => {
+      const cur = getDefaultSubscriptionFeedUuid();
+      const $lab = $m.find('#subscription-feed-picker-default-label');
+      const curFeed = feeds.find((f) => String(f.uuid || '').trim() === cur);
+      if (curFeed) $lab.text('默认: ' + feedLabel(curFeed)); else $lab.text('');
+      $list.find('.subscription-feed-picker-item').each(function () {
+        const uuid = String($(this).attr('data-uuid') || '');
+        const isDef = uuid === cur;
+        $(this).find('.subscription-feed-picker-default').prop('checked', isDef);
+        $(this).find('.xdex-feed-picker-default-badge').toggle(!!isDef);
+      });
+      updateOk();
+    };
+    feeds.forEach((feed) => {
+      const uuid = String(feed.uuid || '').trim();
+      const desc = String(feed.desc || '').trim();
+      // 复用面板下拉的 .xdex-feed-option（hover 底色），用内联样式覆盖为行布局
+      const $item = $('<div class="xdex-feed-option subscription-feed-picker-item" role="option"></div>')
+        .attr('data-uuid', uuid)
+        .css({
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '8px 10px',
+          border: '1px solid var(--xdex-sp-border, #ddd)',
+          borderRadius: '6px',
+          marginBottom: '6px',
+          cursor: 'pointer',
+          whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip'
+        });
+      const $text = $('<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;"></div>');
+      // 备注优先；无备注时直接显示订阅号
+      const $main = $('<div style="font-size:13px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>');
+      $main.append($('<span></span>').text(desc || uuid));
+      $main.append($('<span class="xdex-feed-picker-default-badge" style="display:none;margin-left:4px;background:rgba(255,193,7,.18);color:#ffb300;padding:1px 5px;border-radius:3px;font-size:11px;">默认</span>'));
+      $text.append($main);
+      if (desc) {
+        $text.append($('<div style="font-size:12px;color:var(--muted-foreground, #888);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>').text(uuid));
+      }
+      $item.append($text);
+      // 「默认」开关置于订阅号后方（与饼干二次确认的 pin 开关同位）
+      const $sw = $('<input type="checkbox" class="xdex-switch subscription-feed-picker-default" role="switch">')
+        .attr('title', '设为本机默认订阅号：之后点击“订阅EX”将直接订阅到该订阅号，不再询问');
+      const $swLabel = $('<label style="font-size:12px;color:#6f5d50;user-select:none;">默认</label>');
+      $item.append($('<div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;"></div>').append($sw).append($swLabel));
+      $item.on('click', (e) => {
+        // 点在开关上不触发选中
+        if ($(e.target).closest('.subscription-feed-picker-default').length) return;
+        selectItem($item);
+      });
+      // 立即写入默认（与设置面板行内开关、跨页同步同源），无需等确认
+      $sw.on('click', (e) => e.stopPropagation());
+      $sw.on('change', () => {
+        const on = $sw.is(':checked');
+        if (on) {
+          $list.find('.subscription-feed-picker-default').prop('checked', false);
+          $sw.prop('checked', true);
+          setDefaultSubscriptionFeedUuid(uuid);
+        } else if (getDefaultSubscriptionFeedUuid() === uuid) {
+          setDefaultSubscriptionFeedUuid('');
+        }
+        refreshDefaultVisuals();
+      });
+      $list.append($item);
+    });
+    const $items = () => $list.find('.subscription-feed-picker-item');
+    function selectItem($item) {
+      const idx = $items().toArray().indexOf($item[0]);
+      if (idx < 0) return;
+      focusedIndex = idx;
+      selectedUuid = String(feeds[idx].uuid || '').trim();
+      $items().css({ background: '', borderColor: 'var(--xdex-sp-border, #ddd)' });
+      $item.css({ background: 'rgba(0,184,148,.12)', borderColor: '#00b894' });
+      updateOk();
+    }
+    // 键盘上下移动焦点（同步选中态与按钮文案），Enter 确认
+    const updateFocus = (newIndex) => {
+      const $all = $items();
+      if (!$all.length) return;
+      focusedIndex = Math.max(0, Math.min(newIndex, $all.length - 1));
+      $all.css('box-shadow', '');
+      $all.eq(focusedIndex).css('box-shadow', 'inset 0 0 0 2px rgba(102,204,255,.6)').get(0)?.scrollIntoView({ block: 'nearest' });
+      selectItem($all.eq(focusedIndex));
+    };
+    $('body').append($m);
+    // 串号接入引用体系：悬停原生引用浮窗 / 点击拓展引用浮窗（与饼干二次确认同路径）
+    $m.find('#subscription-feed-picker-tid').html('<font color="#789922">No.' + targetTid + '</font>');
+    try { if (typeof initExtendedContent === 'function') initExtendedContent($m[0]); } catch (e) {}
+    // 初始：选中第一项、刷新默认金标/开关/文案
+    $items().first().trigger('click');
+    refreshDefaultVisuals();
+    const closePicker = () => { $m.remove(); };
+    $m.find('#subscription-feed-picker-ok').on('click', () => {
+      closePicker();
+      subscribeThreadToFeed(targetTid, selectedUuid);
+    });
+    $m.find('#subscription-feed-picker-cancel').on('click', closePicker);
+    $m.find('.subscription-feed-picker-backdrop').on('click', closePicker);
+    $m.on('keydown', (e) => {
+      // 焦点在按钮上时交给原生行为（Enter 触发该按钮），避免把「取消」误当成确认
+      if (e.key === 'Enter' && $(e.target).is('button')) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex - 1);
+      } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        $m.find('#subscription-feed-picker-ok').trigger('click');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closePicker();
+      }
+    });
+    $m[0].focus();
+  }
+
   function injectSubscriptionExButton(root) {
     ensureSubscriptionExButtonStyle();
     const scope = root || document;
@@ -28051,7 +28324,7 @@ function 注册自动保存编辑() {
       span.className = 'h-threads-info-report-btn';
       const a = document.createElement('a');
       a.href = '#';
-      a.title = '订阅到当前选中的订阅号';
+      a.title = '订阅到订阅号（未设默认时弹窗选择）';
       a.className = 'xdex-sub-ex-btn';
       a.appendChild(document.createTextNode('订阅'));
       const badge = document.createElement('sub');
@@ -28065,30 +28338,18 @@ function 注册自动保存编辑() {
         e.stopPropagation();
         const tid = String(container.getAttribute('data-threads-id') || anchor.closest('.h-threads-item')?.getAttribute('data-threads-id') || '').trim();
         if (!tid) return;
-        const uuid = resolveSubscriptionFeedUuid();
-        if (!uuid) {
+        const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+        if (!feeds.length) {
           toast('请先在设置中添加一个订阅号');
           return;
         }
-        const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
-        const matchedFeed = feeds.find((f) => String(f.uuid || '').trim() === String(uuid || '').trim());
-        const label = matchedFeed && matchedFeed.desc ? matchedFeed.desc : (getCurrentSubscriptionFeedLabel() || uuid);
-        if (!window.confirm(`确定要订阅 No.${tid} 到「${label}」吗？`)) return;
-        GM_xmlhttpRequest({
-          method: 'POST',
-          url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
-          onload: (resp) => {
-            if (resp.status >= 200 && resp.status < 300) {
-              invalidateSubscriptionFeedSession(uuid, 'add-feed');
-              toast(`已订阅 No.${tid} 到「${label}」`);
-            } else {
-              toast(`订阅失败 (${resp.status})`);
-            }
-          },
-          onerror: () => toast('订阅失败，网络错误')
-        });
+        // 存在有效默认订阅号 → 直接订阅（不再弹窗确认）；否则每次点击都弹窗选择订阅号
+        const defaultUuid = getDefaultSubscriptionFeedUuid();
+        if (defaultUuid) {
+          subscribeThreadToFeed(tid, defaultUuid);
+          return;
+        }
+        showSubscriptionFeedPicker(tid);
       });
       span.appendChild(document.createTextNode('['));
       span.appendChild(a);
@@ -30282,7 +30543,9 @@ function initReplyParamScrollTo() {
     'enablePostExpandAll', 'kaomojiEnhancer', 'enableImageViewerMode', 'autoSelectReportReason',
     'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory',
     // 分组顺序元数据：走静默合并（at 新者胜），不参与差异弹窗判定
-    'groupOrderMeta', 'enableSubscriptionFeed'
+    'groupOrderMeta', 'enableSubscriptionFeed',
+    // 默认订阅号：按 updatedAt 静默合并（新者胜），不参与差异弹窗判定
+    'defaultSubscriptionFeedUuid', 'defaultSubscriptionFeedUpdatedAt'
   ]);
   function sameSettingValue(a, b) {
     if (a === b) return true;
@@ -30356,6 +30619,8 @@ function initReplyParamScrollTo() {
     blockedKeywords: '屏蔽关键词分组',
     favoriteThreads: '常用串分组',
     subscriptionFeeds: '订阅号分组',
+    defaultSubscriptionFeedUuid: '默认订阅号',
+    defaultSubscriptionFeedUpdatedAt: '默认订阅号更新时间',
     groupOrderMeta: '分组排序',
     blockDisplayMode: '屏蔽显示方式',
   };
@@ -30405,6 +30670,51 @@ function initReplyParamScrollTo() {
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) done('cancel'); });
       document.addEventListener('keydown', onKey, true);
     });
+  }
+  // ── 默认订阅号跨端合并（时间戳新者胜）──
+  // 规则：
+  //  - 两端都从未设置过（无时间戳且无值）→ 保持空
+  //  - 一端从未设置过（updatedAt=0）→ 另一端的值直接生效（若另一方明确清空也照此处理）
+  //  - 两端都有时间戳 → 新者胜；清空同样带时间戳，因此“清空”可以覆盖旧的默认
+  function mergeDefaultSubscriptionFeedSetting(localSettings, remoteSettings) {
+    const l = localSettings || {};
+    const r = remoteSettings || {};
+    const lUuid = String(l.defaultSubscriptionFeedUuid || '').trim();
+    const rUuid = String(r.defaultSubscriptionFeedUuid || '').trim();
+    const lAt = Math.max(0, Number(l.defaultSubscriptionFeedUpdatedAt) || 0);
+    const rAt = Math.max(0, Number(r.defaultSubscriptionFeedUpdatedAt) || 0);
+    if (!lAt && !rAt) return { uuid: rUuid || lUuid, updatedAt: 0 };
+    if (!lAt) return { uuid: rUuid, updatedAt: rAt };
+    if (!rAt) return { uuid: lUuid, updatedAt: lAt };
+    return rAt > lAt ? { uuid: rUuid, updatedAt: rAt } : { uuid: lUuid, updatedAt: lAt };
+  }
+  // 把远端默认订阅号按时间戳并入本地设置。
+  // 独立于“设置差异三选”决策：默认订阅号始终静默按时间戳合并，不参与冲突弹窗。
+  function applyRemoteDefaultSubscriptionFeed(remoteSettings) {
+    if (!remoteSettings || typeof remoteSettings !== 'object') return false;
+    if (!('defaultSubscriptionFeedUuid' in remoteSettings) && !('defaultSubscriptionFeedUpdatedAt' in remoteSettings)) return false;
+    try {
+      const local = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const winner = mergeDefaultSubscriptionFeedSetting(local, remoteSettings);
+      const localUuid = String(local.defaultSubscriptionFeedUuid || '').trim();
+      const localAt = Math.max(0, Number(local.defaultSubscriptionFeedUpdatedAt) || 0);
+      if (winner.uuid === localUuid && winner.updatedAt === localAt) return false;
+      const next = Object.assign({}, local, {
+        defaultSubscriptionFeedUuid: winner.uuid,
+        defaultSubscriptionFeedUpdatedAt: winner.updatedAt
+      });
+      GM_setValue(SettingPanel.key, next);
+      if (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+        SettingPanel.state.defaultSubscriptionFeedUuid = winner.uuid;
+        SettingPanel.state.defaultSubscriptionFeedUpdatedAt = winner.updatedAt;
+        try { if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs(); } catch (e) {}
+      }
+      console.log('[webdav] 默认订阅号按时间戳合并', { uuid: winner.uuid, updatedAt: winner.updatedAt });
+      return true;
+    } catch (e) {
+      console.warn('[webdav] 合并默认订阅号失败', e);
+      return false;
+    }
   }
   function findWebdavSettingsDiff(remoteSettings) {
     // 返回 { diff: 两端不同的设置键, localIsDefault: 本地是否仍是默认值 }
@@ -30590,6 +30900,11 @@ function initReplyParamScrollTo() {
       // WebDAV 配置不随同步覆盖：同步上传端已排除；
       // 若用户手动导出的含 webdav 配置文件被放到远端，下载时过滤掉，避免远端反向改写本地同步源
       if (parsed.data.payload && parsed.data.payload.webdavConfig) delete parsed.data.payload.webdavConfig;
+      // 默认订阅号：独立于下面的“设置差异三选”，始终按 updatedAt 静默合并（新者胜）
+      // —— 即使设置整体选择“保留本地”，默认订阅号也应按时间戳更新，避免两端长期分叉
+      try { applyRemoteDefaultSubscriptionFeed(parsed.data.payload && parsed.data.payload.myScriptSettings); } catch (e) {
+        console.warn('[webdav] 默认订阅号合并失败', e);
+      }
       // 设置差异检测：手动同步弹窗让用户选择；自动同步按「本地是否默认」决定
       // 决策仅作用于 myScriptSettings 分区，其余数据分区一律双向合并
       let settingsDecision = 'download';
