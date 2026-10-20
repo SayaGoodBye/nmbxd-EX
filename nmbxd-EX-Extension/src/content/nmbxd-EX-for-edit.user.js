@@ -2919,6 +2919,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       const collectMarkedGroupsFromPanel = () => {
         const parsed = [];
         let valid = true;
+        // 与已保存分组按备注比对，仅在配色实际变化时刷新 colorAt（拖拽排序/改饼干不误触发）
+        const prevGroups = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state && Array.isArray(SettingPanel.state.markedGroups))
+          ? SettingPanel.state.markedGroups
+          : [];
         $('#marked-inputs-container .marked-row').each((idx, el)=>{
           const $row = $(el);
           const desc = ($row.find('.marked-desc-input').val() || '').trim();
@@ -2929,7 +2933,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
           if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
           if (rawColor && !spData('isValidHexColor', rawColor)) { toast(`第${idx + 1}条颜色格式无效，应为 #RRGGBB`); valid=false; return false; }
-          parsed.push({ desc, color: spData('normalizeHexColor', rawColor), cookies });
+          const color = spData('normalizeHexColor', rawColor);
+          const prev = prevGroups.find((g) => String((g && g.desc) || '') === desc);
+          const prevColor = prev ? spData('normalizeHexColor', prev.color) : '';
+          const prevAt = prev ? Math.max(0, Number(prev.colorAt) || 0) : 0;
+          // 配色未变 → 保留旧时间戳；变化（含清除）→ 打当前时间
+          const colorAt = color === prevColor ? prevAt : Date.now();
+          parsed.push({ desc, color, colorAt, cookies });
         });
         return valid ? parsed : null;
       };
@@ -3171,7 +3181,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               if (Array.isArray(localGroup) && !localGroup.desc) {
                 result.push(mergedCookies);
               } else {
-                result.push({ ...localGroup, ...impGroup, desc: impDesc || localDesc, cookies: mergedCookies });
+                const mergedGroup = { ...localGroup, ...impGroup, desc: impDesc || localDesc, cookies: mergedCookies };
+                // 配色单独判定（spread 会让远端 color 无条件覆盖，包括用空串清空本地自定义色）
+                const colorState = resolveMarkedGroupColorState(localGroup, impGroup);
+                if (colorState) {
+                  mergedGroup.color = colorState.color;
+                  mergedGroup.colorAt = colorState.colorAt;
+                }
+                result.push(mergedGroup);
               }
               break;
             }
@@ -5036,7 +5053,7 @@ ${markedSwatchHtml}
         return tokens.map(t => {
           const { desc, list } = parseDescAndListByLastColon(t);
           const cookies = list.filter(Utils.cookieLegal);
-          return cookies.length ? { desc, color: '', cookies } : null;
+          return cookies.length ? { desc, color: '', colorAt: 0, cookies } : null;
         }).filter(Boolean);
       }
       if (Array.isArray(val)) {
@@ -5044,6 +5061,8 @@ ${markedSwatchHtml}
           return val.map(g => ({
             desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
             color: normalizeHexColor(g.color),
+            // colorAt：自定义配色的修改时间戳（0 = 旧版本数据/从未手动设置过配色）
+            colorAt: Math.max(0, Number(g.colorAt) || 0),
             cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : []
           })).filter(g => g.cookies.length);
         }
@@ -5055,10 +5074,32 @@ ${markedSwatchHtml}
           if (!map.has(key)) map.set(key, []);
           map.get(key).push(cookie);
         });
-        return [...map.entries()].map(([desc, cookies]) => ({ desc, color: '', cookies: [...new Set(cookies)] }));
+        return [...map.entries()].map(([desc, cookies]) => ({ desc, color: '', colorAt: 0, cookies: [...new Set(cookies)] }));
       }
     }
     return [];
+  }
+
+  // 配色合并规则（标记饼干跨端共用）：
+  //  - 未手动设置过（color='' 且无时间戳）→ 视为“保持默认”，对方任何变更都覆盖
+  //  - 仅一方手动设置 → 该方生效
+  //  - 双方都手动设置 → colorAt 新者胜；同时间/都无时间戳（旧版本数据）→ 本地优先
+  //  - 清除配色（color='' 但带 colorAt）视为一次手动变更，可覆盖更旧的配色
+  // 返回 null 表示该对象不是标记分组（如屏蔽饼干），不应注入 color 字段
+  function resolveMarkedGroupColorState(localGroup, remoteGroup) {
+    const lHas = localGroup && typeof localGroup === 'object' && 'color' in localGroup;
+    const rHas = remoteGroup && typeof remoteGroup === 'object' && 'color' in remoteGroup;
+    if (!lHas && !rHas) return null;
+    const lc = normalizeHexColor(localGroup && localGroup.color);
+    const rc = normalizeHexColor(remoteGroup && remoteGroup.color);
+    const la = Math.max(0, Number(localGroup && localGroup.colorAt) || 0);
+    const ra = Math.max(0, Number(remoteGroup && remoteGroup.colorAt) || 0);
+    const lManual = !!lc || la > 0;
+    const rManual = !!rc || ra > 0;
+    if (!lManual && !rManual) return { color: '', colorAt: 0 };
+    if (!lManual) return { color: rc, colorAt: ra };
+    if (!rManual) return { color: lc, colorAt: la };
+    return ra > la ? { color: rc, colorAt: ra } : { color: lc, colorAt: la };
   }
 
   // 标记：支持同一饼干命中多个分组时，title 展示多行备注，颜色取首匹配组
@@ -30716,6 +30757,51 @@ function initReplyParamScrollTo() {
       return false;
     }
   }
+  // 标记饼干自定义配色：独立于“设置差异三选”，始终按配色规则静默合并（与默认订阅号同思路）。
+  // 只更新已存在分组的 color/colorAt，不在此处增删分组或改动饼干列表。
+  function applyRemoteMarkedGroupColors(remoteSettings) {
+    if (!remoteSettings || typeof remoteSettings !== 'object' || !Array.isArray(remoteSettings.markedGroups)) return false;
+    try {
+      const local = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const localGroups = normalizeMarkedGroups(local.markedGroups);
+      const remoteGroups = normalizeMarkedGroups(remoteSettings.markedGroups);
+      if (!localGroups.length || !remoteGroups.length) return false;
+      let changed = false;
+      const nextGroups = localGroups.map((localGroup) => {
+        const remoteGroup = remoteGroups.find((g) => String((g && g.desc) || '') === localGroup.desc);
+        if (!remoteGroup) return localGroup;
+        const resolved = resolveMarkedGroupColorState(localGroup, remoteGroup);
+        if (!resolved) return localGroup;
+        if (resolved.color === localGroup.color && resolved.colorAt === localGroup.colorAt) return localGroup;
+        changed = true;
+        return Object.assign({}, localGroup, { color: resolved.color, colorAt: resolved.colorAt });
+      });
+      if (!changed) return false;
+      const next = Object.assign({}, local, { markedGroups: nextGroups });
+      GM_setValue(SettingPanel.key, next);
+      if (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+        SettingPanel.state.markedGroups = nextGroups;
+        try { if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs(); } catch (e) {}
+        try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state); } catch (e) {}
+      }
+      console.log('[webdav] 标记配色按规则合并', nextGroups.filter((g) => g.colorAt > 0).map((g) => ({ desc: g.desc, color: g.color, colorAt: g.colorAt })));
+      return true;
+    } catch (e) {
+      console.warn('[webdav] 合并标记配色失败', e);
+      return false;
+    }
+  }
+  // 差异检测时忽略标记分组的纯配色差异：配色走独立的时间戳静默合并，不应触发设置冲突三选
+  function sameMarkedGroupsIgnoringColors(a, b) {
+    const strip = (arr) => (Array.isArray(arr) ? arr : []).map((group) => {
+      if (!group || typeof group !== 'object' || Array.isArray(group)) return group;
+      const copy = Object.assign({}, group);
+      delete copy.color;
+      delete copy.colorAt;
+      return copy;
+    });
+    return sameSettingValue(strip(a), strip(b));
+  }
   function findWebdavSettingsDiff(remoteSettings) {
     // 返回 { diff: 两端不同的设置键, localIsDefault: 本地是否仍是默认值 }
     const result = { diff: [], localIsDefault: true };
@@ -30726,7 +30812,8 @@ function initReplyParamScrollTo() {
       Object.keys(defaults).forEach((k) => {
         if (WEBDAV_SETTINGS_SKIP_KEYS.has(k)) return;
         if (!sameSettingValue(local[k], defaults[k])) result.localIsDefault = false;
-        if (!(k in remoteSettings) || !sameSettingValue(local[k], remoteSettings[k])) result.diff.push(k);
+        const same = k === 'markedGroups' ? sameMarkedGroupsIgnoringColors : sameSettingValue;
+        if (!(k in remoteSettings) || !same(local[k], remoteSettings[k])) result.diff.push(k);
       });
       // 远端比 defaults 多的键（未来版本新增）也视为差异
       Object.keys(remoteSettings).forEach((k) => {
@@ -30936,6 +31023,12 @@ function initReplyParamScrollTo() {
           // 两端设置已一致：清除挂起标记
           webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
         }
+      }
+      // 标记饼干配色：独立于设置三选，按“默认色让步 / 手动色比时间戳”规则静默合并。
+      // 放在差异判定之后：避免刚并入的远端配色把 localIsDefault 从 true 改写成 false，
+      // 从而错误地影响其它设置的自动同步方向。
+      try { applyRemoteMarkedGroupColors(parsed.data.payload && parsed.data.payload.myScriptSettings); } catch (e) {
+        console.warn('[webdav] 标记配色合并失败', e);
       }
       if (settingsDecision !== 'download') {
         // 保留本地设置：仅剔除设置字段，其余数据分区照常双向合并
