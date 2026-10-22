@@ -14773,6 +14773,9 @@ ${markedSwatchHtml}
     if (originalType === 'image/jpeg' || originalType === 'image/jpg') return 'image/jpeg';
     return 'image/png';
   }
+  // 服务器图片体积上限（2048KB）；预检与错误重试共用
+  const SUBMIT_IMAGE_LIMIT_BYTES = 2048 * 1024;
+
   function cloneFormData(sourceFd) {
     const cloned = new FormData();
     for (const [key, value] of sourceFd.entries()) {
@@ -14794,6 +14797,18 @@ ${markedSwatchHtml}
   function createContentRetryFormData(form, content) {
     const retryFd = new FormData(form);
     retryFd.set('content', content);
+    // 预检压缩/转码过的图片优先复用，避免非法词重试时又上传原图
+    const cached = form && form.__preparedImage;
+    if (cached && cached.file) {
+      const fileInput = form.querySelector('input[type="file"][name="image"]');
+      const current = fileInput && fileInput.files && fileInput.files[0];
+      if (current &&
+          current.name === cached.name &&
+          current.size === cached.size &&
+          current.lastModified === cached.lastModified) {
+        retryFd.set('image', cached.file);
+      }
+    }
     return retryFd;
   }
 
@@ -16517,12 +16532,13 @@ ${markedSwatchHtml}
         if (/含有非法词语/.test(msg)) return 'illegal-word';
         return 'other';
       }
-      function formatSubmitNetworkError(err) {
-        if (err && err.name === 'TypeError' && /fetch|network/i.test(err.message || '')) {
-          // fetch 抛 TypeError = 网络层失败（断网/连接重置/CORS 等），不是超时；
-          // 真正的超时由 doSubmit 的 AbortController 处理（err.name === 'AbortError'）。
-          return '网络异常，发送失败，请检查网络后重试';
-        }
+      function isSubmitNetworkError(err) {
+        // fetch 抛 TypeError = 网络层失败（断网/连接重置/CORS 等），不是超时；
+        // 真正的超时由 doSubmit 的 AbortController 处理（err.name === 'AbortError'）。
+        // 请求可能已到达服务器（如响应途中断连），因此调用方按「结果未知」处理。
+        return !!(err && err.name === 'TypeError' && /fetch|network|load failed/i.test(err.message || ''));
+      }
+      function formatSubmitError(err) {
         return '发送失败：' + ((err && err.message) || '未知错误');
       }
       function clearSuccessfulSubmitForm() {
@@ -16530,6 +16546,7 @@ ${markedSwatchHtml}
         if (textarea) { textarea.value = ''; textarea.dispatchEvent(new Event('input', { bubbles: true })); }
         const fileInput = form.querySelector('input[type="file"][name="image"]');
         if (fileInput) fileInput.value = '';
+        form.__preparedImage = null;
         deleteDraftSafe(getDraftKey());
         const titleInput = form.querySelector('input[name="title"]');
         if (titleInput) { titleInput.value = ''; titleInput.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -16605,7 +16622,44 @@ ${markedSwatchHtml}
           location.reload();
         }
       }
-      async function compressImageForRetry(file, actualFormat) {
+      // 发送前处理状态：复用「发送中」状态 toast 节点（key=send-status）。
+      // 处理期间长驻留并原地更新，完成/失败时替换或清除，避免用户误以为提交卡住。
+      function showSubmitPreflightStatus(msg, duration = 600000) {
+        try {
+          toast(msg, duration, { queue: false, key: 'send-status' });
+        } catch (e) {
+          console.warn('[interceptReplyForm] 发送前状态提示失败:', e);
+        }
+      }
+      function clearSubmitPreflightStatus() {
+        try {
+          const $t = $('#xdex-immediate-toast-send-status');
+          if ($t.length) {
+            $t.stop(true, false);
+            $t.fadeOut(120, () => $t.remove());
+          }
+        } catch (e) { /* 忽略清理失败 */ }
+      }
+      // 服务端拒绝后的本地重试处理（转换/压缩/GIF 修复）统一 wall-clock 上限。
+      // 超时后调用方的 await 立即 reject；迟到的结果不会被使用，内部 notify 需自检 token。
+      function runImageProcessingWithTimeout(label, operation, timeoutHint = '请更换图片，或手动压缩/转换后重试。') {
+        const token = { cancelled: false };
+        let timer = 0;
+        const seconds = Math.round(SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS / 1000);
+        const timeoutPromise = new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            token.cancelled = true;
+            const err = new Error(`${label}超时（${seconds} 秒），本次未发送。${timeoutHint}`);
+            err.__imageProcessingTimeout = true;
+            reject(err);
+          }, SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS);
+        });
+        return Promise.race([
+          Promise.resolve().then(() => operation(token)),
+          timeoutPromise
+        ]).finally(() => clearTimeout(timer));
+      }
+      async function compressImageForRetry(file, actualFormat, notify = toast) {
         if (actualFormat === 'gif') {
           let gifFile = file;
           if (!/\.gif$/i.test(file.name)) {
@@ -16619,10 +16673,10 @@ ${markedSwatchHtml}
             acceptableLowerKB: 1780,
             onProgress: (progress) => {
               if (progress.error) {
-                toast(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试……`, 1800);
+                notify(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试……`, 1800);
                 return;
               }
-              toast(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
+              notify(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
             }
           });
           console.log(`[interceptReplyForm] GIF压缩完成: ${gifResult.summary}`);
@@ -16642,30 +16696,30 @@ ${markedSwatchHtml}
           const compressedFile = await compressApngToSize(file, 2048, {
             onProgress: (progress) => {
               if (progress.error) {
-                toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
+                notify(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
                 return;
               }
-              toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
+              notify(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
             }
           });
           console.log(`[interceptReplyForm] APNG压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
           return compressedFile;
         }
         if (actualFormat === 'animated-webp') {
-          toast('检测到动画 WebP，正在转换为 APNG 保留动画……', 2000);
+          notify('检测到动画 WebP，正在转换为 APNG 保留动画……', 2000);
           // 先转 APNG（保留动画），再按需压缩
           let convertedFile = await convertWebpToAcceptedFormat(file, true);
           console.log(`[interceptReplyForm] 动画WebP→APNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-          if (convertedFile.size > 2048 * 1024) {
+          if (convertedFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
             console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，用 APNG 压缩`);
-            toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 0, { type: 'error' });
+            notify(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 0, { type: 'error' });
             const compressResult = await compressApngToSize(convertedFile, 2048, {
               onProgress: (progress) => {
                 if (progress.error) {
-                  toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
+                  notify(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
                   return;
                 }
-                toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
+                notify(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
               }
             });
             convertedFile = compressResult.file || compressResult;
@@ -16674,10 +16728,10 @@ ${markedSwatchHtml}
           return convertedFile;
         }
         if (actualFormat === 'heic') {
-          toast('检测到 HEIC，正在转换为 PNG……', 2000);
+          notify('检测到 HEIC，正在转换为 PNG……', 2000);
           let convertedFile = await convertHeicToPng(file);
           console.log(`[interceptReplyForm] HEIC→PNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-          if (convertedFile.size > 2048 * 1024) {
+          if (convertedFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
             console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，继续压缩`);
             convertedFile = await compressImageToSize(convertedFile, 2048, 0.6, 'png');
             console.log(`[interceptReplyForm] 压缩完成: ${(convertedFile.size / 1024).toFixed(1)}KB`);
@@ -16689,9 +16743,137 @@ ${markedSwatchHtml}
         console.log(`[interceptReplyForm] 静态图片压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
         return compressedFile;
       }
-      async function doSubmit(fd, isRetry = false) {
+      // 发送前预检：只在真正要发请求时执行，避免选图即压缩。
+      // 返回 { fd, prepared }；prepared=true 表示图片已在本地处理过，后续错误分支不再重复压缩。
+      function rememberPreparedSubmitImage(sourceFile, preparedFile) {
+        if (!sourceFile || !preparedFile) return;
+        form.__preparedImage = {
+          name: sourceFile.name,
+          size: sourceFile.size,
+          lastModified: sourceFile.lastModified,
+          file: preparedFile
+        };
+      }
+      async function prepareImageBeforeSubmit(fd, token) {
+        const isCancelled = () => !!(token && token.cancelled);
+        // 超时后不再更新状态 toast，避免覆盖用户重试后的新状态
+        const status = (msg, duration) => { if (!isCancelled()) showSubmitPreflightStatus(msg, duration); };
+        const fileInput = form.querySelector('input[type="file"][name="image"]');
+        const file = fileInput && fileInput.files && fileInput.files[0];
+        if (!file) return { fd, prepared: false };
+        if (!form.__preparedImageChangeBound) {
+          form.__preparedImageChangeBound = true;
+          fileInput.addEventListener('change', () => { form.__preparedImage = null; });
+        }
+        // 同一张图已处理过（例如非法词重试或用户再次点击发送）直接复用
+        const cached = form.__preparedImage;
+        if (cached && cached.file &&
+            cached.name === file.name &&
+            cached.size === file.size &&
+            cached.lastModified === file.lastModified) {
+          return { fd: cloneFormDataWithImage(fd, cached.file), prepared: true };
+        }
+        const actualFormat = await detectImageFormat(file);
+        // 检测阶段也可能被超时取消；此时不得重新上锁或开始压缩
+        if (isCancelled()) return { fd, prepared: false, cancelled: true };
+        const mustConvert = actualFormat === 'webp' || actualFormat === 'animated-webp' || actualFormat === 'heic';
+        const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        const tooLarge = file.size > SUBMIT_IMAGE_LIMIT_BYTES;
+        // 格式必须转换；体积则尊重「自动压缩图片」开关
+        if (!mustConvert && !(tooLarge && cfg.interceptReplyFormAutoCompress)) {
+          return { fd, prepared: false };
+        }
+        const sizeKB = (file.size / 1024).toFixed(1);
+        const formatLabel = actualFormat === 'gif' ? ' GIF' : actualFormat === 'apng' ? ' APNG' : '';
+        let startMsg;
+        if (actualFormat === 'webp') {
+          startMsg = `发送前处理：服务器不接受 WebP，正在转换为 PNG（${sizeKB}KB）……`;
+        } else if (actualFormat === 'animated-webp') {
+          startMsg = `发送前处理：服务器不接受动画 WebP，正在转换为 APNG（${sizeKB}KB）……`;
+        } else if (actualFormat === 'heic') {
+          startMsg = `发送前处理：服务器不接受 HEIC，正在转换为 PNG（${sizeKB}KB）……`;
+        } else {
+          startMsg = `发送前处理：图片 ${sizeKB}KB 超过 2048KB，正在压缩${formatLabel}……`;
+        }
+        status(startMsg);
+        beginSubmitImageProcessing(form);
+        try {
+          // 压缩/转换过程中的进度统一写入同一状态 toast，避免长任务期间提示消失
+          const notify = (msg) => status(`发送前处理 · ${msg}`);
+          let outFile;
+          if (actualFormat === 'webp') {
+            // 静态 WebP：compressImageForRetry 会输出 WebP，服务器仍拒绝，必须先转 PNG
+            outFile = await convertWebpToAcceptedFormat(file, false);
+            if (outFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
+              status(`发送前处理：转换后 ${(outFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩……`);
+              outFile = await compressImageForRetry(outFile, 'png', notify);
+            }
+          } else if (mustConvert) {
+            // HEIC / 动画 WebP：compressImageForRetry 内含转换与按需压缩
+            outFile = await compressImageForRetry(file, actualFormat, notify);
+          } else {
+            outFile = await compressImageForRetry(file, actualFormat, notify);
+          }
+          // 超时后迟到的处理结果：直接丢弃，不写缓存、不发送、不动表单状态
+          if (isCancelled()) return { fd, prepared: false, cancelled: true };
+          // 处理期间用户可能换了图：若输入框已不是同一张图，放弃本次处理结果，
+          // 避免「界面显示新图、实际发送旧图」；缓存也不写入。
+          const latestInput = form.querySelector('input[type="file"][name="image"]');
+          const latestFile = latestInput && latestInput.files && latestInput.files[0];
+          if (!latestFile ||
+              latestFile.name !== file.name ||
+              latestFile.size !== file.size ||
+              latestFile.lastModified !== file.lastModified) {
+            throw new Error('发送前处理期间图片已被更换或移除，本次未发送，请重新点击发送');
+          }
+          rememberPreparedSubmitImage(file, outFile);
+          const gifMs = Number(outFile && outFile.__xdexGifCompressionDurationMs);
+          const gifSeconds = Number.isFinite(gifMs) && gifMs >= 0 ? gifMs / 1000 : null;
+          status(`发送前处理完成：已处理至 ${(outFile.size / 1024).toFixed(1)}KB${gifSeconds == null ? '' : `，耗时 ${gifSeconds.toFixed(2)} 秒`}，正在提交……`, 2000);
+          return { fd: cloneFormDataWithImage(fd, outFile), prepared: true };
+        } finally {
+          // 已超时取消时不要清掉可能属于新一轮预检的 processing 标记
+          if (!isCancelled()) finishSubmitImageProcessing(form);
+        }
+      }
+      async function doSubmit(fd, isRetry = false, prepared = false) {
         // 图片处理完成后递归提交时，在保持原提交锁的同时重新开始网络看门狗与真实超时。
-        // 新一轮请求开始：旧的「结果未知」由本次结果覆盖（响应到达/看门狗/中止会重新设置）。
+        if (!isRetry && !prepared) {
+          const token = { cancelled: false };
+          let preflightTimer = 0;
+          const timeoutPromise = new Promise((_, reject) => {
+            preflightTimer = setTimeout(() => {
+              token.cancelled = true;
+              const timeoutErr = new Error(SUBMIT_IMAGE_PROCESSING_TIMEOUT_MSG);
+              timeoutErr.__preflightTimeout = true;
+              reject(timeoutErr);
+            }, SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS);
+          });
+          try {
+            const prep = await Promise.race([
+              prepareImageBeforeSubmit(fd, token),
+              timeoutPromise
+            ]);
+            if (prep && prep.cancelled) return;
+            fd = prep.fd;
+            prepared = prep.prepared;
+          } catch (prepErr) {
+            clearSubmitPreflightStatus();
+            if (prepErr && prepErr.__preflightTimeout) {
+              // 预检超时：解锁由调用方 finally 负责；迟到的处理结果由 token 丢弃
+              finishSubmitImageProcessing(form);
+              toast(prepErr.message, 0, { type: 'error', key: 'send-error' });
+              return;
+            }
+            console.error('[interceptReplyForm] 图片预检失败:', prepErr);
+            toast(prepErr && prepErr.message ? prepErr.message : '图片预处理失败，请手动处理后重试', 0, { type: 'error' });
+            return;
+          } finally {
+            clearTimeout(preflightTimer);
+          }
+        }
+        // 新请求即将真正发出：旧的「结果未知」由本次结果覆盖
+        // （放在预检之后，避免预检失败时丢失上一次超时的重复提交警告）
         form.__submitUnknown = false;
         finishSubmitImageProcessing(form);
         refreshSubmitLockTimer(form);
@@ -16710,12 +16892,13 @@ ${markedSwatchHtml}
           }, timeoutMs);
           form.__submitAbortTimer = abortTimer;
         }
-        return fetch(form.action, {
+        // 用 Promise 包一层：fetch 同步抛错时也能进入 .catch，避免状态提示滞留
+        return Promise.resolve().then(() => fetch(form.action, {
           method: form.method,
           body: fd,
           credentials: 'include',
           signal: controller ? controller.signal : undefined
-        })
+        }))
         .then(res => res.text())
         .then(async html => {
           // 收到服务器响应 = 结果已确定（成功或业务错误）：
@@ -16725,6 +16908,8 @@ ${markedSwatchHtml}
           if (form.__submitAbortTimer === abortTimer) form.__submitAbortTimer = 0;
           if (form.__submitController === controller) form.__submitController = null;
           form.__submitUnknown = false;
+          // 响应已到达：结束「发送前处理/正在提交」状态，交给成功或错误提示
+          clearSubmitPreflightStatus();
           // 增加调试输出：打印响应 HTML 的前 2000 字符，避免控制台被大量内容淹没
           try { console.log('[interceptReplyForm] response html (truncated):', html.slice(0, 2000)); } catch (e) { console.log('[interceptReplyForm] response html (full):', html); }
           const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -16778,7 +16963,7 @@ ${markedSwatchHtml}
             const errorKind = classifySubmitError(msg);
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
             // 图片格式不被服务器接受（如 WebP）：转换为 PNG 后重新提交
-            if (errorKind === 'image-format' && !isRetry) {
+            if (errorKind === 'image-format' && !isRetry && !prepared) {
               const fileInput = form.querySelector('input[type="file"][name="image"]');
               const file = fileInput && fileInput.files && fileInput.files[0];
               if (file) {
@@ -16787,24 +16972,36 @@ ${markedSwatchHtml}
                 if (actualFormat === 'webp' || actualFormat === 'animated-webp' || actualFormat === 'heic') {
                   beginSubmitImageProcessing(form);
                   try {
-                    let convertedFile;
-                    if (actualFormat === 'heic') {
-                      toast('服务器不接受 HEIC，正在转换为 PNG……', 3000);
-                      convertedFile = await convertHeicToPng(file);
-                      console.log(`[interceptReplyForm] HEIC→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-                    } else {
-                      toast('服务器不接受 WebP，正在将Webp转换为PNG格式……', 3000);
-                      convertedFile = await convertWebpToAcceptedFormat(file, actualFormat === 'animated-webp');
-                      console.log(`[interceptReplyForm] WebP→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-                    }
-                    // 转换后如果大小超限，接入压缩流程
-                    if (convertedFile.size > 2048 * 1024) {
-                      console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，接入压缩流程`);
-                      toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩……`, 3000);
-                      convertedFile = await compressImageForRetry(convertedFile, 'png');
-                      console.log(`[interceptReplyForm] 压缩完成: ${(convertedFile.size / 1024).toFixed(1)}KB`);
-                    }
+                    const convertedFile = await runImageProcessingWithTimeout('图片格式转换', async (token) => {
+                      let outFile;
+                      if (actualFormat === 'heic') {
+                        if (!token.cancelled) toast('服务器不接受 HEIC，正在转换为 PNG……', 3000);
+                        outFile = await convertHeicToPng(file);
+                        if (token.cancelled) return null;
+                        console.log(`[interceptReplyForm] HEIC→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(outFile.size / 1024).toFixed(1)}KB`);
+                      } else {
+                        if (!token.cancelled) toast('服务器不接受 WebP，正在将Webp转换为PNG格式……', 3000);
+                        outFile = await convertWebpToAcceptedFormat(file, actualFormat === 'animated-webp');
+                        if (token.cancelled) return null;
+                        console.log(`[interceptReplyForm] WebP→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(outFile.size / 1024).toFixed(1)}KB`);
+                      }
+                      // 转换后如果大小超限，接入压缩流程
+                      if (outFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
+                        if (!token.cancelled) {
+                          console.log(`[interceptReplyForm] 转换后 ${(outFile.size / 1024).toFixed(1)}KB 仍超限，接入压缩流程`);
+                          toast(`转换后 ${(outFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩……`, 3000);
+                        }
+                        outFile = await compressImageForRetry(outFile, 'png', (message, duration, options) => {
+                          if (!token.cancelled) toast(message, duration, options);
+                        });
+                        if (token.cancelled) return null;
+                        console.log(`[interceptReplyForm] 压缩完成: ${(outFile.size / 1024).toFixed(1)}KB`);
+                      }
+                      return outFile;
+                    });
+                    if (!convertedFile) return;
                     resetIllegalRetryState({ clearOriginalContent: false });
+                    rememberPreparedSubmitImage(file, convertedFile);
                     const newFD = cloneFormDataWithImage(fd, convertedFile);
                     toast(`格式已转换为 PNG，大小 ${(convertedFile.size / 1024).toFixed(1)}KB，正在重新提交……`, 2000);
                     await doSubmit(newFD, true);
@@ -16835,15 +17032,20 @@ ${markedSwatchHtml}
               }
               const fileInput = form.querySelector('input[type="file"][name="image"]');
               const file = fileInput && fileInput.files && fileInput.files[0];
-              if (file && !isRetry) {
+              if (file && !isRetry && !prepared) {
                 beginSubmitImageProcessing(form);
                 try {
                   const actualFormat = await detectImageFormat(file);
                   console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
                   toast(`图片大小 ${(file.size / 1024).toFixed(1)}KB（>2048KB），正在尝试自动压缩`, 3000);
                   console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩……`);
-                  const compressedFile = await compressImageForRetry(file, actualFormat);
+                  const compressedFile = await runImageProcessingWithTimeout('图片压缩', (token) =>
+                    compressImageForRetry(file, actualFormat, (message, duration, options) => {
+                      if (!token.cancelled) toast(message, duration, options);
+                    })
+                  );
                   resetIllegalRetryState({ clearOriginalContent: false });
+                  rememberPreparedSubmitImage(file, compressedFile);
                   const newFD = cloneFormDataWithImage(fd, compressedFile);
                   const gifCompressionDurationMs = Number(compressedFile && compressedFile.__xdexGifCompressionDurationMs);
                   const gifCompressionSeconds = Number.isFinite(gifCompressionDurationMs) && gifCompressionDurationMs >= 0
@@ -16859,7 +17061,7 @@ ${markedSwatchHtml}
                 } finally {
                   finishSubmitImageProcessing(form);
                 }
-              } else if (isRetry) {
+              } else if (isRetry || prepared) {
                 toast('压缩后图片仍然超过限制，请手动压缩后再试', 3000);
                 return;
               }
@@ -16872,14 +17074,19 @@ ${markedSwatchHtml}
                 beginSubmitImageProcessing(form);
                 try {
                   console.log('[interceptReplyForm] 检测到非法GIF，尝试用gifsicle重新编码……');
-                  const reencodedFile = await reencodeGifWithGifsicle(file);
+                  const reencodedFile = await runImageProcessingWithTimeout(
+                    'GIF 修复',
+                    () => reencodeGifWithGifsicle(file),
+                    '请更换图片，或手动修复/压缩后重试。'
+                  );
+                  rememberPreparedSubmitImage(file, reencodedFile);
                   const newFD = cloneFormDataWithImage(fd, reencodedFile);
                   toast('GIF结构已修复，正在重新提交……', 2000);
                   await doSubmit(newFD, true);
                   return;
                 } catch (reencodeErr) {
                   console.error('[interceptReplyForm] GIF重编码失败:', reencodeErr);
-                  toast('GIF重编码失败，请手动处理', 0, { type: 'error' });
+                  toast(reencodeErr && reencodeErr.message ? reencodeErr.message : 'GIF重编码失败，请手动处理', 0, { type: 'error' });
                   return;
                 } finally {
                   finishSubmitImageProcessing(form);
@@ -16962,12 +17169,18 @@ ${markedSwatchHtml}
         })
         .catch((err) => {
           console.error('[interceptReplyForm] fetch error:', err);
+          clearSubmitPreflightStatus();
           if (err && err.name === 'AbortError') {
             form.__submitUnknown = true;
             toast('提交超时：结果未知，请刷新页面确认是否已发出，避免重复提交。', 0, { type: 'error', key: 'send-error' });
             return;
           }
-          toast(formatSubmitNetworkError(err), 0, { type: 'error', key: 'send-error' });
+          if (isSubmitNetworkError(err)) {
+            form.__submitUnknown = true;
+            toast(SUBMIT_NETWORK_UNKNOWN_MSG, 0, { type: 'error', key: 'send-error' });
+            return;
+          }
+          toast(formatSubmitError(err), 0, { type: 'error', key: 'send-error' });
         })
         .finally(() => {
           clearTimeout(abortTimer);
@@ -16980,6 +17193,9 @@ ${markedSwatchHtml}
       // 真正的超时由 doSubmit 的 AbortController 负责（按上传体积放宽）。
       const SUBMIT_LOCK_TIMEOUT_MS = 15000;
       const SUBMIT_RESULT_UNKNOWN_MSG = '提交结果未知：请求超过 15 秒未返回。请刷新页面确认是否已发出，避免重复提交。';
+      const SUBMIT_NETWORK_UNKNOWN_MSG = '网络异常，结果未知：请刷新页面确认是否已发出，避免重复提交。';
+      const SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS = 180000;
+      const SUBMIT_IMAGE_PROCESSING_TIMEOUT_MSG = '发送前处理超时（180 秒），本次未发送。请手动压缩/转换图片后重试。';
       const SUBMIT_REQUEST_TIMEOUT_BASE_MS = 30000;
       const SUBMIT_REQUEST_TIMEOUT_PER_MB_MS = 15000;
       const SUBMIT_REQUEST_TIMEOUT_MAX_MS = 120000;
