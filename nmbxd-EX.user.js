@@ -16519,7 +16519,9 @@ ${markedSwatchHtml}
       }
       function formatSubmitNetworkError(err) {
         if (err && err.name === 'TypeError' && /fetch|network/i.test(err.message || '')) {
-          return '发送超时，请检查网络后重试';
+          // fetch 抛 TypeError = 网络层失败（断网/连接重置/CORS 等），不是超时；
+          // 真正的超时由 doSubmit 的 AbortController 处理（err.name === 'AbortError'）。
+          return '网络异常，发送失败，请检查网络后重试';
         }
         return '发送失败：' + ((err && err.message) || '未知错误');
       }
@@ -16688,16 +16690,41 @@ ${markedSwatchHtml}
         return compressedFile;
       }
       async function doSubmit(fd, isRetry = false) {
-        // 图片处理完成后递归提交时，在保持原提交锁的同时重新开始网络超时保护。
+        // 图片处理完成后递归提交时，在保持原提交锁的同时重新开始网络看门狗与真实超时。
+        // 新一轮请求开始：旧的「结果未知」由本次结果覆盖（响应到达/看门狗/中止会重新设置）。
+        form.__submitUnknown = false;
         finishSubmitImageProcessing(form);
         refreshSubmitLockTimer(form);
+        const timeoutMs = computeSubmitRequestTimeoutMs(fd);
+        let controller = null;
+        let abortTimer = 0;
+        if (typeof AbortController === 'function') {
+          controller = new AbortController();
+          form.__submitController = controller;
+          abortTimer = setTimeout(() => {
+            // 期间若已发起新的递归请求，旧计时器不得误杀新请求
+            if (form.__submitController !== controller) return;
+            form.__submitAbortTimer = 0;
+            form.__submitUnknown = true;
+            try { controller.abort('timeout'); } catch (e) { /* 老内核不支持 reason */ }
+          }, timeoutMs);
+          form.__submitAbortTimer = abortTimer;
+        }
         return fetch(form.action, {
           method: form.method,
           body: fd,
-          credentials: 'include'
+          credentials: 'include',
+          signal: controller ? controller.signal : undefined
         })
         .then(res => res.text())
         .then(async html => {
+          // 收到服务器响应 = 结果已确定（成功或业务错误）：
+          // 撤销本次请求的看门狗与中止计时器，避免后续图片转换/递归重试期间旧计时器误报。
+          clearSubmitLockTimer(form);
+          clearTimeout(abortTimer);
+          if (form.__submitAbortTimer === abortTimer) form.__submitAbortTimer = 0;
+          if (form.__submitController === controller) form.__submitController = null;
+          form.__submitUnknown = false;
           // 增加调试输出：打印响应 HTML 的前 2000 字符，避免控制台被大量内容淹没
           try { console.log('[interceptReplyForm] response html (truncated):', html.slice(0, 2000)); } catch (e) { console.log('[interceptReplyForm] response html (full):', html); }
           const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -16889,7 +16916,7 @@ ${markedSwatchHtml}
                   // 新增：递增计数
                   form.__illegalRetryCountU200B++;
                   toast('已尝试插入零宽空格模式并重试提交', 2000);
-                  doSubmit(newFD, false);
+                  await doSubmit(newFD, false);
                   return;
                 } else {
                   // 原有三次重试逻辑
@@ -16922,7 +16949,7 @@ ${markedSwatchHtml}
                     toast('已尝试unvcode替换模式并重试提交', 2000);
                     const newFD = createContentRetryFormData(form, safeText);
                     form.__illegalRetryCount++;
-                    doSubmit(newFD, false);
+                    await doSubmit(newFD, false);
                     return;
                   }
                   toast(msg, 0, { type: 'error', key: 'send-error' });
@@ -16935,20 +16962,53 @@ ${markedSwatchHtml}
         })
         .catch((err) => {
           console.error('[interceptReplyForm] fetch error:', err);
+          if (err && err.name === 'AbortError') {
+            form.__submitUnknown = true;
+            toast('提交超时：结果未知，请刷新页面确认是否已发出，避免重复提交。', 0, { type: 'error', key: 'send-error' });
+            return;
+          }
           toast(formatSubmitNetworkError(err), 0, { type: 'error', key: 'send-error' });
+        })
+        .finally(() => {
+          clearTimeout(abortTimer);
+          if (form.__submitAbortTimer === abortTimer) form.__submitAbortTimer = 0;
+          if (form.__submitController === controller) form.__submitController = null;
         });
       }
-      // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
+      // 防重复提交：__submitting 从点击发送保持到请求有确定结果（成功/失败/超时）。
+      // 15s 看门狗只提示「结果未知」，不再解锁 —— 请求可能仍在飞行，解锁会让用户重复发送。
+      // 真正的超时由 doSubmit 的 AbortController 负责（按上传体积放宽）。
       const SUBMIT_LOCK_TIMEOUT_MS = 15000;
+      const SUBMIT_RESULT_UNKNOWN_MSG = '提交结果未知：请求超过 15 秒未返回。请刷新页面确认是否已发出，避免重复提交。';
+      const SUBMIT_REQUEST_TIMEOUT_BASE_MS = 30000;
+      const SUBMIT_REQUEST_TIMEOUT_PER_MB_MS = 15000;
+      const SUBMIT_REQUEST_TIMEOUT_MAX_MS = 120000;
+      function computeSubmitRequestTimeoutMs(fd) {
+        let bytes = 0;
+        try {
+          const image = fd && typeof fd.get === 'function' ? fd.get('image') : null;
+          if (image && typeof image.size === 'number' && isFinite(image.size)) bytes = image.size;
+        } catch (e) { /* 取不到大小就按纯文本超时处理 */ }
+        const mb = bytes > 0 ? Math.ceil(bytes / (1024 * 1024)) : 0;
+        return Math.min(SUBMIT_REQUEST_TIMEOUT_MAX_MS, SUBMIT_REQUEST_TIMEOUT_BASE_MS + mb * SUBMIT_REQUEST_TIMEOUT_PER_MB_MS);
+      }
       const clearSubmitLockTimer = (f) => {
         if (f && f.__submitLockTimer) {
           clearTimeout(f.__submitLockTimer);
           f.__submitLockTimer = 0;
         }
       };
+      const clearSubmitAbortTimer = (f) => {
+        if (f && f.__submitAbortTimer) {
+          clearTimeout(f.__submitAbortTimer);
+          f.__submitAbortTimer = 0;
+        }
+      };
       const unlockSubmit = (f) => {
         clearSubmitLockTimer(f);
         if (f) {
+          clearSubmitAbortTimer(f);
+          f.__submitController = null;
           f.__submitImageProcessing = false;
           f.__submitting = false;
         }
@@ -16956,13 +17016,14 @@ ${markedSwatchHtml}
       function refreshSubmitLockTimer(f) {
         if (!f || !f.__submitting || f.__submitImageProcessing) return;
         clearSubmitLockTimer(f);
-        // 点击发送后 15s 仍无 doSubmit 成功/失败结果 → 主动解除，避免永久卡死
+        // 请求 15s 仍无结果：只标记「结果未知」并提示刷新确认，
+        // 保持提交锁直到请求真正结束或被 AbortController 中止，避免重复提交
         f.__submitLockTimer = setTimeout(() => {
           f.__submitLockTimer = 0;
           if (!f.__submitting) return;
           if (f.__submitImageProcessing) return;
-          f.__submitting = false;
-          toast('提交可能失败，请检查网络，或者刷新后重试', 0, { type: 'error' });
+          f.__submitUnknown = true;
+          toast(SUBMIT_RESULT_UNKNOWN_MSG, 0, { type: 'error', key: 'send-unknown' });
         }, SUBMIT_LOCK_TIMEOUT_MS);
       }
       function beginSubmitImageProcessing(f) {
@@ -16978,11 +17039,22 @@ ${markedSwatchHtml}
         if (!f) return;
         f.__submitting = true;
         f.__submitImageProcessing = false;
-        refreshSubmitLockTimer(f);
+        // 保留：这里不启动看门狗 —— 饼干确认弹窗的停留时间不应计入网络超时；
+        // 看门狗与真实超时都由 doSubmit 在真正发请求时启动。
       };
       if (form.__submitting) {
         toast('发送中，请勿重复提交……');
         return;
+      }
+      if (form.__submitUnknown) {
+        // 上一次请求结果未知（可能已发出）：先让用户刷新确认，确认后才允许重发。
+        // 未知标记保留到新请求真正开始（doSubmit）再由本次结果覆盖，
+        // 避免用户确认后又在饼干弹窗点取消、旧结果仍未知却被清掉。
+        const resend = window.confirm('上次提交结果未知（可能已经发出）。\n请先刷新页面确认是否已发出。\n若确定要再次发送，点「确定」。');
+        if (!resend) {
+          toast('已取消发送：请先刷新确认上次提交结果', 2500);
+          return;
+        }
       }
       lockSubmit(form);
       // ── 发送前饼干确认（含串内偏好检查） ──
@@ -18599,7 +18671,7 @@ ${markedSwatchHtml}
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
+              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)","(　^ω。)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
@@ -18642,6 +18714,7 @@ ${markedSwatchHtml}
               "冰箱先生3D":"　　/\n▁▁▁▁\n╲　　　╲\n▏┌───┐\n▏│　ﾟ∀ﾟ │\n▏├─┬─┤\n╲│　│　│\n　└─┴─┘",
               "血压↑":"　他妈的／＞__フ\n　　　　| ＝ ^ω^)＝　血压↗↗\n　 　　／`　　 丨",
               "血压0↓":"　算逑喽／＞__フ\n　　　　| ＝ ˇωˇ)＝　血压0↓\n　 　　／`　　 丨",
+              "挺好颜":"╯ 　乀\nヘ　 へ\n　′\n　﹀",
               "全角空格": "　",
               "零宽空格": "​",
           };
@@ -18653,7 +18726,7 @@ ${markedSwatchHtml}
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓",
+              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓","挺好颜",
               "全角空格","零宽空格",
               // 页面中“防剧透/骰子/高级骰子”不动其原位
           ];
@@ -18664,7 +18737,7 @@ ${markedSwatchHtml}
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
               "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓"
+              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓","挺好颜",
           ]);
           // 一次性补齐（选择器就绪且已有至少一个选项时调用）
           function patchSelect(sel) {
