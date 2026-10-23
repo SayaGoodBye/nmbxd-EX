@@ -7470,20 +7470,37 @@ ${markedSwatchHtml}
     return /\.(heic|heif|hif)$/i.test(name);
   }
   let lastHeifPreviewTipKey = '';
+  let lastHeifPreviewTipFile = null;
+  let lastHeifPreviewTipAt = 0;
   let heifPreviewTipSeq = 0;
+  // 清除附件（清空按钮 / 原生 input 清空 / 发送成功后清空）时必须调用，
+  // 否则同一个 HEIC 文件重新附带会被去重键挡住、不再提示。
+  function resetHeifPreviewTipState() {
+    lastHeifPreviewTipKey = '';
+    lastHeifPreviewTipFile = null;
+    lastHeifPreviewTipAt = 0;
+  }
   function maybeToastHeifPreviewUnsupported(file) {
     if (!file) {
-      lastHeifPreviewTipKey = '';
+      resetHeifPreviewTipState();
       return;
     }
     const key = [file.name || '', file.size || 0, file.lastModified || 0].join('|');
-    if (key === lastHeifPreviewTipKey) return;
+    const now = Date.now();
+    if (key === lastHeifPreviewTipKey) {
+      // 同一次附带动作内会被多次调用（粘贴处理器 → 写入 input → change → 初始化补渲染），
+      // 这些调用可能拿到同一个 File 的不同实例：同一实例直接去重，不同实例只在短窗口内去重。
+      if (file === lastHeifPreviewTipFile) return;
+      if (now - lastHeifPreviewTipAt < 1200) return;
+    }
     lastHeifPreviewTipKey = key;
+    lastHeifPreviewTipFile = file;
+    lastHeifPreviewTipAt = now;
     toast('当前不支持 HEIF/HEIC 预览（发送时将自动转为PNG）', 2500);
   }
   function notifyHeifPreviewUnsupportedIfNeeded(file, seq) {
     if (!file) {
-      lastHeifPreviewTipKey = '';
+      resetHeifPreviewTipState();
       return;
     }
     // 快路径：MIME/扩展名可立刻提示
@@ -7505,7 +7522,7 @@ ${markedSwatchHtml}
     // HEIF 预览：浏览器 <img>+blob 通常无法解码，仅提示；不改 input 中的原文件
     const tipSeq = ++heifPreviewTipSeq;
     if (file) notifyHeifPreviewUnsupportedIfNeeded(file, tipSeq);
-    else lastHeifPreviewTipKey = '';
+    else resetHeifPreviewTipState();
     const liveBox = getLivePreviewBox();
     if (!liveBox) return;
     const $liveBox = $(liveBox);
@@ -16570,7 +16587,11 @@ ${markedSwatchHtml}
         const textarea = form.querySelector('textarea[name="content"]');
         if (textarea) { textarea.value = ''; textarea.dispatchEvent(new Event('input', { bubbles: true })); }
         const fileInput = form.querySelector('input[type="file"][name="image"]');
-        if (fileInput) fileInput.value = '';
+        if (fileInput) {
+          fileInput.value = '';
+          // 附件随发送清空：同步复位 HEIC 预览去重状态，避免下一条同文件不再提示
+          if (typeof updatePreviewImageFromFile === 'function') updatePreviewImageFromFile(null);
+        }
         form.__preparedImage = null;
         deleteDraftSafe(getDraftKey());
         const titleInput = form.querySelector('input[name="title"]');
@@ -19507,12 +19528,9 @@ ${markedSwatchHtml}
             });
             if (typeof updatePreviewCookieId === 'function') updatePreviewCookieId();
             // === 图片预览更新函数 ===
-            // 复用全局 updatePreviewImageFromFile（实时查询当前活跃预览框），
+            // 预览更新统一走全局 updatePreviewImageFromFile（实时查询当前活跃预览框），
             // 不再用闭包捕获的旧 $box，避免 REPLY 浮窗 open() 早于 enhanceIsland
             // 时粘贴图片更新到看不见的框。
-            function updatePreviewFromFile(file) {
-                updatePreviewImageFromFile(file);
-            }
             // === 监听文件选择 ===
             const fileInput = document.querySelector('input[type="file"][name="image"]');
             if (fileInput) {
@@ -19919,9 +19937,11 @@ function 注册自动保存编辑() {
                     e.preventDefault();
                     // 清空文件
                     $file.val('');
-                    // 直接调用预览清空逻辑
-                    if (typeof updatePreviewFromFile === 'function') {
-                        updatePreviewFromFile(null);
+                    // 直接调用预览清空逻辑（全局函数；此前误用 initPreviewBox 内的
+                    // updatePreviewFromFile，作用域不可达导致恒走兜底分支，
+                    // 去重键因此从未重置，同一个 HEIC 重新附带时不再提示）
+                    if (typeof updatePreviewImageFromFile === 'function') {
+                        updatePreviewImageFromFile(null);
                     } else {
                         const $preview = $('.h-preview-box');
                         $preview.find('img').attr('src', '').removeAttr('src');
@@ -19940,6 +19960,9 @@ function 注册自动保存编辑() {
               }
           } else {
               if ($btn.length) $btn.remove();
+              // 原生 input 被清空（选择框取消/浏览器行为）时同样要复位 HEIC 去重，
+              // 否则下一次重新附带同一文件不会再提示
+              if (typeof resetHeifPreviewTipState === 'function') resetHeifPreviewTipState();
           }
       }
       $file.on('change', 刷新按钮);
