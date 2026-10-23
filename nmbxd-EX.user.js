@@ -280,15 +280,15 @@ function xdexEarlyDarkEnabled() {
     return generation === refreshStatusGeneration;
   }
   function showRefreshStatus(msg, duration = 900, type = '') {
-    // type='error'：红框 + 无操作 30s 驻留 / 操作后 5s 渐隐（与全局 error 语义一致）；
+    // type='error'：红框 + 驻留；type='hold'：无红框 + 驻留（如「无更新」需留观但非错误）；
     // 复用 refresh-status 节点，后续任何刷新状态提示（正在刷新/已更新）会自动顶掉它
     return toast(msg, duration, { queue: false, key: 'refresh-status', type });
   }
 
   function toast(msg, duration = 1800, options = {}) {
-    if (options.type === 'error') {
-      // ★ 错误提示强制走立即通道（不排队），红框 + 驻留到下次用户交互（见 showImmediateToast）
-      showImmediateToast(msg, duration, options.key, 'error');
+    if (options.type === 'error' || options.type === 'hold') {
+      // ★ 错误/长驻提示强制走立即通道（不排队）：error 红框驻留，hold 无红框驻留（见 showImmediateToast）
+      showImmediateToast(msg, duration, options.key, options.type);
       return;
     }
     if (options.queue === false) {
@@ -341,15 +341,20 @@ function xdexEarlyDarkEnabled() {
         fontWeight: 'bold',
       });
     }
+    const el = $t[0];
     if (type === 'error') {
-      // ★ 错误提示：红框 + 醒目样式；不自动消失，驻留到下次用户交互（点击/键盘/焦点切换），30s 保险上限
+      // ★ 错误提示：红框 + 不自动消失，驻留到下次用户交互（点击/键盘/焦点切换），30s 保险上限
       $t.css({
         border: '1px solid #e74c3c',
         boxShadow: '0 0 0 1px rgba(231,76,60,.4), 0 4px 16px rgba(0,0,0,.55)',
         fontWeight: 'bold',
       });
+      el.__xdexToastError = true;
+    } else if (type === 'hold') {
+      // ★ 长驻提示：与 error 相同的驻留语义（无操作 30s / 操作后 5s 渐隐 / 同 key 顶掉 / 1s 武装期），
+      // 但不加红框——用于「无更新」这类需要留观、又不应表现成错误的场景
+      el.__xdexToastError = true;
     }
-    const el = $t[0];
     // ★ 复用节点时先清理上一代的驻留监听/计时器：
     // 「错误 toast 可被下一条同为 error 的 toast 顶掉」由此实现——顶掉一刻起旧监听即刻失效，
     // 若等到下次交互才清理会造成 document 捕获相监听器 + 30s 计时器永久泄漏
@@ -360,8 +365,8 @@ function xdexEarlyDarkEnabled() {
       }
       el.__xdexToastDismissCleanup = null;
     }
-    // 上一轮是错误、本轮不是 → 清除遗留的红框样式（refresh-status 专属样式见上方重新设置，无冲突）
-    if (el.__xdexToastError && type !== 'error') {
+    // 上一轮是错误、本轮不是 error/hold → 清除遗留的红框/加粗样式（refresh-status 专属样式见上方重新设置，无冲突）
+    if (el.__xdexToastError && type !== 'error' && type !== 'hold') {
       $t.css({ border: '', boxShadow: '', fontWeight: '' });
       if (safeKey === 'refresh-status') {
         $t.css({
@@ -371,14 +376,14 @@ function xdexEarlyDarkEnabled() {
         });
       }
     }
-    el.__xdexToastError = (type === 'error');
+    el.__xdexToastError = (type === 'error' || type === 'hold');
     const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
     el.__xdexImmediateToastSeq = seq;
     $t.stop(true, false).text(msg).show();
     // 淡出被 stop(true,false) 打断时 style.opacity 会冻结在中间值，而 jQuery 的 .show() 不恢复不透明度，
     // 导致「上一条正在淡出时下发的新消息」整段偏淡甚至近乎不可见 → 显式复位
     $t.css('opacity', 1);
-    if (type === 'error') {
+    if (type === 'error' || type === 'hold') {
       dismissOnNextInteraction($t, el, seq);
       return $t;
     }
@@ -392,6 +397,8 @@ function xdexEarlyDarkEnabled() {
   // 无操作驻留 30 秒（比普通 toast 的 1.8s 长得多，核心目的：提醒窗口拉长，避免一闪而过）；
   // 用户发生键鼠操作后，进入 5 秒渐隐宽限（给足看清内容的时间，不是瞬间消失）；
   // 挂载后 1 秒武装期内忽略交互（提交后的连续击键/点击不误关）；同 key 新 error 顶掉旧 error。
+  // ★ 算「操作」的动作：左键/中键/右键按下、滚轮滚动、任意按键——均为对页面本身的操作；
+  // 单纯移动鼠标、窗口切换、输入法切换不算（不监听 pointermove/focusin）。
   const ERROR_TOAST_MAX_HOLD_MS = 30000;            // 无操作驻留上限
   const ERROR_TOAST_FADE_AFTER_INTERACT_MS = 5000;  // 操作后的渐隐宽限
   // ★ 挂载后 1 秒内的 pointerdown/keydown 不关闭 toast：
@@ -412,11 +419,12 @@ function xdexEarlyDarkEnabled() {
     let armed = false;
     let armTimer = 0;
     let interacted = false;
-    let pointerH, keyH; // 保存「已挂载」的包裹引用，移除时才能精确匹配
+    let pointerH, keyH, wheelH; // 保存「已挂载」的包裹引用，移除时才能精确匹配
     const clearListeners = () => {
       if (pointerH) document.removeEventListener('pointerdown', pointerH, true);
       if (keyH) document.removeEventListener('keydown', keyH, true);
-      pointerH = keyH = null;
+      if (wheelH) document.removeEventListener('wheel', wheelH, true);
+      pointerH = keyH = wheelH = null;
     };
     const cleanup = () => {
       clearListeners();
@@ -442,13 +450,22 @@ function xdexEarlyDarkEnabled() {
       fn();
     };
     const onPointer = (e) => {
-      // ★ 只认「左键点击本页内容」：右键/中键（菜单、滚轮按下）、滚动条拖动都不算。
-      // 实测反馈：单纯移动鼠标（拖滚动条浏览）不应关闭提示。
-      if (e.button !== 0) return;
+      // ★ 左键点击、中键按下（button===1，多为自动滚动/关闭标签页习惯动作）、右键按下（button===2，唤出菜单）
+      // 都算「对本页操作」；其余键值（如浏览器前进/后退侧键）不计。
+      if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
       if (interacted) return;
       interacted = true;
       startFadeGrace();
-      console.log(`[xdex error toast] 检测到鼠标左键点击 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (target=${e.target && e.target.tagName || '?'}, isTrusted=${e.isTrusted})`);
+      const buttonName = e.button === 0 ? '左键' : e.button === 1 ? '中键' : '右键';
+      console.log(`[xdex error toast] 检测到鼠标${buttonName}操作 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (target=${e.target && e.target.tagName || '?'}, isTrusted=${e.isTrusted})`);
+    };
+    const onWheel = (e) => {
+      // ★ 滚轮滚动也算「对本页操作」：阅读长串时最常用的就是滚动，不应要求必须左键点击。
+      // 只在 NMBXD 页面内容上滚动才算（滚轮事件默认绑定在 document，不覆盖 DevTools 等外部区域）。
+      if (interacted) return;
+      interacted = true;
+      startFadeGrace();
+      console.log(`[xdex error toast] 检测到滚轮滚动 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (deltaY=${e.deltaY}, isTrusted=${e.isTrusted})`);
     };
     const onKey = (e) => {
       if (interacted) return;
@@ -461,16 +478,22 @@ function xdexEarlyDarkEnabled() {
       if (el.__xdexImmediateToastSeq !== seq) return;
       onPointer(e);
     };
+    wheelH = (e) => {
+      if (!armed) return;
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      onWheel(e);
+    };
     keyH = (e) => {
       if (!armed) return;
       if (el.__xdexImmediateToastSeq !== seq) return;
       onKey(e);
     };
-    // ★ 提前关闭只认「明确指向本页的操作」：pointerdown / keydown。
+    // ★ 提前关闭只认「明确指向本页的操作」：pointerdown / keydown / wheel。
     // 不监听 focusin——发送失败后脚本恢复输入框焦点、输入法切换、Alt+Tab 回窗口等
     // 都会产生 focusin，会在用户还没看到提示时就把它关掉（实测「红框很快消失」的主因）。
     document.addEventListener('pointerdown', pointerH, true);
     document.addEventListener('keydown', keyH, true);
+    document.addEventListener('wheel', wheelH, true);
     armTimer = window.setTimeout(() => { armed = true; }, ERROR_TOAST_ARM_DELAY_MS);
     // ★ 无操作 30 秒驻留上限（从挂载起算；交互后由 5s 渐隐宽限接管，本计时器被 startFadeGrace 清除）
     holdTimer = window.setTimeout(() => { dismiss(`无操作到达 ${ERROR_TOAST_MAX_HOLD_MS / 1000} 秒驻留上限，自动消失`); cleanup(); }, ERROR_TOAST_MAX_HOLD_MS);
@@ -8995,19 +9018,19 @@ ${markedSwatchHtml}
               }));
               if (userCount < 19) {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新", hasUpdate ? 900 : 0, hasUpdate ? '' : 'hold');
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
               }
               if (parsedLastFromReturned && parsedLastFromReturned > lastLoadedPage) {
                 const result = { status: 'hasNext', nextPage: lastLoadedPage + 1, hasUpdate };
-                if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", hasUpdate ? 900 : 0, { queue: false, key: 'refresh-status', type: hasUpdate ? '' : 'hold' });
                 if (typeof done === 'function') done(result);
                 return;
               } else {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新", hasUpdate ? 900 : 0, hasUpdate ? '' : 'hold');
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
@@ -9048,7 +9071,9 @@ ${markedSwatchHtml}
           prepareForceLoadNext(result.nextPage);
           setTimeout(() => loadNext(refreshGeneration), 50);
         } else if (result.status === 'last') {
-          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', 1800); // 结果提示给足阅读时间（原 900ms 偏短，易漏看后重复刷新）
+          // 「无更新」用 hold：无红框但长驻（无操作 30s / 交互后 5s 渐隐），避免很快被刷掉；
+          // 「已更新」仍是普通短提示给足阅读时间
+          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', result.hasUpdate ? 1800 : 0, result.hasUpdate ? '' : 'hold'); // 结果提示给足阅读时间（原 900ms 偏短，易漏看后重复刷新）
         }
       }
       // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）

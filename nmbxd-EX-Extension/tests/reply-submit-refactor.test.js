@@ -457,7 +457,8 @@ function testCompressionToolScopeAndContracts() {
     'return compressImageToSize(file, maxSizeKB);',
     'const gifResult = await compressGifToSize(gifFile, {',
     'const compressedFile = await compressApngToSize(file, 2048, {',
-    'const reencodedFile = await reencodeGifWithGifsicle(file);'
+    'const reencodedFile = await runImageProcessingWithTimeout(',
+    '() => reencodeGifWithGifsicle(file),'
   ]) assert(script.includes(marker), `compression contract marker changed: ${marker}`);
 
   const { clampNumber, formatKB } = loadFunctions(['clampNumber', 'formatKB']);
@@ -488,10 +489,11 @@ function testSubmitErrorClassification() {
 }
 
 function testNetworkErrorFormatting() {
-  const { formatSubmitNetworkError } = loadFunctions(['formatSubmitNetworkError']);
-  assert(formatSubmitNetworkError({ name: 'TypeError', message: 'Failed to fetch' }) === '发送超时，请检查网络后重试', 'fetch/network TypeError must keep timeout wording');
-  assert(formatSubmitNetworkError({ name: 'Error', message: 'boom' }) === '发送失败：boom', 'other errors must include their message');
-  assert(formatSubmitNetworkError({}) === '发送失败：未知错误', 'missing error details must retain unknown-error wording');
+  const { isSubmitNetworkError, formatSubmitError } = loadFunctions(['isSubmitNetworkError', 'formatSubmitError']);
+  assert(isSubmitNetworkError({ name: 'TypeError', message: 'Failed to fetch' }) === true, 'fetch/network TypeError must be classified as a network failure');
+  assert(isSubmitNetworkError({ name: 'Error', message: 'boom' }) === false, 'ordinary errors must not be classified as network failures');
+  assert(formatSubmitError({ name: 'Error', message: 'boom' }) === '发送失败：boom', 'other errors must include their message');
+  assert(formatSubmitError({}) === '发送失败：未知错误', 'missing error details must retain unknown-error wording');
 }
 
 function testIllegalWordRetryHelpers() {
@@ -530,7 +532,7 @@ function testIllegalWordRetryHelpers() {
  */
 function testSubmitStateConsolidationBoundary() {
   const intercept = extractFunctionDeclarations(script, 'interceptReplyForm')[0];
-  for (const field of ['__submitting', '__submitLockTimer', '__submitImageProcessing', '__illegalRetryCount', '__illegalRetryCountU200B', '__originalContent']) {
+  for (const field of ['__submitting', '__submitLockTimer', '__submitImageProcessing', '__submitUnknown', '__submitController', '__submitAbortTimer', '__preparedImage', '__preparedImageChangeBound', '__illegalRetryCount', '__illegalRetryCountU200B', '__originalContent']) {
     assert(intercept.includes(field), `existing submit state field must remain explicit: ${field}`);
   }
   assert(!intercept.includes('__submitState'), 'central submit-state object must not be introduced without full closure execution coverage');
@@ -544,9 +546,9 @@ function testRetryContractsRemainVisible() {
   assert(script.includes('form.__illegalRetryCountU200B >= 1'), 'U+200B mode must retain its single retry limit');
   assert(script.includes("toast('插入零宽空格后仍提交失败，非法词语可能存在于url中，请手动处理', 0, { type: 'error', key: 'send-error' });"), 'U+200B terminal toast wording must remain unchanged (now a persisting error toast)');
   assert(script.includes("toast('unvcode替换后仍提交失败，已恢复原始文本，请手动处理', 0, { type: 'error', key: 'send-error' });"), 'unvcode terminal toast wording must remain unchanged (now a persisting error toast)');
-  assert(script.includes("toast('已尝试插入零宽空格模式并重试提交', 2000);\n                  doSubmit(newFD, false);"), 'U+200B retry must preserve toast-before-submit order and isRetry=false');
+  assert(script.includes("toast('已尝试插入零宽空格模式并重试提交', 2000);\n                  await doSubmit(newFD, false);"), 'U+200B retry must preserve toast-before-submit order and isRetry=false');
   assert(script.includes("const newFD = createContentRetryFormData(form, safeText);\n                  // 新增：递增计数"), 'U+200B retry must prepare current form state before incrementing');
-  assert(script.includes("form.__illegalRetryCount++;\n                    doSubmit(newFD, false);"), 'unvcode retry must increment before recursive isRetry=false submission');
+  assert(script.includes("form.__illegalRetryCount++;\n                    await doSubmit(newFD, false);"), 'unvcode retry must increment before recursive isRetry=false submission');
   assert(script.includes("restoreOriginalSubmitContent(form);\n                    resetCacheForFailedContent(form.__originalContent);"), 'unvcode failure must restore original content before cache reset');
 }
 
@@ -666,7 +668,16 @@ function testSubmitLockLifecycleContracts() {
   assert(intercept.includes('f.__submitting = true;\n        f.__submitImageProcessing = true;'), 'entering image processing must preserve the submit lock and mark the form before expensive work');
   assert(intercept.includes('clearSubmitLockTimer(f);'), 'entering image processing must cancel the current network timeout');
   assert(intercept.includes('if (f.__submitImageProcessing) return;'), 'timeout callback must not toast or unlock while image processing is active');
-  assert(intercept.includes("f.__submitting = false;\n          toast('提交可能失败，请检查网络，或者刷新后重试', 0, { type: 'error' });"), 'ordinary submit timeout must retain toast and unlock behavior (toast now persists as error)');
+  assert(intercept.includes("f.__submitUnknown = true;\n          toast(SUBMIT_RESULT_UNKNOWN_MSG, 0, { type: 'error', key: 'send-unknown' });"), 'submit watchdog must mark the result unknown and keep the lock (no unlock, avoids duplicate sends)');
+  assert(!intercept.includes('f.__submitting = false;\n          toast(SUBMIT_RESULT_UNKNOWN_MSG'), 'submit watchdog must not unlock the form while the request may still be in flight');
+  assert(intercept.includes('if (form.__submitUnknown) {'), 'resubmitting after an unknown outcome must pass an explicit confirmation gate');
+  assert(intercept.includes('const resend = window.confirm('), 'unknown-outcome resubmit must ask the user to refresh/confirm first');
+  assert(intercept.includes('看门狗与真实超时都由 doSubmit 在真正发请求时启动。'), 'lockSubmit must leave watchdog startup to doSubmit so dialog time is excluded');
+  assert(doSubmit.includes('new AbortController()'), 'submit must use a real AbortController timeout');
+  assert(doSubmit.includes('signal: controller ? controller.signal : undefined'), 'submit fetch must pass the abort signal');
+  assert(doSubmit.includes("if (err && err.name === 'AbortError')"), 'abort-timeout must be distinguished from network failures');
+  assert(doSubmit.includes('clearSubmitLockTimer(form);'), 'receiving a server response must cancel the watchdog');
+  assert(intercept.includes('const mb = bytes > 0 ? Math.ceil(bytes / (1024 * 1024)) : 0;'), 'request timeout must scale with upload size');
 
   assert(doSubmit.includes('finishSubmitImageProcessing(form);\n        refreshSubmitLockTimer(form);'), 'recursive network submit must atomically leave image processing and start a fresh timeout');
   assert(intercept.includes('beginSubmitImageProcessing(form);\n                try {\n                  const actualFormat = await detectImageFormat(file);'), 'oversized-image handling must enter the unified lifecycle before format detection and compression');
@@ -684,8 +695,10 @@ function testSubmitLockLifecycleContracts() {
     'compressImageForRetry must retain static/HEIC compressImageToSize fallback with quality arg'
   );
   assert(compressRetry.includes('compressGifToSize') && compressRetry.includes('compressApngToSize'), 'compressImageForRetry must keep GIF/APNG specialized compressors');
-  const timeoutToast = '提交可能失败，请检查网络，或者刷新后重试';
-  assert(script.split(timeoutToast).length - 1 === 1, 'submit timeout toast text must remain unchanged and exist only in the ordinary timeout path');
+  const unknownToast = '提交结果未知：请求超过 15 秒未返回。请刷新页面确认是否已发出，避免重复提交。';
+  assert(script.split(unknownToast).length - 1 === 1, 'submit unknown-notice text must exist only in the watchdog path');
+  const abortToast = '提交超时：结果未知，请刷新页面确认是否已发出，避免重复提交。';
+  assert(script.split(abortToast).length - 1 === 1, 'abort-timeout text must exist only in the AbortError path');
 }
 
 function createReplyRefreshHarness(options = {}) {

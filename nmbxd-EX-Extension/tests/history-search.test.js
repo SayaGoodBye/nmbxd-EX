@@ -94,6 +94,7 @@ const POST_FNS = ['normalizePostHistoryStatus', 'normalizePostHistoryType', 'nor
 
 const consts = [
   extractConst('const THREAD_HISTORY_STORAGE_KEY'), extractConst('const THREAD_HISTORY_STORE_VERSION'),
+  extractConst('const THREAD_HISTORY_REV_KEY'), extractConst('const POST_HISTORY_REV_KEY'),
   extractConst('const THREAD_HISTORY_LIMIT'), extractConst('const THREAD_HISTORY_TOMBSTONE_TTL_MS'),
   extractConst('const THREAD_HISTORY_TOMBSTONE_HARD_TTL_MS'), extractConst('const THREAD_HISTORY_EXCERPT_LIMIT'),
   extractConst('const POST_HISTORY_STORAGE_KEY'), extractConst('const POST_HISTORY_STORE_VERSION'),
@@ -124,6 +125,11 @@ const POST_HISTORY_FIELD_PATCH_FLUSH_MS = 30000;
 function applyPostHistoryFieldPatches(store) { return store; }
 function schedulePostHistoryFieldPatchFlush() {}
 let postHistoryActiveType = 'reply';
+let historyRevSeq = 0;
+function nextHistoryRev() {
+  historyRevSeq = (historyRevSeq + 1) % 1000;
+  return Date.now().toString(36) + '-' + historyRevSeq.toString(36);
+}
 const GM = { v: {} };
 function GM_getValue(k, d) { return k in GM.v ? JSON.parse(JSON.stringify(GM.v[k])) : d; }
 function GM_setValue(k, v) { GM.v[k] = JSON.parse(JSON.stringify(v)); }

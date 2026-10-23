@@ -16,7 +16,7 @@ function loadToastModule() {
   assert(s1 !== -1, 'Utils block must follow toast infra');
   const block = src.slice(s0, s1);
 
-  const listeners = { pointerdown: [], keydown: [] };
+  const listeners = { pointerdown: [], keydown: [], wheel: [] };
   const element = { style: {}, __xdexImmediateToastSeq: 0 };
   const timers = [];
   const sb = {
@@ -62,8 +62,8 @@ function testErrorForcesImmediateChannel() {
   const start = src.indexOf('function toast(msg, duration = 1800, options = {})');
   assert(start !== -1, 'toast() must exist');
   const body = src.slice(start, src.indexOf('function showNextToast', start));
-  assert(body.includes("options.type === 'error'"), 'toast() must branch on options.type === error');
-  assert(/showImmediateToast\(msg, duration, options\.key, 'error'\)/.test(body), 'error must be forwarded to the immediate channel with the error type');
+  assert(body.includes("options.type === 'error' || options.type === 'hold'"), 'toast() must branch on error and hold types');
+  assert(/showImmediateToast\(msg, duration, options\.key, options\.type\)/.test(body), 'error/hold must be forwarded to the immediate channel with their own type');
 }
 
 function testErrorToastHasRedBorder() {
@@ -71,6 +71,10 @@ function testErrorToastHasRedBorder() {
   const body = src.slice(start, src.indexOf('const ERROR_TOAST_MAX_HOLD_MS'));
   assert(body.includes('#e74c3c'), 'error toast must use the red border colour');
   assert(body.includes('fontWeight'), 'error toast must bold its text');
+  // hold 类型：与 error 相同的驻留语义，但不加红框
+  const holdStart = body.indexOf("type === 'hold'");
+  const holdBranch = body.slice(holdStart, body.indexOf('}', holdStart));
+  assert(holdStart !== -1 && !holdBranch.includes('#e74c3c'), 'hold toast must not use the red border');
 }
 
 function testErrorToastPersistsUntilInteraction() {
@@ -113,19 +117,39 @@ function testInteractionStartsGraceNotImmediateDismiss() {
   const arm = sb.__timers.find(t => t.ms === 1000);
   assert(arm, 'arm timer (1000ms) must be scheduled');
   arm.fn();
-  // 武装后：右键/中键不关闭、不启动宽限
-  listeners.pointerdown[0]({ button: 2 });
-  assert(element.fadeOutCalled === undefined, 'right-click must NOT dismiss');
-  listeners.pointerdown[0]({ button: 1 });
-  assert(element.fadeOutCalled === undefined, 'middle-click must NOT dismiss');
-  // 武装后左键点击 → 不立即消失，启动 5s 宽限
+  // 武装后：侧键等未知键值不关闭、不启动宽限
+  listeners.pointerdown[0]({ button: 3 });
+  assert(element.fadeOutCalled === undefined, 'unknown side buttons must NOT dismiss');
+  // 武装后左键/右键/中键/滚轮/按键 → 都算对本页操作，不立即消失，启动 5s 宽限
   listeners.pointerdown[0]({ button: 0 });
-  assert(element.fadeOutCalled === undefined, 'interaction must start a grace window, not dismiss immediately');
-  const grace = sb.__timers.filter(t => t.ms === 5000);
-  assert(grace.length === 1, `grace timer (5000ms) must be scheduled after interaction, got ${grace.length}`);
+  assert(element.fadeOutCalled === undefined, 'left click must start a grace window, not dismiss immediately');
+  const grace1 = sb.__timers.filter(t => t.ms === 5000);
+  assert(grace1.length === 1, `grace timer (5000ms) must be scheduled after left click, got ${grace1.length}`);
   // 宽限期满 → 渐隐
-  grace[0].fn();
+  grace1[0].fn();
   assert(element.fadeOutCalled === true, 'grace expiry must run the fadeOut path');
+}
+
+function testRightMiddleWheelAlsoStartGrace() {
+  // 每种交互用独立模块实例：同 key 复用会走「顶掉」清理路径，interacted 状态彼此独立
+  const fire = (fireEvent) => {
+    const { sb, listeners, element } = loadToastModule();
+    sb.toast('错误', 1800, { type: 'error', key: 'refresh-status' });
+    const arm = sb.__timers.find(t => t.ms === 1000);
+    arm.fn();
+    fireEvent(listeners);
+    return { sb, element };
+  };
+  const graceCount = (sb) => sb.__timers.filter(t => t.ms === 5000).length;
+
+  const r1 = fire((ls) => ls.pointerdown[0]({ button: 2 }));
+  assert(graceCount(r1.sb) === 1, 'right click must start the grace window');
+
+  const r2 = fire((ls) => ls.pointerdown[0]({ button: 1 }));
+  assert(graceCount(r2.sb) === 1, 'middle click must start the grace window');
+
+  const r3 = fire((ls) => ls.wheel[0]({ deltaY: 100 }));
+  assert(graceCount(r3.sb) === 1, 'wheel scroll must start the grace window');
 }
 const testInteractionDismissesErrorToast = testInteractionStartsGraceNotImmediateDismiss;
 
@@ -182,6 +206,7 @@ function testExtensionSideSupportsErrorType() {
   const gm = fs.readFileSync(path.join(root, 'src/content/gm-compat.js'), 'utf8');
   assert(gm.includes("function showExtensionToast(text, duration = 1800, type = '')"), 'extension toast must accept the error type');
   assert(gm.includes('#e74c3c'), 'extension error toast must use the red border');
+  assert(gm.includes("type === 'error' || type === 'hold'"), 'extension toast must persist for both error and hold types');
   assert((gm.match(/addEventListener\('pointerdown', onPointer, true\)/g) || []).length === 1,
     'extension error toast must listen for pointer interaction');
   assert(gm.includes('setTimeout(dismiss, 30000)'), 'extension error toast must hold 30s without interaction');
@@ -218,7 +243,7 @@ function testMigratedErrorCallSites() {
   const samples = [
     "toast('回复已发送，但饼干刷新失败，请刷新页面', 0, { type: 'error' });",
     "toast('刷新失败，网络错误', 0, { type: 'error' });",
-    "toast('提交可能失败，请检查网络，或者刷新后重试', 0, { type: 'error' });",
+    "toast(SUBMIT_RESULT_UNKNOWN_MSG, 0, { type: 'error', key: 'send-unknown' });",
     "toast('本串默认饼干已失效，请重新选择', 0, { type: 'error' });",
   ];
   samples.forEach(s => assert(src.includes(s), `migrated call site missing: ${s.slice(0, 40)}…`));
@@ -241,6 +266,7 @@ const tests = [
   testErrorToastPersistsUntilInteraction,
   testNewerErrorToastReplacesOlderOne,
   testInteractionDismissesErrorToast,
+  testRightMiddleWheelAlsoStartGrace,
   testNonErrorReuseClearsRedBorder,
   testHoldSafetyCapExists,
   testExtensionSideSupportsErrorType,

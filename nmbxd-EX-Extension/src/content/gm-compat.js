@@ -92,7 +92,36 @@
     }
   }
 
+  // 大值判定：有界探测（最多 512 个节点 / 累计 256KB 字符串），避免为了判断大小先全量序列化。
+  // 预算耗尽即保守地按大值处理：大值只会跳过镜像/克隆/深比较，不会丢数据。
+  const LARGE_VALUE_BYTES = 256 * 1024;
+  const SIZE_PROBE_NODES = 512;
+  function isLargeValue(value) {
+    if (typeof value === 'string') return value.length > LARGE_VALUE_BYTES;
+    if (value == null || typeof value !== 'object') return false;
+    const stack = [value];
+    let nodes = 0;
+    let bytes = 0;
+    while (stack.length > 0) {
+      const node = stack.pop();
+      nodes += 1;
+      if (nodes > SIZE_PROBE_NODES) return true;
+      if (typeof node === 'string') {
+        bytes += node.length;
+        if (bytes > LARGE_VALUE_BYTES) return true;
+        continue;
+      }
+      if (node && typeof node === 'object') {
+        for (const key in node) stack.push(node[key]);
+      }
+    }
+    return bytes > LARGE_VALUE_BYTES;
+  }
+
   function valuesEqual(left, right) {
+    if (left === right) return true;
+    // 大值不深比较：两次 3–4MB stringify 的代价远高于直接按引用判断
+    if (isLargeValue(left) || isLargeValue(right)) return false;
     try {
       return JSON.stringify(left) === JSON.stringify(right);
     } catch (_) {
@@ -201,9 +230,16 @@
   function emitValueChange(key, oldValue, newValue, remote) {
     const callbacks = listeners.get(String(key));
     if (!callbacks) return;
+    // 大值按引用投递（与 QwQNT 宿主一致），避免每个监听者再克隆两份 MB 级对象
+    const large = isLargeValue(oldValue) || isLargeValue(newValue);
     callbacks.forEach((callback) => {
       try {
-        callback(String(key), cloneValue(oldValue), cloneValue(newValue), !!remote);
+        callback(
+          String(key),
+          large ? oldValue : cloneValue(oldValue),
+          large ? newValue : cloneValue(newValue),
+          !!remote
+        );
       } catch (err) {
         console.warn('[X岛-EX Extension] GM_addValueChangeListener callback failed', err);
       }
@@ -320,7 +356,8 @@
             if (!key.startsWith(storagePrefix)) return;
             const rawKey = key.slice(storagePrefix.length);
             const oldValue = memoryStore.get(rawKey);
-            const nextValue = cloneValue(value);
+            // 大值由 chrome.storage 返回，已是本上下文独占的新对象，直接持有可省一次 3–4MB 克隆
+            const nextValue = isLargeValue(value) ? value : cloneValue(value);
             memoryStore.set(rawKey, nextValue);
             // 回写 localStorage 镜像：theme-early.js（先于 gm-compat 执行）只能同步读镜像，
             // 不回写则它永远读不到 chrome.storage 里的深色开关 → 首帧无法注入
@@ -346,7 +383,13 @@
         const key = localStorage.key(i);
         if (!key || !key.startsWith(localStoragePrefix)) continue;
         const rawKey = key.slice(localStoragePrefix.length);
-        memoryStore.set(rawKey, JSON.parse(localStorage.getItem(key)));
+        const raw = localStorage.getItem(key);
+        // 旧版本可能把大历史镜像进 localStorage；按字符串长度直接丢弃，避免启动时解析 4MB
+        if (raw && raw.length > LARGE_VALUE_BYTES) {
+          try { localStorage.removeItem(key); } catch (_) {}
+          continue;
+        }
+        memoryStore.set(rawKey, JSON.parse(raw));
       }
     } catch (err) {
       console.warn('[X岛-EX Extension] localStorage preload failed', err);
@@ -354,6 +397,12 @@
   }
 
   function writeLocalStorageMirror(key, value, options) {
+    if (isLargeValue(value)) {
+      // 大值不写镜像：localStorage 配额会直接抛错，且 stringify 本身是同步大开销。
+      // 顺手清掉旧版本可能留下的镜像，避免下次启动解析 4MB。
+      try { localStorage.removeItem(localStoragePrefix + String(key)); } catch (_) {}
+      return;
+    }
     try {
       localStorage.setItem(localStoragePrefix + String(key), JSON.stringify(value));
       if (!options || options.publish !== false) publishLocalStorageSync(key, value, false);
@@ -397,6 +446,8 @@
   root.GM_setValue = function GM_setValue(key, value) {
     const normalizedKey = String(key);
     const oldValue = memoryStore.get(normalizedKey);
+    // 保留写入时的快照语义（调用方可能在落盘前继续修改历史 store）；
+    // 大值优化放在镜像、变更投递和等值比较，避免为了省一次克隆而引入别名竞态。
     const nextValue = cloneValue(value);
     memoryStore.set(normalizedKey, nextValue);
     writeLocalStorageMirror(normalizedKey, nextValue);
@@ -557,13 +608,17 @@
     toast.textContent = text;
     toast.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483647;background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:5px;font-size:14px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.25);';
     if (type === 'error') {
+      // ★ 扩展侧错误 toast：红框 + 醒目样式（与 userscript error 同语义）
       toast.style.border = '1px solid #e74c3c';
       toast.style.boxShadow = '0 0 0 1px rgba(231,76,60,.4), 0 2px 8px rgba(0,0,0,.25)';
       toast.style.fontWeight = 'bold';
+    } else if (type === 'hold') {
+      // ★ 长驻提示：与 error 相同的驻留语义，但不加红框
+      toast.style.fontWeight = 'bold';
     }
     document.documentElement.appendChild(toast);
-    if (type === 'error') {
-      // ★ 扩展侧错误 toast 与 userscript 同语义：
+    if (type === 'error' || type === 'hold') {
+      // ★ 扩展侧长驻 toast 与 userscript 同语义：
       // 无操作驻留 30s；挂载后 1s 武装期内忽略交互；操作后进入 5s 渐隐宽限
       let holdTimer = 0;
       let graceTimer = 0;
@@ -573,6 +628,7 @@
       const clearAll = () => {
         document.removeEventListener('pointerdown', onPointer, true);
         document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('wheel', onWheel, true);
         window.clearTimeout(holdTimer);
         window.clearTimeout(graceTimer);
         window.clearTimeout(armTimer);
@@ -581,12 +637,20 @@
       const startGrace = () => {
         document.removeEventListener('pointerdown', onPointer, true);
         document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('wheel', onWheel, true);
         window.clearTimeout(holdTimer);
         graceTimer = window.setTimeout(dismiss, 5000);
       };
       const onPointer = (e) => {
         if (!armed || interacted) return;
-        if (e && e.button !== 0) return; // 仅左键
+        // 左键(0)/中键(1)/右键(2)按下都算对本页操作；侧键等其余键值不计
+        if (e && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+        interacted = true;
+        startGrace();
+      };
+      const onWheel = () => {
+        // 滚轮滚动也算对本页操作（与 userscript 侧同语义）
+        if (!armed || interacted) return;
         interacted = true;
         startGrace();
       };
@@ -597,6 +661,7 @@
       };
       document.addEventListener('pointerdown', onPointer, true);
       document.addEventListener('keydown', onKey, true);
+      document.addEventListener('wheel', onWheel, true);
       armTimer = window.setTimeout(() => { armed = true; }, 1000);
       holdTimer = window.setTimeout(dismiss, 30000);
       return toast;

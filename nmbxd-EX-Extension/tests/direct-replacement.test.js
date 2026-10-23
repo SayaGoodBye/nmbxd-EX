@@ -390,7 +390,8 @@ function testBrowsingHistoryStorageContract() {
   assert(upstream.includes('installThreadHistoryReactivationTracking(true)') && upstream.includes('installThreadHistoryReactivationTracking(false)'), 'startup must avoid counting hidden restored pages until they become active and dwell long enough');
   assert(upstream.includes("notifyThreadHistoryStoreChanged('local-write', false)"), 'history writes must notify already-open panels in this page');
   assert(upstream.includes('function bindThreadHistoryLiveSync'), 'history panel must bind live synchronization listeners');
-  assert(upstream.includes('GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY'), 'history panel must listen to cross-page GM value changes');
+  assert(upstream.includes('bindHistoryValueChangeSync(THREAD_HISTORY_STORAGE_KEY, THREAD_HISTORY_REV_KEY'), 'history panel must listen to the small revision key for cross-page changes');
+  assert(!upstream.includes('GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY'), 'history panel must not subscribe to the multi-MB store key');
   assert(upstream.includes('window.addEventListener(THREAD_HISTORY_SYNC_EVENT'), 'history panel must listen to same-page history sync events');
   assert(upstream.includes('function isThreadHistoryPanelOpen'), 'history live sync must avoid re-rendering while the panel is closed');
   assert(upstream.includes('lastLiveSync'), 'history live sync must expose diagnostics for cross-page refreshes');
@@ -576,7 +577,8 @@ function testPostHistoryPanelContract() {
   assert(upstream.includes("postHistoryActiveType === 'reply' ? '暂无我的回复' : '暂无我的主题'"), 'posts module must render per-type empty states');
   assert(upstream.includes("if ($(e.currentTarget).data('spModule') === 'posts') renderPostHistoryModuleSoon();"), 'module switch click must render posts when data-sp-module="posts" is active');
   assert(upstream.includes('function renderPostHistoryModule') && upstream.includes('function bindPostHistoryModuleEvents'), 'posts module must define render and bind functions similar to history');
-  assert(upstream.includes('GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY'), 'posts panel must listen to GM value changes');
+  assert(upstream.includes('bindHistoryValueChangeSync(POST_HISTORY_STORAGE_KEY, POST_HISTORY_REV_KEY'), 'posts panel must listen to the small revision key for cross-page changes');
+  assert(!upstream.includes('GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY'), 'posts panel must not subscribe to the multi-MB store key');
   assert(upstream.includes('xdex-post-history-delete'), 'posts module must use a separate delete class');
   assert(!upstream.includes("deleteButton.className = 'xdex-history-delete';\n    deleteButton.dataset.postHistoryKey"), 'posts module must not reuse .xdex-history-delete for post records');
 }
@@ -657,6 +659,69 @@ function testHistoryAndPostCanonicalReplyLinksContract() {
   assert(postBindBody.includes("off('click.xdex-post-history-reply', '.xdex-post-history-reply-action')") && postBindBody.includes("window.open(url, '_blank', 'noopener')") && postBindBody.includes('window.location.href = url'), 'post-history [回应] must open a new tab by default and use current tab on Ctrl/Command click');
 }
 
+function testHistoryRevisionSyncBehavior() {
+  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const start = upstream.indexOf("  const THREAD_HISTORY_REV_KEY = 'xdex_thread_history_rev';");
+  const end = upstream.indexOf('  const POST_HISTORY_API_BASE', start);
+  assert(start !== -1 && end !== -1, 'history revision-key block must exist');
+  const block = upstream.slice(start, end);
+
+  function harness(seedRev) {
+    const store = new Map();
+    if (seedRev) store.set('xdex_post_history_rev', 'seed');
+    const listeners = new Map();
+    let idSeq = 0;
+    const callbackArgs = [];
+    const context = {
+      console,
+      GM_getValue(key, defaultValue) { return store.has(key) ? store.get(key) : defaultValue; },
+      GM_addValueChangeListener(key, callback) {
+        const id = ++idSeq;
+        listeners.set(id, { key, callback });
+        return id;
+      },
+      GM_removeValueChangeListener(id) { listeners.delete(id); }
+    };
+    context.globalThis = context;
+    vm.runInNewContext(`${block}\nthis.bind = bindHistoryValueChangeSync; this.nextHistoryRev = nextHistoryRev;`, context, { filename: 'history-rev.js' });
+    context.bind('xdex_post_history', 'xdex_post_history_rev', (remote) => {
+      callbackArgs.push(remote);
+    });
+    return { context, store, listeners, callbackArgs };
+  }
+
+  function fire(target, key, value, remote) {
+    const oldValue = target.store.get(key);
+    target.store.set(key, value);
+    Array.from(target.listeners.entries()).forEach(([id, listener]) => {
+      if (listener.key === key) listener.callback(key, oldValue, value, remote);
+    });
+  }
+
+  const migrated = harness(true);
+  const migratedBig = Array.from(migrated.listeners.values()).filter((listener) => listener.key === 'xdex_post_history');
+  const migratedRev = Array.from(migrated.listeners.values()).filter((listener) => listener.key === 'xdex_post_history_rev');
+  assert(migratedBig.length === 0, 'migrated history must not keep a full-store listener');
+  assert(migratedRev.length === 1, 'migrated history must subscribe to the revision key');
+  fire(migrated, 'xdex_post_history', { items: {} }, false);
+  fire(migrated, 'xdex_post_history_rev', 'r1', true);
+  assert(migrated.callbackArgs.length === 1 && migrated.callbackArgs[0] === true, 'revision changes must invoke the remote callback once');
+
+  const legacy = harness(false);
+  const legacyBigBefore = Array.from(legacy.listeners.values()).filter((listener) => listener.key === 'xdex_post_history');
+  assert(legacyBigBefore.length === 1, 'unmigrated history must install one temporary full-store bridge');
+  fire(legacy, 'xdex_post_history', { items: {} }, false);
+  fire(legacy, 'xdex_post_history_rev', 'r1', false);
+  const legacyBigAfter = Array.from(legacy.listeners.values()).filter((listener) => listener.key === 'xdex_post_history');
+  assert(legacyBigAfter.length === 0, 'temporary full-store bridge must be removed after the first revision change');
+  fire(legacy, 'xdex_post_history', { items: {} }, false);
+  assert(legacy.callbackArgs.length === 2, 'bridge + revision changes must invoke the callback exactly once each');
+
+  const revA = migrated.context.nextHistoryRev();
+  const revB = migrated.context.nextHistoryRev();
+  assert(revA !== revB, 'revision values must be unique within the same millisecond');
+}
+
 function testPostHistoryLiveSyncContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
   assert(upstream.includes('let postHistoryLiveRenderTimer = 0') && upstream.includes('let postHistoryLiveRenderPendingCount = 0') && upstream.includes('let postHistoryLiveRenderDirty = false'), 'post history live sync must keep its own render timer, pending counter, and dirty state');
@@ -678,8 +743,22 @@ function testPostHistoryLiveSyncContract() {
   assert(renderBody.includes('postHistoryLiveRenderDirty = false;'), 'direct posts renders must consume pending live-sync dirtiness');
   const bindStart = upstream.indexOf('function bindPostHistoryLiveSync()');
   const bindBody = upstream.slice(bindStart, upstream.indexOf('function buildPostHistoryUrl', bindStart));
-  assert(bindBody.includes('GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {') && bindBody.includes("schedulePostHistoryLiveRender('gm-value-change', remote);"), 'post history live sync must handle cross-page GM value changes');
+  assert(bindBody.includes('bindHistoryValueChangeSync(POST_HISTORY_STORAGE_KEY, POST_HISTORY_REV_KEY, (remote) => {') && bindBody.includes("schedulePostHistoryLiveRender('gm-value-change', remote);"), 'post history live sync must subscribe to the small revision key and handle cross-page changes');
+  assert(!bindBody.includes('GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY'), 'post history live sync must not subscribe to the multi-MB store key');
   assert(bindBody.includes('const detail = event && event.detail || {};') && bindBody.includes("schedulePostHistoryLiveRender(detail.source || 'window-event', !!detail.remote);"), 'post history live sync must handle same-page custom events through the scheduler');
+  assert(upstream.includes("const POST_HISTORY_REV_KEY = 'xdex_post_history_rev';") && upstream.includes("const THREAD_HISTORY_REV_KEY = 'xdex_thread_history_rev';"), 'history stores must define small revision keys for cross-tab notification');
+  assert(upstream.includes('function nextHistoryRev()') && upstream.includes('historyRevSeq = (historyRevSeq + 1) % 1000;'), 'history revision values must be unique even within one millisecond');
+  assert(upstream.includes('GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);\n    GM_setValue(THREAD_HISTORY_REV_KEY, nextHistoryRev());'), 'thread history must bump its revision key after every full write');
+  assert(upstream.includes('GM_setValue(POST_HISTORY_STORAGE_KEY, pending);\n      GM_setValue(POST_HISTORY_REV_KEY, nextHistoryRev());'), 'post history must bump its revision key after every full write');
+  const helperStart = upstream.indexOf('function bindHistoryValueChangeSync(bigKey, revKey, onChange)');
+  const helperBody = upstream.slice(helperStart, upstream.indexOf('const POST_HISTORY_API_BASE', helperStart));
+  assert(helperBody.includes('GM_addValueChangeListener(revKey,') && helperBody.includes('onChange(remote);'), 'history live sync must subscribe to the revision key');
+  assert(helperBody.includes('if (GM_getValue(revKey, null) == null)') && helperBody.includes('GM_addValueChangeListener(bigKey,'), 'legacy full-key listener must only exist while the revision key is missing');
+  assert(helperBody.includes('GM_removeValueChangeListener(id)'), 'legacy full-key listener must be removed after migration');
+  const threadBindStart = upstream.indexOf('function bindThreadHistoryLiveSync()');
+  const threadBindBody = upstream.slice(threadBindStart, upstream.indexOf('function createDefaultPostHistoryStore', threadBindStart));
+  assert(threadBindBody.includes('bindHistoryValueChangeSync(THREAD_HISTORY_STORAGE_KEY, THREAD_HISTORY_REV_KEY, (remote) => {'), 'thread history live sync must subscribe to its small revision key');
+  assert(!threadBindBody.includes('GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY'), 'thread history live sync must not subscribe to the multi-MB store key');
   const readyStart = upstream.indexOf('$(document).ready(() => {');
   const settingPanelInitIndex = upstream.indexOf('SettingPanel.init();', readyStart);
   const startupBindIndex = upstream.indexOf('bindPostHistoryLiveSync();', readyStart);
@@ -1122,6 +1201,25 @@ function testGmCompatLocalStorageSyncBridge() {
   assert(remoteChange.remote === true, 'remote sync envelope must be emitted as a remote change');
 }
 
+function testGmCompatLargeValueFastPath() {
+  const code = read('src/content/gm-compat.js');
+  const context = createGmCompatStorageContext();
+  vm.runInNewContext(code, context, { filename: 'gm-compat.js' });
+
+  const big = { items: {} };
+  for (let i = 0; i < 400; i += 1) big.items[`k${i}`] = 'x'.repeat(1024);
+  context.GM_setValue('xdex_post_history', big);
+
+  assert(!context.getLocalStorageValue('xdex-Extension-local:xdex_post_history'), 'large GM values must not be written to the localStorage mirror');
+  const readBack = context.GM_getValue('xdex_post_history', null);
+  assert(readBack && readBack.items && Object.keys(readBack.items).length === 400, 'large GM values must remain readable');
+  assert(readBack !== big, 'GM_getValue must clone large values so normalization cannot mutate the stored object');
+
+  context.GM_setValue('small_key', { a: 1 });
+  const smallMirror = JSON.parse(context.getLocalStorageValue('xdex-Extension-local:small_key'));
+  assert(smallMirror.a === 1, 'small values must still be mirrored');
+}
+
 async function testGmCompatSameOriginFetchFallback() {
   const code = read('src/content/gm-compat.js');
   const context = createGmCompatStorageContext();
@@ -1159,8 +1257,8 @@ function testGifCompressionDiagnosticsContract() {
   const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
   const compressStart = upstream.indexOf('async function compressGifToSize(file, options = {})');
   const compressEnd = upstream.indexOf('// ✅ APNG 压缩', compressStart);
-  const retryStart = upstream.indexOf('async function compressImageForRetry(file, actualFormat)');
-  const retryEnd = upstream.indexOf('async function doSubmit(fd, isRetry = false)', retryStart);
+  const retryStart = upstream.indexOf('async function compressImageForRetry(');
+  const retryEnd = upstream.indexOf('async function doSubmit(', retryStart);
   const compressionFlowEnd = upstream.indexOf('} catch (compressErr) {', retryEnd);
   const compressSource = upstream.slice(compressStart, compressEnd);
   const retrySource = upstream.slice(retryStart, retryEnd);
@@ -1610,6 +1708,7 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   testHistorySearchHelpContract();
   testPostHistoryAdvancedSearchContract();
   testHistoryAndPostCanonicalReplyLinksContract();
+  testHistoryRevisionSyncBehavior();
   testPostHistoryLiveSyncContract();
   testPostHistoryRefImageContract();
   testSeamlessAppendedHDImageContract();
@@ -1623,6 +1722,7 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   testRelativeTimeIdempotenceContract();
   testBrowsingHistoryPanelBodyContract();
   testGmCompatLocalStorageSyncBridge();
+  testGmCompatLargeValueFastPath();
   await testGmCompatSameOriginFetchFallback();
   testGifCompressionDiagnosticsContract();
   testUserscriptRuntimeLogHelper();
