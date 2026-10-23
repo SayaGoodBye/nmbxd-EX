@@ -18884,7 +18884,7 @@ ${markedSwatchHtml}
           const EXTRA_EMOTS = [
               "( ´_ゝ`)旦","(<ゝω・) ☆","(`ε´ (つ*⊂)","=͟͟͞͞( 'ヮ' 三 'ヮ' =͟͟͞͞)","↙(`ヮ´ )↗ 开摆！",
               "(っ˘Д˘)ノ<","(ﾉ#)`д´)σ","₍₍(ง`ᝫ´ )ว⁾","( `ᵂ´)","( *・ω・)✄╰ひ╯","U•ェ•*U","⊂( ﾟωﾟ)つ",
-              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
+              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ","ᕙ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
               "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)","(　^ω。)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
@@ -23418,6 +23418,41 @@ function 注册自动保存编辑() {
   const POST_HISTORY_THREAD_LIMIT = Infinity;
   const POST_HISTORY_REPLY_LIMIT = Infinity;
   const POST_HISTORY_SYNC_EVENT = 'xdex:post-history-changed';
+  // 大键只承载数据；跨标签同步只订阅几十字节的版本键。
+  // 否则每次全量写都会把整份历史（MB 级）投递给每个注册了大键监听的标签页。
+  const THREAD_HISTORY_REV_KEY = 'xdex_thread_history_rev';
+  const POST_HISTORY_REV_KEY = 'xdex_post_history_rev';
+  let historyRevSeq = 0;
+  function nextHistoryRev() {
+    // 同一毫秒内连续写入也必须得到不同值，否则存储层可能判定“未变化”而不发变更事件
+    historyRevSeq = (historyRevSeq + 1) % 1000;
+    return `${Date.now().toString(36)}-${historyRevSeq.toString(36)}`;
+  }
+  // 迁移桥：旧版本只写大键、不写版本键。仅当版本键尚不存在时临时监听大键，
+  // 等新版本写入一次版本键后立即移除，避免长期承担整值投递。
+  function bindHistoryValueChangeSync(bigKey, revKey, onChange) {
+    let legacyBridgeId = null;
+    const removeLegacyBridge = () => {
+      if (legacyBridgeId === null) return;
+      const id = legacyBridgeId;
+      legacyBridgeId = null;
+      try {
+        if (typeof GM_removeValueChangeListener === 'function') GM_removeValueChangeListener(id);
+      } catch (e) {}
+    };
+    if (typeof GM_addValueChangeListener !== 'function') return;
+    GM_addValueChangeListener(revKey, (_key, _oldValue, _newValue, remote) => {
+      removeLegacyBridge();
+      onChange(remote);
+    });
+    // 版本键存在说明已迁移完成，不再注册大键监听——这是消除“标签页数 × MB”的关键。
+    // 大键监听只作为旧标签页写数据的兼容桥，不能因一次旧写入就移除（否则会丢后续旧写入的实时同步）。
+    if (GM_getValue(revKey, null) == null) {
+      legacyBridgeId = GM_addValueChangeListener(bigKey, (_key, _oldValue, _newValue, remote) => {
+        onChange(remote);
+      });
+    }
+  }
   const POST_HISTORY_API_BASE = `${location.origin}/Api`;
   const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
   const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
@@ -23702,6 +23737,7 @@ function 注册自动保存编辑() {
   function setThreadHistoryStore(store) {
     const normalized = normalizeThreadHistoryStore(store);
     GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
+    GM_setValue(THREAD_HISTORY_REV_KEY, nextHistoryRev());
     threadHistoryStoreCache = normalized;
     notifyThreadHistoryStoreChanged('local-write', false);
     return normalized;
@@ -23758,7 +23794,7 @@ function 注册自动保存编辑() {
     threadHistoryLiveSyncBound = true;
     if (typeof GM_addValueChangeListener === 'function') {
       try {
-        GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+        bindHistoryValueChangeSync(THREAD_HISTORY_STORAGE_KEY, THREAD_HISTORY_REV_KEY, (remote) => {
           invalidateThreadHistoryStoreCache();
           scheduleThreadHistoryLiveRender('gm-value-change', remote);
           syncFavoriteThreadsLinks();
@@ -24125,6 +24161,7 @@ function 注册自动保存编辑() {
     postHistoryPersistPending = null;
     try {
       GM_setValue(POST_HISTORY_STORAGE_KEY, pending);
+      GM_setValue(POST_HISTORY_REV_KEY, nextHistoryRev());
     } catch (e) {
       console.warn('[postHistory] persist flush failed', e);
     }
@@ -24254,7 +24291,7 @@ function 注册自动保存编辑() {
     postHistoryLiveSyncBound = true;
     if (typeof GM_addValueChangeListener === 'function') {
       try {
-        GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+        bindHistoryValueChangeSync(POST_HISTORY_STORAGE_KEY, POST_HISTORY_REV_KEY, (remote) => {
           invalidatePostHistoryStoreCache();
           schedulePostHistoryLiveRender('gm-value-change', remote);
         });
