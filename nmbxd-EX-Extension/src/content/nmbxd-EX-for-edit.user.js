@@ -2081,6 +2081,15 @@ function xdexEarlyDarkEnabled() {
         });
         logThreadHistory('panel module switched', threadHistoryDebugState.lastPanelState);
         logThreadHistoryFlat('panel module switched flat', threadHistoryDebugState.lastPanelState);
+        // 进入浏览/发言历史 tab 时自动聚焦搜索框：
+        // 用户可直接键入搜索；焦点从搜索框出发，Tab 仍按序进入列表（键盘移动列表不受干扰）。
+        // focus({preventScroll:true}) 避免面板内容区被滚动到顶部。
+        if (nextModule === 'history' || nextModule === 'posts') {
+          const searchInput = document.getElementById(nextModule === 'history' ? 'sp_history_search' : 'sp_posts_search');
+          if (searchInput) {
+            try { searchInput.focus({ preventScroll: true }); } catch (e) { try { searchInput.focus(); } catch (_e) {} }
+          }
+        }
       }
       $('#sp_panel_tab_slot').off('click', '[data-sp-module]').on('click', '[data-sp-module]', (e) => {
         e.preventDefault();
