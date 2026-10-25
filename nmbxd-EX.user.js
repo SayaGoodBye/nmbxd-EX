@@ -18015,6 +18015,25 @@ ${markedSwatchHtml}
     }
     return n;
   }
+  // IME（拼音/日文等）组字期间不计算字数：
+  //   组字过程中浏览器会带着「拼音串」连续触发 input（如输入 nihao 时值为 "nihao"），
+  //   此时统计会出现数字乱跳、并可能误判超限标红；等 compositionend（候选词上屏）后再算一次。
+  //   兼容两种事件顺序（compositionend→input 或 input→compositionend）：组字中一律跳过，
+  //   上屏时统一补算，两种顺序下结果都正确。
+  function bindImeAwareCharCounter(el, update) {
+    if (!el || typeof update !== 'function') return;
+    if (el.__xdexImeCounterGuarded) el.removeEventListener('input', el.__xdexImeCounterGuarded);
+    if (el.__xdexImeCounterStart) el.removeEventListener('compositionstart', el.__xdexImeCounterStart);
+    if (el.__xdexImeCounterEnd) el.removeEventListener('compositionend', el.__xdexImeCounterEnd);
+    el.__xdexImeCounterStart = () => { el.__xdexImeComposing = true; };
+    el.__xdexImeCounterEnd = () => { el.__xdexImeComposing = false; update(); };
+    el.__xdexImeCounterGuarded = () => { if (el.__xdexImeComposing) return; update(); };
+    el.addEventListener('compositionstart', el.__xdexImeCounterStart);
+    el.addEventListener('compositionend', el.__xdexImeCounterEnd);
+    el.addEventListener('input', el.__xdexImeCounterGuarded);
+    el.__xdexImeComposing = false;
+    update();
+  }
   //回复表单UI调整
   function enhancePostFormLayout(formOpt) {
      // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点
@@ -18084,12 +18103,8 @@ ${markedSwatchHtml}
               else contentCounter.textContent = '字数:' + len;
               contentCounter.style.color = len > POST_FORM_CONTENT_SERVER_MAX_LENGTH ? '#e53935' : '#888';
             };
-            if (contentTextarea.__xdexPostContentCharCounter) {
-              contentTextarea.removeEventListener('input', contentTextarea.__xdexPostContentCharCounter);
-            }
-            contentTextarea.__xdexPostContentCharCounter = updateContentCounter;
-            contentTextarea.addEventListener('input', updateContentCounter);
-            updateContentCounter();
+            // 拼音组字期间不计数（见 bindImeAwareCharCounter）
+            bindImeAwareCharCounter(contentTextarea, updateContentCounter);
           }
           btnWrapper.appendChild(sendBtn);
           // 将按钮容器添加到“颜文字”行
@@ -18164,12 +18179,8 @@ ${markedSwatchHtml}
           // E-mail 到 100 已被 maxlength 拦住，保持灰色；标题/名称超 15 才标红
           counter.style.color = (!isEmailInput && len > maxLen) ? '#e53935' : '#888';
         };
-        if (input.__xdexPostFormCharCounter) {
-          input.removeEventListener('input', input.__xdexPostFormCharCounter);
-        }
-        input.__xdexPostFormCharCounter = updateCounter;
-        input.addEventListener('input', updateCounter);
-        updateCounter();
+        // 拼音组字期间不计数（见 bindImeAwareCharCounter）
+        bindImeAwareCharCounter(input, updateCounter);
       });
       // 已折叠过就不要再包一层（early open 与 ready 都会跑）
       // 若 toggle 丢失或 Utils.collapse 曾被 .qp-body 守卫挡掉，则补折叠；并清理重复按钮
