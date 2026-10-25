@@ -6257,6 +6257,121 @@ ${markedSwatchHtml}
       //showLoginPrompt(); // 这里触发
     }
     removeDateString();
+    // 饼干变化 → 冷却提示跟随切换（各饼干独立计时，切回仍显示剩余时间）
+    try { renderCookieCooldown(); } catch (e) {}
+  }
+
+  // ---- 饼干发送冷却（服务端 15s 限制）----
+  // 只有「服务器明确回执成功」才记录计时起点：失败提交不消耗冷却，因此不进入冷却态。
+  // 切换饼干后按各自的起点独立显示；15s 走完提示自动消失。
+  const COOKIE_SUBMIT_COOLDOWN_MS = 15000;
+  const COOKIE_COOLDOWN_STORE_KEY = 'xdex-cookie-cooldowns';
+  const COOKIE_COOLDOWN_TICK_MS = 500;
+  let cookieCooldownTimer = 0;
+  function getCookieCooldownStore() {
+    const store = GM_getValue(COOKIE_COOLDOWN_STORE_KEY, {});
+    return store && typeof store === 'object' ? store : {};
+  }
+  function setCookieCooldownAt(cookieId, atMs) {
+    const id = String(cookieId || '');
+    if (!id) return;
+    const store = getCookieCooldownStore();
+    if (Number(atMs) > 0) store[id] = Number(atMs);
+    else delete store[id];
+    // 顺手清理已过期的键，避免记录无限增长
+    const now = Date.now();
+    Object.keys(store).forEach((k) => {
+      if (!(now - Number(store[k]) < COOKIE_SUBMIT_COOLDOWN_MS)) delete store[k];
+    });
+    GM_setValue(COOKIE_COOLDOWN_STORE_KEY, store);
+  }
+  function getCookieCooldownRemainMs(cookie) {
+    const cur = cookie || getCurrentCookie();
+    if (!cur || !cur.id) return 0;
+    const at = Number(getCookieCooldownStore()[String(cur.id)] || 0);
+    if (!at) return 0;
+    const remain = at + COOKIE_SUBMIT_COOLDOWN_MS - Date.now();
+    return remain > 0 ? remain : 0;
+  }
+  // 提交成功：从此刻开始计时
+  function startCookieCooldown(cookieId) {
+    const id = String(cookieId || (getCurrentCookie() || {}).id || '');
+    if (!id) return;
+    setCookieCooldownAt(id, Date.now());
+    renderCookieCooldown();
+  }
+  // 服务端回执里带「冷却时间[N]s」→ 用它校准剩余（仅在本饼干已有成功计时记录时生效，
+  // 避免一次失败提交凭空造出冷却；这仍是「以服务器回复为准」的校准）
+  function syncCookieCooldownFromServer(msg) {
+    const m = String(msg == null ? '' : msg).match(/冷却时间\s*[[［]\s*(\d+)\s*[\]］]/);
+    if (!m) return false;
+    const cur = getCurrentCookie();
+    if (!cur || !cur.id) return false;
+    const store = getCookieCooldownStore();
+    if (!store[String(cur.id)]) return false;
+    const remainMs = Math.max(0, Number(m[1]) || 0) * 1000;
+    setCookieCooldownAt(cur.id, Date.now() + remainMs - COOKIE_SUBMIT_COOLDOWN_MS);
+    renderCookieCooldown();
+    return true;
+  }
+  function getCookieCooldownEl() {
+    return document.querySelector('.xdex-cookie-cooldown');
+  }
+  // 冷却提示固定在「字数」左侧，二者同属送出按钮容器（右对齐）
+  function ensureCookieCooldownEl() {
+    const counter = document.querySelector('.xdex-post-content-char-count');
+    if (!counter || !counter.parentNode) return null;
+    let el = counter.parentNode.querySelector('.xdex-cookie-cooldown');
+    if (!el) {
+      el = document.createElement('span');
+      el.className = 'xdex-cookie-cooldown';
+      // margin-right：与「字数」之间留出间距（容器本身有 gap:6px，这里再加一点更清晰）
+      el.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;display:none;margin-right:4px;';
+      counter.parentNode.insertBefore(el, counter);
+    }
+    return el;
+  }
+  function stopCookieCooldownTicker() {
+    if (!cookieCooldownTimer) return;
+    clearInterval(cookieCooldownTimer);
+    cookieCooldownTimer = 0;
+  }
+  function renderCookieCooldown() {
+    const el = ensureCookieCooldownEl();
+    if (!el) return;
+    const remain = getCookieCooldownRemainMs();
+    if (remain <= 0) {
+      el.style.display = 'none';
+      el.textContent = '';
+      stopCookieCooldownTicker();
+      return;
+    }
+    const seconds = Math.max(1, Math.ceil(remain / 1000));
+    el.style.display = '';
+    // 数字盒定宽 2ch + 内部「右对齐」：
+    //   · 个位数（8）贴住右侧 ] ，两位数（15）自然填满 → 数字本身不跳
+    //   · 盒子宽度不变 → 左侧「冷却时间[」与右侧「]s」「字数」都不移动
+    // vertical-align:-0.08em：15px 数字在基线上比 12px 灰字高约 1px（实测 delta -1px），
+    //   下压后两者字形中心对齐（残差 0.19px），视觉上居中而非偏上
+    el.innerHTML = '冷却时间[<span class="xdex-cookie-cooldown-num" '
+      + 'style="color:#e53935;font-size:15px;font-weight:700;line-height:1;'
+      + 'display:inline-block;min-width:2ch;text-align:right;vertical-align:-0.08em;'
+      + 'font-variant-numeric:tabular-nums;font-feature-settings:\'tnum\' 1;">'
+      + seconds + '</span>]s';
+    if (!cookieCooldownTimer) {
+      // 仅在存在冷却时走秒；冷却结束立即停表，不留常驻定时器
+      cookieCooldownTimer = setInterval(() => {
+        const box = getCookieCooldownEl();
+        if (!box) { stopCookieCooldownTicker(); return; }
+        if (getCookieCooldownRemainMs() <= 0) {
+          box.style.display = 'none';
+          box.textContent = '';
+          stopCookieCooldownTicker();
+          return;
+        }
+        renderCookieCooldown();
+      }, COOKIE_COOLDOWN_TICK_MS);
+    }
   }
   function updateDropdownUI(list){
     const $dd = $('#cookie-dropdown'); $dd.empty();
@@ -16971,6 +17086,8 @@ ${markedSwatchHtml}
           if (successMsg) {
             // 与触底/手动局部刷新一致：快速即时 toast，不走默认队列
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'), 900, { queue: false, key: 'send-status' });
+            // 服务器明确回执成功 → 本饼干进入 15s 冷却（失败不进入）
+            try { startCookieCooldown(); } catch (e) {}
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
             // 清空输入框、图片、草稿及身份字段，并广播成功事件
             clearSuccessfulSubmitForm();
@@ -17006,6 +17123,9 @@ ${markedSwatchHtml}
             runSuccessfulSubmitNavigation(confirmPromise);
           } else if (errorMsg) {
             const msg = errorMsg.textContent.trim() || '提交失败';
+            // 服务端回执里带「冷却时间[N]s」→ 按服务器给出的剩余秒数校准显示
+            // （仅在该饼干已有成功计时记录时生效，失败提交本身不创造冷却）
+            try { syncCookieCooldownFromServer(msg); } catch (e) {}
             const errorKind = classifySubmitError(msg);
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
             // 图片格式不被服务器接受（如 WebP）：转换为 PNG 后重新提交
@@ -17237,8 +17357,8 @@ ${markedSwatchHtml}
       // 防重复提交：__submitting 从点击发送保持到请求有确定结果（成功/失败/超时）。
       // 15s 看门狗只提示「结果未知」，不再解锁 —— 请求可能仍在飞行，解锁会让用户重复发送。
       // 真正的超时由 doSubmit 的 AbortController 负责（按上传体积放宽）。
-      const SUBMIT_LOCK_TIMEOUT_MS = 15000;
-      const SUBMIT_RESULT_UNKNOWN_MSG = '提交结果未知：请求超过 15 秒未返回。请刷新页面确认是否已发出，避免重复提交。';
+      const SUBMIT_LOCK_TIMEOUT_MS = 30000;
+      const SUBMIT_RESULT_UNKNOWN_MSG = '提交结果未知：请求超过 30 秒未返回。请刷新页面确认是否已发出，避免重复提交。';
       const SUBMIT_NETWORK_UNKNOWN_MSG = '网络异常，结果未知：请刷新页面确认是否已发出，避免重复提交。';
       const SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS = 180000;
       const SUBMIT_IMAGE_PROCESSING_TIMEOUT_MSG = '发送前处理超时（180 秒），本次未发送。请手动压缩/转换图片后重试。';
@@ -17931,12 +18051,28 @@ ${markedSwatchHtml}
             if (!contentCounter) {
               contentCounter = document.createElement('span');
               contentCounter.className = 'xdex-post-content-char-count';
-              contentCounter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+              // 「字数:」前缀固定不动，数字放进定宽盒子（4 位，对应上限 5000）左对齐：
+              //   · 字数 0 → 42 → 128 → 5000 时，前缀与左侧元素都不移动
+              //   · 若整块右对齐，位数增加时前缀会向左推，出现左右抖动
+              contentCounter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;'
+                + 'display:inline-flex;align-items:baseline;';
+              contentCounter.appendChild(document.createTextNode('字数:'));
+              const numSpan = document.createElement('span');
+              numSpan.className = 'xdex-post-content-char-count-num';
+              // 定宽 4ch（对应上限 5000）+ 内部「右对齐」：
+              //   · 数字贴住右侧（靠右贴边），前缀「字数:」与右侧「送出」都不移动
+              //   · 盒子宽度固定 → 0 → 42 → 5000 时布局完全静止
+              numSpan.style.cssText = 'display:inline-block;min-width:4ch;text-align:right;'
+                + 'font-variant-numeric:tabular-nums;font-feature-settings:\'tnum\' 1;';
+              contentCounter.appendChild(numSpan);
               btnWrapper.appendChild(contentCounter);
             }
             const updateContentCounter = () => {
               const len = countPostContentServerChars(contentTextarea.value);
-              contentCounter.textContent = '字数:' + len;
+              const numSpan = contentCounter.querySelector('.xdex-post-content-char-count-num');
+              // 只更新数字盒（前缀「字数:」不动，宽度由定宽盒锁定）
+              if (numSpan) numSpan.textContent = String(len);
+              else contentCounter.textContent = '字数:' + len;
               contentCounter.style.color = len > POST_FORM_CONTENT_SERVER_MAX_LENGTH ? '#e53935' : '#888';
             };
             if (contentTextarea.__xdexPostContentCharCounter) {
@@ -17949,6 +18085,8 @@ ${markedSwatchHtml}
           btnWrapper.appendChild(sendBtn);
           // 将按钮容器添加到“颜文字”行
           emoticonRow.appendChild(btnWrapper);
+          // 表单重建后冷却提示需重新挂到「字数」左侧（切饼干/刷新页面后仍显示剩余时间）
+          try { renderCookieCooldown(); } catch (e) {}
         }
       }
       // 2) 折叠「标题 / 名称(含管理员) / E-mail」为一个折叠面板，并固定顺序
@@ -18933,7 +19071,7 @@ ${markedSwatchHtml}
               "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ","ᕙ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)","(　^ω。)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
+              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)","(　^ω。)","/̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
