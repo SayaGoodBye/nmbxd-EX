@@ -11093,6 +11093,10 @@ ${markedSwatchHtml}
           document.querySelectorAll('.h-threads-img-box.h-active').forEach(imgBox => {
             handleImageLayout.handleActiveImageBox(imgBox, true);
           });
+          // ★ 补跑全量加宽（QwQNT 时序自愈）：初始 pass 可能因 innerWidth 未稳定
+          // （QQ↔nmbxd 切换、窗口还原时序）走到 targetWidth<=0 静默返回且不置锁，
+          // 该分支无任何兜底；resize 补跑借 __imageWidthExpanded 锁对已加宽者 O(1) 跳过
+          try { expandReplyMainWidths(document); } catch (e) {}
         };
         if (enableHDImageAndLayoutFix.__resizeFrameId) return;
         if (typeof requestAnimationFrame !== 'function') { run(); return; }
@@ -11100,6 +11104,10 @@ ${markedSwatchHtml}
       });
       enableHDImageAndLayoutFix.__resizeHandlerBound = true;
     }
+    // ★ 供驻留/可见性链路补跑加宽（QwQNT 时序自愈）：expandReplyMainWidths 是本函数内部实现，
+    //   外部（visibilitychange 监听器）无法直接访问，挂到函数属性上桥接；
+    //   document 级首次 pass 时执行到这里，此后外部即可通过可选链调用
+    if (root === document) enableHDImageAndLayoutFix.expandReplyMainWidths = expandReplyMainWidths;
     }, () => startupPerfDebug.summarizeRoot(root));
   }
   function handlePendingHDImageAndLayoutFix(root = document) {
@@ -26232,8 +26240,16 @@ function 注册自动保存编辑() {
     threadHistoryReactivationTrackingInstalled = true;
     threadHistoryVisibleSessionCounted = !!initialCounted && document.visibilityState === 'visible';
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') scheduleThreadHistoryReactivationVisit('visibilitychange');
-      else cancelThreadHistoryDwellTimer(true);
+      if (document.visibilityState === 'visible') {
+        scheduleThreadHistoryReactivationVisit('visibilitychange');
+        // ★ 补跑全量加宽（QwQNT 时序自愈）：初始 pass 可能命中 h-active 静默跳过 /
+        //   offsetWidth=0 RO 自愈 / targetWidth<=0 静默返回，这些分支失败时无锁无兜底；
+        //   QwQNT 宿主在标签切换时会派发正确的 visibilitychange，此处即自愈触发器。
+        //   __imageWidthExpanded 锁保证已加宽者 O(1) 跳过；函数未初始化时可选链静默跳过
+        try { enableHDImageAndLayoutFix.expandReplyMainWidths?.(document); } catch (e) {}
+      } else {
+        cancelThreadHistoryDwellTimer(true);
+      }
     }, { passive: true });
     window.addEventListener('focus', () => scheduleThreadHistoryReactivationVisit('focus'), { passive: true });
     window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
