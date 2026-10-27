@@ -82,6 +82,10 @@ jobs:
 
           cp forum-fid-map.json dist/forum-fid-map.json
 
+          # 后台导出脚本与桥接脚本（配合主脚本在 ScriptCat 中使用）
+          cp nmbxd-EX_export.user.js dist/nmbxd-EX_export.user.js
+          cp nmbxd-EX_export-bridge.user.js dist/nmbxd-EX_export-bridge.user.js
+
       - name: Sync extension metadata
         shell: bash
         working-directory: dist/nmbxd-EX-Extension
@@ -134,6 +138,8 @@ jobs:
         shell: bash
         run: |
           node --check dist/nmbxd-EX.user.js
+          node --check dist/nmbxd-EX_export.user.js
+          node --check dist/nmbxd-EX_export-bridge.user.js
           node --check dist/nmbxd-EX-Extension/src/content/nmbxd-EX-for-edit.user.js
           node --check dist/nmbxd-EX-Extension/src/content/gm-compat.js
           node --check dist/nmbxd-EX-Extension/scripts/sync-userscript-meta.js
@@ -166,3 +172,5 @@ jobs:
             dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js
             dist/nmbxd-EX-Extension-v${{ steps.version.outputs.version }}.zip
             dist/nmbxd-EX-Extension.zip
+            dist/nmbxd-EX_export.user.js
+            dist/nmbxd-EX_export-bridge.user.js
