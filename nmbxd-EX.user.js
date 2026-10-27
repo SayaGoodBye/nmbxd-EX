@@ -5334,6 +5334,68 @@ ${markedSwatchHtml}
     addFilterId(ids, href);
     return ids;
   }
+  // ---- 临时解除屏蔽（不修改设置）----
+  // 触发方式：链接带 ?xdex_unblock=1，或本会话内 sessionStorage 有该串的豁免标记。
+  // 只豁免「串号等于当前页串号」的关键词（正文子串 + ID 匹配两条路径），
+  // 其它关键词与正则组不豁免；只看饼干白名单逻辑不受影响。
+  // sessionStorage 标记由屏蔽占位条上的「临时显示」按钮写入（见 decorateFilterPlaceholder 附近），
+  // 关闭浏览器自动失效。
+  function getUnblockExemptThreadId() {
+    let parsed = null;
+    try { parsed = parseThreadHistoryUrl(location.href); } catch (e) { parsed = null; }
+    if (!parsed) return null;
+    let viaUrl = false;
+    try { viaUrl = new URL(location.href).searchParams.has('xdex_unblock'); } catch (e) { viaUrl = false; }
+    let viaSession = false;
+    try { viaSession = !!(sessionStorage.getItem('xdex_unblock:' + parsed.threadId)); } catch (e) { viaSession = false; }
+    return (viaUrl || viaSession) ? parsed.threadId : null;
+  }
+  // 判断某串号是否被「串号关键词」屏蔽（临时显示提示条的显示条件）
+  function isThreadIdBlockedByKeyword(threadId, blockedKeywords) {
+    if (!threadId) return false;
+    const normalized = normalizeBlockedKeywordGroups(blockedKeywords);
+    return flattenBlockedKeywords(normalized).some((keyword) => (
+      isThreadIdKeyword(keyword) && String(keyword || '').trim() === String(threadId)
+    ));
+  }
+  // 屏蔽提示条：仅当当前页串号被串号关键词屏蔽且未豁免时显示。
+  // 「临时显示」写 sessionStorage 后刷新（本会话内生效，关浏览器失效）；
+  // 「×」仅收起本次提示（sessionStorage 记忆，不改变屏蔽行为）。
+  function maybeShowUnblockBanner(threadId, cfg) {
+    if (!threadId) return;
+    if (getUnblockExemptThreadId()) return;
+    let dismissed = false;
+    try { dismissed = sessionStorage.getItem('xdex_unblock_dismissed:' + threadId) === '1'; } catch (e) { dismissed = false; }
+    if (dismissed) return;
+    if (!isThreadIdBlockedByKeyword(threadId, (cfg && cfg.blockedKeywords) || [])) return;
+    if (document.getElementById('xdex-unblock-banner')) return;
+    const bar = document.createElement('div');
+    bar.id = 'xdex-unblock-banner';
+    bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:99998;'
+      + 'background:#333;color:#ddd;padding:8px 14px;border-radius:6px;font-size:14px;'
+      + 'box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;gap:10px;align-items:center;';
+    const label = document.createElement('span');
+    label.textContent = '本串已被关键词屏蔽';
+    const showBtn = document.createElement('button');
+    showBtn.textContent = '临时显示';
+    showBtn.style.cssText = 'background:#00FFCC;color:#00332b;border:0;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:14px;font-weight:600;';
+    showBtn.onclick = () => {
+      try { sessionStorage.setItem('xdex_unblock:' + threadId, '1'); } catch (e) {}
+      location.reload();
+    };
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.title = '本次不显示（屏蔽仍生效）';
+    closeBtn.style.cssText = 'background:transparent;color:#888;border:0;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;';
+    closeBtn.onclick = () => {
+      try { sessionStorage.setItem('xdex_unblock_dismissed:' + threadId, '1'); } catch (e) {}
+      bar.remove();
+    };
+    bar.appendChild(label);
+    bar.appendChild(showBtn);
+    bar.appendChild(closeBtn);
+    (document.body || document.documentElement).appendChild(bar);
+  }
   function findBlockedKeywordHit(text, groups, $el) {
     const normalizedGroups = normalizeBlockedKeywordGroups(groups);
     const body = String(text || '');
@@ -5345,7 +5407,11 @@ ${markedSwatchHtml}
       if (re.test(body)) return group.value;
     }
     // 2) 普通组：逗号切分后正文子串 + 7/8/9 位数字 ID 匹配
-    const keywords = flattenBlockedKeywords(normalizedGroups);
+    // 临时豁免：当前页串号被「串号关键词」屏蔽且用户通过 ?xdex_unblock=1 / 会话标记打开时，
+    // 该关键词从列表剔除（正文子串与 ID 两条路径同时失效），其余关键词照常生效
+    const exemptThreadId = getUnblockExemptThreadId();
+    const keywords = flattenBlockedKeywords(normalizedGroups)
+      .filter((keyword) => !(exemptThreadId && isThreadIdKeyword(keyword) && String(keyword || '').trim() === exemptThreadId));
     const textHit = Utils.firstHit(body, keywords);
     if (textHit) return textHit;
     const ids = getFilterIdsForElement($el);
@@ -5564,6 +5630,11 @@ ${markedSwatchHtml}
         });
       }
     }
+    // 串号关键词屏蔽当前页时给「临时显示」入口（不改设置；详见 getUnblockExemptThreadId 注释）
+    try {
+      const currentThread = parseThreadHistoryUrl(location.href);
+      if (currentThread && !getUnblockExemptThreadId()) maybeShowUnblockBanner(currentThread.threadId, cfg);
+    } catch (e) {}
     } finally { applyFilters._running = false; }
     }, () => startupPerfDebug.summarizeRoot(root || document));
   }
