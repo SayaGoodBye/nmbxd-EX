@@ -286,8 +286,14 @@ function loadCore() {
   assert(offscreen.includes('URL.createObjectURL'), 'offscreen must use createObjectURL');
   // 文件名保真：blob URL 与 downloads.download 必须同上下文（offscreen 内）
   assert(offscreen.includes("message.type === 'xdex:export-save'"), 'offscreen must handle export save');
-  assert(offscreen.includes('a.download = filename'), 'offscreen must use anchor download (immune to onDeterminingFilename)');
-  assert(!offscreen.includes('chrome.downloads.download'), 'offscreen must NOT use downloads API (filename would be overridden)');
+  assert(offscreen.includes('a.download = filename'), 'offscreen must use anchor download for flat filenames (immune to onDeterminingFilename)');
+  // offscreen 上下文无 downloads 权限（实测 chrome.downloads 为 undefined）：
+  // 子目录文件名由 SW 调 downloads API，offscreen 收到子目录名必须拒绝
+  assert(!offscreen.includes('chrome.downloads'), 'offscreen must NOT touch downloads API (unavailable in offscreen context)');
+  assert(offscreen.includes("SUBDIR_NOT_SUPPORTED"), 'offscreen must reject subdir filenames (routed to SW)');
+  const tasksSrc = read('src/background/thread-export-tasks.js');
+  assert((tasksSrc.match(/chrome\.downloads\.download\(/g) || []).length === 1, 'SW must be the only caller of downloads.download');
+  assert(tasksSrc.includes("conflictAction: 'uniquify'"), 'subdir downloads must uniquify conflicts');
 
   assert(exportHtml.includes('id="export-tid"') && exportHtml.includes('id="export-submit"'), 'manager page must expose submit form');
   assert(exportHtml.includes('id="running-list"') && exportHtml.includes('id="history-list"'), 'manager page must expose running/history lists');

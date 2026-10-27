@@ -10,8 +10,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const bytes = base64ToBytes(message.base64 || '');
       const blob = new Blob([bytes], { type: message.contentType || 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
-      // 锚点 download 不支持子目录，斜杠会被浏览器改写，故使用扁平文件名
-      const filename = String(message.filename || 'export.txt').replace(/[\\/]/g, '_');
+      const rawName = String(message.filename || 'export.txt');
+      // 含子目录的文件名交由 SW 下载（offscreen 上下文无该权限）；
+      // offscreen 只负责扁平文件名的锚点下载
+      if (/[\\/]/.test(rawName)) {
+        sendResponse({ ok: false, error: 'SUBDIR_NOT_SUPPORTED' });
+        return true;
+      }
+      const filename = rawName.replace(/[\\/]/g, '_');
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;

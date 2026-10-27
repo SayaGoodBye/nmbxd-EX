@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.resolve(__dirname, '..', '..');
 const scriptPath = path.join(root, 'nmbxd-EX-for-edit.user.js');
@@ -40,16 +41,22 @@ function testPasteImageCanPopulateInputAndNotifyPreview() {
 // 实现上抽出了 getLivePreviewBox()，它用 document.querySelector 实时定位。
 function testUpdatePreviewQueriesLivePreviewBox() {
   assert(
-    /function updatePreviewFromFile/.test(script),
-    'updatePreviewFromFile must exist'
+    /function updatePreviewImageFromFile\(/.test(script),
+    'updatePreviewImageFromFile must exist as the single preview-update entry point'
   );
   assert(
     /function getLivePreviewBox\(\)\s*\{[^}]*document\.querySelector\([^)]*\.h-preview-box/.test(script),
     'a getLivePreviewBox() helper must resolve the live preview box via document.querySelector at call time'
   );
+  // 清除按钮此前调用的是 initPreviewBox 内的局部 updatePreviewFromFile，
+  // 跨作用域不可达 → 恒走兜底分支，HEIC 去重状态从未复位。
   assert(
-    /updatePreviewFromFile[\s\S]*updatePreviewImageFromFile/.test(script),
-    'updatePreviewFromFile must delegate to the live-querying updatePreviewImageFromFile helper (no captured closure node)'
+    /xdex-clear-image-btn[\s\S]{0,600}updatePreviewImageFromFile\(null\)/.test(script),
+    'clear-image button must call the global updatePreviewImageFromFile(null) so preview state (incl. HEIC tip dedupe) resets'
+  );
+  assert(
+    !/typeof updatePreviewFromFile === 'function'/.test(script),
+    'clear-image button must not test for the removed inner-scope updatePreviewFromFile wrapper'
   );
   // 关键修复：粘贴监听必须是不依赖 enhanceIsland 初始化的全局幂等绑定，
   // 否则早期打开 REPLY 浮窗时粘贴图片根本不会被脚本捕获。
@@ -171,6 +178,38 @@ function testEarlyReplyOpenInjectsStyleBeforeShow() {
       || /attributeFilter:\s*\['data-darkreader-mode', 'data-darkreader-scheme', 'class'\]/.test(script),
     'new darkreader observer must only watch data-darkreader-mode/scheme/class on documentElement'
   );
+}
+
+function testHeifPreviewTipDedupeAndReset() {
+  // 回归：清空附件后重新附带同一个 HEIC，必须再次提示。
+  const start = script.indexOf('function looksLikeHeifFile(file) {');
+  const end = script.indexOf('// === 全局：把图片文件渲染到当前活跃预览框 ===', start);
+  assert(start !== -1 && end !== -1, 'HEIC preview-tip block must exist');
+  const block = script.slice(start, end);
+  const toasts = [];
+  const ctx = { console, Date, toast: (msg) => toasts.push(msg) };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  vm.runInNewContext(
+    block + '\nthis.maybe = maybeToastHeifPreviewUnsupported; this.reset = resetHeifPreviewTipState; this.notify = notifyHeifPreviewUnsupportedIfNeeded;',
+    ctx,
+    { filename: 'heic-tip.js' }
+  );
+  const mk = (name, size, lm) => ({ name, size, lastModified: lm, type: 'image/heic' });
+
+  ctx.maybe(mk('a.heic', 1000, 111));
+  assert(toasts.length === 1, 'first HEIC attachment must warn');
+  ctx.maybe(mk('a.heic', 1000, 111));
+  assert(toasts.length === 1, 'same-instance repeated calls (paste→change) must not re-warn');
+  ctx.maybe(mk('a.heic', 1000, 111));
+  assert(toasts.length === 1, 'same-key new instance within the short window must not re-warn');
+
+  ctx.reset();
+  ctx.maybe(mk('a.heic', 1000, 111));
+  assert(toasts.length === 2, 'after clearing the attachment, re-attaching the same HEIC must warn again');
+
+  ctx.maybe(mk('b.heic', 2000, 222));
+  assert(toasts.length === 3, 'attaching a different HEIC must warn');
 }
 
 testPreviewFileChangeBindingSyncsExistingFile();
