@@ -1,6 +1,51 @@
 'use strict';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // 导出文件落盘：用 <a download> 触发（不走 downloads API）。
+  // 原因：只要档案中任一扩展注册了 downloads.onDeterminingFilename，
+  // downloads API 的 filename 参数就会被忽略，blob: URL 会退化成 UUID 文件名。
+  // 锚点下载完全绕开该机制，文件名始终由 download 属性决定（同 Tampermonkey「Native」模式）。
+  if (message && message.type === 'xdex:export-save') {
+    try {
+      const bytes = base64ToBytes(message.base64 || '');
+      const blob = new Blob([bytes], { type: message.contentType || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const rawName = String(message.filename || 'export.txt');
+      // 含子目录的文件名交由 SW 下载（offscreen 上下文无该权限）；
+      // offscreen 只负责扁平文件名的锚点下载
+      if (/[\\/]/.test(rawName)) {
+        sendResponse({ ok: false, error: 'SUBDIR_NOT_SUPPORTED' });
+        return true;
+      }
+      const filename = rawName.replace(/[\\/]/g, '_');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try { a.remove(); URL.revokeObjectURL(url); } catch (_e) {}
+      }, 60000);
+      sendResponse({ ok: true, filename });
+    } catch (err) {
+      sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  if (message && message.type === 'xdex:export-blob-url') {
+    try {
+      const bytes = base64ToBytes(message.base64 || '');
+      const blob = new Blob([bytes], { type: message.contentType || 'application/octet-stream' });
+      sendResponse({ ok: true, url: URL.createObjectURL(blob) });
+    } catch (err) {
+      sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+    }
+    return true;
+  }
+
   if (!message || (message.type !== 'xdex:copy-image' && message.type !== 'xdex:copy-animated-image' && message.type !== 'xdex:copy-text')) {
     return false;
   }

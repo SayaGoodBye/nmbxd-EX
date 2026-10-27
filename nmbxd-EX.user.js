@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      4.2.0
+// @version      4.3.0
 // @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
@@ -37,7 +37,7 @@
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
 // @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png
 // @license      WTFPL
-// @changelog    ### 新增\n\n - “管理”中新增“测试”版块。\n\n ### 优化\n\n - 切换饼干后焦点立刻回到输入框，避免输入被打断。\n - 报错内容的toast显示样式更醒目，显示时间更长。\n - 允许关闭“浏览历史/发言历史”设置，关闭时不会清空删除已存在的数据。\n - 包含分组的设置项支持拖拽排序。\n - 打开包含r=的链接时直接跳转到r=回复所在的位置。\n\n ### 修复\n\n - 修复深色模式下拓展引用浮窗中链接颜色不正确的问题。\n - 修复在版块页快捷回复时，点击“连续/临时”按钮进行切换时时可能关闭回复浮窗的问题。\n - 修复设置面板中“我的订阅”模块中缺失“添加订阅号”按钮的问题。\n - 修复WebDAV在向远端同步时由于发生错误导致以当前浏览量作为增量累加的问题。\n - 修复回收站中手动恢复的条目仍显示在回收站中的问题；修复被恢复的条目在浏览历史中依旧显示回收站图标的问题。\n - 修复串内页草稿无法删除以及在版块页错误保存草稿的问题。
+// @changelog    ### 新增\n\n- 新增导出功能，支持将串导出为Markdown/TXT文件\n- 新增饼干计时器，发送回复后提示当前饼干冷却时间\n- 新增被屏蔽串内的临时显示功能\n\n### 优化\n\n- 发送消息前对图像大小/格式进行预检，提前将图像压缩大小至2048KB以内或转化为合法格式之后再提交\n- 打开浏览历史/发言历史面板时自动聚焦搜索\n- 性能优化，减少在写入发言历史/发送消息后局部刷新的场景中发生的卡顿\n- 正文/标题/名称/E-mai拼音组词过程中不计算字数\n\n### 修复\n\n- 修复在弹出二次确认饼干时弹出“可能提交失败”toast提示的问题\n- 修复在部分场景下没有拓宽带图消息的问题\n
 // @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505
 // @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)
 // @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)
@@ -280,15 +280,15 @@ function xdexEarlyDarkEnabled() {
     return generation === refreshStatusGeneration;
   }
   function showRefreshStatus(msg, duration = 900, type = '') {
-    // type='error'：红框 + 无操作 30s 驻留 / 操作后 5s 渐隐（与全局 error 语义一致）；
+    // type='error'：红框 + 驻留；type='hold'：无红框 + 驻留（如「无更新」需留观但非错误）；
     // 复用 refresh-status 节点，后续任何刷新状态提示（正在刷新/已更新）会自动顶掉它
     return toast(msg, duration, { queue: false, key: 'refresh-status', type });
   }
 
   function toast(msg, duration = 1800, options = {}) {
-    if (options.type === 'error') {
-      // ★ 错误提示强制走立即通道（不排队），红框 + 驻留到下次用户交互（见 showImmediateToast）
-      showImmediateToast(msg, duration, options.key, 'error');
+    if (options.type === 'error' || options.type === 'hold') {
+      // ★ 错误/长驻提示强制走立即通道（不排队）：error 红框驻留，hold 无红框驻留（见 showImmediateToast）
+      showImmediateToast(msg, duration, options.key, options.type);
       return;
     }
     if (options.queue === false) {
@@ -307,12 +307,14 @@ function xdexEarlyDarkEnabled() {
     const { msg, duration } = toastQueue.shift();
     console.log('[toast]', msg);
     // ✅ 每次创建一个新的 toast 节点
+    // 多行支持：white-space:pre-wrap 保留 \n 与缩进（同时仍自动换行长行）；
+    // 文本一律走 .text() 转义，避免消息里的 < > 被当成 HTML（此前是裸插值，且全仓无调用方传 HTML）
     const $t = $(`<div class="ae-toast" style="
       position:fixed;top:10px;left:50%;transform:translateX(-50%);
       background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
-      border-radius:5px;z-index:10099;display:none;font-size:14px;">
-      ${msg}
-    </div>`);
+      border-radius:5px;z-index:10099;display:none;font-size:14px;
+      white-space:pre-wrap;max-width:min(92vw,600px);text-align:left;line-height:1.45;
+      word-break:break-word;overflow-wrap:anywhere;"></div>`).text(msg);
     $('body').append($t);
     $t.fadeIn(240).delay(duration).fadeOut(240, () => {
       $t.remove();     // ✅ 动画结束后删除节点
@@ -327,7 +329,9 @@ function xdexEarlyDarkEnabled() {
       $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
         position:fixed;top:10px;left:50%;transform:translateX(-50%);
         background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;
-        border-radius:5px;z-index:10099;display:none;font-size:14px;"></div>`);
+        border-radius:5px;z-index:10099;display:none;font-size:14px;
+        white-space:pre-wrap;max-width:min(92vw,600px);text-align:left;line-height:1.45;
+        word-break:break-word;overflow-wrap:anywhere;"></div>`);
       $('body').append($t);
     }
     if (safeKey === 'refresh-status') {
@@ -337,15 +341,20 @@ function xdexEarlyDarkEnabled() {
         fontWeight: 'bold',
       });
     }
+    const el = $t[0];
     if (type === 'error') {
-      // ★ 错误提示：红框 + 醒目样式；不自动消失，驻留到下次用户交互（点击/键盘/焦点切换），30s 保险上限
+      // ★ 错误提示：红框 + 不自动消失，驻留到下次用户交互（点击/键盘/焦点切换），30s 保险上限
       $t.css({
         border: '1px solid #e74c3c',
         boxShadow: '0 0 0 1px rgba(231,76,60,.4), 0 4px 16px rgba(0,0,0,.55)',
         fontWeight: 'bold',
       });
+      el.__xdexToastError = true;
+    } else if (type === 'hold') {
+      // ★ 长驻提示：与 error 相同的驻留语义（无操作 30s / 操作后 5s 渐隐 / 同 key 顶掉 / 1s 武装期），
+      // 但不加红框——用于「无更新」这类需要留观、又不应表现成错误的场景
+      el.__xdexToastError = true;
     }
-    const el = $t[0];
     // ★ 复用节点时先清理上一代的驻留监听/计时器：
     // 「错误 toast 可被下一条同为 error 的 toast 顶掉」由此实现——顶掉一刻起旧监听即刻失效，
     // 若等到下次交互才清理会造成 document 捕获相监听器 + 30s 计时器永久泄漏
@@ -356,8 +365,8 @@ function xdexEarlyDarkEnabled() {
       }
       el.__xdexToastDismissCleanup = null;
     }
-    // 上一轮是错误、本轮不是 → 清除遗留的红框样式（refresh-status 专属样式见上方重新设置，无冲突）
-    if (el.__xdexToastError && type !== 'error') {
+    // 上一轮是错误、本轮不是 error/hold → 清除遗留的红框/加粗样式（refresh-status 专属样式见上方重新设置，无冲突）
+    if (el.__xdexToastError && type !== 'error' && type !== 'hold') {
       $t.css({ border: '', boxShadow: '', fontWeight: '' });
       if (safeKey === 'refresh-status') {
         $t.css({
@@ -367,14 +376,14 @@ function xdexEarlyDarkEnabled() {
         });
       }
     }
-    el.__xdexToastError = (type === 'error');
+    el.__xdexToastError = (type === 'error' || type === 'hold');
     const seq = (Number(el.__xdexImmediateToastSeq) || 0) + 1;
     el.__xdexImmediateToastSeq = seq;
     $t.stop(true, false).text(msg).show();
     // 淡出被 stop(true,false) 打断时 style.opacity 会冻结在中间值，而 jQuery 的 .show() 不恢复不透明度，
     // 导致「上一条正在淡出时下发的新消息」整段偏淡甚至近乎不可见 → 显式复位
     $t.css('opacity', 1);
-    if (type === 'error') {
+    if (type === 'error' || type === 'hold') {
       dismissOnNextInteraction($t, el, seq);
       return $t;
     }
@@ -388,6 +397,8 @@ function xdexEarlyDarkEnabled() {
   // 无操作驻留 30 秒（比普通 toast 的 1.8s 长得多，核心目的：提醒窗口拉长，避免一闪而过）；
   // 用户发生键鼠操作后，进入 5 秒渐隐宽限（给足看清内容的时间，不是瞬间消失）；
   // 挂载后 1 秒武装期内忽略交互（提交后的连续击键/点击不误关）；同 key 新 error 顶掉旧 error。
+  // ★ 算「操作」的动作：左键/中键/右键按下、滚轮滚动、任意按键——均为对页面本身的操作；
+  // 单纯移动鼠标、窗口切换、输入法切换不算（不监听 pointermove/focusin）。
   const ERROR_TOAST_MAX_HOLD_MS = 30000;            // 无操作驻留上限
   const ERROR_TOAST_FADE_AFTER_INTERACT_MS = 5000;  // 操作后的渐隐宽限
   // ★ 挂载后 1 秒内的 pointerdown/keydown 不关闭 toast：
@@ -408,11 +419,12 @@ function xdexEarlyDarkEnabled() {
     let armed = false;
     let armTimer = 0;
     let interacted = false;
-    let pointerH, keyH; // 保存「已挂载」的包裹引用，移除时才能精确匹配
+    let pointerH, keyH, wheelH; // 保存「已挂载」的包裹引用，移除时才能精确匹配
     const clearListeners = () => {
       if (pointerH) document.removeEventListener('pointerdown', pointerH, true);
       if (keyH) document.removeEventListener('keydown', keyH, true);
-      pointerH = keyH = null;
+      if (wheelH) document.removeEventListener('wheel', wheelH, true);
+      pointerH = keyH = wheelH = null;
     };
     const cleanup = () => {
       clearListeners();
@@ -438,13 +450,22 @@ function xdexEarlyDarkEnabled() {
       fn();
     };
     const onPointer = (e) => {
-      // ★ 只认「左键点击本页内容」：右键/中键（菜单、滚轮按下）、滚动条拖动都不算。
-      // 实测反馈：单纯移动鼠标（拖滚动条浏览）不应关闭提示。
-      if (e.button !== 0) return;
+      // ★ 左键点击、中键按下（button===1，多为自动滚动/关闭标签页习惯动作）、右键按下（button===2，唤出菜单）
+      // 都算「对本页操作」；其余键值（如浏览器前进/后退侧键）不计。
+      if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
       if (interacted) return;
       interacted = true;
       startFadeGrace();
-      console.log(`[xdex error toast] 检测到鼠标左键点击 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (target=${e.target && e.target.tagName || '?'}, isTrusted=${e.isTrusted})`);
+      const buttonName = e.button === 0 ? '左键' : e.button === 1 ? '中键' : '右键';
+      console.log(`[xdex error toast] 检测到鼠标${buttonName}操作 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (target=${e.target && e.target.tagName || '?'}, isTrusted=${e.isTrusted})`);
+    };
+    const onWheel = (e) => {
+      // ★ 滚轮滚动也算「对本页操作」：阅读长串时最常用的就是滚动，不应要求必须左键点击。
+      // 只在 NMBXD 页面内容上滚动才算（滚轮事件默认绑定在 document，不覆盖 DevTools 等外部区域）。
+      if (interacted) return;
+      interacted = true;
+      startFadeGrace();
+      console.log(`[xdex error toast] 检测到滚轮滚动 → ${ERROR_TOAST_FADE_AFTER_INTERACT_MS / 1000} 秒后渐隐 (deltaY=${e.deltaY}, isTrusted=${e.isTrusted})`);
     };
     const onKey = (e) => {
       if (interacted) return;
@@ -457,16 +478,22 @@ function xdexEarlyDarkEnabled() {
       if (el.__xdexImmediateToastSeq !== seq) return;
       onPointer(e);
     };
+    wheelH = (e) => {
+      if (!armed) return;
+      if (el.__xdexImmediateToastSeq !== seq) return;
+      onWheel(e);
+    };
     keyH = (e) => {
       if (!armed) return;
       if (el.__xdexImmediateToastSeq !== seq) return;
       onKey(e);
     };
-    // ★ 提前关闭只认「明确指向本页的操作」：pointerdown / keydown。
+    // ★ 提前关闭只认「明确指向本页的操作」：pointerdown / keydown / wheel。
     // 不监听 focusin——发送失败后脚本恢复输入框焦点、输入法切换、Alt+Tab 回窗口等
     // 都会产生 focusin，会在用户还没看到提示时就把它关掉（实测「红框很快消失」的主因）。
     document.addEventListener('pointerdown', pointerH, true);
     document.addEventListener('keydown', keyH, true);
+    document.addEventListener('wheel', wheelH, true);
     armTimer = window.setTimeout(() => { armed = true; }, ERROR_TOAST_ARM_DELAY_MS);
     // ★ 无操作 30 秒驻留上限（从挂载起算；交互后由 5s 渐隐宽限接管，本计时器被 startFadeGrace 清除）
     holdTimer = window.setTimeout(() => { dismiss(`无操作到达 ${ERROR_TOAST_MAX_HOLD_MS / 1000} 秒驻留上限，自动消失`); cleanup(); }, ERROR_TOAST_MAX_HOLD_MS);
@@ -578,6 +605,8 @@ function xdexEarlyDarkEnabled() {
     btn.innerHTML = expanded ? XDEX_ICON_CHEVRON_DOWN : XDEX_ICON_CHEVRON_LEFT;
     btn.title = expanded ? '点击收起' : '点击展开';
   }
+  // 导出串：折角文档 + 两条文字线（与页面内「导」按钮同一图形）
+  const XDEX_EXPORT_ICON = '<svg class="xdex-icon-export" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7.5z"/><path d="M14.5 2.5v5h5"/><path d="M8.5 12h7M8.5 16.5h4.5"/></svg>';
   const XDEX_ICON_IMAGE = '<svg class="xdex-icon-image" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
@@ -674,6 +703,10 @@ function xdexEarlyDarkEnabled() {
       blockedKeywords: [],
       favoriteThreads: [],
       subscriptionFeeds: [],    // [{desc, uuid}, ...]
+      // 默认订阅号：'' = 未设置（点击“订阅EX”时每次弹窗选择）
+      // updatedAt 用于 WebDAV / 导入导出按修改时间戳合并（新者胜；从未设置过则任一方有值即覆盖）
+      defaultSubscriptionFeedUuid: '',
+      defaultSubscriptionFeedUpdatedAt: 0,
       // 分组顺序元数据：{ [分组字段名]: { order: [语义键...], at: 时间戳 } }
       // 用于把「拖拽排序」作为可传播设置随 WebDAV/导入导出同步（静默合并，不触发冲突弹窗）
       groupOrderMeta: {},
@@ -1684,9 +1717,10 @@ function xdexEarlyDarkEnabled() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label><button type="button" id="sp_openDefaultSubscriptionFeed" class="xdex-edit-default-btn" style="margin-left:4px;" title="设置默认订阅号">${XDEX_ICON_GEAR}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadExport" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadExport"> 导出串</label><button type="button" id="sp_openThreadExport" class="xdex-icon-btn" style="margin-left:4px;" title="打开导出窗口">${XDEX_EXPORT_ICON}</button></div>
             </div>
               <div style="margin-top:12px;">
                 <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
@@ -2047,6 +2081,15 @@ function xdexEarlyDarkEnabled() {
         });
         logThreadHistory('panel module switched', threadHistoryDebugState.lastPanelState);
         logThreadHistoryFlat('panel module switched flat', threadHistoryDebugState.lastPanelState);
+        // 进入浏览/发言历史 tab 时自动聚焦搜索框：
+        // 用户可直接键入搜索；焦点从搜索框出发，Tab 仍按序进入列表（键盘移动列表不受干扰）。
+        // focus({preventScroll:true}) 避免面板内容区被滚动到顶部。
+        if (nextModule === 'history' || nextModule === 'posts') {
+          const searchInput = document.getElementById(nextModule === 'history' ? 'sp_history_search' : 'sp_posts_search');
+          if (searchInput) {
+            try { searchInput.focus({ preventScroll: true }); } catch (e) { try { searchInput.focus(); } catch (_e) {} }
+          }
+        }
       }
       $('#sp_panel_tab_slot').off('click', '[data-sp-module]').on('click', '[data-sp-module]', (e) => {
         e.preventDefault();
@@ -2303,6 +2346,25 @@ function xdexEarlyDarkEnabled() {
           toast('当前页面不支持阅图模式');
         }
       });
+      // 设置面板内打开导出窗口：串页可用（与「导」按钮同一入口）
+      $('#sp_openThreadExport').off('click').on('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          if (typeof xdexExportRuntimeAvailable === 'function' && !xdexExportRuntimeAvailable()) {
+            toast('导出需安装扩展版 X岛-EX，或脚本猫后台导出脚本');
+            return;
+          }
+          if (typeof xdexExportOpenDialog === 'function') {
+            xdexExportOpenDialog('');
+          } else {
+            toast('导出功能尚未就绪，请稍后重试');
+          }
+        } catch (err) {
+          console.warn('[X岛-EX] 打开导出窗口失败', err);
+          toast('打开导出窗口失败');
+        }
+      });
       // 屏蔽显示模式：即时切换并即时生效（折叠/隐藏）
       const applyBlockDisplayModeImmediately = () => {
         const mode = $('#sp_blockDisplayMode').val() || 'fold';
@@ -2458,6 +2520,19 @@ function xdexEarlyDarkEnabled() {
         const nextIndex = $('#subscription-feed-inputs-container .subscription-feed-row').length + 1;
         $('#subscription-feed-inputs-container').append(spUi('buildSubscriptionFeedRowHtml', nextIndex));
         $('#subscription-feed-inputs-container .subscription-feed-row').last().find('.subscription-feed-desc-input').focus();
+      });
+      // 「我的订阅」旁的齿轮：滚动到订阅号折叠区并展开（默认订阅号在行内设置）
+      $('#sp_openDefaultSubscriptionFeed').off('click').on('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const $fold = $('#subscription-feed-inputs-container').closest('.sp_fold');
+        if (!$fold.length) return;
+        const $body = $fold.find('.sp_fold_body');
+        if (!$body.is(':visible')) $fold.find('.sp_fold_head').first().trigger('click');
+        setTimeout(() => {
+          try { $fold[0].scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+          catch (err) { try { $fold[0].scrollIntoView(); } catch (e2) {} }
+        }, 80);
       });
       const saveMarkedGroups = ({ fromDelete = false } = {}) => {
         const parsed = collectMarkedGroupsFromPanel();
@@ -2646,6 +2721,12 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const parsed = spUi('collectSubscriptionFeedsFromPanel');
         if (!parsed) return false;
         this.state.subscriptionFeeds = parsed;
+        // 默认订阅号指向的 uuid 已被删除/修改 → 清空默认（打时间戳，供跨端“新者胜”）
+        const defUuid = String(this.state.defaultSubscriptionFeedUuid || '').trim();
+        if (defUuid && !parsed.some((item) => String(item.uuid || '').trim() === defUuid)) {
+          this.state.defaultSubscriptionFeedUuid = '';
+          this.state.defaultSubscriptionFeedUpdatedAt = Date.now();
+        }
         GM_setValue(this.key, this.state);
         this.syncInputs();
         toast(fromDelete ? '已删除订阅号' : '订阅号已保存');
@@ -2655,6 +2736,36 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         e.stopPropagation();
         saveSubscriptionFeeds();
       });
+      // 默认订阅号开关（每行一个，互斥；最多存在一个默认）
+      $('#subscription-feed-inputs-container').off('change.subscriptionDefault', '.subscription-feed-default')
+        .on('change.subscriptionDefault', '.subscription-feed-default', (e) => {
+          const $sw = $(e.currentTarget);
+          const $row = $sw.closest('.subscription-feed-row');
+          const uuid = String($row.find('.subscription-feed-uuid-input').val() || '').trim();
+          if ($sw.is(':checked')) {
+            if (!uuid) {
+              $sw.prop('checked', false);
+              toast('请先填写订阅号');
+              return;
+            }
+            const savedUuids = ((typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [])
+              .map((item) => String(item.uuid || '').trim());
+            if (!savedUuids.includes(uuid)) {
+              $sw.prop('checked', false);
+              toast('请先保存该订阅号，再设为默认');
+              return;
+            }
+            setDefaultSubscriptionFeedUuid(uuid);
+            const feed = (((typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds) || [])
+              .find((item) => String(item.uuid || '').trim() === uuid);
+            toast(`已将默认订阅号设为「${(feed && feed.desc) || uuid}」`);
+          } else {
+            if (getDefaultSubscriptionFeedUuid() === uuid) {
+              setDefaultSubscriptionFeedUuid('');
+              toast('已取消默认订阅号');
+            }
+          }
+        });
       $('#btn_sp_threadCookieWhitelist').off('click').on('click', e=>{
         e.stopPropagation();
         saveThreadCookieWhitelistGroups();
@@ -2840,6 +2951,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       const collectMarkedGroupsFromPanel = () => {
         const parsed = [];
         let valid = true;
+        // 与已保存分组按备注比对，仅在配色实际变化时刷新 colorAt（拖拽排序/改饼干不误触发）
+        const prevGroups = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state && Array.isArray(SettingPanel.state.markedGroups))
+          ? SettingPanel.state.markedGroups
+          : [];
         $('#marked-inputs-container .marked-row').each((idx, el)=>{
           const $row = $(el);
           const desc = ($row.find('.marked-desc-input').val() || '').trim();
@@ -2850,7 +2965,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           if (!cookies.length) { toast(`第${idx + 1}条未指定饼干`); valid=false; return false; }
           if (cookies.some(id=>!Utils.cookieLegal(id))) { toast(`第${idx + 1}条存在不合法饼干`); valid=false; return false; }
           if (rawColor && !spData('isValidHexColor', rawColor)) { toast(`第${idx + 1}条颜色格式无效，应为 #RRGGBB`); valid=false; return false; }
-          parsed.push({ desc, color: spData('normalizeHexColor', rawColor), cookies });
+          const color = spData('normalizeHexColor', rawColor);
+          const prev = prevGroups.find((g) => String((g && g.desc) || '') === desc);
+          const prevColor = prev ? spData('normalizeHexColor', prev.color) : '';
+          const prevAt = prev ? Math.max(0, Number(prev.colorAt) || 0) : 0;
+          // 配色未变 → 保留旧时间戳；变化（含清除）→ 打当前时间
+          const colorAt = color === prevColor ? prevAt : Date.now();
+          parsed.push({ desc, color, colorAt, cookies });
         });
         return valid ? parsed : null;
       };
@@ -2953,6 +3074,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         }
         updateMarkedRowSwatch($row, normalized);
         $popover.hide();
+        // 直接复用「保存」(sp_save / #btn_sp_marked) 的那条路径：收集 → 持久化 → syncInputs
+        // → refreshFilterDisplay（即时生效，无需刷新）。
+        // 此前这里只改了 .marked-color-value 隐藏字段就关闭弹窗，颜色不会落盘。
+        saveMarkedGroups();
         return false;
       });
       // ========== 导入/导出配置 ==========
@@ -3088,7 +3213,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               if (Array.isArray(localGroup) && !localGroup.desc) {
                 result.push(mergedCookies);
               } else {
-                result.push({ ...localGroup, ...impGroup, desc: impDesc || localDesc, cookies: mergedCookies });
+                const mergedGroup = { ...localGroup, ...impGroup, desc: impDesc || localDesc, cookies: mergedCookies };
+                // 配色单独判定（spread 会让远端 color 无条件覆盖，包括用空串清空本地自定义色）
+                const colorState = resolveMarkedGroupColorState(localGroup, impGroup);
+                if (colorState) {
+                  mergedGroup.color = colorState.color;
+                  mergedGroup.colorAt = colorState.colorAt;
+                }
+                result.push(mergedGroup);
               }
               break;
             }
@@ -3143,6 +3275,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, importedSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, importedSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, importedSettings.threadCookieWhitelistGroups);
+        // 默认订阅号：按 updatedAt 新者胜（从未设置过则任一方有值即覆盖）
+        const defFeed = mergeDefaultSubscriptionFeedSetting(localSettings, importedSettings);
+        result.defaultSubscriptionFeedUuid = defFeed.uuid;
+        result.defaultSubscriptionFeedUpdatedAt = defFeed.updatedAt;
         // 顺序传播：按 groupOrderMeta 的 at 新者胜重排六个分组（静默，不弹窗）
         mergeGroupOrdersInto(result, localSettings, importedSettings);
         return result;
@@ -3158,6 +3294,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         result.markedGroups = mergeMarkedGroups(localSettings.markedGroups, remoteSettings.markedGroups);
         result.blockedCookies = mergeBlockedCookies(localSettings.blockedCookies, remoteSettings.blockedCookies);
         result.threadCookieWhitelistGroups = mergeWhitelistGroupsForImport(localSettings.threadCookieWhitelistGroups, remoteSettings.threadCookieWhitelistGroups);
+        // 默认订阅号：同 full-import，按 updatedAt 新者胜
+        const defFeed = mergeDefaultSubscriptionFeedSetting(localSettings, remoteSettings);
+        result.defaultSubscriptionFeedUuid = defFeed.uuid;
+        result.defaultSubscriptionFeedUpdatedAt = defFeed.updatedAt;
         // 顺序传播：同 full-import，按 groupOrderMeta 的 at 新者胜重排
         mergeGroupOrdersInto(result, localSettings, remoteSettings);
         return result;
@@ -4048,6 +4188,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableThreadHistory: '保存浏览历史，支持搜索，可切换多种排序方式。关闭后不再记录新的浏览数据（已有数据保留），侧边栏入口隐藏',
         sp_enablePostHistory: '保存发言历史，分为“我的主题/我的回复”，并记录回复所在页面，支持搜索，可切换多种排序方式。关闭后不再在发送消息后自动记录（手动添加不受影响，已有数据保留），侧边栏入口隐藏',
         sp_enableSubscriptionFeed: '使用移动端订阅号进行同步，支持添加多个订阅号',
+        sp_enableThreadExport: '导出串：把当前串（或指定串号）导出为 Markdown / TXT 文件。支持批量串号、页码范围与「只看 PO」；任务在后台按顺序执行，页面可关闭。右侧图标按钮可直接打开导出窗口',
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧图标按钮可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
         sp_imageViewerSeparators: '在各页图片之间显示红色分隔线与“第N页”页码标识；关闭以获得更纯净的阅图体验',
         sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
@@ -4944,7 +5085,7 @@ ${markedSwatchHtml}
         return tokens.map(t => {
           const { desc, list } = parseDescAndListByLastColon(t);
           const cookies = list.filter(Utils.cookieLegal);
-          return cookies.length ? { desc, color: '', cookies } : null;
+          return cookies.length ? { desc, color: '', colorAt: 0, cookies } : null;
         }).filter(Boolean);
       }
       if (Array.isArray(val)) {
@@ -4952,6 +5093,8 @@ ${markedSwatchHtml}
           return val.map(g => ({
             desc: typeof g.desc === 'string' && isValidDesc(g.desc.trim()) ? g.desc.trim() : '',
             color: normalizeHexColor(g.color),
+            // colorAt：自定义配色的修改时间戳（0 = 旧版本数据/从未手动设置过配色）
+            colorAt: Math.max(0, Number(g.colorAt) || 0),
             cookies: Array.isArray(g.cookies) ? [...new Set(g.cookies.filter(Utils.cookieLegal))] : []
           })).filter(g => g.cookies.length);
         }
@@ -4963,10 +5106,32 @@ ${markedSwatchHtml}
           if (!map.has(key)) map.set(key, []);
           map.get(key).push(cookie);
         });
-        return [...map.entries()].map(([desc, cookies]) => ({ desc, color: '', cookies: [...new Set(cookies)] }));
+        return [...map.entries()].map(([desc, cookies]) => ({ desc, color: '', colorAt: 0, cookies: [...new Set(cookies)] }));
       }
     }
     return [];
+  }
+
+  // 配色合并规则（标记饼干跨端共用）：
+  //  - 未手动设置过（color='' 且无时间戳）→ 视为“保持默认”，对方任何变更都覆盖
+  //  - 仅一方手动设置 → 该方生效
+  //  - 双方都手动设置 → colorAt 新者胜；同时间/都无时间戳（旧版本数据）→ 本地优先
+  //  - 清除配色（color='' 但带 colorAt）视为一次手动变更，可覆盖更旧的配色
+  // 返回 null 表示该对象不是标记分组（如屏蔽饼干），不应注入 color 字段
+  function resolveMarkedGroupColorState(localGroup, remoteGroup) {
+    const lHas = localGroup && typeof localGroup === 'object' && 'color' in localGroup;
+    const rHas = remoteGroup && typeof remoteGroup === 'object' && 'color' in remoteGroup;
+    if (!lHas && !rHas) return null;
+    const lc = normalizeHexColor(localGroup && localGroup.color);
+    const rc = normalizeHexColor(remoteGroup && remoteGroup.color);
+    const la = Math.max(0, Number(localGroup && localGroup.colorAt) || 0);
+    const ra = Math.max(0, Number(remoteGroup && remoteGroup.colorAt) || 0);
+    const lManual = !!lc || la > 0;
+    const rManual = !!rc || ra > 0;
+    if (!lManual && !rManual) return { color: '', colorAt: 0 };
+    if (!lManual) return { color: rc, colorAt: ra };
+    if (!rManual) return { color: lc, colorAt: la };
+    return ra > la ? { color: rc, colorAt: ra } : { color: lc, colorAt: la };
   }
 
   // 标记：支持同一饼干命中多个分组时，title 展示多行备注，颜色取首匹配组
@@ -5169,6 +5334,68 @@ ${markedSwatchHtml}
     addFilterId(ids, href);
     return ids;
   }
+  // ---- 临时解除屏蔽（不修改设置）----
+  // 触发方式：链接带 ?xdex_unblock=1，或本会话内 sessionStorage 有该串的豁免标记。
+  // 只豁免「串号等于当前页串号」的关键词（正文子串 + ID 匹配两条路径），
+  // 其它关键词与正则组不豁免；只看饼干白名单逻辑不受影响。
+  // sessionStorage 标记由屏蔽占位条上的「临时显示」按钮写入（见 decorateFilterPlaceholder 附近），
+  // 关闭浏览器自动失效。
+  function getUnblockExemptThreadId() {
+    let parsed = null;
+    try { parsed = parseThreadHistoryUrl(location.href); } catch (e) { parsed = null; }
+    if (!parsed) return null;
+    let viaUrl = false;
+    try { viaUrl = new URL(location.href).searchParams.has('xdex_unblock'); } catch (e) { viaUrl = false; }
+    let viaSession = false;
+    try { viaSession = !!(sessionStorage.getItem('xdex_unblock:' + parsed.threadId)); } catch (e) { viaSession = false; }
+    return (viaUrl || viaSession) ? parsed.threadId : null;
+  }
+  // 判断某串号是否被「串号关键词」屏蔽（临时显示提示条的显示条件）
+  function isThreadIdBlockedByKeyword(threadId, blockedKeywords) {
+    if (!threadId) return false;
+    const normalized = normalizeBlockedKeywordGroups(blockedKeywords);
+    return flattenBlockedKeywords(normalized).some((keyword) => (
+      isThreadIdKeyword(keyword) && String(keyword || '').trim() === String(threadId)
+    ));
+  }
+  // 屏蔽提示条：仅当当前页串号被串号关键词屏蔽且未豁免时显示。
+  // 「临时显示」写 sessionStorage 后刷新（本会话内生效，关浏览器失效）；
+  // 「×」仅收起本次提示（sessionStorage 记忆，不改变屏蔽行为）。
+  function maybeShowUnblockBanner(threadId, cfg) {
+    if (!threadId) return;
+    if (getUnblockExemptThreadId()) return;
+    let dismissed = false;
+    try { dismissed = sessionStorage.getItem('xdex_unblock_dismissed:' + threadId) === '1'; } catch (e) { dismissed = false; }
+    if (dismissed) return;
+    if (!isThreadIdBlockedByKeyword(threadId, (cfg && cfg.blockedKeywords) || [])) return;
+    if (document.getElementById('xdex-unblock-banner')) return;
+    const bar = document.createElement('div');
+    bar.id = 'xdex-unblock-banner';
+    bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:99998;'
+      + 'background:#333;color:#ddd;padding:8px 14px;border-radius:6px;font-size:14px;'
+      + 'box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;gap:10px;align-items:center;';
+    const label = document.createElement('span');
+    label.textContent = '本串已被关键词屏蔽';
+    const showBtn = document.createElement('button');
+    showBtn.textContent = '临时显示';
+    showBtn.style.cssText = 'background:#00FFCC;color:#00332b;border:0;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:14px;font-weight:600;';
+    showBtn.onclick = () => {
+      try { sessionStorage.setItem('xdex_unblock:' + threadId, '1'); } catch (e) {}
+      location.reload();
+    };
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.title = '本次不显示（屏蔽仍生效）';
+    closeBtn.style.cssText = 'background:transparent;color:#888;border:0;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;';
+    closeBtn.onclick = () => {
+      try { sessionStorage.setItem('xdex_unblock_dismissed:' + threadId, '1'); } catch (e) {}
+      bar.remove();
+    };
+    bar.appendChild(label);
+    bar.appendChild(showBtn);
+    bar.appendChild(closeBtn);
+    (document.body || document.documentElement).appendChild(bar);
+  }
   function findBlockedKeywordHit(text, groups, $el) {
     const normalizedGroups = normalizeBlockedKeywordGroups(groups);
     const body = String(text || '');
@@ -5180,7 +5407,11 @@ ${markedSwatchHtml}
       if (re.test(body)) return group.value;
     }
     // 2) 普通组：逗号切分后正文子串 + 7/8/9 位数字 ID 匹配
-    const keywords = flattenBlockedKeywords(normalizedGroups);
+    // 临时豁免：当前页串号被「串号关键词」屏蔽且用户通过 ?xdex_unblock=1 / 会话标记打开时，
+    // 该关键词从列表剔除（正文子串与 ID 两条路径同时失效），其余关键词照常生效
+    const exemptThreadId = getUnblockExemptThreadId();
+    const keywords = flattenBlockedKeywords(normalizedGroups)
+      .filter((keyword) => !(exemptThreadId && isThreadIdKeyword(keyword) && String(keyword || '').trim() === exemptThreadId));
     const textHit = Utils.firstHit(body, keywords);
     if (textHit) return textHit;
     const ids = getFilterIdsForElement($el);
@@ -5399,6 +5630,11 @@ ${markedSwatchHtml}
         });
       }
     }
+    // 串号关键词屏蔽当前页时给「临时显示」入口（不改设置；详见 getUnblockExemptThreadId 注释）
+    try {
+      const currentThread = parseThreadHistoryUrl(location.href);
+      if (currentThread && !getUnblockExemptThreadId()) maybeShowUnblockBanner(currentThread.threadId, cfg);
+    } catch (e) {}
     } finally { applyFilters._running = false; }
     }, () => startupPerfDebug.summarizeRoot(root || document));
   }
@@ -6101,6 +6337,144 @@ ${markedSwatchHtml}
       //showLoginPrompt(); // 这里触发
     }
     removeDateString();
+  // 饼干变化 → 冷却提示跟随切换（各饼干独立计时，切回仍显示剩余时间）
+  try { renderCookieCooldown(); } catch (e) {}
+  }
+
+  // ---- 饼干发送冷却（服务端 15s 限制）----
+  // 只有「服务器明确回执成功」才记录计时起点：失败提交不消耗冷却，因此不进入冷却态。
+  // 切换饼干后按各自的起点独立显示；15s 走完提示自动消失。
+  const COOKIE_SUBMIT_COOLDOWN_MS = 15000;
+  const COOKIE_COOLDOWN_STORE_KEY = 'xdex-cookie-cooldowns';
+  const COOKIE_COOLDOWN_TICK_MS = 500;
+  let cookieCooldownTimer = 0;
+  function getCookieCooldownStore() {
+    const store = GM_getValue(COOKIE_COOLDOWN_STORE_KEY, {});
+    return store && typeof store === 'object' ? store : {};
+  }
+  function setCookieCooldownAt(cookieId, atMs) {
+    const id = String(cookieId || '');
+    if (!id) return;
+    const store = getCookieCooldownStore();
+    if (Number(atMs) > 0) store[id] = Number(atMs);
+    else delete store[id];
+    // 顺手清理已过期的键，避免记录无限增长
+    const now = Date.now();
+    Object.keys(store).forEach((k) => {
+      if (!(now - Number(store[k]) < COOKIE_SUBMIT_COOLDOWN_MS)) delete store[k];
+    });
+    GM_setValue(COOKIE_COOLDOWN_STORE_KEY, store);
+  }
+  function getCookieCooldownRemainMs(cookie) {
+    const cur = cookie || getCurrentCookie();
+    if (!cur || !cur.id) return 0;
+    const at = Number(getCookieCooldownStore()[String(cur.id)] || 0);
+    if (!at) return 0;
+    const remain = at + COOKIE_SUBMIT_COOLDOWN_MS - Date.now();
+    return remain > 0 ? remain : 0;
+  }
+  // 提交成功：从此刻开始计时
+  function startCookieCooldown(cookieId) {
+    const id = String(cookieId || (getCurrentCookie() || {}).id || '');
+    if (!id) return;
+    setCookieCooldownAt(id, Date.now());
+    renderCookieCooldown();
+  }
+  // 服务端回执里带「冷却时间[N]s」→ 用它校准剩余（仅在本饼干已有成功计时记录时生效，
+  // 避免一次失败提交凭空造出冷却；这仍是「以服务器回复为准」的校准）
+  function syncCookieCooldownFromServer(msg) {
+    const m = String(msg == null ? '' : msg).match(/冷却时间\s*[[［]\s*(\d+)\s*[\]］]/);
+    if (!m) return false;
+    const cur = getCurrentCookie();
+    if (!cur || !cur.id) return false;
+    const store = getCookieCooldownStore();
+    if (!store[String(cur.id)]) return false;
+    const remainMs = Math.max(0, Number(m[1]) || 0) * 1000;
+    setCookieCooldownAt(cur.id, Date.now() + remainMs - COOKIE_SUBMIT_COOLDOWN_MS);
+    renderCookieCooldown();
+    return true;
+  }
+  // 跨页面同步：其它标签页发送成功后，本标签页（回复框已打开的）也要实时显示/更新冷却。
+  // 数据本身在 GM 存储共享；这里补的是「变更通知 → 重渲染」。
+  // 性能与生命周期：
+  //   · 全页面只注册一次（cookieCooldownSyncBound 守卫），绝不随饼干切换/面板刷新重复注册
+  //   · 监听器随页面上下文销毁自动失效，无需手动注销
+  //   · 事件只在该键被写入时投递（负载为整个 store，15s 冷却下每饼干每 15s 至多 1 次，
+  //     实际大小 = 饼干数 × 数字，几十字节），回调仅做一次幂等的 renderCookieCooldown
+  //   · 本页自己的写入也会触发本监听（remote=false）——renderCookieCooldown 幂等，重复调用无害；
+  //     且 renderCookieCooldown 内部有 cookieCooldownTimer 守卫，走秒 interval 不会重复叠加
+  let cookieCooldownSyncBound = false;
+  function bindCookieCooldownStorageSync() {
+    if (cookieCooldownSyncBound || typeof GM_addValueChangeListener !== 'function') return;
+    cookieCooldownSyncBound = true;
+    GM_addValueChangeListener(COOKIE_COOLDOWN_STORE_KEY, () => {
+      try { renderCookieCooldown(); } catch (e) {}
+    });
+  }
+  function getCookieCooldownEl() {
+    return document.querySelector('.xdex-cookie-cooldown');
+  }
+  // 模块初始化：一次性注册跨标签同步监听（幂等，见上）
+  bindCookieCooldownStorageSync();
+  // 冷却提示固定在「字数」左侧，二者同属送出按钮容器（右对齐）
+  function ensureCookieCooldownEl() {
+    const counter = document.querySelector('.xdex-post-content-char-count');
+    if (!counter || !counter.parentNode) return null;
+    let el = counter.parentNode.querySelector('.xdex-cookie-cooldown');
+    if (!el) {
+      el = document.createElement('span');
+      el.className = 'xdex-cookie-cooldown';
+      // margin-right：与「字数」之间留出间距（容器本身有 gap:6px，这里再加一点更清晰）
+      el.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;display:none;margin-right:4px;';
+      counter.parentNode.insertBefore(el, counter);
+    }
+    return el;
+  }
+  function stopCookieCooldownTicker() {
+    if (!cookieCooldownTimer) return;
+    clearInterval(cookieCooldownTimer);
+    cookieCooldownTimer = 0;
+  }
+  function renderCookieCooldown() {
+    const el = ensureCookieCooldownEl();
+    if (!el) return;
+    const remain = getCookieCooldownRemainMs();
+    if (remain <= 0) {
+      el.style.display = 'none';
+      el.textContent = '';
+      stopCookieCooldownTicker();
+      return;
+    }
+    const seconds = Math.max(1, Math.ceil(remain / 1000));
+    el.style.display = '';
+    // 默认区域（非拓展弹窗）空间窄，「冷却时间」前缀会与颜文字按钮重叠 → 只显示 [N]s；
+    // 拓展弹窗（.qp-body 内）空间充足 → 显示完整「冷却时间[N]s」
+    const inPopup = !!(el.closest && el.closest('.qp-body'));
+    // 数字盒定宽 2ch + 内部「右对齐」：
+    //   · 个位数（8）贴住右侧 ] ，两位数（15）自然填满 → 数字本身不跳
+    //   · 盒子宽度不变 → 左侧「冷却时间[」与右侧「]s」「字数」都不移动
+    // vertical-align:-0.08em：15px 数字在基线上比 12px 灰字高约 1px（实测 delta -1px），
+    //   下压后两者字形中心对齐（残差 0.19px），视觉上居中而非偏上
+    el.innerHTML = (inPopup ? '冷却时间' : '')
+      + '[<span class="xdex-cookie-cooldown-num" '
+      + 'style="color:#e53935;font-size:15px;font-weight:700;line-height:1;'
+      + 'display:inline-block;min-width:2ch;text-align:right;vertical-align:-0.08em;'
+      + 'font-variant-numeric:tabular-nums;font-feature-settings:\'tnum\' 1;">'
+      + seconds + '</span>]s';
+    if (!cookieCooldownTimer) {
+      // 仅在存在冷却时走秒；冷却结束立即停表，不留常驻定时器
+      cookieCooldownTimer = setInterval(() => {
+        const box = getCookieCooldownEl();
+        if (!box) { stopCookieCooldownTicker(); return; }
+        if (getCookieCooldownRemainMs() <= 0) {
+          box.style.display = 'none';
+          box.textContent = '';
+          stopCookieCooldownTicker();
+          return;
+        }
+        renderCookieCooldown();
+      }, COOKIE_COOLDOWN_TICK_MS);
+    }
   }
   function updateDropdownUI(list){
     const $dd = $('#cookie-dropdown'); $dd.empty();
@@ -7314,20 +7688,37 @@ ${markedSwatchHtml}
     return /\.(heic|heif|hif)$/i.test(name);
   }
   let lastHeifPreviewTipKey = '';
+  let lastHeifPreviewTipFile = null;
+  let lastHeifPreviewTipAt = 0;
   let heifPreviewTipSeq = 0;
+  // 清除附件（清空按钮 / 原生 input 清空 / 发送成功后清空）时必须调用，
+  // 否则同一个 HEIC 文件重新附带会被去重键挡住、不再提示。
+  function resetHeifPreviewTipState() {
+    lastHeifPreviewTipKey = '';
+    lastHeifPreviewTipFile = null;
+    lastHeifPreviewTipAt = 0;
+  }
   function maybeToastHeifPreviewUnsupported(file) {
     if (!file) {
-      lastHeifPreviewTipKey = '';
+      resetHeifPreviewTipState();
       return;
     }
     const key = [file.name || '', file.size || 0, file.lastModified || 0].join('|');
-    if (key === lastHeifPreviewTipKey) return;
+    const now = Date.now();
+    if (key === lastHeifPreviewTipKey) {
+      // 同一次附带动作内会被多次调用（粘贴处理器 → 写入 input → change → 初始化补渲染），
+      // 这些调用可能拿到同一个 File 的不同实例：同一实例直接去重，不同实例只在短窗口内去重。
+      if (file === lastHeifPreviewTipFile) return;
+      if (now - lastHeifPreviewTipAt < 1200) return;
+    }
     lastHeifPreviewTipKey = key;
+    lastHeifPreviewTipFile = file;
+    lastHeifPreviewTipAt = now;
     toast('当前不支持 HEIF/HEIC 预览（发送时将自动转为PNG）', 2500);
   }
   function notifyHeifPreviewUnsupportedIfNeeded(file, seq) {
     if (!file) {
-      lastHeifPreviewTipKey = '';
+      resetHeifPreviewTipState();
       return;
     }
     // 快路径：MIME/扩展名可立刻提示
@@ -7349,7 +7740,7 @@ ${markedSwatchHtml}
     // HEIF 预览：浏览器 <img>+blob 通常无法解码，仅提示；不改 input 中的原文件
     const tipSeq = ++heifPreviewTipSeq;
     if (file) notifyHeifPreviewUnsupportedIfNeeded(file, tipSeq);
-    else lastHeifPreviewTipKey = '';
+    else resetHeifPreviewTipState();
     const liveBox = getLivePreviewBox();
     if (!liveBox) return;
     const $liveBox = $(liveBox);
@@ -8862,19 +9253,19 @@ ${markedSwatchHtml}
               }));
               if (userCount < 19) {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新", hasUpdate ? 900 : 0, hasUpdate ? '' : 'hold');
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
               }
               if (parsedLastFromReturned && parsedLastFromReturned > lastLoadedPage) {
                 const result = { status: 'hasNext', nextPage: lastLoadedPage + 1, hasUpdate };
-                if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", 900, { queue: false, key: 'refresh-status' });
+                if (showResultToast && !suppressResultToastOnHasNext) toast(hasUpdate ? "已更新" : "无更新", hasUpdate ? 900 : 0, { queue: false, key: 'refresh-status', type: hasUpdate ? '' : 'hold' });
                 if (typeof done === 'function') done(result);
                 return;
               } else {
                 const result = { status: 'last', hasUpdate };
-                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新");
+                if (showResultToast && isCurrentRefreshStatus(activeGeneration)) showRefreshStatus(hasUpdate ? "已更新" : "无更新", hasUpdate ? 900 : 0, hasUpdate ? '' : 'hold');
                 if (typeof done === 'function') done(result);
                 addRefreshButtonIfNeeded();
                 return;
@@ -8915,7 +9306,9 @@ ${markedSwatchHtml}
           prepareForceLoadNext(result.nextPage);
           setTimeout(() => loadNext(refreshGeneration), 50);
         } else if (result.status === 'last') {
-          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', 1800); // 结果提示给足阅读时间（原 900ms 偏短，易漏看后重复刷新）
+          // 「无更新」用 hold：无红框但长驻（无操作 30s / 交互后 5s 渐隐），避免很快被刷掉；
+          // 「已更新」仍是普通短提示给足阅读时间
+          showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', result.hasUpdate ? 1800 : 0, result.hasUpdate ? '' : 'hold'); // 结果提示给足阅读时间（原 900ms 偏短，易漏看后重复刷新）
         }
       }
       // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）
@@ -10771,6 +11164,10 @@ ${markedSwatchHtml}
           document.querySelectorAll('.h-threads-img-box.h-active').forEach(imgBox => {
             handleImageLayout.handleActiveImageBox(imgBox, true);
           });
+          // ★ 补跑全量加宽（QwQNT 时序自愈）：初始 pass 可能因 innerWidth 未稳定
+          // （QQ↔nmbxd 切换、窗口还原时序）走到 targetWidth<=0 静默返回且不置锁，
+          // 该分支无任何兜底；resize 补跑借 __imageWidthExpanded 锁对已加宽者 O(1) 跳过
+          try { expandReplyMainWidths(document); } catch (e) {}
         };
         if (enableHDImageAndLayoutFix.__resizeFrameId) return;
         if (typeof requestAnimationFrame !== 'function') { run(); return; }
@@ -10778,6 +11175,10 @@ ${markedSwatchHtml}
       });
       enableHDImageAndLayoutFix.__resizeHandlerBound = true;
     }
+    // ★ 供驻留/可见性链路补跑加宽（QwQNT 时序自愈）：expandReplyMainWidths 是本函数内部实现，
+    //   外部（visibilitychange 监听器）无法直接访问，挂到函数属性上桥接；
+    //   document 级首次 pass 时执行到这里，此后外部即可通过可选链调用
+    if (root === document) enableHDImageAndLayoutFix.expandReplyMainWidths = expandReplyMainWidths;
     }, () => startupPerfDebug.summarizeRoot(root));
   }
   function handlePendingHDImageAndLayoutFix(root = document) {
@@ -11023,7 +11424,8 @@ ${markedSwatchHtml}
       style.textContent = `
         .qp-overlay-quote {
           position: fixed; inset: 0;
-          z-index: 9999; /* 降低层级 */
+          /* 10004：高于导出串弹窗(10001)与设置面板(9999) —— 弹窗内点串号时引用浮窗必须盖在弹窗上 */
+          z-index: 10004;
           background: rgba(0,0,0,.45);
           display: none;
         }
@@ -11042,7 +11444,7 @@ ${markedSwatchHtml}
           width: 30px; height: 30px; padding: 0;
           display: inline-flex; align-items: center; justify-content: center;
           background: var(--xdex-qp-reset-bg, rgba(0,0,0,.6));
-          border: 1px solid var(--xdex-qp-reset-border, rgba(255,255,255,.35)); border-radius: 8px; cursor: pointer; z-index: 10000;
+          border: 1px solid var(--xdex-qp-reset-border, rgba(255,255,255,.35)); border-radius: 8px; cursor: pointer; z-index: 10005; /* 高于 .qp-overlay-quote(10004) */
           user-select: none;
           color: var(--xdex-qp-reset-color, #fff);
         }
@@ -14639,6 +15041,9 @@ ${markedSwatchHtml}
     if (originalType === 'image/jpeg' || originalType === 'image/jpg') return 'image/jpeg';
     return 'image/png';
   }
+  // 服务器图片体积上限（2048KB）；预检与错误重试共用
+  const SUBMIT_IMAGE_LIMIT_BYTES = 2048 * 1024;
+
   function cloneFormData(sourceFd) {
     const cloned = new FormData();
     for (const [key, value] of sourceFd.entries()) {
@@ -14660,6 +15065,18 @@ ${markedSwatchHtml}
   function createContentRetryFormData(form, content) {
     const retryFd = new FormData(form);
     retryFd.set('content', content);
+    // 预检压缩/转码过的图片优先复用，避免非法词重试时又上传原图
+    const cached = form && form.__preparedImage;
+    if (cached && cached.file) {
+      const fileInput = form.querySelector('input[type="file"][name="image"]');
+      const current = fileInput && fileInput.files && fileInput.files[0];
+      if (current &&
+          current.name === cached.name &&
+          current.size === cached.size &&
+          current.lastModified === cached.lastModified) {
+        retryFd.set('image', cached.file);
+      }
+    }
     return retryFd;
   }
 
@@ -16383,17 +16800,25 @@ ${markedSwatchHtml}
         if (/含有非法词语/.test(msg)) return 'illegal-word';
         return 'other';
       }
-      function formatSubmitNetworkError(err) {
-        if (err && err.name === 'TypeError' && /fetch|network/i.test(err.message || '')) {
-          return '发送超时，请检查网络后重试';
-        }
+      function isSubmitNetworkError(err) {
+        // fetch 抛 TypeError = 网络层失败（断网/连接重置/CORS 等），不是超时；
+        // 真正的超时由 doSubmit 的 AbortController 处理（err.name === 'AbortError'）。
+        // 请求可能已到达服务器（如响应途中断连），因此调用方按「结果未知」处理。
+        return !!(err && err.name === 'TypeError' && /fetch|network|load failed/i.test(err.message || ''));
+      }
+      function formatSubmitError(err) {
         return '发送失败：' + ((err && err.message) || '未知错误');
       }
       function clearSuccessfulSubmitForm() {
         const textarea = form.querySelector('textarea[name="content"]');
         if (textarea) { textarea.value = ''; textarea.dispatchEvent(new Event('input', { bubbles: true })); }
         const fileInput = form.querySelector('input[type="file"][name="image"]');
-        if (fileInput) fileInput.value = '';
+        if (fileInput) {
+          fileInput.value = '';
+          // 附件随发送清空：同步复位 HEIC 预览去重状态，避免下一条同文件不再提示
+          if (typeof updatePreviewImageFromFile === 'function') updatePreviewImageFromFile(null);
+        }
+        form.__preparedImage = null;
         deleteDraftSafe(getDraftKey());
         const titleInput = form.querySelector('input[name="title"]');
         if (titleInput) { titleInput.value = ''; titleInput.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -16469,7 +16894,44 @@ ${markedSwatchHtml}
           location.reload();
         }
       }
-      async function compressImageForRetry(file, actualFormat) {
+      // 发送前处理状态：复用「发送中」状态 toast 节点（key=send-status）。
+      // 处理期间长驻留并原地更新，完成/失败时替换或清除，避免用户误以为提交卡住。
+      function showSubmitPreflightStatus(msg, duration = 600000) {
+        try {
+          toast(msg, duration, { queue: false, key: 'send-status' });
+        } catch (e) {
+          console.warn('[interceptReplyForm] 发送前状态提示失败:', e);
+        }
+      }
+      function clearSubmitPreflightStatus() {
+        try {
+          const $t = $('#xdex-immediate-toast-send-status');
+          if ($t.length) {
+            $t.stop(true, false);
+            $t.fadeOut(120, () => $t.remove());
+          }
+        } catch (e) { /* 忽略清理失败 */ }
+      }
+      // 服务端拒绝后的本地重试处理（转换/压缩/GIF 修复）统一 wall-clock 上限。
+      // 超时后调用方的 await 立即 reject；迟到的结果不会被使用，内部 notify 需自检 token。
+      function runImageProcessingWithTimeout(label, operation, timeoutHint = '请更换图片，或手动压缩/转换后重试。') {
+        const token = { cancelled: false };
+        let timer = 0;
+        const seconds = Math.round(SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS / 1000);
+        const timeoutPromise = new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            token.cancelled = true;
+            const err = new Error(`${label}超时（${seconds} 秒），本次未发送。${timeoutHint}`);
+            err.__imageProcessingTimeout = true;
+            reject(err);
+          }, SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS);
+        });
+        return Promise.race([
+          Promise.resolve().then(() => operation(token)),
+          timeoutPromise
+        ]).finally(() => clearTimeout(timer));
+      }
+      async function compressImageForRetry(file, actualFormat, notify = toast) {
         if (actualFormat === 'gif') {
           let gifFile = file;
           if (!/\.gif$/i.test(file.name)) {
@@ -16483,10 +16945,10 @@ ${markedSwatchHtml}
             acceptableLowerKB: 1780,
             onProgress: (progress) => {
               if (progress.error) {
-                toast(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试……`, 1800);
+                notify(`GIF压缩中：第${progress.index}/${progress.total}次失败，继续尝试……`, 1800);
                 return;
               }
-              toast(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
+              notify(`GIF压缩中：第${progress.index}/${progress.total}次，${progress.originalKB.toFixed(1)}KB → ${progress.currentKB.toFixed(1)}KB`, 1800);
             }
           });
           console.log(`[interceptReplyForm] GIF压缩完成: ${gifResult.summary}`);
@@ -16506,30 +16968,30 @@ ${markedSwatchHtml}
           const compressedFile = await compressApngToSize(file, 2048, {
             onProgress: (progress) => {
               if (progress.error) {
-                toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
+                notify(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
                 return;
               }
-              toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
+              notify(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
             }
           });
           console.log(`[interceptReplyForm] APNG压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
           return compressedFile;
         }
         if (actualFormat === 'animated-webp') {
-          toast('检测到动画 WebP，正在转换为 APNG 保留动画……', 2000);
+          notify('检测到动画 WebP，正在转换为 APNG 保留动画……', 2000);
           // 先转 APNG（保留动画），再按需压缩
           let convertedFile = await convertWebpToAcceptedFormat(file, true);
           console.log(`[interceptReplyForm] 动画WebP→APNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-          if (convertedFile.size > 2048 * 1024) {
+          if (convertedFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
             console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，用 APNG 压缩`);
-            toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 0, { type: 'error' });
+            notify(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩动画……`, 0, { type: 'error' });
             const compressResult = await compressApngToSize(convertedFile, 2048, {
               onProgress: (progress) => {
                 if (progress.error) {
-                  toast(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
+                  notify(`APNG压缩中：scale=${progress.scale.toFixed(2)} 失败，继续尝试……`, 1800);
                   return;
                 }
-                toast(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
+                notify(`APNG压缩中：${progress.newW}x${progress.newH} ${progress.frameCount}帧 → ${progress.sizeKB.toFixed(0)}KB（原${progress.originalKB.toFixed(0)}KB）`, 1800);
               }
             });
             convertedFile = compressResult.file || compressResult;
@@ -16538,10 +17000,10 @@ ${markedSwatchHtml}
           return convertedFile;
         }
         if (actualFormat === 'heic') {
-          toast('检测到 HEIC，正在转换为 PNG……', 2000);
+          notify('检测到 HEIC，正在转换为 PNG……', 2000);
           let convertedFile = await convertHeicToPng(file);
           console.log(`[interceptReplyForm] HEIC→PNG: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-          if (convertedFile.size > 2048 * 1024) {
+          if (convertedFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
             console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，继续压缩`);
             convertedFile = await compressImageToSize(convertedFile, 2048, 0.6, 'png');
             console.log(`[interceptReplyForm] 压缩完成: ${(convertedFile.size / 1024).toFixed(1)}KB`);
@@ -16553,17 +17015,173 @@ ${markedSwatchHtml}
         console.log(`[interceptReplyForm] 静态图片压缩完成: ${(compressedFile.size / 1024).toFixed(1)}KB`);
         return compressedFile;
       }
-      async function doSubmit(fd, isRetry = false) {
-        // 图片处理完成后递归提交时，在保持原提交锁的同时重新开始网络超时保护。
+      // 发送前预检：只在真正要发请求时执行，避免选图即压缩。
+      // 返回 { fd, prepared }；prepared=true 表示图片已在本地处理过，后续错误分支不再重复压缩。
+      function rememberPreparedSubmitImage(sourceFile, preparedFile) {
+        if (!sourceFile || !preparedFile) return;
+        form.__preparedImage = {
+          name: sourceFile.name,
+          size: sourceFile.size,
+          lastModified: sourceFile.lastModified,
+          file: preparedFile
+        };
+      }
+      async function prepareImageBeforeSubmit(fd, token) {
+        const isCancelled = () => !!(token && token.cancelled);
+        // 超时后不再更新状态 toast，避免覆盖用户重试后的新状态
+        const status = (msg, duration) => { if (!isCancelled()) showSubmitPreflightStatus(msg, duration); };
+        const fileInput = form.querySelector('input[type="file"][name="image"]');
+        const file = fileInput && fileInput.files && fileInput.files[0];
+        if (!file) return { fd, prepared: false };
+        if (!form.__preparedImageChangeBound) {
+          form.__preparedImageChangeBound = true;
+          fileInput.addEventListener('change', () => { form.__preparedImage = null; });
+        }
+        // 同一张图已处理过（例如非法词重试或用户再次点击发送）直接复用
+        const cached = form.__preparedImage;
+        if (cached && cached.file &&
+            cached.name === file.name &&
+            cached.size === file.size &&
+            cached.lastModified === file.lastModified) {
+          return { fd: cloneFormDataWithImage(fd, cached.file), prepared: true };
+        }
+        const actualFormat = await detectImageFormat(file);
+        // 检测阶段也可能被超时取消；此时不得重新上锁或开始压缩
+        if (isCancelled()) return { fd, prepared: false, cancelled: true };
+        const mustConvert = actualFormat === 'webp' || actualFormat === 'animated-webp' || actualFormat === 'heic';
+        const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+        const tooLarge = file.size > SUBMIT_IMAGE_LIMIT_BYTES;
+        // 格式必须转换；体积则尊重「自动压缩图片」开关
+        if (!mustConvert && !(tooLarge && cfg.interceptReplyFormAutoCompress)) {
+          return { fd, prepared: false };
+        }
+        const sizeKB = (file.size / 1024).toFixed(1);
+        const formatLabel = actualFormat === 'gif' ? ' GIF' : actualFormat === 'apng' ? ' APNG' : '';
+        let startMsg;
+        if (actualFormat === 'webp') {
+          startMsg = `发送前处理：服务器不接受 WebP，正在转换为 PNG（${sizeKB}KB）……`;
+        } else if (actualFormat === 'animated-webp') {
+          startMsg = `发送前处理：服务器不接受动画 WebP，正在转换为 APNG（${sizeKB}KB）……`;
+        } else if (actualFormat === 'heic') {
+          startMsg = `发送前处理：服务器不接受 HEIC，正在转换为 PNG（${sizeKB}KB）……`;
+        } else {
+          startMsg = `发送前处理：图片 ${sizeKB}KB 超过 2048KB，正在压缩${formatLabel}……`;
+        }
+        status(startMsg);
+        beginSubmitImageProcessing(form);
+        try {
+          // 压缩/转换过程中的进度统一写入同一状态 toast，避免长任务期间提示消失
+          const notify = (msg) => status(`发送前处理 · ${msg}`);
+          let outFile;
+          if (actualFormat === 'webp') {
+            // 静态 WebP：compressImageForRetry 会输出 WebP，服务器仍拒绝，必须先转 PNG
+            outFile = await convertWebpToAcceptedFormat(file, false);
+            if (outFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
+              status(`发送前处理：转换后 ${(outFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩……`);
+              outFile = await compressImageForRetry(outFile, 'png', notify);
+            }
+          } else if (mustConvert) {
+            // HEIC / 动画 WebP：compressImageForRetry 内含转换与按需压缩
+            outFile = await compressImageForRetry(file, actualFormat, notify);
+          } else {
+            outFile = await compressImageForRetry(file, actualFormat, notify);
+          }
+          // 超时后迟到的处理结果：直接丢弃，不写缓存、不发送、不动表单状态
+          if (isCancelled()) return { fd, prepared: false, cancelled: true };
+          // 处理期间用户可能换了图：若输入框已不是同一张图，放弃本次处理结果，
+          // 避免「界面显示新图、实际发送旧图」；缓存也不写入。
+          const latestInput = form.querySelector('input[type="file"][name="image"]');
+          const latestFile = latestInput && latestInput.files && latestInput.files[0];
+          if (!latestFile ||
+              latestFile.name !== file.name ||
+              latestFile.size !== file.size ||
+              latestFile.lastModified !== file.lastModified) {
+            throw new Error('发送前处理期间图片已被更换或移除，本次未发送，请重新点击发送');
+          }
+          rememberPreparedSubmitImage(file, outFile);
+          const gifMs = Number(outFile && outFile.__xdexGifCompressionDurationMs);
+          const gifSeconds = Number.isFinite(gifMs) && gifMs >= 0 ? gifMs / 1000 : null;
+          status(`发送前处理完成：已处理至 ${(outFile.size / 1024).toFixed(1)}KB${gifSeconds == null ? '' : `，耗时 ${gifSeconds.toFixed(2)} 秒`}，正在提交……`, 2000);
+          return { fd: cloneFormDataWithImage(fd, outFile), prepared: true };
+        } finally {
+          // 已超时取消时不要清掉可能属于新一轮预检的 processing 标记
+          if (!isCancelled()) finishSubmitImageProcessing(form);
+        }
+      }
+      async function doSubmit(fd, isRetry = false, prepared = false) {
+        // 图片处理完成后递归提交时，在保持原提交锁的同时重新开始网络看门狗与真实超时。
+        if (!isRetry && !prepared) {
+          const token = { cancelled: false };
+          let preflightTimer = 0;
+          const timeoutPromise = new Promise((_, reject) => {
+            preflightTimer = setTimeout(() => {
+              token.cancelled = true;
+              const timeoutErr = new Error(SUBMIT_IMAGE_PROCESSING_TIMEOUT_MSG);
+              timeoutErr.__preflightTimeout = true;
+              reject(timeoutErr);
+            }, SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS);
+          });
+          try {
+            const prep = await Promise.race([
+              prepareImageBeforeSubmit(fd, token),
+              timeoutPromise
+            ]);
+            if (prep && prep.cancelled) return;
+            fd = prep.fd;
+            prepared = prep.prepared;
+          } catch (prepErr) {
+            clearSubmitPreflightStatus();
+            if (prepErr && prepErr.__preflightTimeout) {
+              // 预检超时：解锁由调用方 finally 负责；迟到的处理结果由 token 丢弃
+              finishSubmitImageProcessing(form);
+              toast(prepErr.message, 0, { type: 'error', key: 'send-error' });
+              return;
+            }
+            console.error('[interceptReplyForm] 图片预检失败:', prepErr);
+            toast(prepErr && prepErr.message ? prepErr.message : '图片预处理失败，请手动处理后重试', 0, { type: 'error' });
+            return;
+          } finally {
+            clearTimeout(preflightTimer);
+          }
+        }
+        // 新请求即将真正发出：旧的「结果未知」由本次结果覆盖
+        // （放在预检之后，避免预检失败时丢失上一次超时的重复提交警告）
+        form.__submitUnknown = false;
         finishSubmitImageProcessing(form);
         refreshSubmitLockTimer(form);
-        return fetch(form.action, {
+        const timeoutMs = computeSubmitRequestTimeoutMs(fd);
+        let controller = null;
+        let abortTimer = 0;
+        if (typeof AbortController === 'function') {
+          controller = new AbortController();
+          form.__submitController = controller;
+          abortTimer = setTimeout(() => {
+            // 期间若已发起新的递归请求，旧计时器不得误杀新请求
+            if (form.__submitController !== controller) return;
+            form.__submitAbortTimer = 0;
+            form.__submitUnknown = true;
+            try { controller.abort('timeout'); } catch (e) { /* 老内核不支持 reason */ }
+          }, timeoutMs);
+          form.__submitAbortTimer = abortTimer;
+        }
+        // 用 Promise 包一层：fetch 同步抛错时也能进入 .catch，避免状态提示滞留
+        return Promise.resolve().then(() => fetch(form.action, {
           method: form.method,
           body: fd,
-          credentials: 'include'
-        })
+          credentials: 'include',
+          signal: controller ? controller.signal : undefined
+        }))
         .then(res => res.text())
         .then(async html => {
+          // 收到服务器响应 = 结果已确定（成功或业务错误）：
+          // 撤销本次请求的看门狗与中止计时器，避免后续图片转换/递归重试期间旧计时器误报。
+          clearSubmitLockTimer(form);
+          clearTimeout(abortTimer);
+          if (form.__submitAbortTimer === abortTimer) form.__submitAbortTimer = 0;
+          if (form.__submitController === controller) form.__submitController = null;
+          form.__submitUnknown = false;
+          // 响应已到达：结束「发送前处理/正在提交」状态，交给成功或错误提示
+          clearSubmitPreflightStatus();
           // 增加调试输出：打印响应 HTML 的前 2000 字符，避免控制台被大量内容淹没
           try { console.log('[interceptReplyForm] response html (truncated):', html.slice(0, 2000)); } catch (e) { console.log('[interceptReplyForm] response html (full):', html); }
           const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -16579,6 +17197,8 @@ ${markedSwatchHtml}
           if (successMsg) {
             // 与触底/手动局部刷新一致：快速即时 toast，不走默认队列
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'), 900, { queue: false, key: 'send-status' });
+            // 服务器明确回执成功 → 本饼干进入 15s 冷却（失败不进入）
+            try { startCookieCooldown(); } catch (e) {}
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
             // 清空输入框、图片、草稿及身份字段，并广播成功事件
             clearSuccessfulSubmitForm();
@@ -16614,10 +17234,13 @@ ${markedSwatchHtml}
             runSuccessfulSubmitNavigation(confirmPromise);
           } else if (errorMsg) {
             const msg = errorMsg.textContent.trim() || '提交失败';
+            // 服务端回执里带「冷却时间[N]s」→ 按服务器给出的剩余秒数校准显示
+            // （仅在该饼干已有成功计时记录时生效，失败提交本身不创造冷却）
+            try { syncCookieCooldownFromServer(msg); } catch (e) {}
             const errorKind = classifySubmitError(msg);
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
             // 图片格式不被服务器接受（如 WebP）：转换为 PNG 后重新提交
-            if (errorKind === 'image-format' && !isRetry) {
+            if (errorKind === 'image-format' && !isRetry && !prepared) {
               const fileInput = form.querySelector('input[type="file"][name="image"]');
               const file = fileInput && fileInput.files && fileInput.files[0];
               if (file) {
@@ -16626,24 +17249,36 @@ ${markedSwatchHtml}
                 if (actualFormat === 'webp' || actualFormat === 'animated-webp' || actualFormat === 'heic') {
                   beginSubmitImageProcessing(form);
                   try {
-                    let convertedFile;
-                    if (actualFormat === 'heic') {
-                      toast('服务器不接受 HEIC，正在转换为 PNG……', 3000);
-                      convertedFile = await convertHeicToPng(file);
-                      console.log(`[interceptReplyForm] HEIC→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-                    } else {
-                      toast('服务器不接受 WebP，正在将Webp转换为PNG格式……', 3000);
-                      convertedFile = await convertWebpToAcceptedFormat(file, actualFormat === 'animated-webp');
-                      console.log(`[interceptReplyForm] WebP→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(convertedFile.size / 1024).toFixed(1)}KB`);
-                    }
-                    // 转换后如果大小超限，接入压缩流程
-                    if (convertedFile.size > 2048 * 1024) {
-                      console.log(`[interceptReplyForm] 转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，接入压缩流程`);
-                      toast(`转换后 ${(convertedFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩……`, 3000);
-                      convertedFile = await compressImageForRetry(convertedFile, 'png');
-                      console.log(`[interceptReplyForm] 压缩完成: ${(convertedFile.size / 1024).toFixed(1)}KB`);
-                    }
+                    const convertedFile = await runImageProcessingWithTimeout('图片格式转换', async (token) => {
+                      let outFile;
+                      if (actualFormat === 'heic') {
+                        if (!token.cancelled) toast('服务器不接受 HEIC，正在转换为 PNG……', 3000);
+                        outFile = await convertHeicToPng(file);
+                        if (token.cancelled) return null;
+                        console.log(`[interceptReplyForm] HEIC→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(outFile.size / 1024).toFixed(1)}KB`);
+                      } else {
+                        if (!token.cancelled) toast('服务器不接受 WebP，正在将Webp转换为PNG格式……', 3000);
+                        outFile = await convertWebpToAcceptedFormat(file, actualFormat === 'animated-webp');
+                        if (token.cancelled) return null;
+                        console.log(`[interceptReplyForm] WebP→PNG 转换完成: ${(file.size / 1024).toFixed(1)}KB -> ${(outFile.size / 1024).toFixed(1)}KB`);
+                      }
+                      // 转换后如果大小超限，接入压缩流程
+                      if (outFile.size > SUBMIT_IMAGE_LIMIT_BYTES) {
+                        if (!token.cancelled) {
+                          console.log(`[interceptReplyForm] 转换后 ${(outFile.size / 1024).toFixed(1)}KB 仍超限，接入压缩流程`);
+                          toast(`转换后 ${(outFile.size / 1024).toFixed(1)}KB 仍超限，正在压缩……`, 3000);
+                        }
+                        outFile = await compressImageForRetry(outFile, 'png', (message, duration, options) => {
+                          if (!token.cancelled) toast(message, duration, options);
+                        });
+                        if (token.cancelled) return null;
+                        console.log(`[interceptReplyForm] 压缩完成: ${(outFile.size / 1024).toFixed(1)}KB`);
+                      }
+                      return outFile;
+                    });
+                    if (!convertedFile) return;
                     resetIllegalRetryState({ clearOriginalContent: false });
+                    rememberPreparedSubmitImage(file, convertedFile);
                     const newFD = cloneFormDataWithImage(fd, convertedFile);
                     toast(`格式已转换为 PNG，大小 ${(convertedFile.size / 1024).toFixed(1)}KB，正在重新提交……`, 2000);
                     await doSubmit(newFD, true);
@@ -16674,15 +17309,20 @@ ${markedSwatchHtml}
               }
               const fileInput = form.querySelector('input[type="file"][name="image"]');
               const file = fileInput && fileInput.files && fileInput.files[0];
-              if (file && !isRetry) {
+              if (file && !isRetry && !prepared) {
                 beginSubmitImageProcessing(form);
                 try {
                   const actualFormat = await detectImageFormat(file);
                   console.log(`[interceptReplyForm] 检测到真实格式: ${actualFormat} | MIME: ${file.type} | 文件名: ${file.name}`);
                   toast(`图片大小 ${(file.size / 1024).toFixed(1)}KB（>2048KB），正在尝试自动压缩`, 3000);
                   console.log(`[interceptReplyForm] 图片大小: ${(file.size / 1024).toFixed(1)}KB，开始压缩……`);
-                  const compressedFile = await compressImageForRetry(file, actualFormat);
+                  const compressedFile = await runImageProcessingWithTimeout('图片压缩', (token) =>
+                    compressImageForRetry(file, actualFormat, (message, duration, options) => {
+                      if (!token.cancelled) toast(message, duration, options);
+                    })
+                  );
                   resetIllegalRetryState({ clearOriginalContent: false });
+                  rememberPreparedSubmitImage(file, compressedFile);
                   const newFD = cloneFormDataWithImage(fd, compressedFile);
                   const gifCompressionDurationMs = Number(compressedFile && compressedFile.__xdexGifCompressionDurationMs);
                   const gifCompressionSeconds = Number.isFinite(gifCompressionDurationMs) && gifCompressionDurationMs >= 0
@@ -16698,7 +17338,7 @@ ${markedSwatchHtml}
                 } finally {
                   finishSubmitImageProcessing(form);
                 }
-              } else if (isRetry) {
+              } else if (isRetry || prepared) {
                 toast('压缩后图片仍然超过限制，请手动压缩后再试', 3000);
                 return;
               }
@@ -16711,14 +17351,19 @@ ${markedSwatchHtml}
                 beginSubmitImageProcessing(form);
                 try {
                   console.log('[interceptReplyForm] 检测到非法GIF，尝试用gifsicle重新编码……');
-                  const reencodedFile = await reencodeGifWithGifsicle(file);
+                  const reencodedFile = await runImageProcessingWithTimeout(
+                    'GIF 修复',
+                    () => reencodeGifWithGifsicle(file),
+                    '请更换图片，或手动修复/压缩后重试。'
+                  );
+                  rememberPreparedSubmitImage(file, reencodedFile);
                   const newFD = cloneFormDataWithImage(fd, reencodedFile);
                   toast('GIF结构已修复，正在重新提交……', 2000);
                   await doSubmit(newFD, true);
                   return;
                 } catch (reencodeErr) {
                   console.error('[interceptReplyForm] GIF重编码失败:', reencodeErr);
-                  toast('GIF重编码失败，请手动处理', 0, { type: 'error' });
+                  toast(reencodeErr && reencodeErr.message ? reencodeErr.message : 'GIF重编码失败，请手动处理', 0, { type: 'error' });
                   return;
                 } finally {
                   finishSubmitImageProcessing(form);
@@ -16755,7 +17400,7 @@ ${markedSwatchHtml}
                   // 新增：递增计数
                   form.__illegalRetryCountU200B++;
                   toast('已尝试插入零宽空格模式并重试提交', 2000);
-                  doSubmit(newFD, false);
+                  await doSubmit(newFD, false);
                   return;
                 } else {
                   // 原有三次重试逻辑
@@ -16788,7 +17433,7 @@ ${markedSwatchHtml}
                     toast('已尝试unvcode替换模式并重试提交', 2000);
                     const newFD = createContentRetryFormData(form, safeText);
                     form.__illegalRetryCount++;
-                    doSubmit(newFD, false);
+                    await doSubmit(newFD, false);
                     return;
                   }
                   toast(msg, 0, { type: 'error', key: 'send-error' });
@@ -16801,20 +17446,62 @@ ${markedSwatchHtml}
         })
         .catch((err) => {
           console.error('[interceptReplyForm] fetch error:', err);
-          toast(formatSubmitNetworkError(err), 0, { type: 'error', key: 'send-error' });
+          clearSubmitPreflightStatus();
+          if (err && err.name === 'AbortError') {
+            form.__submitUnknown = true;
+            toast('提交超时：结果未知，请刷新页面确认是否已发出，避免重复提交。', 0, { type: 'error', key: 'send-error' });
+            return;
+          }
+          if (isSubmitNetworkError(err)) {
+            form.__submitUnknown = true;
+            toast(SUBMIT_NETWORK_UNKNOWN_MSG, 0, { type: 'error', key: 'send-error' });
+            return;
+          }
+          toast(formatSubmitError(err), 0, { type: 'error', key: 'send-error' });
+        })
+        .finally(() => {
+          clearTimeout(abortTimer);
+          if (form.__submitAbortTimer === abortTimer) form.__submitAbortTimer = 0;
+          if (form.__submitController === controller) form.__submitController = null;
         });
       }
-      // 防重复提交：正常靠 doSubmit.finally 解锁；若 15s 内始终无结果则强制解锁
-      const SUBMIT_LOCK_TIMEOUT_MS = 15000;
+      // 防重复提交：__submitting 从点击发送保持到请求有确定结果（成功/失败/超时）。
+      // 15s 看门狗只提示「结果未知」，不再解锁 —— 请求可能仍在飞行，解锁会让用户重复发送。
+      // 真正的超时由 doSubmit 的 AbortController 负责（按上传体积放宽）。
+      const SUBMIT_LOCK_TIMEOUT_MS = 30000;
+      const SUBMIT_RESULT_UNKNOWN_MSG = '提交结果未知：请求超过 30 秒未返回。请刷新页面确认是否已发出，避免重复提交。';
+      const SUBMIT_NETWORK_UNKNOWN_MSG = '网络异常，结果未知：请刷新页面确认是否已发出，避免重复提交。';
+      const SUBMIT_IMAGE_PROCESSING_TIMEOUT_MS = 180000;
+      const SUBMIT_IMAGE_PROCESSING_TIMEOUT_MSG = '发送前处理超时（180 秒），本次未发送。请手动压缩/转换图片后重试。';
+      const SUBMIT_REQUEST_TIMEOUT_BASE_MS = 30000;
+      const SUBMIT_REQUEST_TIMEOUT_PER_MB_MS = 15000;
+      const SUBMIT_REQUEST_TIMEOUT_MAX_MS = 120000;
+      function computeSubmitRequestTimeoutMs(fd) {
+        let bytes = 0;
+        try {
+          const image = fd && typeof fd.get === 'function' ? fd.get('image') : null;
+          if (image && typeof image.size === 'number' && isFinite(image.size)) bytes = image.size;
+        } catch (e) { /* 取不到大小就按纯文本超时处理 */ }
+        const mb = bytes > 0 ? Math.ceil(bytes / (1024 * 1024)) : 0;
+        return Math.min(SUBMIT_REQUEST_TIMEOUT_MAX_MS, SUBMIT_REQUEST_TIMEOUT_BASE_MS + mb * SUBMIT_REQUEST_TIMEOUT_PER_MB_MS);
+      }
       const clearSubmitLockTimer = (f) => {
         if (f && f.__submitLockTimer) {
           clearTimeout(f.__submitLockTimer);
           f.__submitLockTimer = 0;
         }
       };
+      const clearSubmitAbortTimer = (f) => {
+        if (f && f.__submitAbortTimer) {
+          clearTimeout(f.__submitAbortTimer);
+          f.__submitAbortTimer = 0;
+        }
+      };
       const unlockSubmit = (f) => {
         clearSubmitLockTimer(f);
         if (f) {
+          clearSubmitAbortTimer(f);
+          f.__submitController = null;
           f.__submitImageProcessing = false;
           f.__submitting = false;
         }
@@ -16822,13 +17509,14 @@ ${markedSwatchHtml}
       function refreshSubmitLockTimer(f) {
         if (!f || !f.__submitting || f.__submitImageProcessing) return;
         clearSubmitLockTimer(f);
-        // 点击发送后 15s 仍无 doSubmit 成功/失败结果 → 主动解除，避免永久卡死
+        // 请求 15s 仍无结果：只标记「结果未知」并提示刷新确认，
+        // 保持提交锁直到请求真正结束或被 AbortController 中止，避免重复提交
         f.__submitLockTimer = setTimeout(() => {
           f.__submitLockTimer = 0;
           if (!f.__submitting) return;
           if (f.__submitImageProcessing) return;
-          f.__submitting = false;
-          toast('提交可能失败，请检查网络，或者刷新后重试', 0, { type: 'error' });
+          f.__submitUnknown = true;
+          toast(SUBMIT_RESULT_UNKNOWN_MSG, 0, { type: 'error', key: 'send-unknown' });
         }, SUBMIT_LOCK_TIMEOUT_MS);
       }
       function beginSubmitImageProcessing(f) {
@@ -16844,11 +17532,22 @@ ${markedSwatchHtml}
         if (!f) return;
         f.__submitting = true;
         f.__submitImageProcessing = false;
-        refreshSubmitLockTimer(f);
+        // 保留：这里不启动看门狗 —— 饼干确认弹窗的停留时间不应计入网络超时；
+        // 看门狗与真实超时都由 doSubmit 在真正发请求时启动。
       };
       if (form.__submitting) {
         toast('发送中，请勿重复提交……');
         return;
+      }
+      if (form.__submitUnknown) {
+        // 上一次请求结果未知（可能已发出）：先让用户刷新确认，确认后才允许重发。
+        // 未知标记保留到新请求真正开始（doSubmit）再由本次结果覆盖，
+        // 避免用户确认后又在饼干弹窗点取消、旧结果仍未知却被清掉。
+        const resend = window.confirm('上次提交结果未知（可能已经发出）。\n请先刷新页面确认是否已发出。\n若确定要再次发送，点「确定」。');
+        if (!resend) {
+          toast('已取消发送：请先刷新确认上次提交结果', 2500);
+          return;
+        }
       }
       lockSubmit(form);
       // ── 发送前饼干确认（含串内偏好检查） ──
@@ -17418,6 +18117,25 @@ ${markedSwatchHtml}
     }
     return n;
   }
+  // IME（拼音/日文等）组字期间不计算字数：
+  //   组字过程中浏览器会带着「拼音串」连续触发 input（如输入 nihao 时值为 "nihao"），
+  //   此时统计会出现数字乱跳、并可能误判超限标红；等 compositionend（候选词上屏）后再算一次。
+  //   兼容两种事件顺序（compositionend→input 或 input→compositionend）：组字中一律跳过，
+  //   上屏时统一补算，两种顺序下结果都正确。
+  function bindImeAwareCharCounter(el, update) {
+    if (!el || typeof update !== 'function') return;
+    if (el.__xdexImeCounterGuarded) el.removeEventListener('input', el.__xdexImeCounterGuarded);
+    if (el.__xdexImeCounterStart) el.removeEventListener('compositionstart', el.__xdexImeCounterStart);
+    if (el.__xdexImeCounterEnd) el.removeEventListener('compositionend', el.__xdexImeCounterEnd);
+    el.__xdexImeCounterStart = () => { el.__xdexImeComposing = true; };
+    el.__xdexImeCounterEnd = () => { el.__xdexImeComposing = false; update(); };
+    el.__xdexImeCounterGuarded = () => { if (el.__xdexImeComposing) return; update(); };
+    el.addEventListener('compositionstart', el.__xdexImeCounterStart);
+    el.addEventListener('compositionend', el.__xdexImeCounterEnd);
+    el.addEventListener('input', el.__xdexImeCounterGuarded);
+    el.__xdexImeComposing = false;
+    update();
+  }
   //回复表单UI调整
   function enhancePostFormLayout(formOpt) {
      // 浮窗内表单优先；允许 open() 传入当前 form，避免 early 时扫到错误节点
@@ -17463,24 +18181,38 @@ ${markedSwatchHtml}
             if (!contentCounter) {
               contentCounter = document.createElement('span');
               contentCounter.className = 'xdex-post-content-char-count';
-              contentCounter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;';
+              // 「字数:」前缀固定不动，数字放进定宽盒子（4 位，对应上限 5000）左对齐：
+              //   · 字数 0 → 42 → 128 → 5000 时，前缀与左侧元素都不移动
+              //   · 若整块右对齐，位数增加时前缀会向左推，出现左右抖动
+              contentCounter.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;flex:0 0 auto;'
+                + 'display:inline-flex;align-items:baseline;';
+              contentCounter.appendChild(document.createTextNode('字数:'));
+              const numSpan = document.createElement('span');
+              numSpan.className = 'xdex-post-content-char-count-num';
+              // 定宽 4ch（对应上限 5000）+ 内部「右对齐」：
+              //   · 数字贴住右侧（靠右贴边），前缀「字数:」与右侧「送出」都不移动
+              //   · 盒子宽度固定 → 0 → 42 → 5000 时布局完全静止
+              numSpan.style.cssText = 'display:inline-block;min-width:4ch;text-align:right;'
+                + 'font-variant-numeric:tabular-nums;font-feature-settings:\'tnum\' 1;';
+              contentCounter.appendChild(numSpan);
               btnWrapper.appendChild(contentCounter);
             }
             const updateContentCounter = () => {
               const len = countPostContentServerChars(contentTextarea.value);
-              contentCounter.textContent = '字数:' + len;
+              const numSpan = contentCounter.querySelector('.xdex-post-content-char-count-num');
+              // 只更新数字盒（前缀「字数:」不动，宽度由定宽盒锁定）
+              if (numSpan) numSpan.textContent = String(len);
+              else contentCounter.textContent = '字数:' + len;
               contentCounter.style.color = len > POST_FORM_CONTENT_SERVER_MAX_LENGTH ? '#e53935' : '#888';
             };
-            if (contentTextarea.__xdexPostContentCharCounter) {
-              contentTextarea.removeEventListener('input', contentTextarea.__xdexPostContentCharCounter);
-            }
-            contentTextarea.__xdexPostContentCharCounter = updateContentCounter;
-            contentTextarea.addEventListener('input', updateContentCounter);
-            updateContentCounter();
+            // 拼音组字期间不计数（见 bindImeAwareCharCounter）
+            bindImeAwareCharCounter(contentTextarea, updateContentCounter);
           }
           btnWrapper.appendChild(sendBtn);
           // 将按钮容器添加到“颜文字”行
           emoticonRow.appendChild(btnWrapper);
+          // 表单重建后冷却提示需重新挂到「字数」左侧（切饼干/刷新页面后仍显示剩余时间）
+          try { renderCookieCooldown(); } catch (e) {}
         }
       }
       // 2) 折叠「标题 / 名称(含管理员) / E-mail」为一个折叠面板，并固定顺序
@@ -17549,12 +18281,8 @@ ${markedSwatchHtml}
           // E-mail 到 100 已被 maxlength 拦住，保持灰色；标题/名称超 15 才标红
           counter.style.color = (!isEmailInput && len > maxLen) ? '#e53935' : '#888';
         };
-        if (input.__xdexPostFormCharCounter) {
-          input.removeEventListener('input', input.__xdexPostFormCharCounter);
-        }
-        input.__xdexPostFormCharCounter = updateCounter;
-        input.addEventListener('input', updateCounter);
-        updateCounter();
+        // 拼音组字期间不计数（见 bindImeAwareCharCounter）
+        bindImeAwareCharCounter(input, updateCounter);
       });
       // 已折叠过就不要再包一层（early open 与 ready 都会跑）
       // 若 toggle 丢失或 Utils.collapse 曾被 .qp-body 守卫挡掉，则补折叠；并清理重复按钮
@@ -18462,10 +19190,10 @@ ${markedSwatchHtml}
           const EXTRA_EMOTS = [
               "( ´_ゝ`)旦","(<ゝω・) ☆","(`ε´ (つ*⊂)","=͟͟͞͞( 'ヮ' 三 'ヮ' =͟͟͞͞)","↙(`ヮ´ )↗ 开摆！",
               "(っ˘Д˘)ノ<","(ﾉ#)`д´)σ","₍₍(ง`ᝫ´ )ว⁾","( `ᵂ´)","( *・ω・)✄╰ひ╯","U•ェ•*U","⊂( ﾟωﾟ)つ",
-              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ",
+              "( ﾟ∀。)7","･ﾟ( ﾟ∀。) ﾟ。","\\( ﾟ∀。)/","(╬ﾟ∀。)","( `д´)σ","( ﾟᯅ 。)","( ;`д´; )","m9( `д´)","( ﾟπ。)","ᕕ( ﾟ∀。)ᕗ","ᕙ( ﾟ∀。)ᕗ",
               "ฅ(^ω^ฅ)","(|||^ヮ^)","(|||ˇヮˇ)","(　↺ω↺)"," `ー´) `д´) `д´)",
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
-              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)"," /̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
+              "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)","(　^ω。)","/̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
               "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
           ];
@@ -18499,6 +19227,7 @@ ${markedSwatchHtml}
               "冰封王座3": "( `д´)=🔪 👑\n　　　 (　ﾟ 3ﾟ)\n　　　👑\n(// `ー´)//\n(　x 3x)\n　👑\n(Ⅱ`∀´)Ⅱ\n(　x 3x)\n　👑\n( `д´)\n(　x 3x)",
               "喵喵酱": "　^ ^\n( =`д´=)哈—！",
               "狗比酱": "(U `д´)<汪汪汪！",
+              "狼酱":"　　　　　႔ ႔\n嗷呜！＞ ᠸ`д´ 𐅠",
               "起舞":"⊂ヽ(　^ω^)つ\n　 ＼ 　　／　　\n　　( ＿_フ\n　　(／",
               "N98": "淦\n是\nN\n9\n8\n接☆龙☆大☆成☆功\n盗摄？(　^ω^)\n石雕\n要素齐全\nN98是什么？\n同问\n感谢\n谢谢\n要素齐全\n什么是要素齐全？\n淦\n是\nN\n9\n5\nr\n警惕r点机器人\n你一个人都说完了我们说什么(╬ﾟдﾟ)",
               "望po石":"　┏━┓\n　┃望┃\nᕕ┃po┃ᕗ\n　┃石┃\n　┗━┛\n嗨呀我又来望po了\n我天天都来这望po",
@@ -18508,6 +19237,7 @@ ${markedSwatchHtml}
               "冰箱先生3D":"　　/\n▁▁▁▁\n╲　　　╲\n▏┌───┐\n▏│　ﾟ∀ﾟ │\n▏├─┬─┤\n╲│　│　│\n　└─┴─┘",
               "血压↑":"　他妈的／＞__フ\n　　　　| ＝ ^ω^)＝　血压↗↗\n　 　　／`　　 丨",
               "血压0↓":"　算逑喽／＞__フ\n　　　　| ＝ ˇωˇ)＝　血压0↓\n　 　　／`　　 丨",
+              "挺好颜":"╯ 　乀\nヘ　 へ\n　′\n　﹀",
               "全角空格": "　",
               "零宽空格": "​",
           };
@@ -18518,8 +19248,8 @@ ${markedSwatchHtml}
               "给你","举高高","举高高2","举糕糕","Happy肥肥Day",
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
-              "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓",
+              "喵喵酱","狗比酱","狼酱","起舞","N98",
+              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓","挺好颜",
               "全角空格","零宽空格",
               // 页面中“防剧透/骰子/高级骰子”不动其原位
           ];
@@ -18529,8 +19259,8 @@ ${markedSwatchHtml}
               "给你","举高高","举高高2","举糕糕","Happy肥肥Day",
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
-              "喵喵酱","狗比酱","起舞","N98",
-              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓"
+              "喵喵酱","狗比酱","狼酱","起舞","N98",
+              "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓","挺好颜",
           ]);
           // 一次性补齐（选择器就绪且已有至少一个选项时调用）
           function patchSelect(sel) {
@@ -19059,12 +19789,9 @@ ${markedSwatchHtml}
             });
             if (typeof updatePreviewCookieId === 'function') updatePreviewCookieId();
             // === 图片预览更新函数 ===
-            // 复用全局 updatePreviewImageFromFile（实时查询当前活跃预览框），
+            // 预览更新统一走全局 updatePreviewImageFromFile（实时查询当前活跃预览框），
             // 不再用闭包捕获的旧 $box，避免 REPLY 浮窗 open() 早于 enhanceIsland
             // 时粘贴图片更新到看不见的框。
-            function updatePreviewFromFile(file) {
-                updatePreviewImageFromFile(file);
-            }
             // === 监听文件选择 ===
             const fileInput = document.querySelector('input[type="file"][name="image"]');
             if (fileInput) {
@@ -19471,9 +20198,11 @@ function 注册自动保存编辑() {
                     e.preventDefault();
                     // 清空文件
                     $file.val('');
-                    // 直接调用预览清空逻辑
-                    if (typeof updatePreviewFromFile === 'function') {
-                        updatePreviewFromFile(null);
+                    // 直接调用预览清空逻辑（全局函数；此前误用 initPreviewBox 内的
+                    // updatePreviewFromFile，作用域不可达导致恒走兜底分支，
+                    // 去重键因此从未重置，同一个 HEIC 重新附带时不再提示）
+                    if (typeof updatePreviewImageFromFile === 'function') {
+                        updatePreviewImageFromFile(null);
                     } else {
                         const $preview = $('.h-preview-box');
                         $preview.find('img').attr('src', '').removeAttr('src');
@@ -19492,6 +20221,9 @@ function 注册自动保存编辑() {
               }
           } else {
               if ($btn.length) $btn.remove();
+              // 原生 input 被清空（选择框取消/浏览器行为）时同样要复位 HEIC 去重，
+              // 否则下一次重新附带同一文件不会再提示
+              if (typeof resetHeifPreviewTipState === 'function') resetHeifPreviewTipState();
           }
       }
       $file.on('change', 刷新按钮);
@@ -22921,9 +23653,43 @@ function 注册自动保存编辑() {
         </div>
       </div>`;
   }
+  // 默认订阅号读写：'' = 未设置（点“订阅EX”时每次弹窗选择）
+  // 读取时校验 uuid 仍存在于订阅号列表，避免删除订阅号后残留失效默认值
+  function getDefaultSubscriptionFeedUuid() {
+    try {
+      const state = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
+        ? SettingPanel.state
+        : (GM_getValue(SettingPanel.key, {}) || {});
+      const uuid = String(state.defaultSubscriptionFeedUuid || '').trim();
+      if (!uuid) return '';
+      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+      return feeds.some((f) => String((f && f.uuid) || '').trim() === uuid) ? uuid : '';
+    } catch (e) {
+      return '';
+    }
+  }
+  // 写入默认订阅号并打时间戳；取消默认（''）同样打时间戳，供跨端按“新者胜”判定
+  function setDefaultSubscriptionFeedUuid(uuid) {
+    try {
+      const next = String(uuid || '').trim();
+      const base = (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state)
+        ? SettingPanel.state
+        : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      base.defaultSubscriptionFeedUuid = next;
+      base.defaultSubscriptionFeedUpdatedAt = Date.now();
+      if (typeof SettingPanel !== 'undefined' && SettingPanel) SettingPanel.state = base;
+      GM_setValue(SettingPanel.key, base);
+      try { if (SettingPanel && typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs(); } catch (e) {}
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   function buildSubscriptionFeedRowHtml(index, item = {}) {
     const desc = item.desc || '';
     const uuid = item.uuid || '';
+    const isDefault = !!uuid && uuid === getDefaultSubscriptionFeedUuid();
+    const checkedAttr = isDefault ? ' checked' : '';
     return `
       <div class="subscription-feed-row" style="position:relative;margin:10px 0 8px;">
         <span style="position:absolute;top:-9px;left:10px;display:inline-block;padding:0 6px;font-size:12px;line-height:18px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;z-index:1;">#${index}</span>
@@ -22931,7 +23697,13 @@ function 注册自动保存编辑() {
         <button type="button" class="subscription-feed-delete" style="position:absolute;top:-9px;right:10px;width:20px;height:20px;border:1px solid #a98f7a;border-radius:999px;background:#F0E0D6;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1;">${XDEX_SVG_X}</button>
         <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px;align-items:flex-start;border:1px solid #bfa58f;border-radius:6px;padding:12px 10px 10px 26px;background:rgba(255,255,255,0.18);box-sizing:border-box;width:100%;">
           <input class="subscription-feed-desc-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="备注（可选）" value="${Utils.escapeHTML ? Utils.escapeHTML(desc) : desc}">
-          <input class="subscription-feed-uuid-input" style="width:100%;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <input class="subscription-feed-uuid-input" style="flex:1;min-width:0;padding:5px 8px;box-sizing:border-box;border-radius:8px;" placeholder="订阅号（任意字符串）" value="${Utils.escapeHTML ? Utils.escapeHTML(uuid) : uuid}">
+            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;">
+              <input type="checkbox" id="subscription-feed-default-${index}" class="xdex-switch subscription-feed-default" role="switch"${checkedAttr}>
+              <label for="subscription-feed-default-${index}" style="font-size:12px;color:#6f5d50;user-select:none;">默认</label>
+            </div>
+          </div>
         </div>
       </div>`;
   }
@@ -22955,6 +23727,41 @@ function 注册自动保存编辑() {
   const POST_HISTORY_THREAD_LIMIT = Infinity;
   const POST_HISTORY_REPLY_LIMIT = Infinity;
   const POST_HISTORY_SYNC_EVENT = 'xdex:post-history-changed';
+  // 大键只承载数据；跨标签同步只订阅几十字节的版本键。
+  // 否则每次全量写都会把整份历史（MB 级）投递给每个注册了大键监听的标签页。
+  const THREAD_HISTORY_REV_KEY = 'xdex_thread_history_rev';
+  const POST_HISTORY_REV_KEY = 'xdex_post_history_rev';
+  let historyRevSeq = 0;
+  function nextHistoryRev() {
+    // 同一毫秒内连续写入也必须得到不同值，否则存储层可能判定“未变化”而不发变更事件
+    historyRevSeq = (historyRevSeq + 1) % 1000;
+    return `${Date.now().toString(36)}-${historyRevSeq.toString(36)}`;
+  }
+  // 迁移桥：旧版本只写大键、不写版本键。仅当版本键尚不存在时临时监听大键，
+  // 等新版本写入一次版本键后立即移除，避免长期承担整值投递。
+  function bindHistoryValueChangeSync(bigKey, revKey, onChange) {
+    let legacyBridgeId = null;
+    const removeLegacyBridge = () => {
+      if (legacyBridgeId === null) return;
+      const id = legacyBridgeId;
+      legacyBridgeId = null;
+      try {
+        if (typeof GM_removeValueChangeListener === 'function') GM_removeValueChangeListener(id);
+      } catch (e) {}
+    };
+    if (typeof GM_addValueChangeListener !== 'function') return;
+    GM_addValueChangeListener(revKey, (_key, _oldValue, _newValue, remote) => {
+      removeLegacyBridge();
+      onChange(remote);
+    });
+    // 版本键存在说明已迁移完成，不再注册大键监听——这是消除“标签页数 × MB”的关键。
+    // 大键监听只作为旧标签页写数据的兼容桥，不能因一次旧写入就移除（否则会丢后续旧写入的实时同步）。
+    if (GM_getValue(revKey, null) == null) {
+      legacyBridgeId = GM_addValueChangeListener(bigKey, (_key, _oldValue, _newValue, remote) => {
+        onChange(remote);
+      });
+    }
+  }
   const POST_HISTORY_API_BASE = `${location.origin}/Api`;
   const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
   const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
@@ -23239,6 +24046,7 @@ function 注册自动保存编辑() {
   function setThreadHistoryStore(store) {
     const normalized = normalizeThreadHistoryStore(store);
     GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
+    GM_setValue(THREAD_HISTORY_REV_KEY, nextHistoryRev());
     threadHistoryStoreCache = normalized;
     notifyThreadHistoryStoreChanged('local-write', false);
     return normalized;
@@ -23295,7 +24103,7 @@ function 注册自动保存编辑() {
     threadHistoryLiveSyncBound = true;
     if (typeof GM_addValueChangeListener === 'function') {
       try {
-        GM_addValueChangeListener(THREAD_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+        bindHistoryValueChangeSync(THREAD_HISTORY_STORAGE_KEY, THREAD_HISTORY_REV_KEY, (remote) => {
           invalidateThreadHistoryStoreCache();
           scheduleThreadHistoryLiveRender('gm-value-change', remote);
           syncFavoriteThreadsLinks();
@@ -23662,6 +24470,7 @@ function 注册自动保存编辑() {
     postHistoryPersistPending = null;
     try {
       GM_setValue(POST_HISTORY_STORAGE_KEY, pending);
+      GM_setValue(POST_HISTORY_REV_KEY, nextHistoryRev());
     } catch (e) {
       console.warn('[postHistory] persist flush failed', e);
     }
@@ -23791,7 +24600,7 @@ function 注册自动保存编辑() {
     postHistoryLiveSyncBound = true;
     if (typeof GM_addValueChangeListener === 'function') {
       try {
-        GM_addValueChangeListener(POST_HISTORY_STORAGE_KEY, (_key, _oldValue, _newValue, remote) => {
+        bindHistoryValueChangeSync(POST_HISTORY_STORAGE_KEY, POST_HISTORY_REV_KEY, (remote) => {
           invalidatePostHistoryStoreCache();
           schedulePostHistoryLiveRender('gm-value-change', remote);
         });
@@ -25502,8 +26311,16 @@ function 注册自动保存编辑() {
     threadHistoryReactivationTrackingInstalled = true;
     threadHistoryVisibleSessionCounted = !!initialCounted && document.visibilityState === 'visible';
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') scheduleThreadHistoryReactivationVisit('visibilitychange');
-      else cancelThreadHistoryDwellTimer(true);
+      if (document.visibilityState === 'visible') {
+        scheduleThreadHistoryReactivationVisit('visibilitychange');
+        // ★ 补跑全量加宽（QwQNT 时序自愈）：初始 pass 可能命中 h-active 静默跳过 /
+        //   offsetWidth=0 RO 自愈 / targetWidth<=0 静默返回，这些分支失败时无锁无兜底；
+        //   QwQNT 宿主在标签切换时会派发正确的 visibilitychange，此处即自愈触发器。
+        //   __imageWidthExpanded 锁保证已加宽者 O(1) 跳过；函数未初始化时可选链静默跳过
+        try { enableHDImageAndLayoutFix.expandReplyMainWidths?.(document); } catch (e) {}
+      } else {
+        cancelThreadHistoryDwellTimer(true);
+      }
     }, { passive: true });
     window.addEventListener('focus', () => scheduleThreadHistoryReactivationVisit('focus'), { passive: true });
     window.addEventListener('blur', () => cancelThreadHistoryDwellTimer(false), { passive: true });
@@ -27981,17 +28798,6 @@ function 注册自动保存编辑() {
     `;
     document.head.appendChild(style);
   }
-  function getCurrentSubscriptionFeedLabel() {
-    const uuid = subscriptionFeedCurrentUuid || '';
-    if (!uuid) return '';
-    try {
-      const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
-      const feed = feeds.find((f) => f.uuid === uuid);
-      return feed && feed.desc ? feed.desc : uuid;
-    } catch (e) {
-      return uuid;
-    }
-  }
   function resolveSubscriptionFeedUuid() {
     const panelSelectedUuid = String($('#sp_feeds_selector').val() || '').trim();
     if (panelSelectedUuid) return panelSelectedUuid;
@@ -28005,6 +28811,189 @@ function 注册自动保存编辑() {
     const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
     return feeds.length ? feeds[0].uuid : '';
   }
+  // 订阅到指定订阅号（默认值直订 / 弹窗选择共用）
+  function subscribeThreadToFeed(tid, uuid) {
+    const targetTid = String(tid || '').trim();
+    const targetUuid = String(uuid || '').trim();
+    if (!targetTid || !targetUuid) return;
+    const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+    const feed = feeds.find((f) => String((f && f.uuid) || '').trim() === targetUuid);
+    const label = (feed && feed.desc) ? feed.desc : ((feed && feed.uuid) || targetUuid);
+    GM_xmlhttpRequest({
+      method: 'POST',
+      url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      data: `uuid=${encodeURIComponent(targetUuid)}&tid=${encodeURIComponent(targetTid)}`,
+      onload: (resp) => {
+        if (resp.status >= 200 && resp.status < 300) {
+          invalidateSubscriptionFeedSession(targetUuid, 'add-feed');
+          toast(`已订阅 No.${targetTid} 到「${label}」`);
+        } else {
+          toast(`订阅失败 (${resp.status})`);
+        }
+      },
+      onerror: () => toast('订阅失败，网络错误')
+    });
+  }
+
+  // 选择订阅号弹窗：未设置默认订阅号时，点击“订阅EX”每次弹出。
+  // 结构对齐 showCookieConfirmDialog：标题 + 串号（接入引用格式）+ 列表（每行尾部带“默认”开关与默认金标）
+  // + 键盘上下选择/Enter 确认 + 下限高度、列表滚动；无用量统计等订阅场景不需要的元素。
+  function showSubscriptionFeedPicker(tid) {
+    const targetTid = String(tid || '').trim();
+    if (!targetTid) return;
+    if (document.getElementById('subscription-feed-picker-modal')) return;
+    const feeds = ((typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [])
+      .filter((f) => f && String(f.uuid || '').trim());
+    if (!feeds.length) { toast('请先在设置中添加一个订阅号'); return; }
+    let selectedUuid = String(feeds[0].uuid || '').trim();
+    let focusedIndex = 0;
+    const $m = $(`
+      <div id="subscription-feed-picker-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">
+        <div class="subscription-feed-picker-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.4);"></div>
+        <div class="subscription-feed-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="subscription-feed-picker-title" style="position:relative;display:flex;flex-direction:column;width:420px;max-width:calc(100vw - 32px);min-height:min(280px, calc(100vh - 32px));max-height:min(80vh, calc(100vh - 32px));box-sizing:border-box;background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow:hidden;">
+          <h3 id="subscription-feed-picker-title" style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);flex:0 0 auto;">选择订阅号</h3>
+          <p style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted-foreground, #666);font-size:13px;flex:0 0 auto;">
+            <span>订阅 <span id="subscription-feed-picker-tid"></span> 到：</span>
+            <span id="subscription-feed-picker-default-label" style="color:#ffb300;font-size:11px;white-space:nowrap;"></span>
+          </p>
+          <div id="subscription-feed-picker-list" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:2px;"></div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--xdex-sp-border, #ddd);font-size:12px;line-height:1.45;color:var(--muted-foreground, #888);flex:0 0 auto;">设为默认后，之后点击“订阅EX”将直接订阅到默认订阅号，不再弹窗二次确认；如需按分类分别订阅，建议保持关闭。</div>
+          <div id="subscription-feed-picker-actions" style="display:flex;align-items:center;gap:4px;margin-top:10px;flex:0 0 auto;">
+            <button id="subscription-feed-picker-ok" type="button" style="flex:1;padding:6px 10px;">订阅</button>
+            <button id="subscription-feed-picker-cancel" type="button" style="padding:6px 16px;flex-shrink:0;">取消</button>
+          </div>
+        </div>
+      </div>`);
+    const $list = $m.find('#subscription-feed-picker-list');
+    const feedLabel = (feed) => (feed && feed.desc) ? feed.desc : ((feed && feed.uuid) || '');
+    // 主按钮文案：选中项 + 是否为默认（与饼干二次确认一致）
+    const updateOk = () => {
+      const feed = feeds.find((f) => String(f.uuid || '').trim() === selectedUuid);
+      const isDefault = getDefaultSubscriptionFeedUuid() === selectedUuid;
+      $m.find('#subscription-feed-picker-ok').text(`订阅到「${feedLabel(feed) || selectedUuid}」` + (isDefault ? '（默认）' : ''));
+    };
+    // 右上金色「默认: xxx」文本 + 各行的默认金标/开关选中态
+    const refreshDefaultVisuals = () => {
+      const cur = getDefaultSubscriptionFeedUuid();
+      const $lab = $m.find('#subscription-feed-picker-default-label');
+      const curFeed = feeds.find((f) => String(f.uuid || '').trim() === cur);
+      if (curFeed) $lab.text('默认: ' + feedLabel(curFeed)); else $lab.text('');
+      $list.find('.subscription-feed-picker-item').each(function () {
+        const uuid = String($(this).attr('data-uuid') || '');
+        const isDef = uuid === cur;
+        $(this).find('.subscription-feed-picker-default').prop('checked', isDef);
+        $(this).find('.xdex-feed-picker-default-badge').toggle(!!isDef);
+      });
+      updateOk();
+    };
+    feeds.forEach((feed) => {
+      const uuid = String(feed.uuid || '').trim();
+      const desc = String(feed.desc || '').trim();
+      // 复用面板下拉的 .xdex-feed-option（hover 底色），用内联样式覆盖为行布局
+      const $item = $('<div class="xdex-feed-option subscription-feed-picker-item" role="option"></div>')
+        .attr('data-uuid', uuid)
+        .css({
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '8px 10px',
+          border: '1px solid var(--xdex-sp-border, #ddd)',
+          borderRadius: '6px',
+          marginBottom: '6px',
+          cursor: 'pointer',
+          whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip'
+        });
+      const $text = $('<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;"></div>');
+      // 备注优先；无备注时直接显示订阅号
+      const $main = $('<div style="font-size:13px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>');
+      $main.append($('<span></span>').text(desc || uuid));
+      $main.append($('<span class="xdex-feed-picker-default-badge" style="display:none;margin-left:4px;background:rgba(255,193,7,.18);color:#ffb300;padding:1px 5px;border-radius:3px;font-size:11px;">默认</span>'));
+      $text.append($main);
+      if (desc) {
+        $text.append($('<div style="font-size:12px;color:var(--muted-foreground, #888);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>').text(uuid));
+      }
+      $item.append($text);
+      // 「默认」开关置于订阅号后方（与饼干二次确认的 pin 开关同位）
+      const $sw = $('<input type="checkbox" class="xdex-switch subscription-feed-picker-default" role="switch">')
+        .attr('title', '设为本机默认订阅号：之后点击“订阅EX”将直接订阅到该订阅号，不再询问');
+      const $swLabel = $('<label style="font-size:12px;color:#6f5d50;user-select:none;">默认</label>');
+      $item.append($('<div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;"></div>').append($sw).append($swLabel));
+      $item.on('click', (e) => {
+        // 点在开关上不触发选中
+        if ($(e.target).closest('.subscription-feed-picker-default').length) return;
+        selectItem($item);
+      });
+      // 立即写入默认（与设置面板行内开关、跨页同步同源），无需等确认
+      $sw.on('click', (e) => e.stopPropagation());
+      $sw.on('change', () => {
+        const on = $sw.is(':checked');
+        if (on) {
+          $list.find('.subscription-feed-picker-default').prop('checked', false);
+          $sw.prop('checked', true);
+          setDefaultSubscriptionFeedUuid(uuid);
+        } else if (getDefaultSubscriptionFeedUuid() === uuid) {
+          setDefaultSubscriptionFeedUuid('');
+        }
+        refreshDefaultVisuals();
+      });
+      $list.append($item);
+    });
+    const $items = () => $list.find('.subscription-feed-picker-item');
+    function selectItem($item) {
+      const idx = $items().toArray().indexOf($item[0]);
+      if (idx < 0) return;
+      focusedIndex = idx;
+      selectedUuid = String(feeds[idx].uuid || '').trim();
+      $items().css({ background: '', borderColor: 'var(--xdex-sp-border, #ddd)' });
+      $item.css({ background: 'rgba(0,184,148,.12)', borderColor: '#00b894' });
+      updateOk();
+    }
+    // 键盘上下移动焦点（同步选中态与按钮文案），Enter 确认
+    const updateFocus = (newIndex) => {
+      const $all = $items();
+      if (!$all.length) return;
+      focusedIndex = Math.max(0, Math.min(newIndex, $all.length - 1));
+      $all.css('box-shadow', '');
+      $all.eq(focusedIndex).css('box-shadow', 'inset 0 0 0 2px rgba(102,204,255,.6)').get(0)?.scrollIntoView({ block: 'nearest' });
+      selectItem($all.eq(focusedIndex));
+    };
+    $('body').append($m);
+    // 串号接入引用体系：悬停原生引用浮窗 / 点击拓展引用浮窗（与饼干二次确认同路径）
+    $m.find('#subscription-feed-picker-tid').html('<font color="#789922">No.' + targetTid + '</font>');
+    try { if (typeof initExtendedContent === 'function') initExtendedContent($m[0]); } catch (e) {}
+    // 初始：选中第一项、刷新默认金标/开关/文案
+    $items().first().trigger('click');
+    refreshDefaultVisuals();
+    const closePicker = () => { $m.remove(); };
+    $m.find('#subscription-feed-picker-ok').on('click', () => {
+      closePicker();
+      subscribeThreadToFeed(targetTid, selectedUuid);
+    });
+    $m.find('#subscription-feed-picker-cancel').on('click', closePicker);
+    $m.find('.subscription-feed-picker-backdrop').on('click', closePicker);
+    $m.on('keydown', (e) => {
+      // 焦点在按钮上时交给原生行为（Enter 触发该按钮），避免把「取消」误当成确认
+      if (e.key === 'Enter' && $(e.target).is('button')) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        updateFocus(focusedIndex - 1);
+      } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        $m.find('#subscription-feed-picker-ok').trigger('click');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closePicker();
+      }
+    });
+    $m[0].focus();
+  }
+
   function injectSubscriptionExButton(root) {
     ensureSubscriptionExButtonStyle();
     const scope = root || document;
@@ -28019,7 +29008,7 @@ function 注册自动保存编辑() {
       span.className = 'h-threads-info-report-btn';
       const a = document.createElement('a');
       a.href = '#';
-      a.title = '订阅到当前选中的订阅号';
+      a.title = '订阅到订阅号（未设默认时弹窗选择）';
       a.className = 'xdex-sub-ex-btn';
       a.appendChild(document.createTextNode('订阅'));
       const badge = document.createElement('sub');
@@ -28033,30 +29022,18 @@ function 注册自动保存编辑() {
         e.stopPropagation();
         const tid = String(container.getAttribute('data-threads-id') || anchor.closest('.h-threads-item')?.getAttribute('data-threads-id') || '').trim();
         if (!tid) return;
-        const uuid = resolveSubscriptionFeedUuid();
-        if (!uuid) {
+        const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
+        if (!feeds.length) {
           toast('请先在设置中添加一个订阅号');
           return;
         }
-        const feeds = (typeof getFilterConfig === 'function' ? getFilterConfig() : {}).subscriptionFeeds || [];
-        const matchedFeed = feeds.find((f) => String(f.uuid || '').trim() === String(uuid || '').trim());
-        const label = matchedFeed && matchedFeed.desc ? matchedFeed.desc : (getCurrentSubscriptionFeedLabel() || uuid);
-        if (!window.confirm(`确定要订阅 No.${tid} 到「${label}」吗？`)) return;
-        GM_xmlhttpRequest({
-          method: 'POST',
-          url: `${SUBSCRIPTION_FEED_API_BASE}/addFeed`,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          data: `uuid=${encodeURIComponent(uuid)}&tid=${encodeURIComponent(tid)}`,
-          onload: (resp) => {
-            if (resp.status >= 200 && resp.status < 300) {
-              invalidateSubscriptionFeedSession(uuid, 'add-feed');
-              toast(`已订阅 No.${tid} 到「${label}」`);
-            } else {
-              toast(`订阅失败 (${resp.status})`);
-            }
-          },
-          onerror: () => toast('订阅失败，网络错误')
-        });
+        // 存在有效默认订阅号 → 直接订阅（不再弹窗确认）；否则每次点击都弹窗选择订阅号
+        const defaultUuid = getDefaultSubscriptionFeedUuid();
+        if (defaultUuid) {
+          subscribeThreadToFeed(tid, defaultUuid);
+          return;
+        }
+        showSubscriptionFeedPicker(tid);
       });
       span.appendChild(document.createTextNode('['));
       span.appendChild(a);
@@ -28816,7 +29793,7 @@ function 注册自动保存编辑() {
   function syncImageViewerButtonForHideMode(mode) {
     const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
     ensureImageViewerButtonStyle();
-    const btn = document.querySelector('.xdex-image-viewer-btn');
+    const btn = document.getElementById('xdex-image-viewer-btn');
     if (!btn) return;
     const finalMode = (mode === 'blur' || mode === 'noimage' || mode === 'tips') ? mode : 'default';
     btn.classList.remove('xdex-iv-btn-hidden', 'xdex-iv-btn-blur', 'xdex-iv-btn-tips');
@@ -28873,10 +29850,10 @@ function 注册自动保存编辑() {
     ensureImageViewerButtonStyle();
     const threadId = getCurrentThreadIdForImageViewer();
     if (!threadId) return;
-    let btn = document.querySelector('.xdex-image-viewer-btn');
+    let btn = document.getElementById('xdex-image-viewer-btn');
     if (!btn) {
       const IMAGE_VIEWER_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"></path></svg>';
-      const $btn = $('<button type="button" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">').html(IMAGE_VIEWER_ICON_SVG);
+      const $btn = $('<button type="button" id="xdex-image-viewer-btn" class="xdex-image-viewer-btn" title="阅图模式" aria-label="阅图模式">').html(IMAGE_VIEWER_ICON_SVG);
       $btn.on('click', () => openImageViewer(threadId));
       $('body').append($btn);
       btn = $btn[0];
@@ -29556,7 +30533,8 @@ function 注册自动保存编辑() {
     if (!document.getElementById('xdex-detail-quote-zfix')) {
       const zfix = document.createElement('style');
       zfix.id = 'xdex-detail-quote-zfix';
-      zfix.textContent = '#h-ref-view{z-index:10003!important}.qp-overlay-quote{z-index:10002!important}.qp-close-all{z-index:10003!important}.qp-stack{z-index:10003!important}';
+      // 详情层(10001)与导出串弹窗(10001)之上：遮罩 10006、窗体/关闭钮 10007、原生框 20000 已够
+      zfix.textContent = '#h-ref-view{z-index:10007!important}.qp-overlay-quote{z-index:10006!important}.qp-close-all{z-index:10007!important}.qp-stack{z-index:10007!important}';
       document.head.appendChild(zfix);
     }
     // 标记饼干
@@ -30046,6 +31024,21 @@ function initReplyParamScrollTo() {
       }).finally(() => webdavAutoRemove(WEBDAV_AUTO_RUNNING_KEY));
     }, 300);
   }
+  // WebDAV 请求全局限流：同步一次会连续发多个请求（读远端 / 上传前拉取 / PUT），
+  // 部分 WebDAV 服务（或反向代理）对连续同连接请求会拒绝/挂起，表现为
+  // 「第 1 次成功、第 2 次超时、第 3 次 HTTP 0」。这里强制最小间隔，串行化发车。
+  const WEBDAV_MIN_REQUEST_GAP_MS = 400;
+  let webdavLastRequestAt = 0;
+  let webdavRequestChain = Promise.resolve();
+  function webdavThrottle() {
+    const run = webdavRequestChain.then(() => {
+      const wait = webdavLastRequestAt + WEBDAV_MIN_REQUEST_GAP_MS - Date.now();
+      return wait > 0 ? new Promise((r) => setTimeout(r, wait)) : Promise.resolve();
+    }).then(() => { webdavLastRequestAt = Date.now(); });
+    webdavRequestChain = run.catch(() => {});
+    return run;
+  }
+
   function webdavRequest(details) {
     return new Promise((resolve) => {
       if (typeof GM_xmlhttpRequest !== 'function') {
@@ -30089,7 +31082,11 @@ function initReplyParamScrollTo() {
         ontimeout: () => settle({ ok: false, status: 0, timeout: true })
       };
       try {
-        GM_xmlhttpRequest(req);
+        // 过限流闸门后再发车（闸门是 Promise，不阻塞本次 settle 逻辑）
+        webdavThrottle().then(() => { try { GM_xmlhttpRequest(req); } catch (err) {
+          console.error('[webdav] GM_xmlhttpRequest 调用异常', err);
+          settle({ ok: false, status: 0, callError: err && err.message ? String(err.message) : String(err) });
+        } });
       } catch (err) {
         console.error('[webdav] GM_xmlhttpRequest 调用异常', err);
         settle({ ok: false, status: 0, callError: err && err.message ? String(err.message) : String(err) });
@@ -30098,6 +31095,24 @@ function initReplyParamScrollTo() {
       setTimeout(() => settle({ ok: false, status: 0, timeout: true, hanging: true }), (details.timeout || 10000) + 3000);
     });
   }
+  // 带重试的 WebDAV 请求：连续请求时偶发「超时 / HTTP 0」多为连接被复用或服务端瞬时拒绝，
+  // 退避后重试一次通常即可成功。只重试网络层失败（status 0），不重试 4xx/5xx。
+  async function webdavRequestRetry(details, attempts) {
+    const max = Math.max(1, attempts || 2);
+    let last = null;
+    for (let i = 0; i < max; i += 1) {
+      last = await webdavRequest(details);
+      const retriable = last && last.status === 0 && (last.timeout || last.hanging || last.networkError);
+      if (!retriable) return last;
+      if (i < max - 1) {
+        const backoff = 800 * (i + 1);
+        console.warn('[webdav] 请求失败，' + backoff + 'ms 后重试', { url: details.url, method: details.method, attempt: i + 1 });
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+    return last;
+  }
+
   function buildWebdavAuthHeader(cfg) {
     const raw = cfg.username + ':' + cfg.password;
     return 'Basic ' + btoa(unescape(encodeURIComponent(raw)));
@@ -30143,11 +31158,21 @@ function initReplyParamScrollTo() {
       //   预期结果：200（文件已存在）/ 404（尚未上传，属正常）/ 207 / 301 / 302 / 405
       //   失败即返回具体原因，避免「测试连接成功但同步 HTTP 0」的困惑
       const fileUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
-      console.log('[webdav] 检查同步文件请求', { method: 'GET', url: fileUrl });
-      const rf = await webdavRequest({ url: fileUrl, method: 'GET', headers });
+      // 文件探测用 HEAD：只需状态码（200 存在 / 404 不存在），不需要响应体。
+      // 某些 WebDAV 对「不存在的文件」的 GET 会长时间挂起（后端尝试生成/索引），
+      // 用 HEAD 能显著降低这种风险；HEAD 不被支持时再退回 GET。
+      console.log('[webdav] 检查同步文件请求', { method: 'HEAD', url: fileUrl });
+      let rf = await webdavRequest({ url: fileUrl, method: 'HEAD', headers, timeout: 8000 });
+      if (rf.status === 405 || rf.status === 501) {
+        console.log('[webdav] HEAD 不被支持，退回 GET', { status: rf.status });
+        rf = await webdavRequest({ url: fileUrl, method: 'GET', headers, timeout: 8000 });
+      }
       if (rf.unavailable) return { ok: false, message: '同步文件探测：GM_xmlhttpRequest 不可用' };
       if (rf.callError) return { ok: false, message: '同步文件探测异常：' + rf.callError };
-      if (rf.hanging) return { ok: false, message: '同步文件探测无响应（脚本管理器未触发回调）' };
+      if (rf.hanging) {
+        return { ok: false, message: '同步文件探测无响应：服务器对 ' + WEBDAV_SYNC_FILE + ' 的请求在 8s 内没有返回。'
+          + '目录本身可达，说明地址与认证没问题；请确认该 WebDAV 服务允许读取/创建文件（部分服务对不存在的文件会长时间挂起）' };
+      }
       if (rf.networkError) {
         const fmsg = rf.errorMessage || '';
         if (/denied|not allowed|connect/i.test(fmsg)) {
@@ -30202,7 +31227,9 @@ function initReplyParamScrollTo() {
     'enablePostExpandAll', 'kaomojiEnhancer', 'enableImageViewerMode', 'autoSelectReportReason',
     'enableFavoriteThreads', 'enableThreadHistory', 'enablePostHistory',
     // 分组顺序元数据：走静默合并（at 新者胜），不参与差异弹窗判定
-    'groupOrderMeta', 'enableSubscriptionFeed'
+    'groupOrderMeta', 'enableSubscriptionFeed',
+    // 默认订阅号：按 updatedAt 静默合并（新者胜），不参与差异弹窗判定
+    'defaultSubscriptionFeedUuid', 'defaultSubscriptionFeedUpdatedAt'
   ]);
   function sameSettingValue(a, b) {
     if (a === b) return true;
@@ -30276,6 +31303,8 @@ function initReplyParamScrollTo() {
     blockedKeywords: '屏蔽关键词分组',
     favoriteThreads: '常用串分组',
     subscriptionFeeds: '订阅号分组',
+    defaultSubscriptionFeedUuid: '默认订阅号',
+    defaultSubscriptionFeedUpdatedAt: '默认订阅号更新时间',
     groupOrderMeta: '分组排序',
     blockDisplayMode: '屏蔽显示方式',
   };
@@ -30326,6 +31355,96 @@ function initReplyParamScrollTo() {
       document.addEventListener('keydown', onKey, true);
     });
   }
+  // ── 默认订阅号跨端合并（时间戳新者胜）──
+  // 规则：
+  //  - 两端都从未设置过（无时间戳且无值）→ 保持空
+  //  - 一端从未设置过（updatedAt=0）→ 另一端的值直接生效（若另一方明确清空也照此处理）
+  //  - 两端都有时间戳 → 新者胜；清空同样带时间戳，因此“清空”可以覆盖旧的默认
+  function mergeDefaultSubscriptionFeedSetting(localSettings, remoteSettings) {
+    const l = localSettings || {};
+    const r = remoteSettings || {};
+    const lUuid = String(l.defaultSubscriptionFeedUuid || '').trim();
+    const rUuid = String(r.defaultSubscriptionFeedUuid || '').trim();
+    const lAt = Math.max(0, Number(l.defaultSubscriptionFeedUpdatedAt) || 0);
+    const rAt = Math.max(0, Number(r.defaultSubscriptionFeedUpdatedAt) || 0);
+    if (!lAt && !rAt) return { uuid: rUuid || lUuid, updatedAt: 0 };
+    if (!lAt) return { uuid: rUuid, updatedAt: rAt };
+    if (!rAt) return { uuid: lUuid, updatedAt: lAt };
+    return rAt > lAt ? { uuid: rUuid, updatedAt: rAt } : { uuid: lUuid, updatedAt: lAt };
+  }
+  // 把远端默认订阅号按时间戳并入本地设置。
+  // 独立于“设置差异三选”决策：默认订阅号始终静默按时间戳合并，不参与冲突弹窗。
+  function applyRemoteDefaultSubscriptionFeed(remoteSettings) {
+    if (!remoteSettings || typeof remoteSettings !== 'object') return false;
+    if (!('defaultSubscriptionFeedUuid' in remoteSettings) && !('defaultSubscriptionFeedUpdatedAt' in remoteSettings)) return false;
+    try {
+      const local = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const winner = mergeDefaultSubscriptionFeedSetting(local, remoteSettings);
+      const localUuid = String(local.defaultSubscriptionFeedUuid || '').trim();
+      const localAt = Math.max(0, Number(local.defaultSubscriptionFeedUpdatedAt) || 0);
+      if (winner.uuid === localUuid && winner.updatedAt === localAt) return false;
+      const next = Object.assign({}, local, {
+        defaultSubscriptionFeedUuid: winner.uuid,
+        defaultSubscriptionFeedUpdatedAt: winner.updatedAt
+      });
+      GM_setValue(SettingPanel.key, next);
+      if (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+        SettingPanel.state.defaultSubscriptionFeedUuid = winner.uuid;
+        SettingPanel.state.defaultSubscriptionFeedUpdatedAt = winner.updatedAt;
+        try { if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs(); } catch (e) {}
+      }
+      console.log('[webdav] 默认订阅号按时间戳合并', { uuid: winner.uuid, updatedAt: winner.updatedAt });
+      return true;
+    } catch (e) {
+      console.warn('[webdav] 合并默认订阅号失败', e);
+      return false;
+    }
+  }
+  // 标记饼干自定义配色：独立于“设置差异三选”，始终按配色规则静默合并（与默认订阅号同思路）。
+  // 只更新已存在分组的 color/colorAt，不在此处增删分组或改动饼干列表。
+  function applyRemoteMarkedGroupColors(remoteSettings) {
+    if (!remoteSettings || typeof remoteSettings !== 'object' || !Array.isArray(remoteSettings.markedGroups)) return false;
+    try {
+      const local = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const localGroups = normalizeMarkedGroups(local.markedGroups);
+      const remoteGroups = normalizeMarkedGroups(remoteSettings.markedGroups);
+      if (!localGroups.length || !remoteGroups.length) return false;
+      let changed = false;
+      const nextGroups = localGroups.map((localGroup) => {
+        const remoteGroup = remoteGroups.find((g) => String((g && g.desc) || '') === localGroup.desc);
+        if (!remoteGroup) return localGroup;
+        const resolved = resolveMarkedGroupColorState(localGroup, remoteGroup);
+        if (!resolved) return localGroup;
+        if (resolved.color === localGroup.color && resolved.colorAt === localGroup.colorAt) return localGroup;
+        changed = true;
+        return Object.assign({}, localGroup, { color: resolved.color, colorAt: resolved.colorAt });
+      });
+      if (!changed) return false;
+      const next = Object.assign({}, local, { markedGroups: nextGroups });
+      GM_setValue(SettingPanel.key, next);
+      if (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
+        SettingPanel.state.markedGroups = nextGroups;
+        try { if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs(); } catch (e) {}
+        try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state); } catch (e) {}
+      }
+      console.log('[webdav] 标记配色按规则合并', nextGroups.filter((g) => g.colorAt > 0).map((g) => ({ desc: g.desc, color: g.color, colorAt: g.colorAt })));
+      return true;
+    } catch (e) {
+      console.warn('[webdav] 合并标记配色失败', e);
+      return false;
+    }
+  }
+  // 差异检测时忽略标记分组的纯配色差异：配色走独立的时间戳静默合并，不应触发设置冲突三选
+  function sameMarkedGroupsIgnoringColors(a, b) {
+    const strip = (arr) => (Array.isArray(arr) ? arr : []).map((group) => {
+      if (!group || typeof group !== 'object' || Array.isArray(group)) return group;
+      const copy = Object.assign({}, group);
+      delete copy.color;
+      delete copy.colorAt;
+      return copy;
+    });
+    return sameSettingValue(strip(a), strip(b));
+  }
   function findWebdavSettingsDiff(remoteSettings) {
     // 返回 { diff: 两端不同的设置键, localIsDefault: 本地是否仍是默认值 }
     const result = { diff: [], localIsDefault: true };
@@ -30336,7 +31455,8 @@ function initReplyParamScrollTo() {
       Object.keys(defaults).forEach((k) => {
         if (WEBDAV_SETTINGS_SKIP_KEYS.has(k)) return;
         if (!sameSettingValue(local[k], defaults[k])) result.localIsDefault = false;
-        if (!(k in remoteSettings) || !sameSettingValue(local[k], remoteSettings[k])) result.diff.push(k);
+        const same = k === 'markedGroups' ? sameMarkedGroupsIgnoringColors : sameSettingValue;
+        if (!(k in remoteSettings) || !same(local[k], remoteSettings[k])) result.diff.push(k);
       });
       // 远端比 defaults 多的键（未来版本新增）也视为差异
       Object.keys(remoteSettings).forEach((k) => {
@@ -30364,7 +31484,7 @@ function initReplyParamScrollTo() {
     // 避免全量覆盖其他端已贡献的独立记录
     let existing = null;
     try {
-      existing = await webdavRequest({ url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE, method: 'GET', headers });
+      existing = await webdavRequestRetry({ url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE, method: 'GET', headers, timeout: 15000 });
     } catch (e) {}
     if (existing && existing.status >= 200 && existing.status < 300 && built.file.payload) {
       try {
@@ -30409,7 +31529,7 @@ function initReplyParamScrollTo() {
         console.warn('[webdav] 上传前合并历史失败，按原样上传', e);
       }
     }
-    const put = await webdavRequest({
+    const put = await webdavRequestRetry({
       url: webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE,
       method: 'PUT',
       headers,
@@ -30436,15 +31556,12 @@ function initReplyParamScrollTo() {
   async function webdavSyncCore(cfg, silent) {
     const notify = (t) => { if (!silent && typeof toast === 'function') toast(t); };
     setWebdavStatus('同步中……');
-    const conn = await checkWebdavConnection(cfg);
-    if (!conn.ok) {
-      setWebdavStatus(conn.message);
-      if (!silent) notify('WebDAV 同步失败：' + conn.message);
-      return { ok: false, reason: 'connection' };
-    }
+    // 不再单独调用 checkWebdavConnection：它本身要发 2 个请求（目录 + 文件），
+    // 而紧接着的 GET 远端已经能覆盖「可达性 + 认证 + 文件状态」，省下这 2 个请求可显著
+    // 降低连续请求造成的服务端压力（此前一次同步最多 5 个请求紧挨着发）。
     const headers = { Authorization: buildWebdavAuthHeader(cfg) };
     const remoteUrl = webdavBaseUrl(cfg) + WEBDAV_SYNC_FILE;
-    const remote = await webdavRequest({ url: remoteUrl, method: 'GET', headers });
+    const remote = await webdavRequestRetry({ url: remoteUrl, method: 'GET', headers, timeout: 15000 });
     if (remote.status === 404) {
       // 远端无数据：上传本地
         const up = await webdavUploadLocal(cfg, headers);
@@ -30513,6 +31630,11 @@ function initReplyParamScrollTo() {
       // WebDAV 配置不随同步覆盖：同步上传端已排除；
       // 若用户手动导出的含 webdav 配置文件被放到远端，下载时过滤掉，避免远端反向改写本地同步源
       if (parsed.data.payload && parsed.data.payload.webdavConfig) delete parsed.data.payload.webdavConfig;
+      // 默认订阅号：独立于下面的“设置差异三选”，始终按 updatedAt 静默合并（新者胜）
+      // —— 即使设置整体选择“保留本地”，默认订阅号也应按时间戳更新，避免两端长期分叉
+      try { applyRemoteDefaultSubscriptionFeed(parsed.data.payload && parsed.data.payload.myScriptSettings); } catch (e) {
+        console.warn('[webdav] 默认订阅号合并失败', e);
+      }
       // 设置差异检测：手动同步弹窗让用户选择；自动同步按「本地是否默认」决定
       // 决策仅作用于 myScriptSettings 分区，其余数据分区一律双向合并
       let settingsDecision = 'download';
@@ -30544,6 +31666,12 @@ function initReplyParamScrollTo() {
           // 两端设置已一致：清除挂起标记
           webdavAutoRemove(WEBDAV_SETTINGS_PENDING_KEY);
         }
+      }
+      // 标记饼干配色：独立于设置三选，按“默认色让步 / 手动色比时间戳”规则静默合并。
+      // 放在差异判定之后：避免刚并入的远端配色把 localIsDefault 从 true 改写成 false，
+      // 从而错误地影响其它设置的自动同步方向。
+      try { applyRemoteMarkedGroupColors(parsed.data.payload && parsed.data.payload.myScriptSettings); } catch (e) {
+        console.warn('[webdav] 标记配色合并失败', e);
       }
       if (settingsDecision !== 'download') {
         // 保留本地设置：仅剔除设置字段，其余数据分区照常双向合并
@@ -31097,6 +32225,1090 @@ function initReplyParamScrollTo() {
   };
 
   /* --------------------------------------------------
+   * tag 31. 串内容导出（扩展后台任务）
+   * -------------------------------------------------- */
+  // 页面内提供：sp_btn 下方的「导」按钮 + 提交弹窗 + 缩略进度条。
+  // 任务由扩展 Service Worker 在后台执行（页面可关闭），进度经 chrome.storage 同步。
+  // 非扩展环境（Tampermonkey / QwQNT）暂不提供实现（分支留空）。
+  const XDEX_EXPORT_TASKS_KEY = 'xdex-export-tasks';
+  const XDEX_EXPORT_UI_ID = 'xdex-export-ui';
+
+  // 扩展环境：内容脚本里可直接用 chrome.runtime（与主脚本同处 ISOLATED world）
+  function xdexExportExtensionAvailable() {
+    try {
+      return !!(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage);
+    } catch (e) { return false; }
+  }
+
+  // 脚本猫桥接：主脚本不声明 @storageName，仅经 DOM 事件与独立的桥接脚本通信。
+  // 为什么不用 window 属性握手：脚本猫给每个脚本独立的沙箱 window（沙箱属性写入不会
+  // 泄漏到 unsafeWindow），主脚本读不到桥接写在自己 window 上的对象。
+  // DOM 是共享的，因此以 documentElement 上的标记作为存在性信号，
+  // 请求/响应一律走 DOM 事件（不需要任何跨沙箱的函数引用）。
+  function xdexExportBridge() {
+    try {
+      const root = document.documentElement;
+      const mark = root && root.dataset ? root.dataset.xdexExportBridge : '';
+      if (mark) return { available: true, version: mark };
+    } catch (e) { /* 忽略 */ }
+    try {
+      const w = (typeof unsafeWindow !== 'undefined' && unsafeWindow) ? unsafeWindow : null;
+      const b = w ? w.__xdexExportBridge : null;
+      if (b && b.available) return b;
+    } catch (e) { /* 忽略 */ }
+    return null;
+  }
+
+  function xdexExportRuntimeAvailable() {
+    return xdexExportExtensionAvailable() || !!xdexExportBridge();
+  }
+
+  function xdexExportExtensionSend(message) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          const err = chrome.runtime.lastError;
+          if (err) { reject(new Error(err.message)); return; }
+          if (!response) { reject(new Error('扩展后台无响应')); return; }
+          if (response.ok === false) { reject(new Error(response.error || '操作失败')); return; }
+          resolve(response.data);
+        });
+      } catch (e) { reject(e); }
+    });
+  }
+
+  // 经桥接脚本转发：请求用 DOM 事件送出去，响应也用 DOM 事件送回来，
+  // 桥接负责与后台脚本交换共享存储。requestId 用于把异步响应配回本次调用。
+  // timeoutMs：快速请求 30s；submit 只等「受理回执」（后台接到即回，抓取在其后台继续），
+  // 因此给 60s 兜底即可 —— 不像以前那样不设超时，避免后台未运行时永久卡在「正在提交…」。
+  // 进度由 list 轮询呈现（按需启停，无任务时不轮询）。
+  function xdexExportBridgeSend(bridge, message, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const requestId = 'xdex-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      let settled = false;
+      const finish = (fn, arg) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        document.removeEventListener('xdex:export-result', onResult);
+        fn(arg);
+      };
+      const onResult = (ev) => {
+        const d = (ev && ev.detail) || {};
+        if (d.requestId !== requestId) return;
+        if (d.ok === false) finish(reject, new Error(d.error || '导出操作失败'));
+        else finish(resolve, d.data);
+      };
+      const timer = timeoutMs > 0
+        ? setTimeout(() => finish(reject, new Error(
+            '后台脚本无响应（超时）——请确认「X岛-EX · 脚本猫后台导出」已在脚本猫里【运行/启用】')), timeoutMs)
+        : null;
+      document.addEventListener('xdex:export-result', onResult);
+      try {
+        // 直接派发 DOM 事件（DOM 跨沙箱共享）；若桥接对象恰好可用则优先用它的方法
+        if (bridge && typeof bridge.request === 'function') {
+          bridge.request(message.type, message.details || {}, requestId);
+        } else {
+          document.dispatchEvent(new CustomEvent('xdex:export-request', {
+            detail: { type: String(message.type || ''), details: message.details || {}, requestId }
+          }));
+        }
+      } catch (e) { finish(reject, e); }
+    });
+  }
+
+  // HTML → 纯文本（用于从主串正文里取标题）。
+  // 采用「去标签 + 折叠空白」这一最小规则，以便与扩展端/脚本猫后台的实现逐字一致。
+  function xdexExportHtmlToPlain(html) {
+    return String(html == null ? '' : html).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // 标题取用规则（与后台落盘命名用的是同一套）：
+  //   有标题且不是「无标题」→ 用原标题；
+  //   否则取主串正文的「第一句话」—— 到第一个句末标点（含）为止，没有则整段；最后统一截到 40 字。
+  function xdexExportPickTitle(title, contentHtml) {
+    const t = String(title || '').trim();
+    if (t && t !== '无标题') return t;
+    const text = xdexExportHtmlToPlain(contentHtml);
+    if (!text) return '';
+    const m = text.match(/^[^。！？!?]{1,60}[。！？!?]/);
+    return (m ? m[0] : text).slice(0, 40).trim();
+  }
+
+  // 检索限流：批量检索时按顺序、按最小间隔发请求，避免短时间对站点发太多请求
+  const XDEX_EXPORT_PROBE_MIN_INTERVAL_MS = 1000;
+  let xdexExportProbeLastAt = 0;
+  let xdexExportProbeChain = Promise.resolve();
+  function xdexExportProbeThrottle() {
+    const run = xdexExportProbeChain
+      .then(() => {
+        const wait = xdexExportProbeLastAt + XDEX_EXPORT_PROBE_MIN_INTERVAL_MS - Date.now();
+        return wait > 0 ? new Promise((r) => setTimeout(r, wait)) : Promise.resolve();
+      })
+      .then(() => { xdexExportProbeLastAt = Date.now(); });
+    xdexExportProbeChain = run.catch(() => {});
+    return run;
+  }
+
+  // 本地探测：脚本猫环境下直接用主脚本自己的 GM_xmlhttpRequest 取串信息，
+  // 无需后台脚本参与 —— 这样「检索」在后台未运行/未启用时依然可用。
+  function xdexExportLocalProbe(details) {
+    const tid = String((details && details.tid) || '').trim();
+    if (!/^\d{4,9}$/.test(tid)) return Promise.reject(new Error('串号格式不正确'));
+    const headers = (typeof getPostHistoryApiCookieHeaders === 'function') ? getPostHistoryApiCookieHeaders() : null;
+    const url = `https://api.nmb.best/api/thread?id=${encodeURIComponent(tid)}&page=1`;
+    return xdexExportProbeThrottle().then(() => gmRequest(url, 'text', headers)).then((resp) => {
+      const raw = resp && (resp.response !== undefined ? resp.response : resp.responseText);
+      let data = raw;
+      if (typeof raw === 'string') {
+        const text = raw.trim();
+        // 站点在串不存在时返回 JSON 字符串字面量或裸文本，都要解出可读文案
+        if (text.startsWith('"')) {
+          try { throw new Error(JSON.parse(text)); } catch (e) { if (e instanceof Error) throw e; }
+        }
+        if (!text.startsWith('{') && !text.startsWith('[')) {
+          throw new Error(text || '接口返回了无法解析的内容');
+        }
+        try { data = JSON.parse(text); } catch (e) { throw new Error('接口返回的 JSON 无法解析'); }
+      }
+      if (!data || data.success === false) {
+        throw new Error((data && data.error) || '接口返回错误');
+      }
+      const totalReplies = Number(data.ReplyCount != null ? data.ReplyCount : data.reply_count) || 0;
+      return {
+        tid,
+        // 检索展示与后台落盘命名使用同一套标题规则：无标题时取主串第一句话
+        title: xdexExportPickTitle(data.title, data.content),
+        rawTitle: String(data.title || '').trim(),
+        fid: String(data.fid || '').trim(),
+        totalPages: Math.max(1, Math.ceil(totalReplies / 19)),
+        totalReplies
+      };
+    });
+  }
+
+  // 快速请求（probe/list/cancel）超时短；submit 只等受理回执，给足 offscreen 冷启动余量
+  const XDEX_EXPORT_BRIDGE_TIMEOUT_MS = 30000;
+  const XDEX_EXPORT_BRIDGE_ACK_TIMEOUT_MS = 60000;
+
+  function xdexExportSend(message) {
+    if (xdexExportExtensionAvailable()) return xdexExportExtensionSend(message);
+    const bridge = xdexExportBridge();
+    if (bridge) {
+      // 检索不依赖后台脚本：主脚本自己就能取串信息（后台未启用时也能用）
+      if (message && message.type === 'xdex:export:probe') {
+        return xdexExportLocalProbe(message.details || {});
+      }
+      // 后台对 submit 是「立即回执」（抓取在其后台继续），所以这里等的是受理回执，
+      // 给一个兜底超时即可 —— 后台未运行时给提示而不是永久卡在「正在提交…」。
+      return xdexExportBridgeSend(bridge, message, XDEX_EXPORT_BRIDGE_ACK_TIMEOUT_MS);
+    }
+    return Promise.reject(new Error('导出需要扩展版 X岛-EX 或脚本猫桥接脚本'));
+  }
+
+  // 解析用户输入的串号：支持 `67024789`、`No.67024789`、URL、`67024789?r=x&page=23`，
+  // 逗号/换行/空格分隔批量。返回 { tid, raw, ok, error }
+  function xdexExportParseTidList(input) {
+    const parts = String(input == null ? '' : input)
+      .split(/[,\n\uFF0C;；]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    return parts.map((raw) => {
+      let text = raw;
+      // 完整 URL：取路径中的 /t/{id} 或 /Forum/po/id/{id}
+      const urlMatch = text.match(/\/t\/(\d{4,9})/) || text.match(/\/Forum\/po\/id\/(\d{4,9})/);
+      if (urlMatch) {
+        return { tid: urlMatch[1], raw, ok: true, error: '' };
+      }
+      // 去掉 No. / # 前缀，去掉 ?query 与 &page= 尾部
+      text = text.replace(/^(?:No\.?|＃|#)\s*/i, '').split(/[?&\s]/)[0];
+      // 允许 `67024789-67024790` 之类只取首段
+      const numMatch = text.match(/^(\d{4,9})/);
+      if (numMatch) {
+        return { tid: numMatch[1], raw, ok: true, error: '' };
+      }
+      return { tid: '', raw, ok: false, error: '无法识别的串号' };
+    });
+  }
+
+  function xdexExportCurrentTid() {
+    try {
+      const m = String(location.pathname || '').match(/\/(?:t|Forum\/po\/id)\/(\d{4,9})/);
+      return m ? m[1] : '';
+    } catch (e) { return ''; }
+  }
+
+  function xdexExportEscapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // ---- 缩略进度条（sp_btn 下方导出按钮之下）----
+  // 任务进度百分比与状态文案（缩略条主行与展开列表共用）
+  // 任务本次的「计划页数」：提交 1-10 时是 10，而不是该串的总页数 323。
+  //   to > 0 → 区间长度；to === 0（全部页哨兵）→ 用该串总页数减去起始页偏移。
+  function xdexExportMiniPlannedPages(task) {
+    const from = Math.max(1, Number(task.from) || 1);
+    const to = Math.max(0, Number(task.to) || 0);
+    const total = Number(task.totalPages) || 0;
+    if (to > 0) return Math.max(0, to - from + 1);
+    if (total > 0) return Math.max(0, total - from + 1);
+    return 0;
+  }
+
+  function xdexExportMiniPercent(task) {
+    const done = (task.progress && task.progress.donePages) ? task.progress.donePages.length : 0;
+    // 分母必须是「本次计划页数」。三层来源，逐级回退：
+    //   1) progress.totalPages（后台抓到首页后 / 新版入队时写入）
+    //   2) 由提交区间（task.from/to）推算
+    // 注意：绝不能用 task.totalPages —— 那是「该串的总页数」，会把 1-10 显示成 0/323。
+    const planned = Number(task.progress && task.progress.totalPages)
+      || xdexExportMiniPlannedPages(task)
+      || Number(task.progress && task.progress.totalPages) /* 0 → 保持 0 */;
+    return { done, total: planned, percent: planned > 0 ? Math.min(100, Math.round((done / planned) * 100)) : 0 };
+  }
+  function xdexExportMiniLabel(task) {
+    const { done, total } = xdexExportMiniPercent(task);
+    if (task.status === 'done') return '已完成';
+    if (task.status === 'failed') return task.error ? `失败：${task.error}` : '失败';
+    if (task.status === 'canceled') return `已取消（已导出 ${done} 页）`;
+    return `${done}/${total || '?'}`;
+  }
+  // 任务标题：优先任务自带 title，退回串号
+  function xdexExportMiniTitle(task) {
+    const t = String(task.title || '').trim();
+    return t && t !== '无标题' ? t : `串${task.tid}`;
+  }
+
+  function xdexExportRenderMini(task, moreCount) {
+    const mini = document.getElementById('xdex-export-mini');
+    if (!mini) return;
+    if (!task) {
+      mini.style.display = 'none';
+      mini.innerHTML = '';
+      return;
+    }
+    const { percent } = xdexExportMiniPercent(task);
+    mini.style.display = 'block';
+    mini.innerHTML = ''
+      + `<div class="xdex-export-mini-head">`
+      + `<span class="xdex-export-mini-title" title="${xdexExportEscapeHtml(xdexExportMiniTitle(task))}">${xdexExportEscapeHtml(xdexExportMiniTitle(task))}</span>`
+      + `<span class="xdex-export-mini-tid">No.${xdexExportEscapeHtml(task.tid)}</span>`
+      + `<button type="button" class="xdex-export-mini-btn" data-act="expand" title="${moreCount > 0 ? (xdexExportMiniExpanded ? '收起' : '展开全部任务') : '仅一个任务'}">${moreCount > 0 ? '+' + moreCount + ' ' : ''}${xdexExportMiniExpanded && moreCount > 0 ? '▴' : '▾'}</button>`
+      + `<button type="button" class="xdex-export-mini-btn" data-act="cancel" title="取消任务（已下载的页会照常导出）">×</button></div>`
+      + `<div class="xdex-export-mini-track"><div class="xdex-export-mini-fill" style="width:${percent}%"></div></div>`
+      + `<div class="xdex-export-mini-label">${xdexExportEscapeHtml(xdexExportMiniLabel(task))}</div>`;
+  }
+
+  // 缩略条展开态（轮询重渲染时保持，否则每秒会被 innerHTML 重写折叠）
+  let xdexExportMiniExpanded = false;
+
+  function xdexExportRenderMiniList(tasks) {
+    const mini = document.getElementById('xdex-export-mini');
+    if (!mini) return;
+    if (!tasks || !tasks.length) { xdexExportMiniExpanded = false; xdexExportRenderMini(null, 0); return; }
+    const active = tasks.filter((t) => t.status === 'running' || t.status === 'queued');
+    const list = active.length ? active : tasks.slice(0, 1);
+    // 多任务：显示第一个，点击「+N ▾」展开其余
+    xdexExportRenderMini(list[0], Math.max(0, list.length - 1));
+    const expandBtn = mini.querySelector('[data-act="expand"]');
+    if (expandBtn && list.length > 1) {
+      expandBtn.addEventListener('click', () => {
+        xdexExportMiniExpanded = !xdexExportMiniExpanded;
+        xdexExportRenderMiniList(tasks);
+      });
+    }
+    // 保持展开态（重渲染后重新挂载展开列表）
+    if (xdexExportMiniExpanded && list.length > 1) {
+      xdexExportRenderMiniMore(mini, list);
+    }
+    const cancelBtn = mini.querySelector('[data-act="cancel"]');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        xdexExportSend({ type: 'xdex:export:cancel', details: { id: list[0].id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+    }
+  }
+
+  // 展开列表：每个任务都显示「标题 + 串号 + 进度条 + 状态」，并各自带取消按钮
+  function xdexExportRenderMiniMore(mini, tasks) {
+    const existing = mini.querySelector('.xdex-export-mini-more');
+    if (existing) existing.remove();
+    const more = document.createElement('div');
+    more.className = 'xdex-export-mini-more';
+    tasks.slice(1).forEach((task) => {
+      const { percent } = xdexExportMiniPercent(task);
+      const title = xdexExportMiniTitle(task);
+
+      const row = document.createElement('div');
+      row.className = 'xdex-export-mini-more-row';
+
+      // 头部：标题 + 串号 + 取消按钮（全部用 DOM 构造，避免 innerHTML 后再查询）
+      const head = document.createElement('div');
+      head.className = 'xdex-export-mini-more-head';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'xdex-export-mini-more-title';
+      titleEl.textContent = title;
+      titleEl.title = title;
+      const tidEl = document.createElement('span');
+      tidEl.className = 'xdex-export-mini-more-tid';
+      tidEl.textContent = `No.${task.tid}`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'xdex-export-mini-btn';
+      btn.title = '取消任务（已下载的页会照常导出）';
+      btn.textContent = '×';
+      btn.addEventListener('click', () => {
+        xdexExportSend({ type: 'xdex:export:cancel', details: { id: task.id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+      head.appendChild(titleEl);
+      head.appendChild(tidEl);
+      head.appendChild(btn);
+
+      // 进度条
+      const track = document.createElement('div');
+      track.className = 'xdex-export-mini-more-track';
+      const fill = document.createElement('div');
+      fill.className = 'xdex-export-mini-more-fill';
+      fill.style.width = `${percent}%`;
+      track.appendChild(fill);
+
+      // 状态文案
+      const label = document.createElement('div');
+      label.className = 'xdex-export-mini-more-label';
+      label.textContent = xdexExportMiniLabel(task);
+
+      row.appendChild(head);
+      row.appendChild(track);
+      row.appendChild(label);
+      more.appendChild(row);
+    });
+    mini.appendChild(more);
+  }
+
+  // 进度轮询按需启停：无在跑任务即停止，避免在未使用导出功能时长期空转。
+  let xdexExportIdleTicks = 0;
+  let xdexExportStallSig = '';
+  let xdexExportStallSince = 0;
+  // 僵死判定阈值：按「单页最坏耗时」的 2 倍取值。
+  //   fetchText 超时 20s，且每页最多按顺序试 3 个 Cookie 来源 → 单页最坏 60s；
+  //   正常下载时状态约每 0.3~1s 就变一次（每抓完一页写一次进度）。
+  //   因此「连续 2 分钟毫无变化」对正常下载是不可能的，可据此判定僵死。
+  const XDEX_EXPORT_STALL_MS = 2 * 60 * 1000;
+  function xdexExportEnsureProgressPolling() {
+    if (xdexExportPollTimer) return;
+    let inFlight = false;
+    xdexExportPollTimer = setInterval(() => {
+      if (document.hidden || inFlight) return;
+      // 首次未知（本页尚未取过状态）→ 探测一次；之后按是否有在跑任务决定是否继续
+      const st = xdexExportLastState;
+      const active = (st === null) || !!(st.tasks && st.tasks.length);
+      if (!active) {
+        xdexExportIdleTicks += 1;
+        if (xdexExportIdleTicks >= 2) {
+          clearInterval(xdexExportPollTimer);
+          xdexExportPollTimer = null;
+          xdexExportIdleTicks = 0;
+        }
+        return;
+      }
+      xdexExportIdleTicks = 0;
+      // 僵死保护：任务表连续 XDEX_EXPORT_STALL_MS 毫无变化则停止轮询
+      const sig = (st.tasks || []).map((t) => `${t.id}:${t.status}:${(t.progress && t.progress.donePages ? t.progress.donePages.length : 0)}`).join('|');
+      if (sig !== xdexExportStallSig) {
+        xdexExportStallSig = sig;
+        xdexExportStallSince = Date.now();
+      } else if (Date.now() - xdexExportStallSince > XDEX_EXPORT_STALL_MS) {
+        // 判定僵死：停止轮询，并清掉缩略条 —— 否则会一直显示一个永远不动的任务
+        clearInterval(xdexExportPollTimer);
+        xdexExportPollTimer = null;
+        xdexExportLastState = null;
+        try { xdexExportRenderMiniList([]); } catch (_e) { /* 忽略 */ }
+        console.warn('[X岛-EX 导出] 任务进度长时间无变化，已停止轮询并隐藏进度条');
+        return;
+      }
+      inFlight = true;
+      Promise.resolve(xdexExportRefreshState()).catch(() => {}).then(() => { inFlight = false; });
+    }, 3000);
+  }
+
+  let xdexExportPollTimer = null;
+  let xdexExportLastState = null;
+
+  async function xdexExportRefreshState() {
+    if (!xdexExportRuntimeAvailable()) return;
+    try {
+      const state = await xdexExportSend({ type: 'xdex:export:list' });
+      if (!state) return;
+      xdexExportLastState = state;
+      xdexExportRenderMiniList(state.tasks || []);
+      xdexExportRenderDialogTasks(state.tasks || []);
+      // 弹窗历史 = 任务表 history（与导出页「历史任务」同源），直接渲染
+      try { xdexExportRenderDialogHistory(state.history || []); } catch (e) { /* 忽略 */ }
+    } catch (e) { /* 扩展上下文失效时静默 */ }
+  }
+
+  // 把弹窗里的串号元素接入引用体系：
+  //   渲染为 <font color="#789922">No.xxx</font>（与原站引用号同构）并包进 .h-threads-content 容器，
+  //   再对该容器调用 initExtendedContent —— 由此获得与串内引用一致的行为：
+  //   悬停原生引用浮窗、点击展开拓展引用浮窗、可用性检测等。
+  function xdexExportAttachQuoteRef(el, tid) {
+    if (!el) return;
+    el.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'h-threads-content';
+    container.style.display = 'inline';
+    const font = document.createElement('font');
+    font.setAttribute('color', '#789922');
+    font.textContent = `No.${tid}`;
+    container.appendChild(font);
+    el.appendChild(container);
+    try {
+      if (typeof initExtendedContent === 'function') initExtendedContent(el);
+      else if (typeof extendQuote === 'function') extendQuote(el);
+    } catch (e) { /* 引用功能不可用时静默（显示为纯文本链接色） */ }
+  }
+
+  // 弹窗内的任务队列：与缩略条同源（state.tasks 中 running/queued 的任务）。
+  // 头部一行呈现：左「任务队列」/ 中「当前任务 + 进度」/ 右「任务总数」，可折叠。
+  function xdexExportRenderDialogTasks(tasks) {
+    const box = document.getElementById('xdex-export-dialog-tasks');
+    if (!box) return;
+    const list = (tasks || []).filter((t) => t && (t.status === 'running' || t.status === 'queued'));
+    const statusEl = document.getElementById('xdex-export-queue-status');
+    const countEl = document.getElementById('xdex-export-queue-count');
+    if (countEl) countEl.textContent = list.length ? `共 ${list.length} 个` : '';
+    if (statusEl) {
+      const cur = list.find((t) => t.status === 'running') || list[0];
+      if (cur) {
+        const { done, total } = xdexExportMiniPercent(cur);
+        statusEl.textContent = `${xdexExportMiniTitle(cur)}　${done}/${total || '?'}`;
+      } else {
+        statusEl.textContent = '暂无进行中的任务';
+      }
+    }
+    if (!list.length) {
+      box.textContent = '暂无进行中的任务';
+      box.className = 'xdex-export-dialog-tasks empty';
+      return;
+    }
+    box.className = 'xdex-export-dialog-tasks';
+    box.innerHTML = '';
+    list.forEach((task) => {
+      const { percent } = xdexExportMiniPercent(task);
+      const row = document.createElement('div');
+      row.className = 'xdex-export-dialog-task';
+
+      const head = document.createElement('div');
+      head.className = 'xdex-export-dialog-task-head';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'xdex-export-dialog-task-title';
+      titleEl.textContent = xdexExportMiniTitle(task);
+      titleEl.title = titleEl.textContent;
+      const tidEl = document.createElement('span');
+      tidEl.className = 'xdex-export-dialog-task-tid';
+      xdexExportAttachQuoteRef(tidEl, task.tid);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'xdex-export-dialog-btn tiny';
+      btn.textContent = '中止';
+      btn.title = '取消任务（已下载的页会照常导出）';
+      btn.addEventListener('click', () => {
+        xdexExportSend({ type: 'xdex:export:cancel', details: { id: task.id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+      head.appendChild(titleEl);
+      head.appendChild(tidEl);
+      head.appendChild(btn);
+
+      const track = document.createElement('div');
+      track.className = 'xdex-export-dialog-task-track';
+      const fill = document.createElement('div');
+      fill.className = 'xdex-export-dialog-task-fill';
+      fill.style.width = `${percent}%`;
+      track.appendChild(fill);
+
+      const meta = document.createElement('div');
+      meta.className = 'xdex-export-dialog-task-meta';
+      meta.textContent = xdexExportMiniLabel(task);
+
+      row.appendChild(head);
+      row.appendChild(track);
+      row.appendChild(meta);
+      box.appendChild(row);
+    });
+  }
+
+  // ---- 提交弹窗 ----
+  // 弹窗状态：关闭后保留，重开时恢复（串号输入、格式、页码范围、只看PO、检索结果、状态文案）
+  const xdexExportDialogState = {
+    tid: '',
+    format: 'md',
+    from: '',
+    to: '',
+    poOnly: false,
+    probed: new Map(),
+    probeText: '',
+    statusText: '',
+    statusTone: '',
+    queueExpanded: false,   // 任务队列默认折叠（与历史记录一致）
+    historyExpanded: false  // 历史记录默认折叠，避免每次打开都占很大篇幅
+  };
+
+  // 弹窗内的历史记录：**直接复用任务表的 history**（与扩展导出页「历史任务」同一份数据），
+  // 因此天然同步：任务完成自动出现、导出页删除/清空后弹窗下次刷新即一致。
+  // 展示为同款式（标题 + 串号 + 状态 + 删除按钮），默认折叠。
+  function xdexExportRenderDialogHistory(list) {
+    const box = document.getElementById('xdex-export-dialog-history');
+    if (!box) return;
+    const items = Array.isArray(list) ? list : [];
+    const countEl = document.getElementById('xdex-export-history-count');
+    if (countEl) countEl.textContent = items.length ? `共 ${items.length} 条` : '';
+    box.className = 'xdex-export-dialog-tasks' + (items.length ? '' : ' empty');
+    if (!items.length) {
+      box.textContent = '（暂无历史）';
+      return;
+    }
+    box.innerHTML = '';
+    const statusMap = { done: '已完成', failed: '失败', canceled: '已取消', interrupted: '已中断' };
+    items.forEach((task) => {
+      const row = document.createElement('div');
+      row.className = 'xdex-export-dialog-task';
+
+      const head = document.createElement('div');
+      head.className = 'xdex-export-dialog-task-head';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'xdex-export-dialog-task-title';
+      titleEl.textContent = xdexExportMiniTitle(task);
+      titleEl.title = titleEl.textContent;
+      const tidEl = document.createElement('span');
+      tidEl.className = 'xdex-export-dialog-task-tid';
+      xdexExportAttachQuoteRef(tidEl, task.tid);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'xdex-export-dialog-btn tiny';
+      del.textContent = '删除';
+      del.title = '删除这条历史记录';
+      del.addEventListener('click', () => {
+        // 与导出页「删除记录」同一条消息：任务表 history 删除后两处一致
+        xdexExportSend({ type: 'xdex:export:remove-history', details: { id: task.id } })
+          .then(() => xdexExportRefreshState())
+          .catch(() => {});
+      });
+      head.appendChild(titleEl);
+      head.appendChild(tidEl);
+      head.appendChild(del);
+
+      const meta = document.createElement('div');
+      meta.className = 'xdex-export-dialog-task-meta';
+      const parts = [statusMap[task.status] || task.status || ''];
+      if (task.filename) parts.push(task.filename);
+      else if (task.error) parts.push(task.error);
+      if (task.finishedAt) parts.push(new Date(task.finishedAt).toLocaleString());
+      meta.textContent = parts.filter(Boolean).join('　');
+
+      row.appendChild(head);
+      row.appendChild(meta);
+      box.appendChild(row);
+    });
+  }
+
+
+  function xdexExportOpenDialog(prefillTid) {
+    if (!xdexExportRuntimeAvailable()) {
+      toast('导出需安装扩展版 X岛-EX，或脚本猫桥接脚本', 2400, { type: 'error', key: 'export-needs-extension' });
+      return;
+    }
+    const tid = prefillTid || xdexExportCurrentTid();
+    if (document.getElementById('xdex-export-dialog')) return;
+    const dialog = document.createElement('div');
+    dialog.id = 'xdex-export-dialog';
+    dialog.innerHTML = ''
+      + '<div class="xdex-export-dialog-panel">'
+      + '  <div class="xdex-export-dialog-head"><span>导出串</span>'
+      + '    <span class="xdex-export-dialog-head-btns">'
+      + '      <button type="button" class="xdex-export-dialog-icon" data-act="min" title="最小化">−</button>'
+      + '      <button type="button" class="xdex-export-dialog-icon" data-act="close" title="关闭（任务继续）">×</button>'
+      + '    </span></div>'
+      + '  <div class="xdex-export-dialog-body">'
+      + '    <div class="xdex-export-dialog-row">'
+      + `      <input id="xdex-export-tid" type="text" placeholder="串号 / No.67024789 / 链接，可逗号批量" value="${xdexExportEscapeHtml(tid)}">`
+      + '      <button type="button" class="xdex-export-dialog-btn" data-act="probe">检索</button>'
+      + '    </div>'
+      + '    <div id="xdex-export-probe" class="xdex-export-dialog-info"></div>'
+      + '    <div class="xdex-export-dialog-row">'
+      + '      <span class="xdex-export-dialog-label">总页码</span><span id="xdex-export-total" class="xdex-export-dialog-value">—</span>'
+      + '      <span class="xdex-export-dialog-label">格式</span>'
+      + '      <select id="xdex-export-format"><option value="md">Markdown</option><option value="txt">TXT</option></select>'
+      + '    </div>'
+      + '    <div class="xdex-export-dialog-row">'
+      + '      <span class="xdex-export-dialog-label">下载</span>'
+      + '      <input id="xdex-export-from" type="number" min="1" placeholder="起始" class="xdex-export-dialog-num">'
+      + '      <span>-</span>'
+      + '      <input id="xdex-export-to" type="number" min="1" placeholder="结束" class="xdex-export-dialog-num">'
+      + '      <button type="button" class="xdex-export-dialog-btn primary" data-act="submit">开始</button>'
+      + '      <label class="xdex-export-dialog-switch" for="xdex-export-po" title="只导出主串（PO）自己的发言">'
+      + '        <input id="xdex-export-po" type="checkbox" class="xdex-switch" role="switch"><span>只看 PO</span></label>'
+      + '    </div>'
+      + '    <div id="xdex-export-status" class="xdex-export-dialog-info"></div>'
+      + '    <div class="xdex-export-dialog-queue">'
+      + '      <div class="xdex-export-dialog-queue-head" data-act="toggle-queue" role="button" tabindex="0">'
+      + '        <span class="q-title">任务队列</span>'
+      + '        <span class="q-status" id="xdex-export-queue-status">暂无进行中的任务</span>'
+      + '        <span class="q-count" id="xdex-export-queue-count"></span>'
+      + '        <span class="q-caret" id="xdex-export-queue-caret"></span>'
+      + '      </div>'
+      + '      <div id="xdex-export-dialog-tasks" class="xdex-export-dialog-tasks"></div>'
+      + '    </div>'
+      + '    <div class="xdex-export-dialog-queue collapsed" id="xdex-export-dialog-history-box">'
+      + '      <div class="xdex-export-dialog-queue-head" data-act="toggle-history" role="button" tabindex="0">'
+      + '        <span class="q-title">历史记录</span>'
+      + '        <span class="q-count" id="xdex-export-history-count"></span>'
+      + '        <span class="q-caret" id="xdex-export-history-caret"></span>'
+      + '      </div>'
+      + '      <div id="xdex-export-dialog-history" class="xdex-export-dialog-tasks"></div>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>';
+    document.body.appendChild(dialog);
+
+    const q = (sel) => dialog.querySelector(sel);
+    const status = (text, tone) => {
+      const el = q('#xdex-export-status');
+      el.textContent = text || '';
+      el.dataset.tone = tone || '';
+      xdexExportDialogState.statusText = text || '';
+      xdexExportDialogState.statusTone = tone || '';
+    };
+    // 已检索通过的串号集合：跨弹窗开关复用（存在模块级状态里）
+    const probed = xdexExportDialogState.probed;
+
+    // 回填上次的输入与结果，避免每次打开都从零开始
+    try {
+      const st = xdexExportDialogState;
+      if (st.format) q('#xdex-export-format').value = st.format;
+      if (st.from) q('#xdex-export-from').value = st.from;
+      if (st.to) q('#xdex-export-to').value = st.to;
+      q('#xdex-export-po').checked = !!st.poOnly;
+      if (st.probeText) {
+        q('#xdex-export-probe').textContent = st.probeText;
+      } else {
+        // 未检索前给一句说明，避免信息栏空着显得突兀
+        const ph = q('#xdex-export-probe');
+        ph.textContent = '填写串号后点「检索」，这里会显示每个串的标题、总页数与回复数（支持 No.67024789 / 链接 / 逗号批量）';
+        ph.dataset.tone = 'placeholder';
+      }
+      if (st.statusText) status(st.statusText, st.statusTone);
+      if (probed.size === 1) q('#xdex-export-total').textContent = String(Array.from(probed.values())[0].totalPages);
+      else if (probed.size > 1) q('#xdex-export-total').textContent = `${probed.size} 个串`;
+      xdexExportRenderDialogTasks(xdexExportLastState && xdexExportLastState.tasks);
+      if (xdexExportExtensionAvailable()) {
+        // 扩展环境：历史在任务表（chrome.storage），拉一次最新
+        xdexExportSend({ type: 'xdex:export:list' }).then((st) => {
+          if (st) { xdexExportLastState = st; xdexExportRenderDialogHistory(st.history || []); }
+        }).catch(() => {});
+      } else {
+        // 脚本猫端：历史同样在后台任务表里。本页可能还没跑过 list（按需轮询是空的），
+        // 所以也要主动取一次，否则「修改前」由其它页面/会话产生的记录看不到。
+        xdexExportSend({ type: 'xdex:export:list' }).then((st) => {
+          if (st) { xdexExportLastState = st; xdexExportRenderDialogHistory(st.history || []); }
+        }).catch(() => {
+          // 后台未运行时退回最近一次已知状态
+          xdexExportRenderDialogHistory(xdexExportLastState && xdexExportLastState.history);
+        });
+      }
+    } catch (_e) { /* 忽略 */ }
+
+    // 输入变化即写回状态
+    const rememberInputs = () => {
+      const st = xdexExportDialogState;
+      st.tid = q('#xdex-export-tid').value;
+      st.format = q('#xdex-export-format').value;
+      st.from = q('#xdex-export-from').value;
+      st.to = q('#xdex-export-to').value;
+      st.poOnly = q('#xdex-export-po').checked;
+    };
+    ['#xdex-export-tid', '#xdex-export-format', '#xdex-export-from', '#xdex-export-to', '#xdex-export-po'].forEach((sel) => {
+      const el = q(sel);
+      if (!el) return;
+      el.addEventListener('input', rememberInputs);
+      el.addEventListener('change', rememberInputs);
+    });
+
+    const closeDialog = () => { rememberInputs(); dialog.remove(); };
+    // 点击遮罩（面板以外区域）关闭
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) closeDialog(); });
+
+    // 任务队列折叠（参照设置面板 WebDAV 行的折叠交互）
+    const queueBox = q('.xdex-export-dialog-queue');
+    const applyQueueExpanded = () => {
+      if (!queueBox) return;
+      const expanded = !!xdexExportDialogState.queueExpanded;
+      queueBox.classList.toggle('collapsed', !expanded);
+      // 与「常用串EX」同一个箭头函数：展开→向下，收起→向左
+      try {
+        if (typeof setPostExpandToggleVisual === 'function') {
+          setPostExpandToggleVisual(q('#xdex-export-queue-caret'), expanded);
+        }
+      } catch (_e) { /* 忽略 */ }
+    };
+    if (queueBox) {
+      q('[data-act="toggle-queue"]').addEventListener('click', () => {
+        xdexExportDialogState.queueExpanded = !xdexExportDialogState.queueExpanded;
+        applyQueueExpanded();
+      });
+    }
+    applyQueueExpanded();
+
+    // 历史记录折叠（默认折叠；箭头与任务队列同款）
+    const historyBox = q('#xdex-export-dialog-history-box');
+    const applyHistoryExpanded = () => {
+      if (!historyBox) return;
+      const expanded = !!xdexExportDialogState.historyExpanded;
+      historyBox.classList.toggle('collapsed', !expanded);
+      try {
+        if (typeof setPostExpandToggleVisual === 'function') {
+          setPostExpandToggleVisual(q('#xdex-export-history-caret'), expanded);
+        }
+      } catch (_e) { /* 忽略 */ }
+    };
+    if (historyBox) {
+      q('[data-act="toggle-history"]').addEventListener('click', () => {
+        xdexExportDialogState.historyExpanded = !xdexExportDialogState.historyExpanded;
+        applyHistoryExpanded();
+      });
+    }
+    applyHistoryExpanded();
+
+    q('[data-act="close"]').addEventListener('click', closeDialog);
+    q('[data-act="min"]').addEventListener('click', closeDialog);
+
+    // 范围输入：留空即全部页（from=1, to=0）
+    const readRange = () => {
+      const from = Math.max(0, Number(q('#xdex-export-from').value) || 0);
+      const to = Math.max(0, Number(q('#xdex-export-to').value) || 0);
+      return { from: from || 1, to: to || 0 };
+    };
+
+    // 校验用户填写的页码区间是否真实存在（依据检索到的总页数）。
+    // 只填一端时另一端自动补全：只填起始 → 到最后一页；只填结束 → 从第 1 页。
+    const validateRange = (info) => {
+      const rawFrom = q('#xdex-export-from').value.trim();
+      const rawTo = q('#xdex-export-to').value.trim();
+      const total = Number(info && info.totalPages) || 0;
+      if (!rawFrom && !rawTo) return { ok: true, from: 1, to: 0, all: true };
+      const fromN = Number(rawFrom);
+      const toN = Number(rawTo);
+      if (rawFrom && (!Number.isFinite(fromN) || fromN < 1)) return { ok: false, error: '起始页必须是 ≥1 的整数' };
+      if (rawTo && (!Number.isFinite(toN) || toN < 1)) return { ok: false, error: '结束页必须是 ≥1 的整数' };
+      const from = rawFrom ? Math.floor(fromN) : 1;
+      const to = rawTo ? Math.floor(toN) : (total || 0);
+      if (total && from > total) return { ok: false, error: `起始页 ${from} 超出总页数 ${total}` };
+      if (total && to > total) return { ok: false, error: `结束页 ${to} 超出总页数 ${total}` };
+      if (to && to < from) return { ok: false, error: `结束页 ${to} 小于起始页 ${from}` };
+      return { ok: true, from, to, all: false };
+    };
+
+    q('[data-act="probe"]').addEventListener('click', async () => {
+      const list = xdexExportParseTidList(q('#xdex-export-tid').value.trim() || xdexExportCurrentTid());
+      if (!list.length) { status('请输入串号', 'error'); return; }
+      probed.clear();
+      status('正在检索…');
+      const oks = [];
+      const fails = [];
+      for (const item of list) {
+        if (!item.ok) { fails.push(`${item.raw}：${item.error}`); continue; }
+        try {
+          const info = await xdexExportSend({ type: 'xdex:export:probe', details: { tid: item.tid } });
+          probed.set(item.tid, info);
+          oks.push(`✓《${info.title || `串${item.tid}`}》 ${item.tid} 共 ${info.totalPages} 页 / ${info.totalReplies} 回复`);
+        } catch (e) {
+          fails.push(`✗ ${item.tid} 不可下载：${e.message}`);
+        }
+      }
+      const probeEl = q('#xdex-export-probe');
+      probeEl.textContent = oks.concat(fails).join('\n');
+      probeEl.dataset.tone = fails.length ? 'error' : 'ok';
+      xdexExportDialogState.probeText = probeEl.textContent;
+      if (probed.size === 1) {
+        const only = Array.from(probed.values())[0];
+        q('#xdex-export-total').textContent = String(only.totalPages);
+      } else {
+        q('#xdex-export-total').textContent = probed.size ? `${probed.size} 个串` : '—';
+      }
+      status(fails.length ? `${fails.length} 个串不可下载，其余可正常加入` : `检索完成：${oks.length} 个串可下载`, fails.length ? 'error' : 'ok');
+    });
+
+    q('[data-act="submit"]').addEventListener('click', async () => {
+      const list = xdexExportParseTidList(q('#xdex-export-tid').value.trim() || xdexExportCurrentTid());
+      if (!list.length) { status('请输入串号', 'error'); return; }
+      const bothEmpty = !q('#xdex-export-from').value.trim() && !q('#xdex-export-to').value.trim();
+      const format = q('#xdex-export-format').value;
+      const poOnly = q('#xdex-export-po').checked;
+      // 已经检索过的不再重复检索：只对「尚未检索」的串补检
+      const listOk = list.filter((x) => x.ok);
+      const needProbe = listOk.filter((x) => !probed.get(x.tid));
+      status(needProbe.length ? `正在检索 ${needProbe.length} 个未检索的串…` : '正在提交…');
+      const done = [];
+      const fails = [];
+      const infos = [];
+      for (const item of list) {
+        if (!item.ok) { fails.push(`${item.raw}：${item.error}`); continue; }
+        // 复用已有检索结果；没有才去检索
+        let info = probed.get(item.tid);
+        if (!info) {
+          try {
+            info = await xdexExportSend({ type: 'xdex:export:probe', details: { tid: item.tid } });
+            probed.set(item.tid, info);
+          } catch (e) { fails.push(`${item.tid} 不可下载：${e.message}`); continue; }
+        }
+        // 页码区间校验（依据该串的总页数）
+        const chk = validateRange(info);
+        if (!chk.ok) { fails.push(`${item.tid} 页码范围无效：${chk.error}`); continue; }
+        if (bothEmpty || chk.all) {
+          infos.push(`《${info.title || `串${item.tid}`}》 ${item.tid} 共 ${info.totalPages} 页 / ${info.totalReplies} 回复 → 全量导出`);
+        }
+        try {
+          await xdexExportSend({
+            type: 'xdex:export:submit',
+            details: {
+              tid: item.tid,
+              title: info.title || '',
+              fid: info.fid || '',
+              totalPages: info.totalPages || 0,
+              from: chk.from,
+              to: chk.to,
+              format,
+              poOnly
+            }
+          });
+          done.push(`${item.tid}（${chk.from}-${chk.all ? info.totalPages : chk.to} 页）`);
+        } catch (e) { fails.push(`${item.tid} 提交失败：${e.message}`); }
+      }
+      const parts = [];
+      if (infos.length) parts.push(infos.join('\n'));
+      if (done.length) parts.push(`已加入导出队列 ${done.length} 个：${done.join('、')}`);
+      if (fails.length) parts.push(`失败 ${fails.length} 个：${fails.join('；')}`);
+      status(parts.join('｜'), fails.length ? 'error' : 'ok');
+      if (infos.length) q('#xdex-export-probe').textContent = infos.join('\n');
+      xdexExportIdleTicks = 0;
+      xdexExportEnsureProgressPolling();
+      await xdexExportRefreshState();
+    });
+  }
+
+  // ---- 按钮 + 样式注入 ----
+  function xdexExportInstallUi() {
+    if (!xdexExportRuntimeAvailable()) return; // 扩展与脚本猫桥接均不可用：不注入
+    if (document.getElementById('xdex-export-ui')) return;
+    const style = document.createElement('style');
+    style.id = 'xdex-export-ui';
+    style.textContent = ''
+      // 外观复用阅图模式按钮 .xdex-image-viewer-btn（+ 站点 active 类 ultimate-bold-correct），
+      // 这里只覆盖定位到 sp_btn 正下方
+      + '#xdex-export-btn{top:54px;right:10px;}'
+      + '#xdex-export-mini{position:fixed;top:96px;right:10px;z-index:10000;width:172px;padding:8px;border-radius:10px;'
+      + 'background:rgba(255,255,238,.97);border:1px solid #bfa58f;box-shadow:0 2px 10px rgba(0,0,0,.18);display:none;'
+      + 'font:12px/1.5 "Microsoft YaHei",sans-serif;color:#4a3a30;}'
+      + '.xdex-export-mini-head{display:flex;align-items:center;gap:4px;}'
+      + '.xdex-export-mini-tid{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.xdex-export-mini-track{height:6px;border-radius:999px;background:rgba(143,74,47,.15);overflow:hidden;margin:5px 0 3px;}'
+      + '.xdex-export-mini-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#8f4a2f,#1f6f74);transition:width .2s ease;}'
+      + '.xdex-export-mini-label{color:#8a7566;text-align:right;}'
+      + '.xdex-export-mini-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px;}'
+      // 展开列表：整块纵向排列（标题行 / 进度条 / 状态），每行之间留白
+      + '.xdex-export-mini-more{margin-top:6px;padding-top:6px;border-top:1px dashed #bfa58f;display:flex;flex-direction:column;gap:9px;max-height:46vh;overflow:auto;}'
+      + '.xdex-export-mini-more-row{display:block;}'
+      + '.xdex-export-mini-more-head{display:flex;align-items:center;gap:4px;}'
+      + '.xdex-export-mini-more-title{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.xdex-export-mini-more-tid{color:#8a7566;white-space:nowrap;font-size:11.5px;}'
+      + '.xdex-export-mini-more-track{height:5px;border-radius:999px;background:rgba(143,74,47,.15);overflow:hidden;margin:4px 0 2px;}'
+      + '.xdex-export-mini-more-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#8f4a2f,#1f6f74);transition:width .2s ease;}'
+      + '.xdex-export-mini-more-label{color:#8a7566;text-align:right;font-size:11.5px;}'
+      // 缩略条的展开/中止按钮：做成有边框的小胶囊，提升可点性与辨识度
+      + '.xdex-export-mini-btn{min-width:20px;height:18px;padding:0 5px;border:1px solid #bfa58f;border-radius:999px;background:#fffaf4;cursor:pointer;'
+      + 'color:#683520;font:11px/1 "Microsoft YaHei",sans-serif;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;}'
+      + '.xdex-export-mini-btn:hover{background:#f0e0d6;border-color:#8f4a2f;}'
+      + '.xdex-export-mini-btn[data-act="cancel"]{color:#9d3026;border-color:#d9a79f;}'
+      + '.xdex-export-mini-btn[data-act="cancel"]:hover{background:#f7e2df;border-color:#9d3026;}'
+      + '.xdex-export-mini-btn[data-act="expand"]{font-weight:700;}'
+      + '#xdex-export-dialog{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.35);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;}'
+      + '.xdex-export-dialog-panel{width:min(680px,calc(100vw - 32px));background:#FFFFEE;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.28);overflow:hidden;font:14px/1.6 "Microsoft YaHei",sans-serif;color:#2b211c;}'
+      + '.xdex-export-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#F0E0D6;font-weight:700;}'
+      + '.xdex-export-dialog-head-btns{display:flex;gap:6px;}'
+      + '.xdex-export-dialog-icon{border:none;background:transparent;cursor:pointer;font:16px/1 "Microsoft YaHei",sans-serif;color:#8a7566;padding:2px 6px;border-radius:6px;}'
+      + '.xdex-export-dialog-icon:hover{background:rgba(0,0,0,.08);}'
+      + '.xdex-export-dialog-body{padding:14px;display:flex;flex-direction:column;gap:10px;}'
+      + '.xdex-export-dialog-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}'
+      + '.xdex-export-dialog-row input[type=text]{flex:1;min-width:0;padding:6px 10px;border:1px solid #bfa58f;border-radius:8px;box-sizing:border-box;}'
+      + '.xdex-export-dialog-row select{padding:6px 8px;border:1px solid #bfa58f;border-radius:8px;}'
+      + '.xdex-export-dialog-num{width:76px;padding:6px 8px;border:1px solid #bfa58f;border-radius:8px;box-sizing:border-box;}'
+      + '.xdex-export-dialog-btn{padding:6px 14px;border:1px solid #bfa58f;border-radius:999px;background:#fff;cursor:pointer;font-weight:700;color:#683520;}'
+      + '.xdex-export-dialog-btn.primary{background:#8f4a2f;border-color:#683520;color:#fffaf4;}'
+      + '.xdex-export-dialog-label{color:#8a7566;}'
+      + '.xdex-export-dialog-value{font-weight:700;}'
+      + '.xdex-export-dialog-info{min-height:18px;font-size:12px;color:#8a7566;white-space:pre-wrap;}'
+      + '.xdex-export-dialog-info[data-tone=error]{color:#9d3026;}'
+      + '.xdex-export-dialog-info[data-tone=ok]{color:#1f6f74;}'
+      + '.xdex-export-dialog-info[data-tone=placeholder]{color:#a2917f;font-style:italic;}'
+      + '.xdex-export-dialog-check{display:flex;align-items:center;gap:6px;color:#8a7566;font-size:13px;}'
+      // 「只看 PO」直接沿用设置面板的 .xdex-switch 规则：选择器与声明逐字一致，
+      // 且与面板一样不做暗色覆盖 —— 两处开关必须表现完全相同。
+      + '.xdex-switch { appearance:none; width:34px; height:18px; flex:0 0 34px; border:1px solid #a98f7a; border-radius:999px; background:#EE0000; cursor:pointer; position:relative; box-sizing:border-box; transition:background .18s ease,border-color .18s ease; }'
+      + '.xdex-switch::before { content:""; position:absolute; width:14px; height:14px; left:1px; top:1px; border-radius:50%; background:#FFFFEE; box-shadow:0 1px 2px rgba(0,0,0,.24); transition:transform .18s ease; }'
+      + '.xdex-switch:checked { background:#66CCFF; border-color:#7da6bf; }'
+      + '.xdex-switch:checked::before { transform:translateX(16px); }'
+      + '.xdex-switch:focus-visible { outline:2px solid #cc1105; outline-offset:2px; }'
+      + '.xdex-switch:disabled { opacity:1; cursor:default; }'
+      + '.xdex-export-dialog-switch{display:flex;align-items:center;gap:6px;color:#8a7566;font-size:13px;cursor:pointer;user-select:none;}'
+      // 弹窗内任务队列
+      + '.xdex-export-dialog-queue{margin-top:2px;border-top:1px dashed #d9c8bb;padding-top:8px;}'
+      // 队列头部：参照设置面板「WebDAV 备份/同步」行的排布（左标题 / 中状态 / 右计数与折叠）
+      + '.xdex-export-dialog-queue-head{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:2px 0;}'
+      + '.xdex-export-dialog-queue-head .q-title{font-weight:700;}'
+      + '.xdex-export-dialog-queue-head .q-status{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8a7566;font-size:12px;text-align:center;}'
+      // 历史区没有 q-status，由 q-count 吃掉剩余空间并把箭头推到最右
+      + '.xdex-export-dialog-queue-head .q-count{color:#8a7566;font-size:12px;white-space:nowrap;margin-left:auto;}'
+      + '.xdex-export-dialog-queue-head .q-caret{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;color:#8a7566;}'
+      + '.xdex-export-dialog-queue-head:hover .q-caret{color:#683520;}'
+      + '.xdex-export-dialog-queue-head .q-caret .xdex-icon-chevron{display:block;width:16px;height:16px;}'
+      + '.xdex-export-dialog-tasks{display:flex;flex-direction:column;gap:8px;max-height:26vh;overflow:auto;margin-top:8px;}'
+      + '.xdex-export-dialog-queue.collapsed .xdex-export-dialog-tasks{display:none;}'
+      + '.xdex-export-dialog-tasks.empty{color:#a2917f;font-size:12px;display:flex;align-items:center;justify-content:center;padding:6px 0;}'
+      + '.xdex-export-dialog-task{border:1px solid #e3d5c8;border-radius:8px;padding:6px 8px;background:#fffdf6;}'
+      + '.xdex-export-dialog-task-head{display:flex;align-items:center;gap:6px;}'
+      + '.xdex-export-dialog-task-title{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.xdex-export-dialog-task-tid{color:#8a7566;font-size:12px;white-space:nowrap;}'
+      + '.xdex-export-dialog-task-track{height:6px;border-radius:999px;background:rgba(143,74,47,.15);overflow:hidden;margin:5px 0 3px;}'
+      + '.xdex-export-dialog-task-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#8f4a2f,#1f6f74);transition:width .2s ease;}'
+      + '.xdex-export-dialog-task-meta{color:#8a7566;font-size:12px;text-align:right;}'
+      + '.xdex-export-dialog-btn.tiny{padding:2px 8px;font-size:12px;}'
+      // ── 暗色（DarkReader 激活或脚本自定义深色）：逐项覆盖，避免 DR 反转导致配色错乱 ──
+      + ':root.xdex-darkreader-active #xdex-export-mini{background:rgba(43,44,45,.97);border-color:#5a4d42;color:#d9d0d0;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-label,'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more-tid,'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more-label{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-track,'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more-track{background:rgba(255,255,255,.14);}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn{background:#3a3b3c;border-color:#5a4d42;color:#d9d0d0;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn:hover{background:#4a4b4c;border-color:#00ffcc;color:#00ffcc;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn[data-act="cancel"]{color:#e08a80;border-color:#7a4a44;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-btn[data-act="cancel"]:hover{background:#5a2f2a;border-color:#EE0000;color:#ff9a90;}'
+      + ':root.xdex-darkreader-active .xdex-export-mini-more{border-top-color:#5a4d42;}'
+      + ':root.xdex-darkreader-active #xdex-export-dialog{background:rgba(0,0,0,.55);}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-panel{background:#2b2c2d;color:#e6dede;color-scheme:dark;box-shadow:0 8px 30px rgba(0,0,0,.6);}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-head{background:#3a2f28;color:#e6dede;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-row input[type=text],'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-row select,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-num{background:#1f2021;border-color:#5a4d42;color:#e6dede;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-btn{background:#3a3b3c;border-color:#5a4d42;color:#d9d0d0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-btn:hover{border-color:#00ffcc;color:#00ffcc;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-btn.primary{background:#7a3f28;border-color:#a05a3a;color:#fff5ef;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-icon{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-icon:hover{background:rgba(255,255,255,.12);}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-label,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-value,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-check,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-switch{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info[data-tone=error]{color:#ff9a90;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info[data-tone=ok]{color:#5fd6b0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-info[data-tone=placeholder]{color:#8a7f80;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue{border-top-color:#5a4d42;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head:hover .q-caret{color:#00ffcc;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head .q-status,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head .q-count,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-queue-head .q-caret,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-subtitle,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-tasks.empty,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task-tid,'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task-meta{color:#b9aeb0;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task{background:#232425;border-color:#3a3b3c;}'
+      + ':root.xdex-darkreader-active .xdex-export-dialog-task-track{background:rgba(255,255,255,.14);}';
+    document.head.appendChild(style);
+
+    // 复用阅图模式按钮样式（确保基础样式已注入）
+    if (typeof ensureImageViewerButtonStyle === 'function') ensureImageViewerButtonStyle();
+    const btn = document.createElement('button');
+    btn.id = 'xdex-export-btn';
+    btn.type = 'button';
+    btn.className = 'xdex-image-viewer-btn ultimate-bold-correct';
+    btn.title = '导出串';
+    btn.setAttribute('aria-label', '导出串');
+    // 图标：折角文档 + 两条文字线（"文档 + 内容"的语义），
+    // 与阅图按钮同规范：不带 width/height，由 .xdex-image-viewer-btn svg 统一设为 18×18。
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
+      + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M14.5 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7.5z"/>'
+      + '<path d="M14.5 2.5v5h5"/>'
+      + '<path d="M8.5 12h7M8.5 16.5h4.5"/>'
+      + '</svg>';
+    btn.addEventListener('click', () => xdexExportOpenDialog(''));
+    document.body.appendChild(btn);
+
+    const mini = document.createElement('div');
+    mini.id = 'xdex-export-mini';
+    document.body.appendChild(mini);
+
+    // 进度订阅：
+    //  - 扩展环境由 chrome.storage.onChanged 驱动（实时），无需轮询；
+    //  - 脚本猫桥接没有存储事件转发，只能轮询兜底。
+    // 桥接下 submit 会在后台连续抓取（大串可达数分钟），1s 轮询会让后台同时处理
+    // 大量 list 请求，因此间隔放宽到 3s，且同一时刻只允许一个在途请求。
+    // 进度订阅：
+    //  - 扩展环境由 chrome.storage.onChanged 驱动（实时），无需轮询；
+    //  - 脚本猫桥接没有存储事件转发，只能轮询。
+    // 关键：**没有在跑的任务时不轮询** —— 轮询一轮要经桥接往返（多次跨脚本写入、
+    // 两个 800ms 兜底轮询、若干 DOM 事件），常驻空转在普通浏览时纯属浪费。
+    // 仅当用户在本页提交过任务后才启动，任务清空后自动停止。
+    if (!xdexExportExtensionAvailable()) {
+      xdexExportEnsureProgressPolling();
+      xdexExportRefreshState(); // 立即探测一次：本页可能是中途打开的，后台可能已有任务
+    } else {
+      // 扩展环境：任务表变化由 chrome.storage.onChanged 推送（原生机制，零轮询开销）。
+      // 此前注释声称由 onChanged 驱动，但从未订阅 —— 导致扩展端弹窗进度/历史不自动更新。
+      try {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area !== 'local' || !changes) return;
+            const hit = Object.keys(changes).some((k) => k === 'xdex-export-tasks' || k === 'xdex-export-dialog-history');
+            if (hit) xdexExportRefreshState();
+          });
+        }
+      } catch (e) { /* 忽略 */ }
+      xdexExportRefreshState();
+    }
+  }
+
+  // 非扩展环境：保留调用点（分支留空，等待后续实现）
+  function xdexExportInit() {
+    try {
+      // 启动诊断：便于在页面控制台确认当前装的是哪个版本、通道是否就绪
+      try {
+        console.log('[X岛-EX 导出] 通道诊断',
+          '扩展=' + xdexExportExtensionAvailable(),
+          '桥接=' + !!xdexExportBridge(),
+          '按需轮询=' + (typeof xdexExportEnsureProgressPolling === 'function'),
+          '受理回执超时=' + (typeof XDEX_EXPORT_BRIDGE_ACK_TIMEOUT_MS === 'number'));
+      } catch (_e) { /* 忽略 */ }
+      if (xdexExportRuntimeAvailable()) { xdexExportInstallUi(); return; }
+      // 桥接脚本与主脚本同为 document-start，加载顺序不确定：
+      // 若桥接尚未就绪，则监听其就绪事件后补注入（已就绪的情况上面已处理）
+      const onBridgeReady = () => {
+        document.removeEventListener('xdex:export-bridge-ready', onBridgeReady);
+        try { if (xdexExportRuntimeAvailable()) xdexExportInstallUi(); } catch (_e) {}
+      };
+      document.addEventListener('xdex:export-bridge-ready', onBridgeReady);
+    } catch (e) { console.warn('[X岛-EX] 导出功能初始化失败', e); }
+  }
+
+  /* --------------------------------------------------
    * tag -1. 入口初始化
    * -------------------------------------------------- */
   // 注册设置面板依赖到 XDex
@@ -31228,6 +33440,7 @@ function initReplyParamScrollTo() {
     autoSelectReportReason();                                        //举报理由默认选择“其他”
     if (cfg.toggleSidebar)               toggleSidebar();            //侧边栏收起功能
     renderFavoriteThreadsMenu();                                      //常用串
+    xdexExportInit();                                                //串内容导出（扩展后台任务）
     if (isThreadHistoryPageActive()) {
       recordCurrentThreadHistory(0, { reason: 'initial-load', countVisit: true });
       installThreadHistoryReactivationTracking(true);

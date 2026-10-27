@@ -27,7 +27,7 @@
     "// ==UserScript==",
     "// @name         X岛-EX",
     "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
-    "// @version      4.2.0",
+    "// @version      4.3.0",
     "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。",
     "// @author       XY",
     "// @match        https://*.nmbxd1.com/*",
@@ -63,8 +63,7 @@
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
     "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
     "// @license      WTFPL",
-    "// @changelog    ### 新增\\n\\n - “管理”中新增“测试”版块。\\n\\n ### 优化\\n\\n - 切换饼干后焦点立刻回到输入框，避免输入被打断。\\n - 报错内容的toast显示样式更醒目，显示时间更长。\\n - 允许关闭“浏览历史/发言历史”设置，关闭时不会清空删除已存在的数据。\\n - 包含分组的设置项支持拖拽排序。\\n - 打开包含r=的链接时直接跳转到r=回复所在的位置。\\n - 部分设置项支持开启/关闭后即时生效。\\n\\n ### 修复\\n\\n - 修复深色模式下拓展引用浮窗中链接颜色不正确的问题。\\n - 修复在版块页快捷回复时，点击“连续/临时”按钮进行切换时时可能关闭回复浮窗的问题。\\n - 修复设置面板中“我的订阅”模块中缺失“添加订阅号”按钮的问题。\\n - 修复WebDAV在向远端同步时由于发生错误导致以当前浏览量作为增量累加的问题。\\n - 修复回收站中手动恢复的条目仍显示在回收站中的问题；修复被恢复的条目在浏览历史中依旧显示回收站图标的问题。\\n - 修复串内页草稿无法删除以及在版块页错误保存草稿的问题。\\n",
-    "",
+    "// @changelog    ### 新增\\n\\n- 新增导出功能，支持将串导出为Markdown/TXT文件\\n- 新增饼干计时器，发送回复后提示当前饼干冷却时间\\n- 新增被屏蔽串内的临时显示功能\\n\\n### 优化\\n\\n- 发送消息前对图像大小/格式进行预检，提前将图像压缩大小至2048KB以内或转化为合法格式之后再提交\\n- 打开浏览历史/发言历史面板时自动聚焦搜索\\n- 性能优化，减少在写入发言历史/发送消息后局部刷新的场景中发生的卡顿\\n- 正文/标题/名称/E-mai拼音组词过程中不计算字数\\n\\n### 修复\\n\\n- 修复在弹出二次确认饼干时弹出“可能提交失败”toast提示的问题\\n- 修复在部分场景下没有拓宽带图消息的问题\\n",
     "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
     "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
     "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
@@ -77,7 +76,7 @@
     "// @run-at       document-start",
     "// ==/UserScript=="
   ].join('\n');
-  const scriptMeta = { name: "X岛-EX", version: "4.2.0" };
+  const scriptMeta = { name: "X岛-EX", version: "4.3.0" };
   // END GENERATED USERSCRIPT META
 
   function normalizeKey(key) {
@@ -93,7 +92,36 @@
     }
   }
 
+  // 大值判定：有界探测（最多 512 个节点 / 累计 256KB 字符串），避免为了判断大小先全量序列化。
+  // 预算耗尽即保守地按大值处理：大值只会跳过镜像/克隆/深比较，不会丢数据。
+  const LARGE_VALUE_BYTES = 256 * 1024;
+  const SIZE_PROBE_NODES = 512;
+  function isLargeValue(value) {
+    if (typeof value === 'string') return value.length > LARGE_VALUE_BYTES;
+    if (value == null || typeof value !== 'object') return false;
+    const stack = [value];
+    let nodes = 0;
+    let bytes = 0;
+    while (stack.length > 0) {
+      const node = stack.pop();
+      nodes += 1;
+      if (nodes > SIZE_PROBE_NODES) return true;
+      if (typeof node === 'string') {
+        bytes += node.length;
+        if (bytes > LARGE_VALUE_BYTES) return true;
+        continue;
+      }
+      if (node && typeof node === 'object') {
+        for (const key in node) stack.push(node[key]);
+      }
+    }
+    return bytes > LARGE_VALUE_BYTES;
+  }
+
   function valuesEqual(left, right) {
+    if (left === right) return true;
+    // 大值不深比较：两次 3–4MB stringify 的代价远高于直接按引用判断
+    if (isLargeValue(left) || isLargeValue(right)) return false;
     try {
       return JSON.stringify(left) === JSON.stringify(right);
     } catch (_) {
@@ -202,9 +230,16 @@
   function emitValueChange(key, oldValue, newValue, remote) {
     const callbacks = listeners.get(String(key));
     if (!callbacks) return;
+    // 大值按引用投递（与 QwQNT 宿主一致），避免每个监听者再克隆两份 MB 级对象
+    const large = isLargeValue(oldValue) || isLargeValue(newValue);
     callbacks.forEach((callback) => {
       try {
-        callback(String(key), cloneValue(oldValue), cloneValue(newValue), !!remote);
+        callback(
+          String(key),
+          large ? oldValue : cloneValue(oldValue),
+          large ? newValue : cloneValue(newValue),
+          !!remote
+        );
       } catch (err) {
         console.warn('[X岛-EX Extension] GM_addValueChangeListener callback failed', err);
       }
@@ -321,7 +356,8 @@
             if (!key.startsWith(storagePrefix)) return;
             const rawKey = key.slice(storagePrefix.length);
             const oldValue = memoryStore.get(rawKey);
-            const nextValue = cloneValue(value);
+            // 大值由 chrome.storage 返回，已是本上下文独占的新对象，直接持有可省一次 3–4MB 克隆
+            const nextValue = isLargeValue(value) ? value : cloneValue(value);
             memoryStore.set(rawKey, nextValue);
             // 回写 localStorage 镜像：theme-early.js（先于 gm-compat 执行）只能同步读镜像，
             // 不回写则它永远读不到 chrome.storage 里的深色开关 → 首帧无法注入
@@ -347,7 +383,13 @@
         const key = localStorage.key(i);
         if (!key || !key.startsWith(localStoragePrefix)) continue;
         const rawKey = key.slice(localStoragePrefix.length);
-        memoryStore.set(rawKey, JSON.parse(localStorage.getItem(key)));
+        const raw = localStorage.getItem(key);
+        // 旧版本可能把大历史镜像进 localStorage；按字符串长度直接丢弃，避免启动时解析 4MB
+        if (raw && raw.length > LARGE_VALUE_BYTES) {
+          try { localStorage.removeItem(key); } catch (_) {}
+          continue;
+        }
+        memoryStore.set(rawKey, JSON.parse(raw));
       }
     } catch (err) {
       console.warn('[X岛-EX Extension] localStorage preload failed', err);
@@ -355,6 +397,12 @@
   }
 
   function writeLocalStorageMirror(key, value, options) {
+    if (isLargeValue(value)) {
+      // 大值不写镜像：localStorage 配额会直接抛错，且 stringify 本身是同步大开销。
+      // 顺手清掉旧版本可能留下的镜像，避免下次启动解析 4MB。
+      try { localStorage.removeItem(localStoragePrefix + String(key)); } catch (_) {}
+      return;
+    }
     try {
       localStorage.setItem(localStoragePrefix + String(key), JSON.stringify(value));
       if (!options || options.publish !== false) publishLocalStorageSync(key, value, false);
@@ -398,6 +446,8 @@
   root.GM_setValue = function GM_setValue(key, value) {
     const normalizedKey = String(key);
     const oldValue = memoryStore.get(normalizedKey);
+    // 保留写入时的快照语义（调用方可能在落盘前继续修改历史 store）；
+    // 大值优化放在镜像、变更投递和等值比较，避免为了省一次克隆而引入别名竞态。
     const nextValue = cloneValue(value);
     memoryStore.set(normalizedKey, nextValue);
     writeLocalStorageMirror(normalizedKey, nextValue);
@@ -558,13 +608,17 @@
     toast.textContent = text;
     toast.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483647;background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:5px;font-size:14px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.25);';
     if (type === 'error') {
+      // ★ 扩展侧错误 toast：红框 + 醒目样式（与 userscript error 同语义）
       toast.style.border = '1px solid #e74c3c';
       toast.style.boxShadow = '0 0 0 1px rgba(231,76,60,.4), 0 2px 8px rgba(0,0,0,.25)';
       toast.style.fontWeight = 'bold';
+    } else if (type === 'hold') {
+      // ★ 长驻提示：与 error 相同的驻留语义，但不加红框
+      toast.style.fontWeight = 'bold';
     }
     document.documentElement.appendChild(toast);
-    if (type === 'error') {
-      // ★ 扩展侧错误 toast 与 userscript 同语义：
+    if (type === 'error' || type === 'hold') {
+      // ★ 扩展侧长驻 toast 与 userscript 同语义：
       // 无操作驻留 30s；挂载后 1s 武装期内忽略交互；操作后进入 5s 渐隐宽限
       let holdTimer = 0;
       let graceTimer = 0;
@@ -574,6 +628,7 @@
       const clearAll = () => {
         document.removeEventListener('pointerdown', onPointer, true);
         document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('wheel', onWheel, true);
         window.clearTimeout(holdTimer);
         window.clearTimeout(graceTimer);
         window.clearTimeout(armTimer);
@@ -582,12 +637,20 @@
       const startGrace = () => {
         document.removeEventListener('pointerdown', onPointer, true);
         document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('wheel', onWheel, true);
         window.clearTimeout(holdTimer);
         graceTimer = window.setTimeout(dismiss, 5000);
       };
       const onPointer = (e) => {
         if (!armed || interacted) return;
-        if (e && e.button !== 0) return; // 仅左键
+        // 左键(0)/中键(1)/右键(2)按下都算对本页操作；侧键等其余键值不计
+        if (e && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+        interacted = true;
+        startGrace();
+      };
+      const onWheel = () => {
+        // 滚轮滚动也算对本页操作（与 userscript 侧同语义）
+        if (!armed || interacted) return;
         interacted = true;
         startGrace();
       };
@@ -598,6 +661,7 @@
       };
       document.addEventListener('pointerdown', onPointer, true);
       document.addEventListener('keydown', onKey, true);
+      document.addEventListener('wheel', onWheel, true);
       armTimer = window.setTimeout(() => { armed = true; }, 1000);
       holdTimer = window.setTimeout(dismiss, 30000);
       return toast;
@@ -633,7 +697,10 @@
           url: details.url,
           headers: details.headers || {},
           data: details.data || null,
-          responseType: details.responseType || 'text'
+          responseType: details.responseType || 'text',
+          // 必须把超时透传给 SW：否则服务器不响应时 fetch 会永久挂起，
+          // 调用方只能等到自己的兜底计时器（表现为「未触发回调」）
+          timeout: typeof details.timeout === 'number' ? details.timeout : undefined
         }
       }, (response) => {
         const lastError = getRuntimeLastError();
