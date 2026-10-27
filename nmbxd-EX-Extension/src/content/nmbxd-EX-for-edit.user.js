@@ -6266,8 +6266,8 @@ ${markedSwatchHtml}
       //showLoginPrompt(); // 这里触发
     }
     removeDateString();
-    // 饼干变化 → 冷却提示跟随切换（各饼干独立计时，切回仍显示剩余时间）
-    try { renderCookieCooldown(); } catch (e) {}
+  // 饼干变化 → 冷却提示跟随切换（各饼干独立计时，切回仍显示剩余时间）
+  try { renderCookieCooldown(); } catch (e) {}
   }
 
   // ---- 饼干发送冷却（服务端 15s 限制）----
@@ -6323,9 +6323,28 @@ ${markedSwatchHtml}
     renderCookieCooldown();
     return true;
   }
+  // 跨页面同步：其它标签页发送成功后，本标签页（回复框已打开的）也要实时显示/更新冷却。
+  // 数据本身在 GM 存储共享；这里补的是「变更通知 → 重渲染」。
+  // 性能与生命周期：
+  //   · 全页面只注册一次（cookieCooldownSyncBound 守卫），绝不随饼干切换/面板刷新重复注册
+  //   · 监听器随页面上下文销毁自动失效，无需手动注销
+  //   · 事件只在该键被写入时投递（负载为整个 store，15s 冷却下每饼干每 15s 至多 1 次，
+  //     实际大小 = 饼干数 × 数字，几十字节），回调仅做一次幂等的 renderCookieCooldown
+  //   · 本页自己的写入也会触发本监听（remote=false）——renderCookieCooldown 幂等，重复调用无害；
+  //     且 renderCookieCooldown 内部有 cookieCooldownTimer 守卫，走秒 interval 不会重复叠加
+  let cookieCooldownSyncBound = false;
+  function bindCookieCooldownStorageSync() {
+    if (cookieCooldownSyncBound || typeof GM_addValueChangeListener !== 'function') return;
+    cookieCooldownSyncBound = true;
+    GM_addValueChangeListener(COOKIE_COOLDOWN_STORE_KEY, () => {
+      try { renderCookieCooldown(); } catch (e) {}
+    });
+  }
   function getCookieCooldownEl() {
     return document.querySelector('.xdex-cookie-cooldown');
   }
+  // 模块初始化：一次性注册跨标签同步监听（幂等，见上）
+  bindCookieCooldownStorageSync();
   // 冷却提示固定在「字数」左侧，二者同属送出按钮容器（右对齐）
   function ensureCookieCooldownEl() {
     const counter = document.querySelector('.xdex-post-content-char-count');
