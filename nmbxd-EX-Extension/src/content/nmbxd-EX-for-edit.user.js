@@ -6376,12 +6376,16 @@ ${markedSwatchHtml}
     }
     const seconds = Math.max(1, Math.ceil(remain / 1000));
     el.style.display = '';
+    // 默认区域（非拓展弹窗）空间窄，「冷却时间」前缀会与颜文字按钮重叠 → 只显示 [N]s；
+    // 拓展弹窗（.qp-body 内）空间充足 → 显示完整「冷却时间[N]s」
+    const inPopup = !!(el.closest && el.closest('.qp-body'));
     // 数字盒定宽 2ch + 内部「右对齐」：
     //   · 个位数（8）贴住右侧 ] ，两位数（15）自然填满 → 数字本身不跳
     //   · 盒子宽度不变 → 左侧「冷却时间[」与右侧「]s」「字数」都不移动
     // vertical-align:-0.08em：15px 数字在基线上比 12px 灰字高约 1px（实测 delta -1px），
     //   下压后两者字形中心对齐（残差 0.19px），视觉上居中而非偏上
-    el.innerHTML = '冷却时间[<span class="xdex-cookie-cooldown-num" '
+    el.innerHTML = (inPopup ? '冷却时间' : '')
+      + '[<span class="xdex-cookie-cooldown-num" '
       + 'style="color:#e53935;font-size:15px;font-weight:700;line-height:1;'
       + 'display:inline-block;min-width:2ch;text-align:right;vertical-align:-0.08em;'
       + 'font-variant-numeric:tabular-nums;font-feature-settings:\'tnum\' 1;">'
@@ -19144,6 +19148,7 @@ ${markedSwatchHtml}
               "冰封王座3": "( `д´)=🔪 👑\n　　　 (　ﾟ 3ﾟ)\n　　　👑\n(// `ー´)//\n(　x 3x)\n　👑\n(Ⅱ`∀´)Ⅱ\n(　x 3x)\n　👑\n( `д´)\n(　x 3x)",
               "喵喵酱": "　^ ^\n( =`д´=)哈—！",
               "狗比酱": "(U `д´)<汪汪汪！",
+              "狼酱":"　　　　　႔ ႔\n嗷呜！＞ ᠸ`д´ 𐅠",
               "起舞":"⊂ヽ(　^ω^)つ\n　 ＼ 　　／　　\n　　( ＿_フ\n　　(／",
               "N98": "淦\n是\nN\n9\n8\n接☆龙☆大☆成☆功\n盗摄？(　^ω^)\n石雕\n要素齐全\nN98是什么？\n同问\n感谢\n谢谢\n要素齐全\n什么是要素齐全？\n淦\n是\nN\n9\n5\nr\n警惕r点机器人\n你一个人都说完了我们说什么(╬ﾟдﾟ)",
               "望po石":"　┏━┓\n　┃望┃\nᕕ┃po┃ᕗ\n　┃石┃\n　┗━┛\n嗨呀我又来望po了\n我天天都来这望po",
@@ -19164,7 +19169,7 @@ ${markedSwatchHtml}
               "给你","举高高","举高高2","举糕糕","Happy肥肥Day",
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
-              "喵喵酱","狗比酱","起舞","N98",
+              "喵喵酱","狗比酱","狼酱","起舞","N98",
               "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓","挺好颜",
               "全角空格","零宽空格",
               // 页面中“防剧透/骰子/高级骰子”不动其原位
@@ -19175,7 +19180,7 @@ ${markedSwatchHtml}
               "给你","举高高","举高高2","举糕糕","Happy肥肥Day",
               "大嘘","巴拉巴拉","碣石",
               "冰封王座","冰封王座2","冰封王座3",
-              "喵喵酱","狗比酱","起舞","N98",
+              "喵喵酱","狗比酱","狼酱","起舞","N98",
               "望po石","望po石2","撞墙","冰箱先生","冰箱先生3D","血压↑","血压0↓","挺好颜",
           ]);
           // 一次性补齐（选择器就绪且已有至少一个选项时调用）
