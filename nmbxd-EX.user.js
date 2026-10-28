@@ -597,6 +597,18 @@ function xdexEarlyDarkEnabled() {
   const XDEX_ICON_PLUG = '<svg class="xdex-icon-plug" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5z"/><path d="M12 16v5"/></svg>';
   const XDEX_ICON_SYNC = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
   const XDEX_ICON_GEAR = '<svg class="xdex-icon-gear" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+  // 颜文字编辑模式三按钮专用图标（统一 16px、currentColor、stroke-width 2、圆角端点）
+  // 编辑：铅笔 + 底线（Feather edit-3），语义“编辑列表”
+  // 回收站：彻底删除（不可恢复）
+  const XDEX_ICON_TRASH = '<svg class="xdex-icon-trash" viewBox="0 0 24 24" style="display:block;width:10px;height:10px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/></svg>';
+  // 编辑：铅笔（上）+ 手绘波形线（下），表达“绘制/编辑”而非单纯一支笔
+  const XDEX_ICON_KAO_EDIT = '<svg class="xdex-icon-kao-edit" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 16.4l.8-3.3L13 4.4a1.85 1.85 0 0 1 2.6 2.6L7.5 15.6l-3.3.8z"/><path d="M12.4 5.2l2.4 2.4"/><path d="M3.4 20.6c2.6-1.7 5.2-1.7 7.8 0s5.2 1.7 7.8 0"/></svg>';
+  // 撤回：U 形回转箭头（指向左侧，语义“回到上一步”）
+  const XDEX_ICON_KAO_UNDO = '<svg class="xdex-icon-kao-undo" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 14 3 9l5-5"/><path d="M3 9h11a6 6 0 0 1 0 12h-4"/></svg>';
+  // 重置：完整逆时针圆环 + 箭头（Feather rotate-ccw，语义“恢复初始”）
+  const XDEX_ICON_KAO_RESET = '<svg class="xdex-icon-kao-reset" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>';
+  const XDEX_ICON_UNDO = '<svg class="xdex-icon-undo" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg>';
+  const XDEX_ICON_PENCIL = '<svg class="xdex-icon-pencil" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
   const XDEX_ICON_CHEVRON_DOWN = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
   const XDEX_ICON_CHEVRON_LEFT = '<svg class="xdex-icon-chevron" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
   // 展开/收起按钮视觉：当前展开→向下箭头；当前收起→向左箭头；图标用 currentColor 与常规图标同色
@@ -908,6 +920,16 @@ function xdexEarlyDarkEnabled() {
           if (this.state.timeDisplayMode !== 'exact') this.state.timeDisplayMode = 'relative';
           this.syncInputs();
           this.syncAuxiliaryControls();
+          // 排序方式跨页同步：其他页面切换排序后，本页已打开（或已渲染）的颜文字面板立即重排
+          try {
+            const prevSort = ov && ov.kaomojiSort;
+            const nextSort = nv && nv.kaomojiSort;
+            if (prevSort !== nextSort) {
+              document.querySelectorAll('#h-emot-select').forEach(sel => {
+                try { sel.dispatchEvent(new Event('kaomoji:sort-changed')); } catch (e) {}
+              });
+            }
+          } catch (e) {}
           // 面板渲染后回填 WebDAV 已保存配置（tag29），避免需先点击输入框才显示
           try { if (typeof ensureWebdavConfigInPanel === 'function') ensureWebdavConfigInPanel(); } catch (e) {}
           try { renderFavoriteThreadsMenu(); } catch (e) {}
@@ -1871,6 +1893,10 @@ function xdexEarlyDarkEnabled() {
                         <label for="sp_fullExport_kaomojiStats">颜文字统计</label>
                       </div>
                       <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_kaomojiCustom" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_kaomojiCustom">自定义颜文字</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
                         <input type="checkbox" id="sp_fullExport_cookiePrefs" class="xdex-switch" role="switch" checked>
                         <label for="sp_fullExport_cookiePrefs">串内饼干偏好</label>
                       </div>
@@ -2395,7 +2421,6 @@ function xdexEarlyDarkEnabled() {
         });
         // 广播排序模式变化，供其它复制下拉同步
         try {
-          window.dispatchEvent(new CustomEvent('kaomoji:sort-mode-changed', { detail: { mode, source: 'settings' } }));
         } catch (e) {}
       };
       $('#sp_kaomojiSort').off('change').on('change', applyKaomojiSortImmediately);
@@ -3629,6 +3654,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (selection.kaomojiStats) {
           payload.kaomojiStats = GM_getValue('kaomojiUsageStats', {});
         }
+        if (selection.kaomojiCustom) {
+          payload.kaomojiCustom = GM_getValue('xdex_kaomoji_custom', { items: [] });
+        }
         if (selection.cookiePrefs) {
           payload.cookiePrefs = GM_getValue('xdex_thread_cookie_prefs', {});
         }
@@ -3653,6 +3681,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               postHistoryCount: selection.postHistory ? Object.keys((payload.postHistory || {}).items || {}).length : 0,
               draftCount: selection.drafts ? (payload.drafts.registry || []).length : 0,
               kaomojiStatsEntries: selection.kaomojiStats ? Object.keys(payload.kaomojiStats || {}).length : 0,
+              kaomojiCustomCount: selection.kaomojiCustom ? (Array.isArray(payload.kaomojiCustom && payload.kaomojiCustom.items) ? payload.kaomojiCustom.items.filter(it => !it.deleted).length : 0) : 0,
               cookiePrefsCount: selection.cookiePrefs ? Object.keys(payload.cookiePrefs || {}).length : 0,
               webdavConfig: selection.webdav && payload.webdavConfig ? 1 : 0,
             },
@@ -3735,7 +3764,27 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
             // WebDAV 双向同步：按各端基线计算独立贡献后加算，避免每轮把远端全量当新增而重复计数；
             // lastUsed 恒取两端较大值（时间不可累加）
             const baselines = getWebdavHistoryBaselines();
-            const kaoBase = (baselines && baselines.kaomojiStats) || {};
+            let kaoBase = (baselines && baselines.kaomojiStats) || {};
+            // 与浏览历史同一套兜底：基线缺失（功能首次引入 / 换设备 / 清空过 WebDAV 配置）
+            // 但本端此前同步过时，当前本地值已是历史合并结果。若按 baseline=0 计算，
+            // 整份旧计数会被当成新增并与远端叠加 → 计数翻倍（“常用”排序从此失真）。
+            if (!Object.keys(kaoBase).length) {
+              let syncedBefore = 0;
+              try { syncedBefore = Number((GM_getValue(WEBDAV_CONFIG_KEY, null) || {}).lastSyncAt) || 0; } catch (e) {}
+              if (syncedBefore > 0 && Object.keys(local).length) {
+                kaoBase = {};
+                Object.keys(local).forEach((key) => {
+                  const entry = local[key];
+                  kaoBase[key] = { count: (entry && Number(entry.count)) || 0, at: Date.now() };
+                });
+                try {
+                  const seed = Object.assign({}, baselines || {});
+                  seed.kaomojiStats = kaoBase;
+                  GM_setValue('xdex_webdav_history_baselines', seed);
+                } catch (e) {}
+                console.log('[webdav] 颜文字统计基线缺失且本端曾同步过：已按当前本地值重建基线，避免旧计数被重复累加');
+              }
+            }
             merged = {};
             const keys = new Set(Object.keys(local).concat(Object.keys(payload.kaomojiStats)));
             keys.forEach((key) => {
@@ -3771,6 +3820,41 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const merged = Object.assign({}, local, payload.cookiePrefs);
           GM_setValue('xdex_thread_cookie_prefs', merged);
           report.cookiePrefs = { mode: 'merge', count: Object.keys(merged).length };
+        }
+        // 自定义颜文字：按 id 并集合并（墓碑优先，其余 updatedAt 新者胜），非覆盖
+        if (payload.kaomojiCustom && Array.isArray(payload.kaomojiCustom.items)) {
+          const localData = GM_getValue('xdex_kaomoji_custom', { items: [] });
+          const localItems = Array.isArray(localData.items) ? localData.items : [];
+          // purged：彻底删除记录（id → 时间戳），两端取较新值。
+          // 作用：其他设备仍保留该 id 的旧数据时，合并阶段直接丢弃，避免“彻底删除”后被旧副本复活。
+          const purged = Object.assign({}, (localData && localData.purged) || {});
+          Object.keys((payload.kaomojiCustom && payload.kaomojiCustom.purged) || {}).forEach((id) => {
+            purged[id] = Math.max(Number(purged[id]) || 0, Number(payload.kaomojiCustom.purged[id]) || 0);
+          });
+          const byId = new Map();
+          localItems.forEach((it) => { if (it && it.id) byId.set(it.id, it); });
+          let imported = 0, updated = 0, tombstones = 0, purgedSkipped = 0;
+          (payload.kaomojiCustom.items || []).forEach((remote) => {
+            if (!remote || !remote.id) return;
+            const purgedAt = Number(purged[remote.id]) || 0;
+            if (purgedAt && (Number(remote.updatedAt) || 0) <= purgedAt) { purgedSkipped += 1; return; }
+            const local = byId.get(remote.id);
+            if (!local) {
+              byId.set(remote.id, remote);
+              imported += 1;
+              if (remote.deleted) tombstones += 1;
+              return;
+            }
+            const lm = Number(local.updatedAt) || 0;
+            const rm = Number(remote.updatedAt) || 0;
+            if (rm > lm) { byId.set(remote.id, remote); updated += 1; }
+          });
+          const mergedItems = Array.from(byId.values()).filter((it) => {
+            const purgedAt = Number(purged[it.id]) || 0;
+            return !(purgedAt && (Number(it.updatedAt) || 0) <= purgedAt);
+          });
+          GM_setValue('xdex_kaomoji_custom', { items: mergedItems, purged });
+          report.kaomojiCustom = { mode: 'union-merge', imported, updated, tombstones, purgedSkipped, count: mergedItems.filter((it) => !it.deleted).length };
         }
         if (payload.webdavConfig && typeof payload.webdavConfig === 'object') {
           try { GM_setValue(WEBDAV_CONFIG_KEY, payload.webdavConfig); } catch (e) {}
@@ -3936,6 +4020,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           postHistory: $('#sp_fullExport_postHistory').is(':checked'),
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+          kaomojiCustom: $('#sp_fullExport_kaomojiCustom').is(':checked'),
           cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
           webdav: $('#sp_fullExport_webdav').is(':checked')
         };
@@ -3974,6 +4059,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           postHistory: $('#sp_fullExport_postHistory').is(':checked'),
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
+          kaomojiCustom: $('#sp_fullExport_kaomojiCustom').is(':checked'),
           cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
           webdav: $('#sp_fullExport_webdav').is(':checked')
         };
@@ -4012,6 +4098,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (summary.postHistoryCount) html += `<li>发言历史: ${summary.postHistoryCount} 条</li>`;
         if (summary.draftCount) html += `<li>草稿: ${summary.draftCount} 条</li>`;
         if (summary.kaomojiStatsEntries) html += `<li>颜文字统计: ${summary.kaomojiStatsEntries} 项</li>`;
+        if (summary.kaomojiCustomCount) html += `<li>自定义颜文字: ${summary.kaomojiCustomCount} 项</li>`;
         if (summary.cookiePrefsCount) html += `<li>串内饼干偏好: ${summary.cookiePrefsCount} 条</li>`;
         if (summary.webdavConfig) html += '<li>WebDAV 配置（覆盖导入）</li>';
         if (data.selection && data.selection.settings) html += '<li>设置配置（合并导入）</li>';
@@ -13675,8 +13762,12 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark .kaomoji-item:hover { background: #3a3d40 !important; }',
       // 回应省略提示（warn_txt2）：站点原生 .warn_txt2 直接命中子元素，需单独白化（容器继承管不到）
       ':root.xdex-custom-dark .warn_txt2 { color: ' + F('#707070') + ' !important; }',
-      ':root.xdex-custom-dark .kaomoji-item { color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-panel { background: ' + D('#fff') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-sort-chip { background: #2b2b2b !important; border-color: #555 !important; color: #bbb !important; }',
+      ':root.xdex-custom-dark .kaomoji-sort-chip:hover { border-color: #00FFCC !important; color: #00FFCC !important; }',
+      ':root.xdex-custom-dark .kaomoji-sort-chip.is-active { background: #00FFCC !important; border-color: #00FFCC !important; color: #00332b !important; }',
       ':root.xdex-custom-dark .kaomoji-quick-sort, :root.xdex-custom-dark #h-emot-select ~ select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark .kaomoji-hover-preview { background: #2b2b2b !important; border-color: #555 !important; color: #e8e8e8 !important; box-shadow: 0 6px 18px rgba(0,0,0,.6) !important; }',
       ':root.xdex-custom-dark html, :root.xdex-custom-dark body, :root.xdex-custom-dark #h-menu, :root.xdex-custom-dark .h-threads-item, :root.xdex-custom-dark .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }',
       'html.xdex-theme-anim, html.xdex-theme-anim body, html.xdex-theme-anim #h-menu, html.xdex-theme-anim #h-content, html.xdex-theme-anim .h-threads-item, html.xdex-theme-anim .h-threads-item *, html.xdex-theme-anim .h-preview-box { transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }'
     ];
@@ -18368,6 +18459,49 @@ ${markedSwatchHtml}
    * -------------------------------------------------- */
   function kaomojiEnhancer() {
       const SELECTOR = '#h-emot-select';
+      // ---- 用户自定义颜文字 ----
+      // 存储：{ items: [{ id, kind:'plain'|'rich', label, value, wrapLF, createdAt, updatedAt, deleted?, deletedAt? }] }
+      // deleted 为墓碑标记（同步删除语义），物理清理交给导出导入的合并
+      const CUSTOM_KAOMOJI_KEY = 'xdex_kaomoji_custom';
+      function loadCustomKaomoji() {
+      const raw = GM_getValue(CUSTOM_KAOMOJI_KEY, { items: [] });
+      return raw && typeof raw === 'object' && Array.isArray(raw.items) ? raw : { items: [] };
+      }
+      function saveCustomKaomoji(data) {
+      GM_setValue(CUSTOM_KAOMOJI_KEY, data);
+      document.querySelectorAll(SELECTOR).forEach(sel => {
+      if (sel.dataset.kaoExtended === '1') applyCustomKaomojiOptions(sel);
+      });
+      }
+      // 把自定义项注入 select（放在内置项之后）；已在面板中隐藏的自定义项由“隐藏”语义实现
+      function applyCustomKaomojiOptions(sel) {
+      const items = loadCustomKaomoji().items.filter(it => !it.deleted);
+      const existingCustom = new Map();
+      // 从后往前移除旧的自定义 option（按 kaoKey 前缀识别），再统一重建，保证顺序与增删改一致
+      for (let i = sel.options.length - 1; i >= 0; i--) {
+      const op = sel.options[i];
+      if (String(op.dataset.kaoKey || '').startsWith('custom:')) {
+      existingCustom.set(String(op.dataset.kaoKey), op);
+      sel.remove(i);
+      }
+      }
+      const frag = document.createDocumentFragment();
+      items.forEach(item => {
+      const kaoKey = `custom:${item.id}`;
+      const old = existingCustom.get(kaoKey);
+      // 复用旧 option：保留浏览器侧的选中状态一致性；仅更新文本与值
+      const op = old || new Option(item.label, item.value);
+      op.textContent = item.label;
+      op.value = item.kind === 'rich' && item.wrapLF !== false
+      ? ("\n" + item.value + "\n")
+      : item.value;
+      op.dataset.kaoKey = kaoKey;
+      frag.appendChild(op);
+      });
+      if (frag.childNodes.length) sel.appendChild(frag);
+      sel.dispatchEvent(new CustomEvent('kaomoji:updated', { bubbles: true }));
+      }
+
       let enhanceScheduled = false;
       function runKaomojiEnhancePass() {
         initInsertAtCaret();      // 功能 1：颜文字插入光标处
@@ -18517,6 +18651,22 @@ ${markedSwatchHtml}
             return 'default';
           }
         }
+        // 写入排序模式（单一数据源）：状态 → 存储 → 同步设置面板 → 通知各面板重排
+        function setKaomojiSortMode(mode) {
+          const m = (mode === 'recent' || mode === 'freq') ? mode : 'default';
+          try { if (SettingPanel && SettingPanel.state) SettingPanel.state.kaomojiSort = m; } catch (e) {}
+          try {
+            const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+            cfg.kaomojiSort = m;
+            GM_setValue(SettingPanel.key, cfg);
+          } catch (e) {}
+          const panelSort = document.querySelector('#sp_kaomojiSort');
+          if (panelSort) panelSort.value = m;
+          document.querySelectorAll('.sp_kaomojiSort_copy').forEach(el => { if (el.value !== m) el.value = m; });
+          document.querySelectorAll(SELECTOR).forEach(sel => {
+            try { sel.dispatchEvent(new Event('kaomoji:sort-changed')); } catch (e) {}
+          });
+        }
         function loadKaomojiStats() {
           try {
             const v = GM_getValue(KAO_STATS_KEY, {});
@@ -18565,6 +18715,9 @@ ${markedSwatchHtml}
             // 扩展项稳定 key 的两种常见形态
             push(`sk:extra:${label}`);
             push(`sk:rich:${label}`);
+            // 自定义项形态：id 在 kaoKey 中，label 仅作 legacy 兼容
+            const kaoKey = (opt?.dataset?.kaoKey || '').trim();
+            if (kaoKey.startsWith('custom:')) push(`sk:${kaoKey}`);
           }
           const stableKey = (opt?.dataset?.kaoKey || '').trim();
           if (stableKey) push(`sk:${stableKey}`);
@@ -18706,6 +18859,7 @@ ${markedSwatchHtml}
                 .kaomoji-trigger {
                     display: inline-flex;
                     align-items: center;
+                    gap: 4px;
                     height: 26px;
                     line-height: 26px;
                     padding: 0 8px;
@@ -18715,6 +18869,53 @@ ${markedSwatchHtml}
                     cursor: pointer;
                     white-space: nowrap;
                     user-select: none;
+                    /* 固定上限：回显的颜文字再长也不撑爆行内布局 */
+                    max-width: 88px;
+                    transition: border-color .15s ease, box-shadow .15s ease;
+                }
+                /* 仅文本可省略，徽标与箭头永不裁切 */
+                .kaomoji-trigger-text {
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    min-width: 0;
+                }
+                .kaomoji-trigger-multi {
+                    flex: 0 0 auto;
+                    display: inline-flex;
+                    align-items: center;
+                    opacity: .65;
+                }
+                .kaomoji-trigger:hover .kaomoji-trigger-multi { opacity: .9; }
+                .kaomoji-trigger-flash {
+                    border-color: #00FFCC !important;
+                    box-shadow: 0 0 0 2px rgba(0, 255, 204, .35) !important;
+                }
+                /* 面板顶部排序条：独占整行 */
+                .kaomoji-panel-sortbar {
+                    grid-column: 1 / -1;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex-wrap: wrap;
+                    margin: 0 0 2px;
+                }
+                .kaomoji-sort-chip {
+                    padding: 1px 10px;
+                    border: 1px solid #ccc;
+                    border-radius: 12px;
+                    background: #fff;
+                    color: #666;
+                    font-size: 12px;
+                    line-height: 18px;
+                    cursor: pointer;
+                }
+                .kaomoji-sort-chip:hover { border-color: #00FFCC; color: #00897b; }
+                .kaomoji-sort-chip.is-active {
+                    background: #00FFCC;
+                    border-color: #00FFCC;
+                    color: #00332b;
+                    font-weight: 600;
                 }
                 .kaomoji-panel {
                     position: fixed;
@@ -18733,7 +18934,7 @@ ${markedSwatchHtml}
                     width: auto; /* 宽度由 JS 按 qp-quote 动态设置 */
                     max-width: calc(100vw - ${PAD * 2}px); /* 不超过视口宽度 */
                     min-width: ${ITEM_W}px; /* 至少一列 */
-                    max-height: calc(${ITEM_H}px * 5 + ${GAP}px * 4 + ${PAD}px * 2);
+                    max-height: calc(${ITEM_H}px * 5 + ${GAP}px * 4 + ${PAD}px * 2 + 30px);
                 }
                 .kaomoji-item {
                     width: ${ITEM_W}px;
@@ -18754,6 +18955,130 @@ ${markedSwatchHtml}
                 .kaomoji-item:focus {
                   outline: none;
                 }
+                /* 编辑模式：X 删除角标（右上角，悬停变红），＋ 添加格 */
+                .kaomoji-item {
+                  position: relative;
+                }
+                .kaomoji-item .kaomoji-item-x {
+                  position: absolute;
+                  top: -4px;
+                  right: -4px;
+                  width: 14px;
+                  height: 14px;
+                  line-height: 12px;
+                  text-align: center;
+                  border-radius: 50%;
+                  background: #555;
+                  color: #fff;
+                  font-size: 10px;
+                  font-weight: 700;
+                  display: none;
+                  cursor: pointer;
+                  user-select: none;
+                  z-index: 2;
+                }
+                body.kaomoji-editing .kaomoji-item .kaomoji-item-x { display: block; }
+                body.kaomoji-editing .kaomoji-item .kaomoji-item-x:hover {
+                  background: #e53935;
+                  color: #fff;
+                }
+                .kaomoji-item-add {
+                  color: #888;
+                  font-size: 20px;
+                  background: #fafafa;
+                  border: 1px dashed #bbb;
+                }
+                /* 编辑模式三按钮：统一尺寸/圆角/hover 底，状态差异只用颜色与禁用态表达 */
+                .kaomoji-manage-btn,
+                .kaomoji-undo-btn,
+                .kaomoji-reset-btn {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 3px;
+                    margin: 0 2px 0 0;
+                    border: 0;
+                    background: none;
+                    border-radius: 4px;
+                    color: inherit;
+                    font: inherit;
+                    cursor: pointer;
+                    flex: 0 0 auto;
+                    transition: color .15s ease, background-color .15s ease, opacity .15s ease;
+                }
+                .kaomoji-manage-btn:hover,
+                .kaomoji-undo-btn:hover,
+                .kaomoji-reset-btn:hover { background: rgba(127, 127, 127, .18); }
+                body.kaomoji-editing .kaomoji-manage-btn { color: #00FFCC; background: rgba(0, 255, 204, .16); }
+                body.kaomoji-editing .kaomoji-manage-btn:hover { background: rgba(0, 255, 204, .26); }
+                .kaomoji-undo-btn { position: relative; }
+                /* 回收站数量角标（>0 时显示） */
+                .kaomoji-undo-btn[data-count]:not([data-count="0"])::after {
+                    content: attr(data-count);
+                    position: absolute;
+                    top: -3px;
+                    right: -3px;
+                    min-width: 11px;
+                    height: 11px;
+                    padding: 0 2px;
+                    border-radius: 6px;
+                    background: #00FFCC;
+                    color: #00332b;
+                    font-size: 8px;
+                    line-height: 11px;
+                    font-weight: 700;
+                    text-align: center;
+                    box-sizing: border-box;
+                    pointer-events: none;
+                }
+                .kaomoji-undo-btn:hover { color: #00FFCC; }
+                .kaomoji-reset-btn:hover { color: #e53935; }
+                .kaomoji-undo-btn[data-disabled="1"]:hover,
+                .kaomoji-reset-btn[data-disabled="1"]:hover { background: transparent; color: inherit; }
+                .kaomoji-item-add:hover {
+                  background: #f0f0f0;
+                  color: #555;
+                }
+                /* ---- 回收站面板：格子完全复用 .kaomoji-item，仅标题行不同 ---- */
+                .kaomoji-trash-title { color: #888; font-size: 12px; min-height: 22px; }
+                .kaomoji-trash-title b { color: #00FFCC; font-size: 13px; font-weight: 600; }
+                .kaomoji-trash-clear {
+                    margin-left: auto;
+                    padding: 1px 8px;
+                    border: 1px solid #666;
+                    border-radius: 10px;
+                    background: transparent;
+                    color: #999;
+                    font-size: 12px;
+                    line-height: 16px;
+                    cursor: pointer;
+                }
+                .kaomoji-trash-clear:hover { color: #e53935; border-color: #e53935; }
+                .kaomoji-trash-empty { grid-column: 1 / -1; color: #888; font-size: 12px; padding: 16px 4px; text-align: center; }
+                .kaomoji-trash-hint { grid-column: 1 / -1; color: #777; font-size: 11px; line-height: 1.4; margin-top: 2px; }
+                /* 回收站里的 × 语义是“恢复”，用青色区分删除红 */
+                .kaomoji-trash-panel .kaomoji-item .kaomoji-item-x { display: block; }
+                .kaomoji-trash-panel .kaomoji-item .kaomoji-item-x:hover { background: #00FFCC; color: #00332b; }
+                /* 彻底删除角标：右下角，悬停方块时出现 */
+                .kaomoji-item .kaomoji-item-purge {
+                    position: absolute;
+                    bottom: -4px;
+                    right: -4px;
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 50%;
+                    background: #555;
+                    color: #fff;
+                    display: none;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    z-index: 2;
+                }
+                .kaomoji-item:hover .kaomoji-item-purge { display: flex; }
+                .kaomoji-item .kaomoji-item-purge:hover { background: #e53935; }
                 /* 鼠标悬停：仅变色，不显示蓝框（避免与键盘选中混淆） */
                 .kaomoji-item:hover {
                   background: #f2f2f2;
@@ -18774,26 +19099,144 @@ ${markedSwatchHtml}
             const trigger = document.createElement('button');
             trigger.type = 'button';
             trigger.className = 'kaomoji-trigger';
-            trigger.textContent = '选择颜文字';
-            // 颜文字按钮右侧快捷排序下拉（复制设置面板的 #sp_kaomojiSort）
-            const quickSort = document.createElement('select');
-            quickSort.className = 'sp_kaomojiSort_copy';
-            quickSort.setAttribute('data-copy-of', 'sp_kaomojiSort');
-            quickSort.style.height = '26px';
-            quickSort.style.marginLeft = '6px';
-            quickSort.style.flex = '0 0 auto';
-            // 复制设置面板中的下拉项；若面板未渲染则使用同款兜底项
-            const panelSort = document.querySelector('#sp_kaomojiSort');
-            if (panelSort && panelSort.options && panelSort.options.length) {
-              Array.from(panelSort.options).forEach(op => {
-                quickSort.appendChild(new Option(op.textContent, op.value));
-              });
-            } else {
-              quickSort.appendChild(new Option('默认', 'default'));
-              quickSort.appendChild(new Option('最近', 'recent'));
-              quickSort.appendChild(new Option('常用', 'freq'));
+            trigger.title = '颜文字';
+            // 结构：可省略的文本 + 多行徽标 + 下拉箭头（图标与箭头永不裁切）
+            const triggerText = document.createElement('span');
+            triggerText.className = 'kaomoji-trigger-text';
+            triggerText.textContent = '颜文字';
+            const triggerMulti = document.createElement('span');
+            triggerMulti.className = 'kaomoji-trigger-multi';
+            // 多行徽标（三横线）：SVG 而非「☰」，小字号下不发糊
+            triggerMulti.innerHTML = '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+            triggerMulti.style.display = 'none';
+            trigger.appendChild(triggerText);
+            trigger.appendChild(triggerMulti);
+            // 上次所选颜文字：供按钮回显、悬停预览与多行徽标
+            let lastPickedKaomoji = null;
+            const setTriggerKaomoji = (opt) => {
+              if (!opt) return;
+              lastPickedKaomoji = { value: String(opt.value || ''), label: String(opt.textContent || '') };
+              triggerText.textContent = lastPickedKaomoji.label || '颜文字';
+              triggerMulti.style.display = /\n/.test(lastPickedKaomoji.value) ? '' : 'none';
+              trigger.title = lastPickedKaomoji.label || '颜文字';
+            };
+            // 排序方式已移入颜文字面板顶部，行内不再保留下拉
+            // 自定义颜文字编辑入口（铅笔图标，样式对齐默认饼干设置的齿轮按钮）
+            const manageBtn = document.createElement('button');
+            manageBtn.type = 'button';
+            manageBtn.className = 'xdex-edit-default-btn kaomoji-manage-btn';
+            manageBtn.title = '编辑颜文字（删除/添加）';
+            manageBtn.innerHTML = XDEX_ICON_KAO_EDIT;
+            manageBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              applyKaomojiEditMode(!kaomojiEditMode);
+            });
+            // ---- 编辑模式生命周期（统一入口：手动切换与自动退出复用同一套状态复位）----
+            let editModeObserver = null;
+            let editModeHost = null;
+            let editModeSubmitHandler = null;
+            let editModeCheckRaf = 0;
+            function stopEditModeWatch() {
+              if (editModeObserver) { editModeObserver.disconnect(); editModeObserver = null; }
+              if (editModeCheckRaf) { cancelAnimationFrame(editModeCheckRaf); editModeCheckRaf = 0; }
+              if (editModeSubmitHandler) {
+                const f = select.closest && select.closest('form');
+                if (f) f.removeEventListener('submit', editModeSubmitHandler, true);
+                editModeSubmitHandler = null;
+              }
+              editModeHost = null;
             }
-            quickSort.value = getSortMode();
+            // 编辑模式的“上下文容器”：浮窗内为 .qp-quote，内嵌表单为 form。
+            // 容器从 DOM 移除（关闭浮窗 / 切换页面 / 表单重建）即自动退出编辑模式。
+            // 编辑上下文是否仍然“在场”：既要连接在文档上，也要可见。
+            // 站点关闭回复浮窗有两种实现（移除节点 / 隐藏 overlay），两种都要覆盖。
+            function isEditModeHostAlive() {
+              const el = editModeHost;
+              if (!el || !el.isConnected) return false;
+              try {
+                const cs = getComputedStyle(el);
+                if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+                const r = el.getBoundingClientRect();
+                if (r.width === 0 && r.height === 0) return false;
+                const overlay = el.closest && el.closest('.qp-overlay');
+                if (overlay) {
+                  const ocs = getComputedStyle(overlay);
+                  if (ocs.display === 'none' || ocs.visibility === 'hidden' || Number(ocs.opacity) === 0) return false;
+                }
+              } catch (e) {}
+              return true;
+            }
+            function startEditModeWatch() {
+              if (editModeObserver) return;
+              const popupHost = select.closest && select.closest('.qp-quote');
+              editModeHost = popupHost || (select.closest && select.closest('form')) || select.parentElement;
+              editModeObserver = new MutationObserver(() => {
+                if (!kaomojiEditMode) { stopEditModeWatch(); return; }
+                if (editModeCheckRaf) return;
+                editModeCheckRaf = requestAnimationFrame(() => {
+                  editModeCheckRaf = 0;
+                  if (!kaomojiEditMode) return;
+                  if (!isEditModeHostAlive()) {
+                    applyKaomojiEditMode(false, true);   // 自动退出保持静默
+                  }
+                });
+              });
+              editModeObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+              editModeObserver.observe(editModeHost, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+              const overlayEl = editModeHost.closest && editModeHost.closest('.qp-overlay');
+              if (overlayEl) editModeObserver.observe(overlayEl, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+              // 内嵌表单没有“关闭”动作：提交即视为编辑上下文结束
+              const form = select.closest && select.closest('form');
+              if (form) {
+                editModeSubmitHandler = () => { if (kaomojiEditMode) applyKaomojiEditMode(false, true); };
+                form.addEventListener('submit', editModeSubmitHandler, true);
+              }
+            }
+            function applyKaomojiEditMode(on, silent) {
+              const next = !!on;
+              if (!next && !kaomojiEditMode) return;
+              kaomojiEditMode = next;
+              document.body.classList.toggle('kaomoji-editing', next);
+              manageBtn.style.color = next ? '#00FFCC' : '';
+              manageBtn.title = next ? '退出编辑模式（再次点击恢复）' : '编辑颜文字（隐藏/删除/添加）';
+              resetBtn.style.display = next ? '' : 'none';
+              undoBtn.style.display = next ? '' : 'none';
+              if (next) startEditModeWatch();
+              else { stopEditModeWatch(); closeTrashPanel(); hidePanel(); }
+              updateUndoBtnState();
+              renderPanelItems();
+              // 进入编辑模式时若面板未展开则自动展开，让用户立即看到 X 与 ＋
+              if (next) showPanel();
+              if (!silent) toast(next ? '已进入颜文字编辑模式' : '已退出编辑模式', 900, { queue: false, key: 'kaomoji-manage' });
+            }
+            const resetBtn = document.createElement('button');
+            resetBtn.type = 'button';
+            resetBtn.className = 'xdex-edit-default-btn kaomoji-reset-btn';
+            resetBtn.title = '重置颜文字面板为默认状态';
+            resetBtn.innerHTML = XDEX_ICON_KAO_RESET;
+            resetBtn.style.display = 'none';
+            resetBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (resetBtn.dataset.disabled === '1') {
+                toast('没有可重置的自定义项', 900, { queue: false, key: 'kaomoji-manage' });
+                return;
+              }
+              const data = loadCustomKaomoji();
+              const liveCount = data.items.filter(it => !it.deleted).length;
+              const hiddenCount = Object.keys(loadHiddenKaomojiKeys()).length;
+              if (!liveCount && !hiddenCount) { toast('没有可重置的自定义项', 900, { queue: false, key: 'kaomoji-manage' }); return; }
+              confirmKaomojiDialog(
+                '重置自定义颜文字',
+                `将删除全部 ${liveCount} 个自定义颜文字及其使用统计，并恢复 ${hiddenCount} 个被隐藏的项。\n默认颜文字的使用数据仍会保留。`,
+                () => {
+                  resetCustomKaomoji();
+                  applyKaomojiEditMode(false, true);
+                  toast('已重置自定义颜文字', 900, { queue: false, key: 'kaomoji-manage' });
+                }
+              );
+            });
             const panel = document.createElement('div');
             panel.className = 'kaomoji-panel';
             //panel.tabIndex = -1; // 👈 添加：使 panel 可以接收焦点
@@ -18819,20 +19262,565 @@ ${markedSwatchHtml}
                   restoreFocus();
                 });
             }
+            // ---- 重置自定义颜文字（清自定义 + 清其统计；保留内置/扩展使用数据）----
+            // 统一走 saveCustomKaomoji：它会重建 select 中的自定义 option（否则面板残留已删项）
+            function resetCustomKaomoji() {
+              const data = loadCustomKaomoji();
+              const liveItems = data.items.filter(it => !it.deleted);
+              // 清理自定义项的统计（含已删墓碑项，避免孤儿 key）
+              const stats = loadKaomojiStats();
+              data.items.forEach(it => {
+                delete stats[`sk:custom:${it.id}`];
+                delete stats[it.label];
+              });
+              saveKaomojiStats(stats);
+              // 清空自定义与隐藏记录：恢复为「默认 + 内置扩展」列表
+              GM_setValue('xdex_kaomoji_hidden', {});
+              saveCustomKaomoji({ items: [], purged: {} });
+              updateUndoBtnState();
+              renderPanelItems();
+            }
+            // ---- 回收站（替代原“会话内存撤回栈”）----
+            // 数据来源：① 自定义墓碑项（deleted=true，保留 30 天后自动物理清理）
+            //          ② 内置/扩展项隐藏记录（xdex_kaomoji_hidden，不做自动清理）
+            const KAO_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;   // 自定义墓碑保留期
+            const KAO_PURGED_TTL_MS = 90 * 24 * 60 * 60 * 1000;      // 彻底删除记录保留期（防跨端复活）
+            let trashPanel = null;
+            let trashOutsideHandler = null;
+            let trashEscHandler = null;
+
+            // 过期清理：墓碑到时物理删除；purged 记录到时清除
+            function purgeExpiredKaomojiTombstones() {
+              const data = loadCustomKaomoji();
+              const now = Date.now();
+              let changed = false;
+              const items = (data.items || []).filter((it) => {
+                if (it && it.deleted && now - (Number(it.deletedAt) || 0) > KAO_TOMBSTONE_TTL_MS) { changed = true; return false; }
+                return true;
+              });
+              const purged = Object.assign({}, data.purged || {});
+              Object.keys(purged).forEach((id) => {
+                if (now - (Number(purged[id]) || 0) > KAO_PURGED_TTL_MS) { delete purged[id]; changed = true; }
+              });
+              if (changed) { data.items = items; data.purged = purged; saveCustomKaomoji(data); }
+            }
+
+            function listTrashEntries() {
+              const data = loadCustomKaomoji();
+              const now = Date.now();
+              const customs = (data.items || [])
+                .filter(it => it && it.deleted && now - (Number(it.deletedAt) || 0) <= KAO_TOMBSTONE_TTL_MS)
+                .sort((a, b) => (Number(b.deletedAt) || 0) - (Number(a.deletedAt) || 0))
+                .map(it => ({ type: 'custom', id: it.id, label: String(it.label || ''), value: String(it.value || ''), at: Number(it.deletedAt) || 0 }));
+              // 隐藏项的实际内容从当前 select 的 option 反查（扩展更新移除该项时退回记录里的 label）
+              const valueByKey = new Map();
+              document.querySelectorAll(SELECTOR).forEach(sel => {
+                Array.from(sel.options || []).forEach(op => {
+                  const k = String((op.dataset && op.dataset.kaoKey) || '').trim();
+                  if (k) valueByKey.set(k, String(op.value || ''));
+                });
+              });
+              const hiddenStore = loadHiddenKaomojiKeys();
+              const hiddens = Object.keys(hiddenStore)
+                .map(k => {
+                  const rec = hiddenStore[k] || {};
+                  return {
+                    type: 'builtin',
+                    kaoKey: k,
+                    label: String(rec.label || k),
+                    value: valueByKey.has(k) ? valueByKey.get(k) : '',
+                    at: Number(rec.at) || 0
+                  };
+                })
+                .sort((a, b) => b.at - a.at);
+              return { customs, hiddens };
+            }
+
+            function restoreTrashCustom(id) {
+              const data = loadCustomKaomoji();
+              const it = (data.items || []).find(x => x && x.id === id);
+              if (!it) return false;
+              delete it.deleted;
+              delete it.deletedAt;
+              it.updatedAt = Date.now();
+              saveCustomKaomoji(data);
+              return true;
+            }
+            function restoreTrashHidden(kaoKey) {
+              const store = loadHiddenKaomojiKeys();
+              if (!(kaoKey in store)) return false;
+              delete store[kaoKey];
+              GM_setValue('xdex_kaomoji_hidden', store);
+              return true;
+            }
+            // 彻底删除：移除条目并登记 purged，避免其他端用旧数据把它合并回来
+            function purgeTrashCustom(id) {
+              const data = loadCustomKaomoji();
+              const items = data.items || [];
+              const idx = items.findIndex(x => x && x.id === id);
+              if (idx < 0) return false;
+              const removed = items[idx];
+              items.splice(idx, 1);
+              data.items = items;
+              data.purged = Object.assign({}, data.purged || {});
+              data.purged[id] = Date.now();
+              saveCustomKaomoji(data);
+              const stats = loadKaomojiStats();
+              delete stats[`sk:custom:${id}`];
+              if (removed && removed.label) delete stats[String(removed.label)];
+              saveKaomojiStats(stats);
+              return true;
+            }
+            function updateUndoBtnState() {
+              const btn = kaomojiUndoBtn;
+              if (!btn) return;
+              let n = 0, customs = 0, hiddens = 0;
+              try {
+                const t = listTrashEntries();
+                customs = t.customs.length;
+                hiddens = t.hiddens.length;
+                n = customs + hiddens;
+              } catch (e) {}
+              // 始终可点（空时展示空态），状态差异交由角标数量表达，避免“灰 vs 白”不一致
+              btn.dataset.count = n > 0 ? String(n) : '0';
+              btn.style.opacity = '';
+              btn.style.cursor = 'pointer';
+              btn.title = n
+                ? `回收站（${n} 项：${customs} 个已删除 / ${hiddens} 个已隐藏）`
+                : '回收站（空）';
+              updateResetBtnState();
+            }
+            // 重置按钮：无自定义/隐藏项时置灰（与撤回的“始终可用”区分开，语义明确）
+            function updateResetBtnState() {
+              const el = resetBtn;
+              if (!el) return;
+              let can = false;
+              try {
+                const data = loadCustomKaomoji();
+                can = (data.items || []).length > 0 || Object.keys(loadHiddenKaomojiKeys()).length > 0;
+              } catch (e) {}
+              el.dataset.disabled = can ? '0' : '1';
+              el.style.opacity = '';      // 三按钮保持同一颜色基准，禁用态仅靠 tooltip/点击提示
+              el.style.cursor = 'pointer';
+              el.title = can
+                ? '清除全部自定义颜文字及其使用统计（恢复为默认+内置扩展列表；内置/扩展的使用数据保留）'
+                : '没有可重置的自定义项';
+            }
+
+            function ensureTrashPanel() {
+              if (trashPanel) return trashPanel;
+              trashPanel = document.createElement('div');
+              trashPanel.className = 'kaomoji-panel kaomoji-trash-panel';
+              trashPanel.style.display = 'none';
+              document.body.appendChild(trashPanel);
+              return trashPanel;
+            }
+            function positionTrashPanel() {
+              placeKaomojiFloatingPanel(trashPanel);
+            }
+            function bindTrashClose() {
+              if (trashOutsideHandler) return;
+              trashOutsideHandler = (e) => {
+                if (e.pointerType === '' || e.detail === 0) return;
+                const t = e.target;
+                if (trashPanel && trashPanel.contains(t)) return;
+                if (t && t.closest && t.closest('.qp-overlay') && !t.closest('.qp-quote')) return;
+                if (t && t.closest && (t.closest('#kaomoji-add-overlay') || t.closest('#kaomoji-confirm-overlay'))) return;
+                const btn = kaomojiUndoBtn || undoBtn;
+                if (btn && (t === btn || (btn.contains && btn.contains(t)))) return;
+                closeTrashPanel();
+              };
+              trashEscHandler = (e) => { if (e.key === 'Escape') { e.preventDefault(); closeTrashPanel(); } };
+              document.addEventListener('click', trashOutsideHandler, true);
+              document.addEventListener('mousedown', trashOutsideHandler, true);
+              window.addEventListener('keydown', trashEscHandler);
+            }
+            function unbindTrashClose() {
+              if (trashOutsideHandler) {
+                document.removeEventListener('click', trashOutsideHandler, true);
+                document.removeEventListener('mousedown', trashOutsideHandler, true);
+                trashOutsideHandler = null;
+              }
+              if (trashEscHandler) {
+                window.removeEventListener('keydown', trashEscHandler);
+                trashEscHandler = null;
+              }
+            }
+            function closeTrashPanel() {
+              if (!trashPanel) return;
+              trashPanel.style.display = 'none';
+              unbindTrashClose();
+            }
+            function openTrashPanel() {
+              ensureTrashPanel();
+              purgeExpiredKaomojiTombstones();
+              renderTrashPanel();
+              hidePanel();   // 与主面板互斥
+              trashPanel.style.display = 'grid';
+              trashPanel.style.visibility = 'hidden';
+              positionTrashPanel();
+              trashPanel.style.visibility = '';
+              bindTrashClose();
+            }
+            function toggleTrashPanel() {
+              if (trashPanel && trashPanel.style.display === 'grid') closeTrashPanel();
+              else openTrashPanel();
+            }
+            // 回收站内的项复用主面板的悬浮预览（含备注/多行/超长）
+            function bindTrashPreview(el) {
+              el.addEventListener('mouseover', (e) => {
+                const value = el.dataset.value || '';
+                if (!shouldShowKaomojiPreview(value, el.dataset.kaoLabel)) { hideKaomojiPreviewSoon(); return; }
+                lastKaomojiMouse.x = e.clientX || 0;
+                lastKaomojiMouse.y = e.clientY || 0;
+                cancelKaomojiPreviewPending();
+                kaoPreviewHideTimer = 0;
+                kaoPreviewTimer = setTimeout(() => { showKaomojiPreviewValue(value, el.dataset.kaoLabel); }, 600);
+              });
+              el.addEventListener('mouseout', () => { hideKaomojiPreviewSoon(); });
+            }
+            function renderTrashPanel() {
+              if (!trashPanel) return;
+              while (trashPanel.firstChild) trashPanel.removeChild(trashPanel.firstChild);
+              const { customs, hiddens } = listTrashEntries();
+
+              const bar = document.createElement('div');
+              bar.className = 'kaomoji-panel-sortbar kaomoji-trash-title';
+              const title = document.createElement('b');
+              title.textContent = '回收站';
+              bar.appendChild(title);
+              const count = document.createElement('span');
+              count.textContent = `${customs.length} 删除 · ${hiddens.length} 隐藏`;
+              bar.appendChild(count);
+              if (customs.length) {
+                const clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.className = 'kaomoji-trash-clear';
+                clearBtn.textContent = '清空已删除';
+                clearBtn.title = '彻底删除全部已删除的自定义颜文字（不可恢复）';
+                clearBtn.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  confirmKaomojiDialog(
+                    '清空回收站',
+                    `将彻底删除 ${customs.length} 个已删除的自定义颜文字；其他设备同步后也不会再出现。`,
+                    () => {
+                      customs.forEach(c => { try { purgeTrashCustom(c.id); } catch (err) {} });
+                      renderTrashPanel();
+                      renderPanelItems();
+                      updateUndoBtnState();
+                      toast('已清空回收站中的自定义项', 900, { queue: false, key: 'kaomoji-manage' });
+                    }
+                  );
+                });
+                bar.appendChild(clearBtn);
+              }
+              trashPanel.appendChild(bar);
+
+              if (!customs.length && !hiddens.length) {
+                const empty = document.createElement('div');
+                empty.className = 'kaomoji-trash-empty';
+                empty.textContent = '暂无已删除或隐藏的项目';
+                trashPanel.appendChild(empty);
+                return;
+              }
+
+              const addEntry = (entry) => {
+                const item = document.createElement('div');
+                item.className = 'kaomoji-item kaomoji-trash-item';
+                item.textContent = entry.label || '（无备注）';
+                item.title = entry.label || '';
+                if (entry.value) {
+                  item.dataset.value = entry.value;
+                  item.dataset.kaoLabel = entry.label;
+                }
+                // ×：恢复（用户指定语义；青色 hover 表示非破坏性）
+                const x = document.createElement('span');
+                x.className = 'kaomoji-item-x';
+                x.textContent = '×';
+                x.title = entry.type === 'custom' ? '恢复此自定义颜文字' : '恢复显示此项';
+                x.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const ok = entry.type === 'custom' ? restoreTrashCustom(entry.id) : restoreTrashHidden(entry.kaoKey);
+                  if (!ok) { toast('恢复失败（记录已不存在）', 1200, { queue: false, key: 'kaomoji-manage' }); return; }
+                  toast(`已恢复「${entry.label}」`, 900, { queue: false, key: 'kaomoji-manage' });
+                  renderTrashPanel();
+                  renderPanelItems();
+                  updateUndoBtnState();
+                });
+                item.appendChild(x);
+                // 彻底删除：仅自定义项（隐藏项没有数据可删，恢复即可）
+                if (entry.type === 'custom') {
+                  const pg = document.createElement('span');
+                  pg.className = 'kaomoji-item-purge';
+                  pg.innerHTML = XDEX_ICON_TRASH;
+                  pg.title = '彻底删除（不可恢复，其他设备同步后也不会再出现）';
+                  pg.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    confirmKaomojiDialog(
+                      `彻底删除「${entry.label}」？`,
+                      '将从本地和同步数据中移除，无法再通过回收站恢复。',
+                      () => {
+                        if (purgeTrashCustom(entry.id)) toast('已彻底删除', 900, { queue: false, key: 'kaomoji-manage' });
+                        renderTrashPanel();
+                        updateUndoBtnState();
+                      }
+                    );
+                  });
+                  item.appendChild(pg);
+                }
+                bindTrashPreview(item);
+                trashPanel.appendChild(item);
+              };
+              customs.forEach(addEntry);
+              hiddens.forEach(addEntry);
+
+              const hint = document.createElement('div');
+              hint.className = 'kaomoji-trash-hint';
+              hint.textContent = '已删除的自定义项保留 30 天后自动清理；已隐藏项不会自动清理。';
+              trashPanel.appendChild(hint);
+            }
+            function statsRef() { return loadKaomojiStats(); }
+            // ---- 自有确认弹窗（不依赖 window.confirm：宿主 webview 可能静默拦截）----
+            function confirmKaomojiDialog(title, desc, onOk) {
+              const old = document.getElementById('kaomoji-confirm-overlay');
+              if (old) old.remove();
+              const overlay = document.createElement('div');
+              overlay.id = 'kaomoji-confirm-overlay';
+              overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483647;display:flex;align-items:center;justify-content:center;font:13px -apple-system,"Microsoft YaHei",sans-serif;';
+              const box = document.createElement('div');
+              box.style.cssText = 'background:#2b2b2b;color:#ddd;border:1px solid #4a4a4a;border-radius:8px;width:360px;max-width:90vw;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);';
+              const t = document.createElement('div');
+              t.style.cssText = 'font-size:14px;line-height:1.5;word-break:break-word;';
+              t.textContent = title;
+              box.appendChild(t);
+              if (desc) {
+                const d = document.createElement('div');
+                d.style.cssText = 'font-size:12px;color:#999;line-height:1.5;';
+                d.textContent = desc;
+                box.appendChild(d);
+              }
+              const row = document.createElement('div');
+              row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+              const cancel = document.createElement('button');
+              cancel.type = 'button';
+              cancel.textContent = '取消';
+              cancel.style.cssText = 'padding:6px 14px;border:1px solid #666;border-radius:4px;background:transparent;color:#ccc;cursor:pointer;font-size:13px;';
+              const ok = document.createElement('button');
+              ok.type = 'button';
+              ok.textContent = '确定';
+              ok.style.cssText = 'padding:6px 14px;border:0;border-radius:4px;background:#e53935;color:#fff;cursor:pointer;font-size:13px;font-weight:600;';
+              row.appendChild(cancel);
+              row.appendChild(ok);
+              box.appendChild(row);
+              overlay.appendChild(box);
+              const close = () => overlay.remove();
+              cancel.addEventListener('click', close);
+              overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+              ok.addEventListener('click', () => { close(); try { onOk(); } catch (e) { console.warn(e); } });
+              document.body.appendChild(overlay);
+              ok.focus();
+            }
+            let kaomojiEditMode = false;
+            let kaomojiUndoBtn = null;
+            function setKaomojiEditMode(on) {
+              kaomojiEditMode = !!on;
+              renderPanelItems();
+            }
+            // ---- 自定义项删除（删数据 + 统计）----
+            function removeCustomKaomojiByKaoKey(kaoKey) {
+              const id = String(kaoKey || '').replace(/^custom:/, '');
+              if (!id) return;
+              const data = loadCustomKaomoji();
+              const it = data.items.find(x => x.id === id);
+              if (!it) return;
+              it.deleted = true;
+              it.deletedAt = Date.now();
+              saveCustomKaomoji(data);
+              // 清理该 id 的使用统计（sk:custom:{id} 主 key + label legacy 别名）
+              const stats = loadKaomojiStats();
+              delete stats[`sk:${kaoKey}`];
+              delete stats[it.label];
+              saveKaomojiStats(stats);
+            }
+            // ---- 内置/EX扩展项隐藏（仅面板，不删数据）----
+            function hideBuiltinKaomojiByKaoKey(kaoKey, label) {
+              const key = String(kaoKey || '').trim();
+              if (!key) return;
+              const raw = GM_getValue('xdex_kaomoji_hidden', {});
+              const store = raw && typeof raw === 'object' ? raw : {};
+              store[key] = { label: String(label || ''), at: Date.now() };
+              GM_setValue('xdex_kaomoji_hidden', store);
+            }
+            function loadHiddenKaomojiKeys() {
+              const raw = GM_getValue('xdex_kaomoji_hidden', {});
+              return raw && typeof raw === 'object' ? raw : {};
+            }
+            // ---- 添加弹窗 ----
+            function openKaomojiAddDialog() {
+              let overlay = document.getElementById('kaomoji-add-overlay');
+              if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'kaomoji-add-overlay';
+                // 顶部约 30% 处（与回复浮窗默认出现的位置接近），而非垂直居中
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483647;display:flex;align-items:flex-start;justify-content:center;padding:30vh 16px 24px;box-sizing:border-box;overflow:auto;font:13px -apple-system,"Microsoft YaHei",sans-serif;';
+                const box = document.createElement('div');
+                box.style.cssText = 'position:relative;background:#2b2b2b;color:#ddd;border:1px solid #4a4a4a;border-radius:8px;width:440px;max-width:92vw;padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);';
+                box.innerHTML = '<b style="font-size:15px;color:#00FFCC;">添加自定义颜文字</b>';
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.maxLength = 20;
+                nameInput.placeholder = '备注（可选）';
+                nameInput.style.cssText = 'padding:6px 8px;border:1px solid #555;border-radius:4px;font:13px inherit;background:#1e1e1e;color:#ddd;';
+                box.appendChild(nameInput);
+                const valueInput = document.createElement('textarea');
+                valueInput.placeholder = '颜文字内容\n如存在分行，每行开头的空格需为全角空格';
+                valueInput.rows = 5;
+                valueInput.style.cssText = 'padding:6px 8px;border:1px solid #555;border-radius:4px;font:13px/1.5 inherit;resize:vertical;background:#1e1e1e;color:#ddd;';
+                box.appendChild(valueInput);
+                const optRow = document.createElement('div');
+                optRow.style.cssText = 'display:flex;align-items:center;gap:12px;font-size:12px;color:#999;';
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.textContent = '添加';
+                addBtn.style.cssText = 'margin-left:auto;background:#00FFCC;color:#00332b;border:0;border-radius:4px;padding:6px 18px;cursor:pointer;font-size:13px;font-weight:600;';
+                optRow.appendChild(addBtn);
+                box.appendChild(optRow);
+                const closeBtn = document.createElement('button');
+                closeBtn.type = 'button';
+                closeBtn.textContent = '×';
+                closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;background:transparent;border:0;font-size:18px;cursor:pointer;color:#666;';
+                box.appendChild(closeBtn);
+                overlay.appendChild(box);
+                closeBtn.addEventListener('click', () => overlay.remove());
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+                addBtn.addEventListener('click', () => {
+                  const value = valueInput.value;
+                  // 备注可留空：默认取内容首行前 12 个字符作显示名（对齐面板格子可视宽度，示例「接☆龙☆大☆成☆功一二」≈10 字）
+                  let label = (nameInput.value || '').trim();
+                  if (!label) {
+                    label = (value.replace(/\n+/g, ' ').trim() || '颜文字').slice(0, 12);
+                  }
+                  if (!value.trim()) { toast('请输入颜文字内容', 900, { queue: false, key: 'kaomoji-manage' }); valueInput.focus(); return; }
+                  if (value.length > 500) { toast('颜文字内容过长（上限 500 字符）', 1400, { queue: false, key: 'kaomoji-manage' }); valueInput.focus(); return; }
+                  const data = loadCustomKaomoji();
+                  if (data.items.filter(it => !it.deleted).length >= 200) {
+                    toast('自定义颜文字已达上限（200 个）', 900, { queue: false, key: 'kaomoji-manage' });
+                    return;
+                  }
+                  const multi = /\n/.test(value);
+                  data.items.push({
+                    id: 'kc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+                    kind: multi ? 'rich' : 'plain',
+                    label,
+                    value,
+                    wrapLF: multi,   // 含换行即富文本：插入时两侧自动加空行
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                  });
+                  saveCustomKaomoji(data);
+                  toast('已添加自定义颜文字', 900, { queue: false, key: 'kaomoji-manage' });
+                  overlay.remove();
+                  renderPanelItems();
+                });
+                document.body.appendChild(overlay);
+                nameInput.focus();
+              } else {
+                try { document.body.appendChild(overlay); } catch (e) {}
+                overlay.style.display = 'flex';
+              }
+            }
             function renderPanelItems() {
               while (panel.firstChild) panel.removeChild(panel.firstChild);
+              // 面板顶部：排序方式（默认/最近/常用），当前项高亮，点击立即重排
+              const sortbar = document.createElement('div');
+              sortbar.className = 'kaomoji-panel-sortbar';
+              const curSortMode = getSortMode();
+              [['default', '默认'], ['recent', '最近'], ['freq', '常用']].forEach(([mode, label]) => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'kaomoji-sort-chip' + (curSortMode === mode ? ' is-active' : '');
+                chip.dataset.mode = mode;
+                chip.textContent = label;
+                chip.setAttribute('aria-pressed', curSortMode === mode ? 'true' : 'false');
+                chip.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (getSortMode() === mode) return;
+                  setKaomojiSortMode(mode); // 内部派发 kaomoji:sort-changed → 重排面板
+                });
+                sortbar.appendChild(chip);
+              });
+              panel.appendChild(sortbar);
               const options = getSortedKaomojiOptions(select);
+              const hiddenKeys = loadHiddenKaomojiKeys();
+              // 编辑模式：第一格固定为「＋」添加按钮（最醒目位置）
+              if (kaomojiEditMode) {
+                const add = document.createElement('div');
+                add.className = 'kaomoji-item kaomoji-item-add';
+                add.textContent = '＋';
+                add.tabIndex = -1;
+                add.title = '添加自定义颜文字';
+                add.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openKaomojiAddDialog();
+                });
+                panel.appendChild(add);
+              }
               options.forEach(opt => {
+                // 编辑模式隐藏的项从面板剔除（不删数据，重置后恢复）
+                const hk = String(opt.dataset.kaoKey || '').trim();
+                if (hk && hiddenKeys[hk]) return;
                 const item = document.createElement('div');
                 item.className = 'kaomoji-item';
                 item.textContent = opt.textContent;
                 item.dataset.value = opt.value;
+                item.dataset.kaoLabel = opt.textContent;   // 纯显示名（不含编辑角标），用于预览判定
+                item.dataset.kaoKey = opt.dataset.kaoKey || '';
                 item.tabIndex = -1; // 使 item 可聚焦，避免 focus 时“发白/丢焦点”
+                // 编辑模式：右上角 X（删除）。自定义项=删数据+统计；内置/EX扩展项=仅从面板隐藏（不删数据）
+                if (kaomojiEditMode) {
+                  const isCustom = String(opt.dataset.kaoKey || '').startsWith('custom:');
+                  const x = document.createElement('span');
+                  x.className = 'kaomoji-item-x';
+                  x.textContent = '×';
+                  x.title = isCustom ? '删除此自定义颜文字（含使用统计）' : '从面板隐藏（可用重置恢复）';
+                  x.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (isCustom) {
+                      confirmKaomojiDialog(`确定删除自定义颜文字「${opt.textContent}」？`, '其使用次数统计将一并删除。', () => {
+                        removeCustomKaomojiByKaoKey(opt.dataset.kaoKey);
+                        toast('已删除自定义颜文字（可在回收站恢复）', 900, { queue: false, key: 'kaomoji-manage' });
+                        renderPanelItems();
+                        updateUndoBtnState();
+                        if (trashPanel && trashPanel.style.display === 'grid') renderTrashPanel();
+                      });
+                      return;
+                    } else {
+                      hideBuiltinKaomojiByKaoKey(opt.dataset.kaoKey, opt.textContent);
+                      toast('已从面板隐藏（可在回收站恢复）', 900, { queue: false, key: 'kaomoji-manage' });
+                    }
+                    renderPanelItems();
+                    updateUndoBtnState();
+                    if (trashPanel && trashPanel.style.display === 'grid') renderTrashPanel();
+                  });
+                  item.appendChild(x);
+                  item.classList.add('kaomoji-item-editing');
+                }
                 item.addEventListener('click', () => {
+                  // 编辑模式下点击格子=仅输入/复制，不插入正文、不记使用次数
+                  if (kaomojiEditMode) { copyKaomojiValue(opt.value); return; }
                   recordKaomojiUsage(opt); // 无论是否开启排序都记录
                   select.value = opt.value;
                   select.dispatchEvent(new Event('change', { bubbles: true }));
-                  trigger.textContent = opt.textContent || '选择颜文字';
+                  setTriggerKaomoji(opt);
+                  // 插入反馈：按钮边框短暂高亮，确认已写入正文
+                  trigger.classList.add('kaomoji-trigger-flash');
+                  setTimeout(() => trigger.classList.remove('kaomoji-trigger-flash'), 320);
                   hidePanel();
                 });
                 item.addEventListener('contextmenu', (e) => {
@@ -18844,8 +19832,115 @@ ${markedSwatchHtml}
               });
             }
             renderPanelItems();
+            // ---- 富文本颜文字悬浮预览 ----
+            // 悬浮超过 HOVER_MS 后在鼠标附近弹出浮窗，按实际形状（保留换行）显示内容。
+            // 浮窗风格参考原生引用浮窗（#h-ref-view）：白底卡片 + 圆角 + 阴影 + .h-threads-item 结构感；
+            // 复用 kaomoji-item 的 z-index/暗色适配。
+            const lastKaomojiMouse = { x: 0, y: 0 };
+            const kaoPreview = document.createElement('div');
+            kaoPreview.className = 'kaomoji-hover-preview';
+            kaoPreview.style.cssText = 'position:fixed;display:none;z-index:2147483647;'
+              + 'background:#fff;border:1px solid #ccc;border-radius:6px;'
+              + 'box-shadow:0 6px 16px rgba(0,0,0,0.18);padding:10px 14px;'
+              + 'font-size:15px;line-height:1.6;color:#333;'
+              + 'white-space:pre;overflow-wrap:anywhere;max-width:min(520px,92vw);max-height:72vh;'
+              // pointer-events:auto 才能滚动查看超长 art；同时靠 mouseleave 收起，避免挡操作
+              + 'overflow-y:auto;pointer-events:auto;overscroll-behavior:contain;';
+            document.body.appendChild(kaoPreview);
+            let kaoPreviewTimer = 0;
+            let kaoPreviewHideTimer = 0;
+            // 悬停是否显示全文：多行 / 有备注（内容 ≠ 显示名）/ 内容长到会被格子或按钮截断
+            function shouldShowKaomojiPreview(value, displayLabel) {
+              const v = String(value || '');
+              if (!/\S/.test(v)) return false;
+              if (/\n/.test(v)) return true;
+              const label = displayLabel == null ? v : String(displayLabel);
+              return v !== label || label.length > 8;
+            }
+            function showKaomojiPreview(item) {
+              showKaomojiPreviewValue(item.dataset.value, item.dataset.kaoLabel);
+            }
+            function showKaomojiPreviewValue(rawValue, displayLabel) {
+              const value = String(rawValue || '');
+              if (!shouldShowKaomojiPreview(value, displayLabel)) return;
+              // 字体与面板保持一致：面板继承站点字体，这里动态取计算值，
+              // 避免预览用独立字体导致 ASCII art 形状与插入后的实际显示不同
+              try {
+                const pf = getComputedStyle(panel).fontFamily;
+                if (pf) kaoPreview.style.fontFamily = pf;
+              } catch (e) {}
+              kaoPreview.textContent = value;
+              // 面板与预览 z-index 相同，DOM 顺序决定层级：每次显示都移到 body 末尾
+              try { document.body.appendChild(kaoPreview); } catch (e) {}
+              kaoPreview.style.display = 'block';
+              // 位置：鼠标右下方，超出视口时翻转/夹紧
+              const pw = kaoPreview.offsetWidth, ph = kaoPreview.offsetHeight;
+              const margin = 8, vw = window.innerWidth, vh = window.innerHeight;
+              let x = lastKaomojiMouse.x + 14, y = lastKaomojiMouse.y + 14;
+              if (x + pw > vw - margin) x = Math.max(margin, lastKaomojiMouse.x - pw - 14);
+              if (y + ph > vh - margin) y = Math.max(margin, vh - ph - margin);
+              kaoPreview.style.left = x + 'px';
+              kaoPreview.style.top = y + 'px';
+            }
+            function cancelKaomojiPreviewPending() {
+              if (kaoPreviewTimer) { clearTimeout(kaoPreviewTimer); kaoPreviewTimer = 0; }
+            }
+            function hideKaomojiPreviewSoon() {
+              cancelKaomojiPreviewPending();
+              kaoPreviewHideTimer = setTimeout(() => { kaoPreview.style.display = 'none'; }, 120);
+            }
+            panel.addEventListener('mousemove', (e) => {
+              lastKaomojiMouse.x = e.clientX; lastKaomojiMouse.y = e.clientY;
+            });
+            panel.addEventListener('mouseover', (e) => {
+              const item = e.target.closest ? e.target.closest('.kaomoji-item') : null;
+              if (!item || item.classList.contains('kaomoji-item-add')) { hideKaomojiPreviewSoon(); return; }
+              const value = item.dataset.value || '';
+              if (!shouldShowKaomojiPreview(value, item.dataset.kaoLabel)) { hideKaomojiPreviewSoon(); return; }
+              cancelKaomojiPreviewPending();
+              kaoPreviewHideTimer = 0;
+              kaoPreviewTimer = setTimeout(() => { showKaomojiPreview(item); }, 600); // 悬停 600ms 后显示
+            });
+            panel.addEventListener('mouseout', (e) => {
+              const item = e.target.closest ? e.target.closest('.kaomoji-item') : null;
+              if (item) hideKaomojiPreviewSoon();
+            });
+            // 触发按钮悬停：显示上次所选颜文字的完整内容（按钮内文本被省略时仍可见全貌）
+            trigger.addEventListener('mouseenter', (e) => {
+              if (!lastPickedKaomoji) return;
+              if (!shouldShowKaomojiPreview(lastPickedKaomoji.value, lastPickedKaomoji.label)) return;
+              lastKaomojiMouse.x = e.clientX || 0;
+              lastKaomojiMouse.y = e.clientY || 0;
+              cancelKaomojiPreviewPending();
+              kaoPreviewHideTimer = 0;
+              kaoPreviewTimer = setTimeout(() => { showKaomojiPreviewValue(lastPickedKaomoji.value, lastPickedKaomoji.label); }, 600);
+            });
+            trigger.addEventListener('mouseleave', () => { hideKaomojiPreviewSoon(); });
+            // 预览浮窗允许滚动（pointer-events:auto），移出后收起，避免挡住面板操作
+            kaoPreview.addEventListener('mouseleave', () => { kaoPreview.style.display = 'none'; });
+            kaoPreview.addEventListener('wheel', (e) => { e.stopPropagation(); }, { passive: true });
+            panel.addEventListener('scroll', hideKaomojiPreviewSoon, { passive: true });
+            // 面板关闭时同步隐藏（hidePanel 中已有 display 切换，这里靠选择器兜底）
+            window.addEventListener('blur', () => { kaoPreview.style.display = 'none'; });
             select.parentNode.insertBefore(trigger, select.nextSibling);
-            trigger.insertAdjacentElement('afterend', quickSort);
+            trigger.insertAdjacentElement('afterend', manageBtn);
+            manageBtn.insertAdjacentElement('afterend', resetBtn);
+            // 撤回按钮：仅编辑模式可见，位于「重置」之前（紧邻铅笔）
+            const undoBtn = document.createElement('button');
+            undoBtn.type = 'button';
+            undoBtn.className = 'xdex-edit-default-btn kaomoji-undo-btn';
+            undoBtn.title = '回收站（空）';
+            undoBtn.innerHTML = XDEX_ICON_KAO_UNDO;
+            undoBtn.style.display = 'none';
+            undoBtn.style.opacity = '.45';
+            undoBtn.style.cursor = 'not-allowed';
+            undoBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleTrashPanel();
+            });
+            kaomojiUndoBtn = undoBtn;
+            manageBtn.insertAdjacentElement('afterend', undoBtn);
             // 默认位置（非 qp-quote）下，uk-width-1-5 会导致换行：扩展输入容器并强制同排
             const inputCell = select.parentElement;
             if (inputCell) {
@@ -18886,7 +19981,9 @@ ${markedSwatchHtml}
               const replyInitW = Math.round(Math.min(window.innerWidth * 0.9, 820));
               return Math.max(ITEM_W, replyInitW);
             }
-            function positionPanel() {
+            // 通用定位：颜文字面板与回收站面板共用同一锚点与算法，避免切换时位置跳动
+            function placeKaomojiFloatingPanel(el) {
+              if (!el) return;
               const triggerRect = trigger.getBoundingClientRect();
               const quoteEl = getQuoteElement();
               const anchorRect = getPanelAnchorRect();
@@ -18897,14 +19994,14 @@ ${markedSwatchHtml}
               const finalW = Math.min(targetW, maxW);
               // 写入会脏化布局，紧随其后的 getBoundingClientRect 就退化成强制同步重排；值未变则不写
               const nextW = `${Math.round(finalW)}px`;
-              if (panel.style.width !== nextW) panel.style.width = nextW;
+              if (el.style.width !== nextW) el.style.width = nextW;
               // 若当前不可见，临时显示用于测量
-              const wasHidden = (panel.style.display === 'none' || panel.style.display === '');
+              const wasHidden = (el.style.display === 'none' || el.style.display === '');
               if (wasHidden) {
-                panel.style.display = 'grid';
-                panel.style.visibility = 'hidden';
+                el.style.display = 'grid';
+                el.style.visibility = 'hidden';
               }
-              const panelRect = panel.getBoundingClientRect();
+              const panelRect = el.getBoundingClientRect();
               const panelW = panelRect.width;
               const panelH = panelRect.height;
               // 横向：有 qp-quote 时跟随其左边缘；无 qp-quote 时居中
@@ -18922,12 +20019,15 @@ ${markedSwatchHtml}
               }
               const nextLeft = `${Math.round(left)}px`;
               const nextTop = `${Math.round(top)}px`;
-              if (panel.style.left !== nextLeft) panel.style.left = nextLeft;
-              if (panel.style.top !== nextTop) panel.style.top = nextTop;
+              if (el.style.left !== nextLeft) el.style.left = nextLeft;
+              if (el.style.top !== nextTop) el.style.top = nextTop;
               if (wasHidden) {
-                panel.style.visibility = '';
+                el.style.visibility = '';
               }
-          }
+            }
+            function positionPanel() {
+              placeKaomojiFloatingPanel(panel);
+            }
           let followRafId = 0;
           let followResizeHandler = null;
           let followScrollHandler = null;
@@ -18990,45 +20090,9 @@ ${markedSwatchHtml}
             stopPanelFollow();
             removeKeyboardNav();
           }
-            // 点击快捷排序前先关闭颜文字面板，避免用户眼前发生重排
-            quickSort.addEventListener('mousedown', () => {
-              if (panel.style.display === 'grid') hidePanel();
-            }, true);
-            quickSort.addEventListener('change', () => {
-              const mode = quickSort.value || 'default';
-              try {
-                if (SettingPanel && SettingPanel.state) SettingPanel.state.kaomojiSort = mode;
-              } catch (e) {}
-              try {
-                const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
-                cfg.kaomojiSort = mode;
-                GM_setValue(SettingPanel.key, cfg);
-              } catch (e) {}
-              // 与设置面板中的下拉同步
-              const panelSort = document.querySelector('#sp_kaomojiSort');
-              if (panelSort) panelSort.value = mode;
-              // 与其他快捷下拉同步
-              document.querySelectorAll('.sp_kaomojiSort_copy').forEach(el => {
-                if (el !== quickSort) el.value = mode;
-              });
-              // 即时生效
-              document.querySelectorAll(SELECTOR).forEach(sel => {
-                try {
-                  sel.dispatchEvent(new Event('kaomoji:sort-changed'));
-                } catch (e) {}
-              });
-              // 广播模式变化（供后续新建的复制下拉同步）
-              try {
-                window.dispatchEvent(new CustomEvent('kaomoji:sort-mode-changed', { detail: { mode, source: 'quick' } }));
-              } catch (e) {}
-            });
-            const onSortModeChanged = (ev) => {
-              const mode = ev?.detail?.mode || getSortMode();
-              if (quickSort.value !== mode) quickSort.value = mode;
-            };
-            window.addEventListener('kaomoji:sort-mode-changed', onSortModeChanged);
             trigger.addEventListener('click', (e) => {
                 e.stopPropagation();
+                closeTrashPanel();   // 与回收站互斥
                 if (panel.style.display === 'none' || panel.style.display === '') {
                     showPanel();
                 } else {
@@ -19044,6 +20108,15 @@ ${markedSwatchHtml}
                 }
                 // 捕获阶段执行，防止被其他脚本阻止
                 const target = e.target;
+                // 回复浮窗遮罩（.qp-overlay 内、.qp-quote 之外）：交给站点关闭浮窗。
+                // 编辑模式随浮窗关闭统一退出，这里不再“点外部即收面板”，避免同一次点击触发两套关闭逻辑
+                if (target && target.closest && target.closest('.qp-overlay') && !target.closest('.qp-quote')) {
+                    return;
+                }
+                // 模态层（添加弹窗 / 二次确认）：关闭它们不应连带收起颜文字面板
+                if (target && target.closest && (target.closest('#kaomoji-add-overlay') || target.closest('#kaomoji-confirm-overlay'))) {
+                    return;
+                }
                 if (!panel.contains(target) && target !== trigger) {
                     hidePanel();
                 }
@@ -19086,6 +20159,9 @@ ${markedSwatchHtml}
             el.scrollIntoView({ block: 'nearest', behavior: 'auto' });
           }
           function initKeyboardNav() {
+            // 先解绑旧 handler：面板开启时每次重排（切换排序）都会重新初始化，
+            // 否则 window 上的 keydown 监听会逐次累积
+            removeKeyboardNav();
             const items = Array.from(panel.querySelectorAll('.kaomoji-item'));
             if (!items.length) return;
             // 重置状态
@@ -19309,6 +20385,16 @@ ${markedSwatchHtml}
                   }
               });
               if (richFrag.childNodes.length) sel.appendChild(richFrag);
+              // 自定义项在内置项之后追加（同一次 pass 内完成，再打 kaoExtended 标记）
+              applyCustomKaomojiOptions(sel);
+              // 站点原生项没有稳定 key：补一个，供编辑模式隐藏/回收站恢复使用。
+              // 若不补，hideBuiltinKaomojiByKaoKey 会因空 key 直接 return（提示成功但没写入）。
+              Array.from(sel.options).forEach(op => {
+                  if (String((op.dataset && op.dataset.kaoKey) || '').trim()) return;
+                  const label = String(op.textContent || '').trim();
+                  if (!label || label === '无') return;
+                  op.dataset.kaoKey = `site:${label}\nv:${op.value}`;
+              });
               sel.dataset.kaoExtended = '1';
               sel.dispatchEvent(new CustomEvent('kaomoji:updated', { bubbles: true }));
           }
@@ -31467,7 +32553,7 @@ function initReplyParamScrollTo() {
   }
   function webdavFullSelection() {
     // 同步文件不含 WebDAV 配置（用户自行选择同步源更合理）；手动导入导出才迁移配置
-    return { settings: true, threadHistory: true, postHistory: true, drafts: false, kaomojiStats: true, cookiePrefs: true };
+    return { settings: true, threadHistory: true, postHistory: true, drafts: false, kaomojiStats: true, kaomojiCustom: true, cookiePrefs: true };
   }
   function getWebdavUtils() {
     // full-export 工具定义在 SettingPanel.render 嵌套作用域，需先打开过一次设置面板（按钮本身在面板内）
