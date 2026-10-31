@@ -31,6 +31,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'xdex:dnr:cookie-rule') {
+    handleDnrCookieRule(message, sender)
+      .then(sendResponse)
+      .catch((err) => {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      });
+    return true;
+  }
+
   if (message.type.startsWith('xdex:cookies:')) {
     handleCookieMessage(message, sender)
       .then(sendResponse)
@@ -288,6 +297,53 @@ async function getUserhashForSender(sender) {
 
 async function syncApiUserhashCookie(userhash) {
   await setCookie({ url: 'https://api.nmb.best/', name: 'userhash', value: userhash });
+}
+
+// 自定义饼干发送：只在“发帖 POST”上改写 Cookie 头，其它请求完全不受影响。
+// 会话规则（session rules）随浏览器重启失效，且用完立即移除，避免长期存在。
+const XDEX_POST_RULE_IDS = [9101, 9102];
+const XDEX_POST_RULE_TARGETS = ['doReplyThread.html', 'doPostThread.html'];
+// 只对 X岛 两个主域生效（含子域），避免误伤其它站点同名路径的请求
+const XDEX_POST_RULE_DOMAINS = ['nmbxd1.com', 'nmbxd.com'];
+
+async function handleDnrCookieRule(message, sender) {
+  const api = chrome.declarativeNetRequest;
+  if (!api || typeof api.updateSessionRules !== 'function') {
+    throw new Error('当前浏览器不支持请求头规则，无法用自定义饼干发送');
+  }
+  const pageUrl = getSenderPageUrl(sender);
+  if (!isAllowedXdaoUrl(pageUrl)) throw new Error('规则请求不是来自 X岛 页面');
+
+  if (!message.enable) {
+    await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice() });
+    return { ok: true };
+  }
+
+  const cookie = String(message.cookie || '');
+  if (!/^userhash=[\x21-\x7e]+$/.test(cookie) || cookie.includes(';') || cookie.length > 8192) {
+    throw new Error('饼干格式无效');
+  }
+  const addRules = XDEX_POST_RULE_TARGETS.map((file, index) => ({
+    id: XDEX_POST_RULE_IDS[index],
+    priority: 1,
+    action: {
+      type: 'modifyHeaders',
+      requestHeaders: [{ header: 'cookie', operation: 'set', value: cookie }]
+    },
+    condition: {
+      urlFilter: `/Home/Forum/${file}`,
+      requestDomains: XDEX_POST_RULE_DOMAINS,
+      requestMethods: ['post'],
+      resourceTypes: ['xmlhttprequest']
+    }
+  }));
+  try {
+    await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice(), addRules });
+  } catch (err) {
+    // 浏览器拒绝改写 cookie 头时，宁可报错也不要静默用错身份发帖
+    throw new Error('浏览器拒绝改写发送请求的 Cookie 头：' + (err && err.message ? err.message : err));
+  }
+  return { ok: true };
 }
 
 async function handleCookieMessage(message, sender) {

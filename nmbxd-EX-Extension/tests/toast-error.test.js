@@ -251,7 +251,8 @@ function testMigratedErrorCallSites() {
     `expected at least 15 migrated error call sites`);
   // 2026-10-01：中间页 errorMsg 分支（p.error 解析结果）也必须走 error 通道
   // 覆盖：图片大小关闭自动压缩 / 非非法词兜底（图片安全性审核不通过等）/ unvcode 穷尽 / 无 unvcode
-  const midPage = src.match(/toast\(msg, 0, \{ type: 'error', key: 'send-error' \}\)/g) || [];
+  // 变量名允许 msg / displayMsg（自定义饼干失效分支会改写展示文案，但仍必须走同一 error 通道）
+  const midPage = src.match(/toast\((?:msg|displayMsg), 0, \{ type: 'error', key: 'send-error' \}\)/g) || [];
   assert(midPage.length === 4, `intermediate-page error branches must all use the error channel, got ${midPage.length}`);
 }
 

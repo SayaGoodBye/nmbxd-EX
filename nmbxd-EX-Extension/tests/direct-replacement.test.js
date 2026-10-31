@@ -437,13 +437,23 @@ function testPostHistoryStorageAndCompletionContract() {
   const completionStart = upstream.indexOf('function completePostHistorySnapshot(localId, snapshot, attempt = 0)');
   const completionBody = upstream.slice(completionStart, upstream.indexOf('function snapshotSubmittedPostHistory', completionStart));
   assert(completionBody.includes('fetchLastPostHistoryPost({ localId, attempt })') && completionBody.includes('completePostHistoryFromThreadFallback(localId, snapshot)'), 'completion must include getLastPost and fallback calls');
-  // 主 confirm 成功后的 thread fallback 经 idle 错峰调度（schedulePostHistoryThreadFallback）：
-  // 字段回填保留（fid/forumName/page/title 等 getLastPost 不返回），但存储写错开发送后的滚动敏感窗口。
+  // 主 confirm 成功后仍走 thread fallback 补 fid/页码等 getLastPost 不返回的字段。
+  // 270e321 曾把它错峰到 idle、并把存储写改为 150ms 防抖 + 字段回填队列；
+  // a952e18 之后跨标签同步只投小版本键，全量写不再是卡顿源，故三处均已改回即时执行/落盘。
+  // 断言用「活代码」形式（行首非注释），避免通过注释里的旧实现蒙混过关。
   assert(completionBody.includes('schedulePostHistoryThreadFallback(localId, confirmedSnapshot)'), 'confirmed reply must schedule thread fallback for field backfill');
-  assert(upstream.includes('function schedulePostHistoryThreadFallback(localId, snapshot)'), 'idle-scheduled fallback helper must exist');
-  assert(upstream.includes('requestIdleCallback(() => setTimeout(run, 0), { timeout: IDLE_DELAY_MS + 3000 })'), 'fallback must yield to idle before running');
-  // 字段回填队列必须在页面隐藏/关闭时兜底落盘（flushOnLeave 先字段后 persist）
-  assert(upstream.includes('try { flushPostHistoryFieldPatches(); } catch (e) {}\n      flushPostHistoryStorePersist();'), 'pagehide must flush field patches before persist debounce');
+  assert(upstream.includes('function schedulePostHistoryThreadFallback(localId, snapshot)'), 'thread fallback scheduler must exist');
+  const fbBody = upstream.slice(upstream.indexOf('function schedulePostHistoryThreadFallback(localId, snapshot)'), upstream.indexOf('async function completePostHistoryFromThreadFallback'));
+  assert(/^\s{4}run\(\);$/m.test(fbBody), 'thread fallback must run immediately (no idle deferral)');
+  assert(!/^\s*(if \(typeof requestIdleCallback|requestIdleCallback\(|setTimeout\(run, IDLE_DELAY_MS\))/m.test(fbBody), 'thread fallback must not defer to idle anymore');
+  const persistBody = upstream.slice(upstream.indexOf('function schedulePostHistoryStorePersist(normalized)'), upstream.indexOf('function schedulePostHistoryStorePersist(normalized)') + 700);
+  assert(/^\s{4}flushPostHistoryStorePersist\(\);$/m.test(persistBody), 'persist must write synchronously');
+  assert(!/^\s{4}postHistoryPersistTimer = setTimeout\(/m.test(persistBody), 'persist must not use the 150ms debounce window anymore');
+  const patchBody = upstream.slice(upstream.indexOf('function schedulePostHistoryFieldPatchFlush()'), upstream.indexOf('function schedulePostHistoryFieldPatchFlush()') + 700);
+  assert(/^\s{4}try \{ flushPostHistoryFieldPatches\(\); \} catch \(e\) \{\}/m.test(patchBody), 'field patches must flush synchronously');
+  assert(!/^\s{4}postHistoryFieldPatchTimer = setTimeout\(/m.test(patchBody), 'field patch queue must not wait for the idle window anymore');
+  // 字段回填队列仍需在页面隐藏/关闭时兜底落盘（即时写后这是多余的保险，但保留无害）
+  assert(upstream.includes('try { flushPostHistoryFieldPatches(); } catch (e) {}\n      flushPostHistoryStorePersist();'), 'pagehide must still flush field patches before persist');
   assert(completionBody.indexOf('completePostHistoryFromThreadFallback(localId, snapshot)') < completionBody.indexOf('fetchLastPostHistoryPost({ localId, attempt })'), 'thread fallback must be in the retry-exhausted branch before scheduled getLastPost attempts');
   assert(upstream.includes("const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api'"), 'post history thread fallback must define api.nmb.best as the primary thread API source');
   assert(upstream.includes('`${POST_HISTORY_THREAD_API_BASE}/thread?id=${encodeURIComponent(threadId)}&page=${encodeURIComponent(page)}`'), 'thread fallback must use api.nmb.best/api/thread?id={threadId}&page={page} as the primary request URL');

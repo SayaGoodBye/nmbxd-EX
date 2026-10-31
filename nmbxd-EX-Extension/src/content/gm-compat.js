@@ -58,6 +58,7 @@
     "// @connect      *",
     "// 说明：* 通配允许 GM_xmlhttpRequest 访问任意域名，用于用户自定义 WebDAV 地址（无需手动逐域授权）",
     "// @require      https://code.jquery.com/jquery-3.6.0.min.js",
+    "// @require      https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
     "// @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js",
     "// @require      https://unpkg.com/upng-js@2.1.0/UPNG.js",
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",

@@ -32,6 +32,7 @@
 // @connect      *
 // 说明：* 通配允许 GM_xmlhttpRequest 访问任意域名，用于用户自定义 WebDAV 地址（无需手动逐域授权）
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
+// @require      https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js
 // @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js
 // @require      https://unpkg.com/upng-js@2.1.0/UPNG.js
 // @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png
@@ -122,13 +123,51 @@ function xdexEarlyDarkEnabled() {
   const XDEX_SINGLETON_WAIT_MS = 100;
   function getXDexRuntimeInfo(){
       const declared = typeof globalThis !== 'undefined' ? globalThis.__xdexRuntime : null;
-      if (declared && declared.kind === 'extension') {
-          return Object.assign({ kind: 'extension' }, declared);
+      const scriptHandler = String((typeof GM_info !== 'undefined' && GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler))) || '');
+      const hasChromeRuntime = typeof chrome !== 'undefined' && !!(chrome && chrome.runtime);
+      const hasChromeExtensionId = hasChromeRuntime && !!chrome.runtime.id;
+      const hasDnr = hasChromeRuntime && !!(chrome.declarativeNetRequest && typeof chrome.declarativeNetRequest.updateSessionRules === 'function');
+      const hasQwqntBridge = typeof window !== 'undefined' && !!(window.QwQNTNmbxd && typeof window.QwQNTNmbxd.xdexRequest === 'function');
+      const declaredStorage = declared && declared.storage ? String(declared.storage) : '';
+      // QwQNT：Electron 客户端注入，虽然有 __xdexRuntime，但没有可用的 Chrome 扩展 API
+      if (hasQwqntBridge || scriptHandler === 'qwqnt-electron' || declaredStorage === 'electron-localStorage') {
+          return {
+              kind: 'qwqnt',
+              packaged: true,
+              scriptHandler: scriptHandler || 'qwqnt-electron',
+              hasChromeRuntime,
+              hasDnr: false,
+              qwqntBridge: hasQwqntBridge
+          };
       }
-      const scriptHandler = GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler)) || '';
+      if (hasChromeExtensionId) {
+          return {
+              kind: hasDnr ? 'chrome-extension' : 'chrome-extension-limited',
+              packaged: true,
+              scriptHandler: scriptHandler || 'extension',
+              hasChromeRuntime: true,
+              hasDnr,
+              qwqntBridge: false
+          };
+      }
+      if (declared && declared.kind === 'extension') {
+          // 声明为扩展但没有 chrome.runtime.id（保守按“受限扩展”处理，避免误用扩展专属 API）
+          return {
+              kind: 'chrome-extension-limited',
+              packaged: true,
+              scriptHandler: scriptHandler || 'extension',
+              hasChromeRuntime,
+              hasDnr: false,
+              qwqntBridge: false
+          };
+      }
       return {
           kind: 'userscript',
-          scriptHandler: scriptHandler || 'unknown'
+          packaged: false,
+          scriptHandler: scriptHandler || 'unknown',
+          hasChromeRuntime,
+          hasDnr: false,
+          qwqntBridge: false
       };
   }
   (function earlyIconBtnStyle() {
@@ -172,7 +211,7 @@ function xdexEarlyDarkEnabled() {
   function shouldExitForXDexSingleton(runtimeInfo){
       const root = document.documentElement;
       const owner = root && root.dataset ? root.dataset[XDEX_SINGLETON_OWNER_DATASET_KEY] : '';
-      return owner === 'extension' && (!runtimeInfo || runtimeInfo.kind !== 'extension');
+      return owner === 'extension' && (!runtimeInfo || (runtimeInfo.kind !== 'extension' && !runtimeInfo.packaged));
   }
   function cat_version(){
       console.log('[version]:', VERSION);
@@ -189,7 +228,7 @@ function xdexEarlyDarkEnabled() {
           if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
           startXDexRuntime();
       };
-      if (XDEX_RUNTIME.kind !== 'extension') {
+      if (!XDEX_RUNTIME.packaged) {
         setTimeout(() => {
           if (shouldExitForXDexSingleton(XDEX_RUNTIME)) return;
           XDEX_GM_STORAGE_READY.then(() => {
@@ -1766,6 +1805,26 @@ function xdexEarlyDarkEnabled() {
                 </div>
                   </div>
               <div style="margin-top:12px;">
+                <!-- 自定义饼干（链接 / 图片 / JSON 导入） -->
+                <div class="sp_fold" id="sp_custom_cookie_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
+                  <div class="sp_fold_head" data-btn="#btn_sp_custom_cookie_import2,#btn_sp_custom_cookie_image2"
+                      style="display:flex;align-items:center;padding:6px 8px;background:#F0E0D6;cursor:pointer;min-height:42px;box-sizing:border-box;">
+                    <span>自定义饼干</span>
+                    <span id="sp_custom_cookie_count" style="margin-left:6px;color:#888;font-size:12px;"></span>
+                    <button id="btn_sp_custom_cookie_import2" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:auto;" title="导入链接 / 图片链接 / JSON">${XDEX_ICON_ADD_GROUP}</button>
+                    <button id="btn_sp_custom_cookie_image2" class="xdex-btn-hidden xdex-icon-btn" style="margin-left:4px;" title="选择二维码图片">${XDEX_ICON_IMAGE}</button>
+                  </div>
+                  <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
+                    <div style="font-size:12px;color:#666;margin-bottom:6px;line-height:1.5;">
+                      粘贴二维码链接、二维码图片链接或 饼干JSON（{"cookie":"***","name":"***"}），或直接选择二维码图片。自定义饼干<b>只用于发送</b>，不改变页面登录状态，也不会附加到其它请求中。
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                      <input id="sp_custom_cookie_input" type="text" placeholder="二维码链接 / 图片链接 / JSON" class="uk-input" style="flex:1 1 240px;min-width:0;height:28px;box-sizing:border-box;padding:0 8px;font-size:13px;">
+                      <input id="sp_custom_cookie_file" type="file" accept="image/*" style="display:none;">
+                    </div>
+                    <div id="sp_custom_cookie_list" style="margin-top:8px;"></div>
+                  </div>
+                </div>
                 <!-- 标记饼干（组） -->
                   <div class="sp_fold" style="border:1px solid #eee;margin:6px 0;background:#F0E0D6;">
                   <div class="sp_fold_head" data-btn="#btn_sp_marked,#btn_group_marked"
@@ -1895,6 +1954,10 @@ function xdexEarlyDarkEnabled() {
                       <div style="display:flex;align-items:center;gap:4px;">
                         <input type="checkbox" id="sp_fullExport_kaomojiCustom" class="xdex-switch" role="switch" checked>
                         <label for="sp_fullExport_kaomojiCustom">自定义颜文字</label>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="sp_fullExport_customCookies" class="xdex-switch" role="switch" checked>
+                        <label for="sp_fullExport_customCookies" title="包含自定义饼干的登录凭据，请妥善保管导出文件">自定义饼干</label>
                       </div>
                       <div style="display:flex;align-items:center;gap:4px;">
                         <input type="checkbox" id="sp_fullExport_cookiePrefs" class="xdex-switch" role="switch" checked>
@@ -3657,6 +3720,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         if (selection.kaomojiCustom) {
           payload.kaomojiCustom = GM_getValue('xdex_kaomoji_custom', { items: [] });
         }
+        if (selection.customCookies) {
+          payload.customCookies = getCustomCookies();
+        }
         if (selection.cookiePrefs) {
           payload.cookiePrefs = GM_getValue('xdex_thread_cookie_prefs', {});
         }
@@ -3670,18 +3736,19 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         const now = new Date();
         const timestamp = now.toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
         const scriptVersion = typeof VERSION !== 'undefined' ? VERSION : (typeof GM_info !== 'undefined' ? GM_info.script.version : 'unknown');
-        const platform = typeof GM_info !== 'undefined' && GM_info.scriptHandler ? 'userscript' : 'extension';
+        const platform = getXDexRuntimeInfo().kind;
         return {
           file: {
             meta: { format: 'xdex-full-export', schemaVersion: FULL_EXPORT_SCHEMA_VERSION, exportedAt: now.toISOString(), source: 'nmbxd-EX', scriptVersion, platform },
             selection,
-            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate', cookiePrefs: 'merge', webdav: 'override' },
+            strategyHints: { settings: 'merge', threadHistory: 'merge', postHistory: 'merge', drafts: 'override-imported', kaomojiStats: 'accumulate', customCookies: 'merge-by-name', cookiePrefs: 'merge', webdav: 'override' },
             summary: {
               threadHistoryCount: selection.threadHistory ? Object.keys((payload.threadHistory || {}).items || {}).length : 0,
               postHistoryCount: selection.postHistory ? Object.keys((payload.postHistory || {}).items || {}).length : 0,
               draftCount: selection.drafts ? (payload.drafts.registry || []).length : 0,
               kaomojiStatsEntries: selection.kaomojiStats ? Object.keys(payload.kaomojiStats || {}).length : 0,
               kaomojiCustomCount: selection.kaomojiCustom ? (Array.isArray(payload.kaomojiCustom && payload.kaomojiCustom.items) ? payload.kaomojiCustom.items.filter(it => !it.deleted).length : 0) : 0,
+              customCookieCount: selection.customCookies ? Object.keys(payload.customCookies || {}).length : 0,
               cookiePrefsCount: selection.cookiePrefs ? Object.keys(payload.cookiePrefs || {}).length : 0,
               webdavConfig: selection.webdav && payload.webdavConfig ? 1 : 0,
             },
@@ -3815,6 +3882,27 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           report.kaomojiStats = { mode: 'accumulate', changed: true };
         }
 
+        // 自定义饼干：按名称合并；同名不同值不覆盖（保留本地并计入跳过）
+        if (payload.customCookies && typeof payload.customCookies === 'object' && !Array.isArray(payload.customCookies)) {
+          const local = getCustomCookies();
+          let added = 0, kept = 0, skipped = 0;
+          Object.values(payload.customCookies).forEach((entry) => {
+            if (!entry || typeof entry.name !== 'string' || typeof entry.cookie !== 'string') { skipped += 1; return; }
+            const checked = validateCustomCookie(entry.name, entry.cookie);
+            if (!checked.ok) { skipped += 1; return; }
+            const existed = local[checked.name];
+            if (existed && existed.cookie !== checked.value) { kept += 1; return; }
+            if (!existed) added += 1;
+            local[checked.name] = {
+              name: checked.name,
+              cookie: checked.value,
+              addedAt: existed && existed.addedAt ? existed.addedAt : (Number(entry.addedAt) || Date.now()),
+              updatedAt: Date.now()
+            };
+          });
+          saveCustomCookies(local);
+          report.customCookies = { mode: 'merge-by-name', added, kept, skipped, count: Object.keys(local).length };
+        }
         if (payload.cookiePrefs) {
           const local = GM_getValue('xdex_thread_cookie_prefs', {});
           const merged = Object.assign({}, local, payload.cookiePrefs);
@@ -4021,6 +4109,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
           kaomojiCustom: $('#sp_fullExport_kaomojiCustom').is(':checked'),
+          customCookies: $('#sp_fullExport_customCookies').is(':checked'),
           cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
           webdav: $('#sp_fullExport_webdav').is(':checked')
         };
@@ -4051,6 +4140,141 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           toast('清除失败: ' + (err.message || err));
         }
       });
+      // ===== 自定义饼干：列表渲染与导入 =====
+      function renderCustomCookieList() {
+        const map = getCustomCookies();
+        const names = Object.keys(map);
+        $('#sp_custom_cookie_count').text(names.length ? `（${names.length} 项）` : '（未添加）');
+        const $list = $('#sp_custom_cookie_list').empty();
+        if (!names.length) {
+          $list.append($('<div>').css({ fontSize: '12px', color: '#999' }).text('尚未添加自定义饼干'));
+          return;
+        }
+        names.forEach((name, idx) => {
+          const entry = map[name] || {};
+          const value = String(entry.cookie || '');
+          // 用模板串拼接省略号：避免与历史摘录的静态契约冲突
+          const masked = value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
+          const invalid = !!(getCustomCookieStatus()[name] && getCustomCookieStatus()[name].invalidAt);
+
+          // 直接复用「标记饼干」的行模板：同样的类名与结构，暗色/亮色样式天然一致。
+          // 去掉颜色列（自定义饼干没有颜色概念），输入框改为只读展示。
+          const $row = $(spUi('buildCookieGroupTwoFieldRowHtml', 'marked', idx + 1, { desc: name, cookies: [masked] }));
+          $row.attr('data-cookie-name', String(name)).addClass('custom-cookie-row');
+          $row.find('.marked-color-cell').remove();
+          $row.children('div').last().css('grid-template-columns', 'minmax(0,2fr) minmax(0,3fr)');
+          const $nameInput = $row.find('.marked-desc-input');
+          const $valueInput = $row.find('.marked-cookies-input');
+          $nameInput.attr('placeholder', '名称');
+          $valueInput.attr('placeholder', '饼干内容');
+          $nameInput.attr('readonly', 'readonly').attr('title', '名称来自导入内容，作为该项的唯一键');
+          $valueInput.attr('readonly', 'readonly').attr('title', value);
+
+          if (invalid) {
+            $('<span>')
+              .css({ position: 'absolute', top: '-9px', right: '36px', padding: '0 6px', fontSize: '11px', lineHeight: '18px',
+                     color: '#e53935', border: '1px solid #e53935', borderRadius: '999px', background: 'var(--xdex-sp-fold-bg, #F0E0D6)' })
+              .attr('title', '上次发送时服务器回执判定失效；重新导入或确认账号侧已应用后重试')
+              .text('已失效')
+              .appendTo($row);
+          }
+          // 删除：两段式确认（宿主 webview 会静默拦截 window.confirm）
+          let armed = 0;
+          $row.find('.marked-delete').on('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const $btn = $(e.currentTarget);
+            if (!armed) {
+              armed = setTimeout(() => { armed = 0; $btn.html(XDEX_SVG_X); }, 3000);
+              $btn.text('删?').css({ color: '#e53935', fontSize: '11px' });
+              return;
+            }
+            clearTimeout(armed);
+            armed = 0;
+            deleteCustomCookie(name);
+            renderCustomCookieList();
+            updateDropdownUI(getCookiesList());
+            const cur = getCurrentCookie();
+            if (isCustomCookie(cur) && cur.name === name) {
+              GM_setValue('now-cookie', null);
+              updateCurrentCookieDisplay(null);
+            }
+            toast(`已移除自定义饼干「${name}」`);
+          });
+
+          $list.append($row);
+        });
+      }
+      // 拖拽排序：拖动结束按 DOM 顺序重写存储对象（对象键顺序即展示顺序）
+      installRowDragSorting({
+        containerSelector: '#sp_custom_cookie_list',
+        rowSelector: '.custom-cookie-row',
+        field: '',
+        onSorted: () => {
+          const order = $('#sp_custom_cookie_list .custom-cookie-row').map((_, el) => $(el).attr('data-cookie-name')).get();
+          const map = getCustomCookies();
+          const next = {};
+          order.forEach((n) => { if (map[n]) next[n] = map[n]; });
+          Object.keys(map).forEach((n) => { if (!next[n]) next[n] = map[n]; });
+          saveCustomCookies(next);
+          updateDropdownUI(getCookiesList());
+          return true;
+        }
+      });
+      // 【已停用】主动检测会多发一次请求，且对自定义饼干无法给出可靠结论（见下方说明）。
+      // 失效判定改为「仅由发送时的服务器回执」驱动，成功发送则清除标记。
+      // async function recheckCustomCookie(name) {
+      //   const entry = getCustomCookies()[name];
+      //   if (!entry) return;
+      //   customCookieCheckState = { value: '', at: 0, ok: null };   // 跳过缓存强制重测
+      //   const ok = await ensureCustomCookieUsable(getXDexRuntimeInfo(), entry.cookie, name, { force: true });
+      //   toast(ok ? `饼干「${name}」有效` : `饼干「${name}」已失效`, 1200, { queue: false, key: 'kaomoji-manage' });
+      //   renderCustomCookieList();
+      //   updateDropdownUI(getCookiesList());
+      // }
+      function applyImportedCustomCookie(parsed) {
+        const result = upsertCustomCookie(parsed.name, parsed.cookie);
+        if (!result.ok) { toast(result.error, 0, { type: 'error' }); return; }
+        toast(result.created ? `已添加自定义饼干「${result.name}」` : `已存在相同饼干「${result.name}」`);
+        $('#sp_custom_cookie_input').val('');
+        renderCustomCookieList();
+        updateDropdownUI(getCookiesList());
+      }
+      async function importCustomCookieFromInput(raw) {
+        try {
+          const parsed = await parseCustomCookieInput(raw);
+          applyImportedCustomCookie(parsed);
+        } catch (err) {
+          toast(err && err.message ? err.message : '导入失败', 0, { type: 'error' });
+        }
+      }
+      $('#sp_custom_cookie_input').off('keydown.xdex-custom-cookie').on('keydown.xdex-custom-cookie', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); importCustomCookieFromInput($(e.currentTarget).val()); }
+      });
+      $('#btn_sp_custom_cookie_import2').off('click.xdex-custom-cookie').on('click.xdex-custom-cookie', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        importCustomCookieFromInput($('#sp_custom_cookie_input').val());
+      });
+      $('#btn_sp_custom_cookie_image2').off('click.xdex-custom-cookie').on('click.xdex-custom-cookie', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $('#sp_custom_cookie_file').trigger('click');
+      });
+      $('#sp_custom_cookie_file').off('change.xdex-custom-cookie').on('change.xdex-custom-cookie', async function () {
+        const file = this.files && this.files[0];
+        if (!file) return;
+        try {
+          const text = await decodeQrFromImageBlob(file);
+          applyImportedCustomCookie(normalizeImportedCookiePayload(text));
+        } catch (err) {
+          toast(err && err.message ? err.message : '图片解析失败', 0, { type: 'error' });
+        } finally {
+          this.value = '';
+        }
+      });
+      renderCustomCookieList();
+
       $('#btn_sp_fullExport_export').off('click').on('click', (e) => {
         e.stopPropagation();
         const selection = {
@@ -4060,6 +4284,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           drafts: $('#sp_fullExport_drafts').is(':checked'),
           kaomojiStats: $('#sp_fullExport_kaomojiStats').is(':checked'),
           kaomojiCustom: $('#sp_fullExport_kaomojiCustom').is(':checked'),
+          customCookies: $('#sp_fullExport_customCookies').is(':checked'),
           cookiePrefs: $('#sp_fullExport_cookiePrefs').is(':checked'),
           webdav: $('#sp_fullExport_webdav').is(':checked')
         };
@@ -4118,6 +4343,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           if (report.postHistory) parts.push(`发言历史 ${report.postHistory.count} 条`);
           if (report.drafts) parts.push(`草稿 ${report.drafts.imported} 条导入${report.drafts.overwritten ? `, ${report.drafts.overwritten} 条覆盖` : ''}`);
           if (report.kaomojiStats) parts.push('颜文字已累加');
+          if (report.customCookies) parts.push(`自定义饼干 +${report.customCookies.added}`);
           toast(`使用数据导入完成: ${parts.join('、')}，即将刷新`);
           setTimeout(() => location.reload(), 800);
         });
@@ -6267,7 +6493,841 @@ ${markedSwatchHtml}
   const getCurrentCookie = () => GM_getValue('now-cookie', null);
   const LAST_USED_COOKIE_KEY = 'xdex-last-used-cookie';
   const getLastUsedCookie = () => GM_getValue(LAST_USED_COOKIE_KEY, null);
-  const isCookieListUnavailable = (list) => !list || Object.keys(list).length === 0;
+
+  /* --------------------------------------------------
+   * 自定义饼干：链接 / 二维码图片 / JSON 导入，仅用于发送链路
+   * -------------------------------------------------- */
+  const CUSTOM_COOKIE_KEY = 'xdex_custom_cookies';
+  const CUSTOM_COOKIE_MAX_BYTES = 8192;
+  // 自定义饼干的失效标记：仅本机派生状态，不写入导出/WebDAV
+  const CUSTOM_COOKIE_STATUS_KEY = 'xdex_custom_cookie_status';
+  const getCustomCookieStatus = () => {
+    const raw = GM_getValue(CUSTOM_COOKIE_STATUS_KEY, {});
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  };
+  const saveCustomCookieStatus = (map) => { GM_setValue(CUSTOM_COOKIE_STATUS_KEY, map && typeof map === 'object' ? map : {}); };
+  // 只保留“确定失效”一种标记：服务器给出明确回执时才写，发送成功即清除。
+  // 「未应用饼干」不计数、不升级、不单独成态——每次都提示同一条消息，由用户自行确认。
+  function getCustomCookieState(name) {
+    const entry = getCustomCookieStatus()[String(name || '').trim()];
+    return entry ? 'invalid' : null;
+  }
+  // 值指纹：仅用于判断“同名饼干是否还是同一个值”，不保存明文
+  function customCookieValueHash(value) {
+    const str = String(value || '');
+    let h = 5381;
+    for (let i = 0; i < str.length; i += 1) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  }
+  function markCustomCookieStatus(name, invalid, reason) {
+    const key = String(name || '').trim();
+    if (!key) return;
+    const map = getCustomCookieStatus();
+    if (invalid) {
+      const entry = getCustomCookies()[key];
+      map[key] = {
+        invalidAt: Date.now(),
+        reason: String(reason || ''),
+        valueHash: entry ? customCookieValueHash(entry.cookie) : ''
+      };
+    } else if (map[key]) {
+      delete map[key];
+    } else {
+      return;
+    }
+    saveCustomCookieStatus(map);
+  }
+  // 同名但换了值 → 旧标记失效（新饼干可能是有效的）
+  function reconcileCustomCookieStatus(name, value) {
+    const map = getCustomCookieStatus();
+    const entry = map[String(name || '').trim()];
+    if (!entry) return;
+    if (entry.valueHash && entry.valueHash !== customCookieValueHash(value)) {
+      delete map[String(name || '').trim()];
+      saveCustomCookieStatus(map);
+    }
+  }
+  const isCustomCookieMarkedInvalid = (name) => getCustomCookieState(name) === 'invalid';
+
+  /* ===== [TEMP-DBG] 饼干状态诊断探针 —— 测试完整体删除 =====
+   * 为什么用 localStorage 而不是 console：
+   *   扩展 content script 跑在 ISOLATED world，DevTools 默认上下文读不到这里的变量；
+   *   而 localStorage 与页面共用，同源导航也不清空，页面 console 里可直接取。
+   * 读取：localStorage.getItem('xdex-dbg-log')
+   * 清空：localStorage.removeItem('xdex-dbg-log')
+   */
+  const XDEX_DBG_KEY = 'xdex-dbg-log';
+  const XDEX_DBG_MAX = 600;
+  function xdexDbgCookieTag(c) {
+    if (!c) return null;
+    if (c.custom) return 'custom:' + abbreviateName(c.name || '');
+    return 'site:' + c.id + '/' + abbreviateName(c.name || '');
+  }
+  function xdexDbgDocUserhash() {
+    let dc = '';
+    try { dc = String(document.cookie || ''); } catch (e) {}
+    const hits = dc.match(/(?:^|;\s*)userhash=/g) || [];
+    return { has: hits.length > 0, count: hits.length };
+  }
+  function xdexDbg(tag, data) {
+    try {
+      const uh = xdexDbgDocUserhash();
+      const entry = {
+        t: new Date().toISOString().slice(11, 23),
+        tag: String(tag),
+        page: (location.pathname + location.search).slice(0, 90),
+        host: location.hostname,
+        docUH: uh.count,
+        cur: xdexDbgCookieTag(getCurrentCookie()),
+        lastUsed: xdexDbgCookieTag(getLastUsedCookie()),
+        data: data || null
+      };
+      console.log('[xdex-dbg] ' + entry.tag, data || '', '| cur=' + entry.cur, '| lastUsed=' + entry.lastUsed, '| docUH=' + entry.docUH);
+      let arr = [];
+      try { arr = JSON.parse(localStorage.getItem(XDEX_DBG_KEY) || '[]'); } catch (e) { arr = []; }
+      if (!Array.isArray(arr)) arr = [];
+      arr.push(entry);
+      while (arr.length > XDEX_DBG_MAX) arr.shift();
+      localStorage.setItem(XDEX_DBG_KEY, JSON.stringify(arr));
+    } catch (e) {}
+  }
+  /* ===== [TEMP-DBG] end ===== */
+// ===== 自定义饼干发送：只影响这一次 POST =====
+// 发送链路按 getXDexRuntimeInfo().kind 分流：
+//  - userscript：GM_xmlhttpRequest + 显式 Cookie 头（不触碰 cookie jar，严格隔离）
+//  - chrome-extension：DNR 会话规则只改发帖 POST（严格隔离），被拒则退回临时切换
+//  - chrome-extension-limited：没有 DNR，退回临时切换
+//  - qwqnt：Electron 客户端，GM 请求走 IPC 无法携带 FormData → 临时切换 document.cookie
+function setExtensionCookieRule(cookieValue, enable) {
+  return new Promise((resolve, reject) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+      reject(new Error('扩展环境不可用'));
+      return;
+    }
+    chrome.runtime.sendMessage(
+      { type: 'xdex:dnr:cookie-rule', enable: !!enable, cookie: enable ? 'userhash=' + cookieValue : '' },
+      (resp) => {
+        const err = chrome.runtime.lastError;
+        if (err) { reject(new Error(err.message || '扩展通信失败')); return; }
+        if (!resp || resp.ok !== true) { reject(new Error((resp && resp.error) || '无法设置发送饼干')); return; }
+        resolve(true);
+      }
+    );
+  });
+}
+// 兜底：临时切换 document.cookie 后发请求，响应回来立即恢复。
+// 关键：保留原有 cookie 的“作用域形态”（host-only / domain），否则会留下影子 cookie，
+// 后续站点切换只更新其中一个，导致发送身份与界面显示不一致。
+function readAllUserhashCookieValues() {
+  const out = [];
+  String(document.cookie || '').split(';').forEach((part) => {
+    const item = part.trim();
+    if (item.startsWith('userhash=')) out.push(item.slice('userhash='.length));
+  });
+  return out;
+}
+function userhashApexDomain() {
+  const host = location.hostname;
+  if (/(^|\.)nmbxd1\.com$/i.test(host)) return '.nmbxd1.com';
+  if (/(^|\.)nmbxd\.com$/i.test(host)) return '.nmbxd.com';
+  return '';
+}
+function writeUserhashCookie(value, options) {
+  const opts = options || {};
+  const parts = ['userhash=' + (value || ''), 'path=/'];
+  if (opts.domain) parts.push('domain=' + opts.domain);
+  if (opts.remove) parts.push('max-age=0');
+  document.cookie = parts.join('; ');
+}
+// 探测当前 userhash 存在于哪些作用域：{ host, domain, apex }
+function probeUserhashCookieScopes() {
+  const apex = userhashApexDomain();
+  const before = readAllUserhashCookieValues();
+  if (!apex) return { host: before.length ? before[0] : null, domain: null, apex };
+  writeUserhashCookie('', { domain: apex, remove: true });
+  const after = readAllUserhashCookieValues();
+  let domainValue = null;
+  if (after.length < before.length) {
+    // 被删掉的那个值即 domain 变体的值（同值时按计数差取）
+    const counts = new Map();
+    before.forEach((v) => counts.set(v, (counts.get(v) || 0) + 1));
+    after.forEach((v) => counts.set(v, (counts.get(v) || 0) - 1));
+    for (const [v, n] of counts) { if (n > 0) { domainValue = v; break; } }
+    writeUserhashCookie(domainValue, { domain: apex });
+  }
+  return { host: after.length ? after[0] : null, domain: domainValue, apex };
+}
+function installUserhashCookieForSend(value) {
+  const scopes = probeUserhashCookieScopes();
+  writeUserhashCookie('', { domain: scopes.apex, remove: true });
+  writeUserhashCookie('', { remove: true });
+  // 沿用原有作用域：原本是 domain cookie 就继续用 domain，避免再制造第二份
+  if (scopes.apex && scopes.domain !== null) writeUserhashCookie(value, { domain: scopes.apex });
+  else writeUserhashCookie(value);
+  const values = readAllUserhashCookieValues();
+  return { ok: values.length === 1 && values[0] === value, scopes };
+}
+function restoreUserhashCookieScopes(scopes) {
+  if (!scopes) return;
+  writeUserhashCookie('', { domain: scopes.apex, remove: true });
+  writeUserhashCookie('', { remove: true });
+  if (scopes.host !== null) writeUserhashCookie(scopes.host);
+  if (scopes.apex && scopes.domain !== null) writeUserhashCookie(scopes.domain, { domain: scopes.apex });
+}
+async function withSwappedUserhashCookie(cookieValue, task) {
+  // 允许当前没有站点饼干（游客）：发送后清空即可
+  const installed = installUserhashCookieForSend(cookieValue);
+  if (!installed.ok) {
+    restoreUserhashCookieScopes(installed.scopes);
+    throw new Error('无法写入自定义饼干（同名 Cookie 冲突），已阻止发送');
+  }
+  try {
+    return await task();
+  } finally {
+    restoreUserhashCookieScopes(installed.scopes);
+  }
+}
+// QwQNT：通过插件主进程请求，显式携带 Cookie。
+// 主进程 fetch 不受浏览器 cookie 规则限制；但 IPC 无法传 FormData，
+// 因此这里自己拼 multipart 字节后作为二进制发送。
+async function buildMultipartBody(fd, boundary) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const entries = [];
+  try {
+    for (const [name, value] of fd.entries()) entries.push([name, value]);
+  } catch (e) { return null; }
+  for (const [name, value] of entries) {
+    if (typeof value === 'string') {
+      chunks.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+    } else {
+      let bytes;
+      try { bytes = new Uint8Array(await value.arrayBuffer()); } catch (e) { continue; }
+      const filename = value.name || 'blob';
+      const type = value.type || 'application/octet-stream';
+      chunks.push(encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="${filename}"\r\nContent-Type: ${type}\r\n\r\n`));
+      chunks.push(bytes);
+      chunks.push(encoder.encode('\r\n'));
+    }
+  }
+  chunks.push(encoder.encode(`--${boundary}--\r\n`));
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  chunks.forEach((c) => { out.set(c, offset); offset += c.length; });
+  return out;
+}
+async function sendViaBridge(form, fd, cookieValue, controller, timeoutMs) {
+  const boundary = '----xdex' + Date.now().toString(16) + Math.random().toString(16).slice(2);
+  const body = await buildMultipartBody(fd, boundary);
+  if (!body) throw new Error('无法构造发送数据');
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const request = GM_xmlhttpRequest({
+      method: (form.method || 'POST').toUpperCase(),
+      url: form.action,
+      headers: {
+        Cookie: 'userhash=' + cookieValue,
+        'Content-Type': 'multipart/form-data; boundary=' + boundary
+      },
+      data: body,
+      timeout: timeoutMs,
+      onload: (resp) => { if (!settled) { settled = true; resolve(typeof resp.responseText === 'string' ? resp.responseText : ''); } },
+      onerror: () => { if (!settled) { settled = true; reject(new Error('发送失败，请检查网络或稍后重试')); } },
+      ontimeout: () => { if (!settled) { settled = true; reject(new Error('发送超时')); } }
+    });
+    if (controller && controller.signal) {
+      controller.signal.addEventListener('abort', () => { try { request.abort(); } catch (e) {} }, { once: true });
+    }
+  });
+}
+// 统一的 cookie 容器接口：QwQNT（主进程 xdexCookies）与扩展（__xdexCookies）
+// 都能读写 HttpOnly，避免用 document.cookie 时“看不到原值 → 写出第二枚”的错身份问题。
+function getJarCookieApi() {
+  if (typeof window === 'undefined') return '';
+  if (window.QwQNTNmbxd && typeof window.QwQNTNmbxd.xdexCookies === 'function') return 'qwqnt';
+  if (window.__xdexCookies && typeof window.__xdexCookies.getAll === 'function') return 'extension';
+  return '';
+}
+async function jarGetAllCookies(url) {
+  const api = getJarCookieApi();
+  if (api === 'qwqnt') {
+    const res = await window.QwQNTNmbxd.xdexCookies('getAll', {});
+    if (!res || res.ok !== true) throw new Error((res && res.error) || '饼干接口不可用');
+    return res.cookies || [];
+  }
+  if (api === 'extension') {
+    const list = await window.__xdexCookies.getAll({ url });
+    return Array.isArray(list) ? list : [];
+  }
+  throw new Error('没有可用的 cookie 接口');
+}
+async function jarSetCookie(details, url) {
+  const api = getJarCookieApi();
+  if (api === 'qwqnt') {
+    const res = await window.QwQNTNmbxd.xdexCookies('set', details);
+    if (!res || res.ok !== true) throw new Error((res && res.error) || '饼干接口不可用');
+    return;
+  }
+  if (api === 'extension') {
+    // 剔除 undefined 键：chrome.cookies.set 收到 domain:undefined 时行为不可靠，
+    // 而 host-only 语义正是靠"不传 domain"来表达的。
+    const clean = {};
+    Object.keys(details || {}).forEach((k) => {
+      if (details[k] !== undefined) clean[k] = details[k];
+    });
+    await window.__xdexCookies.set(Object.assign({ url }, clean));
+    return;
+  }
+  throw new Error('没有可用的 cookie 接口');
+}
+async function jarRemoveCookie(name, url) {
+  const api = getJarCookieApi();
+  if (api === 'qwqnt') {
+    const res = await window.QwQNTNmbxd.xdexCookies('remove', { name });
+    if (!res || res.ok !== true) throw new Error((res && res.error) || '饼干接口不可用');
+    return;
+  }
+  if (api === 'extension') {
+    await window.__xdexCookies.remove({ url, name });
+    return;
+  }
+  throw new Error('没有可用的 cookie 接口');
+}
+// 判定某枚 cookie 是否为 host-only（无 Domain 属性）。
+// Chrome 对象自带 hostOnly；缺失时按 domain 是否带前导点回退判断。
+function xdexCookieIsHostOnly(c) {
+  if (!c) return true;
+  if (typeof c.hostOnly === 'boolean') return c.hostOnly;
+  return !String(c.domain || '').startsWith('.');
+}
+// 由 cookie 自身的域/路径拼出一条可用于 remove/set 的 URL，避免只删掉其中一枚。
+function xdexCookieUrlOf(c) {
+  try {
+    const host = String((c && c.domain) || '').replace(/^\./, '') || location.hostname;
+    const path = (c && c.path) ? c.path : '/';
+    return 'https://' + host + path;
+  } catch (e) { return location.origin + '/'; }
+}
+function xdexDbgJarBrief(cookies) {
+  try {
+    return (cookies || []).filter(c => c && c.name === 'userhash').map(c => ({
+      v: String(c.value || '').slice(0, 6) + '..' + String(c.value || '').slice(-4),
+      d: c.domain || '(host-only)',
+      p: c.path,
+      h: !!c.httpOnly
+    }));
+  } catch (e) { return 'err'; }
+}
+async function withJarSwappedUserhash(cookieValue, task, url) {
+  const all = await jarGetAllCookies(url);
+  const targets = all.filter((c) => c && c.name === 'userhash');
+  const snapshot = targets.map((c) => ({
+    name: c.name, value: c.value, domain: c.domain, path: c.path,
+    secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite,
+    expirationDate: c.expirationDate, session: c.session,
+    hostOnly: xdexCookieIsHostOnly(c)
+  }));
+  const template = snapshot[0] || null;
+  // 【修复】一次性清掉所有同名 userhash 变体（host-only 与 domain 可能并存），
+  // 否则 remove 只会删中一枚，另一枚残留 → docUH 持续增长、检测与发送命中不同的那枚。
+  const removeAllUserhash = async () => {
+    for (const c of snapshot) {
+      try { await jarRemoveCookie('userhash', xdexCookieUrlOf(c)); } catch (e) {}
+    }
+    try { await jarRemoveCookie('userhash', url); } catch (e) {}
+  };
+  xdexDbg('jar:IN', { api: getJarCookieApi(), want: String(cookieValue || '').slice(0,6) + '..' + String(cookieValue || '').slice(-4), before: xdexDbgJarBrief(targets), templateDomain: template ? (template.domain || '(host-only)') : null, templateHttpOnly: template ? !!template.httpOnly : null });
+  const restore = async () => {
+    try {
+      await removeAllUserhash();
+      for (const c of snapshot) {
+        // 用该 cookie 自身的 host+path 作 url，保证还原到原位而非扩散到父域
+        await jarSetCookie({
+          name: c.name, value: c.value,
+          // 【修复】host-only 绝不能带 domain：带了 Domain 属性会被落成 domain cookie，
+          // 作用域从 www.nmbxd1.com 扩散到 .www.nmbxd1.com，与站点原 cookie 并存。
+          domain: c.hostOnly ? undefined : c.domain,
+          path: c.path,
+          secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite,
+          expirationDate: c.session ? undefined : c.expirationDate
+        }, xdexCookieUrlOf(c));
+      }
+    } catch (e) {}
+  };
+  let swapped = false;
+  try {
+    await removeAllUserhash();
+    let _afterRemove = null;
+    try { _afterRemove = xdexDbgJarBrief(await jarGetAllCookies(url)); } catch (e) { _afterRemove = 'err'; }
+    xdexDbg('jar:afterRemove', { remain: _afterRemove });
+    const _tplHostOnly = template ? !!template.hostOnly : true;
+    await jarSetCookie({
+      name: 'userhash',
+      value: cookieValue,
+      // 【修复】沿用模板的作用域形态：host-only 就不传 domain，避免扩散成 domain cookie
+      domain: (template && !_tplHostOnly) ? template.domain : undefined,
+      path: template ? template.path : '/',
+      secure: template ? !!template.secure : true,
+      httpOnly: template ? !!template.httpOnly : true,
+      sameSite: template ? template.sameSite : 'lax',
+      expirationDate: template && !template.session ? template.expirationDate : undefined
+    }, url);
+    swapped = true;
+    let _afterSet = null;
+    try { _afterSet = xdexDbgJarBrief(await jarGetAllCookies(url)); } catch (e) { _afterSet = 'err'; }
+    xdexDbg('jar:afterSet', { now: _afterSet });
+    return await task();
+  } catch (err) {
+    if (!swapped) err.xdexCookieApiFailed = true;
+    throw err;
+  } finally {
+    await restore();
+  }
+}
+async function sendWithCookieSwap(form, fd, cookieValue, controller) {
+  return withSwappedUserhashCookie(cookieValue, async () => {
+    const res = await fetch(form.action, {
+      method: form.method,
+      body: fd,
+      credentials: 'include',
+      signal: controller ? controller.signal : undefined
+    });
+    return res.text();
+  });
+}
+// 自定义饼干发送前校验：用该饼干取一次饼干管理页，明确是登录墙就阻止发送。
+// 网络异常时不阻断（交给服务端判定），结果按 10 分钟缓存，避免每次发送都多一次请求。
+const CUSTOM_COOKIE_CHECK_TTL_MS = 10 * 60 * 1000;
+let customCookieCheckState = { value: '', at: 0, ok: null };
+// 只认“明确的登录墙”：登录表单 / 跳到登录页 / 401·403。
+// 不再用“未登录”等字样判断——登录后的页面脚本里也可能出现这些词，会误杀有效饼干。
+// 注意：校验请求本身就是用候选饼干发出的，因此与“是不是当前账号”无关：
+// 只要这枚饼干有效（属于谁都行），该页面就会以对应身份正常渲染。
+function looksLikeLoginWall(status, finalUrl, text) {
+  if (status === 401 || status === 403) return true;
+  if (/\/Member\/User\/(?:Index\/)?Login/i.test(String(finalUrl || ''))) return true;
+  const body = String(text || '');
+  if (/<input\b[^>]*type\s*=\s*["']?password/i.test(body)) return true;
+  if (/<form\b[^>]*action\s*=\s*["'][^"']*\/Member\/User\/Login/i.test(body)) return true;
+  // 站点未登录/无权限时返回 ThinkPHP 跳转页：<div class="system-message"> + <p class="error">
+  if (/class\s*=\s*["'][^"']*system-message/i.test(body) && /class\s*=\s*["'][^"']*\berror\b/i.test(body)) return true;
+  // 页面里直接给出跳转登录页的链接
+  if (/href\s*=\s*["'][^"']*\/Member\/User\/(?:Index\/)?login\.html/i.test(body)) return true;
+  return false;
+}
+// 【已停用】以下两个函数是「主动探测」链路：用候选饼干 GET 饼干管理页来推断是否失效。
+// 停用原因：
+//   1) /Member/User/Cookie/index.html 本身不校验「饼干是否已应用」，对失效的自定义饼干
+//      也会正常返回 200，因此只能得出“页面打得开”，无法得出“饼干可用”——必然误报有效。
+//   2) 每次探测都会真实发起一次站点请求，并触发 cookie 临时替换/还原，有副作用。
+// 现行策略：失效与否只由「发送时服务器回执」判定；发送成功则清除标记。
+// 保留 looksLikeLoginWall（站点饼干切换链路仍在用），故仅注释本段。
+// async function fetchCustomCookieCheckPage(runtime, value) {
+//   // 与当前页面同源，兼容 nmbxd1.com / nmbxd.com 两种域名
+//   const url = location.origin + '/Member/User/Cookie/index.html';
+//   if (getJarCookieApi()) {
+//     // 与发送一致的精确替换：可读写 HttpOnly，避免预检读到旧身份
+//     try {
+//       return await withJarSwappedUserhash(value, async () => {
+//         const res = await fetch(url, { credentials: 'include' });
+//         return { status: res.status, finalUrl: res.url, text: await res.text() };
+//       }, url);
+//     } catch (err) {
+//       if (!err || !err.xdexCookieApiFailed) return null;   // 请求失败：不阻断发送
+//     }
+//   }
+//   if ((runtime.kind === 'userscript' || runtime.kind === 'qwqnt') && typeof GM_xmlhttpRequest === 'function') {
+//     return await new Promise((resolve) => {
+//       GM_xmlhttpRequest({
+//         method: 'GET',
+//         url,
+//         headers: { Cookie: 'userhash=' + value },
+//         timeout: 10000,
+//         onload: (resp) => resolve({ status: resp.status, finalUrl: resp.finalUrl || url, text: resp.responseText || '' }),
+//         onerror: () => resolve(null),
+//         ontimeout: () => resolve(null)
+//       });
+//     });
+//   }
+//   return await withSwappedUserhashCookie(value, async () => {
+//     const res = await fetch(url, { credentials: 'include' });
+//     const text = await res.text();
+//     return { status: res.status, finalUrl: res.url, text };
+//   });
+// }
+// async function ensureCustomCookieUsable(runtime, value, name, opts) {
+//   const force = !!(opts && opts.force);
+//   // 已判定失效：直接拦截，不再发起请求，也不受 10 分钟缓存影响。
+//   // 只有用户在设置里点击“已失效”胶囊强制复检时才绕过。
+//   if (!force && name && isCustomCookieMarkedInvalid(name)) {
+//     customCookieCheckState = { value: '', at: 0, ok: null };
+//     return false;
+//   }
+//   const now = Date.now();
+//   if (!force && customCookieCheckState.value === value && now - customCookieCheckState.at < CUSTOM_COOKIE_CHECK_TTL_MS) {
+//     return customCookieCheckState.ok;
+//   }
+//   let ok = true;
+//   let checked = false;
+//   let page = null;
+//   try {
+//     page = await fetchCustomCookieCheckPage(runtime, value);
+//     if (page) {
+//       ok = !looksLikeLoginWall(page.status, page.finalUrl, page.text);
+//       checked = true;
+//     }
+//   } catch (e) {
+//     ok = true;
+//   }
+//   customCookieCheckState = { value, at: now, ok };
+//   xdexDbg('check:RESULT', { name: name || null, ok: ok, checked: checked, status: (page && page.status) || null, finalUrl: (page && page.finalUrl) || null, valueLen: String(value || '').length, head: String(value || '').slice(0,6) + '..' + String(value || '').slice(-4) });
+//   // 只有“明确判定”才写标记；网络异常/未知不改变已有状态
+//   if (checked && name) markCustomCookieStatus(name, !ok);
+//   return ok;
+// }
+
+// 站点饼干：发送前强制再切一次。
+// 页面 cookie 与界面选择可能已经不同步（切换请求失败/跨域/残留影子 cookie），
+// 直接发送会用错误身份发言，因此这里以服务端切换为准，失败则阻止发送。
+async function ensureSiteCookieSession(cookie) {
+  const id = String((cookie && cookie.id) || '').trim();
+  if (!id || (cookie && cookie.custom)) return;
+  const url = location.origin + '/Member/User/Cookie/switchTo/id/' + encodeURIComponent(id) + '.html';
+  let res;
+  try {
+    res = await fetch(url, { credentials: 'include' });
+  } catch (e) {
+    throw new Error('切换饼干请求失败，已阻止发送（避免用错误身份发言）');
+  }
+  if (!res.ok) throw new Error('切换饼干失败（HTTP ' + res.status + '），已阻止发送');
+  try {
+    const text = await res.text();
+    if (looksLikeLoginWall(res.status, res.url, text)) {
+      throw new Error('切换饼干失败：页面未登录，已阻止发送');
+    }
+  } catch (e) {
+    if (e && /已阻止发送/.test(String(e.message || ''))) throw e;
+  }
+}
+
+// 解析任意站点饼干的真实 userhash：读取该饼干的导出页（含二维码文本），本地解析。
+// 这样发送时不再依赖“服务器会话当前是谁”，彻底避免“界面显示 B、实际用 A 发送”。
+const siteCookieValueCache = new Map();
+async function fetchSiteCookieUserhashValue(cookie) {
+  const id = String((cookie && cookie.id) || '').trim();
+  if (!id) return '';
+  if (siteCookieValueCache.has(id)) return siteCookieValueCache.get(id);
+  let value = '';
+  try {
+    const url = location.origin + '/Member/User/Cookie/export/id/' + encodeURIComponent(id) + '.html';
+    const res = await fetch(url, { credentials: 'include' });
+    if (res.ok) {
+      const text = await res.text();
+      const raw = parseCookieExportUserhash(text);
+      if (raw) {
+        const candidate = extractUserhashValue(raw);
+        if (isSafeUserhashForSend(candidate)) value = candidate;
+      }
+    }
+  } catch (e) {}
+  if (value) siteCookieValueCache.set(id, value);
+  return value;
+}
+
+// 返回服务器响应文本；与原有 fetch 分支保持同一语义
+async function sendSubmitRequest(form, fd, controller, timeoutMs) {
+  const selectedCookie = getCurrentCookie();
+  const signal = controller ? controller.signal : undefined;
+  const customSelected = isCustomCookie(selectedCookie);
+  let cookieValue = '';
+  if (customSelected) {
+    cookieValue = getCustomCookieValue(selectedCookie.name);
+    if (!cookieValue) throw new Error('自定义饼干内容缺失，请删除后重新导入（已阻止用站点饼干发送）');
+  } else if (selectedCookie && selectedCookie.id) {
+    // 站点饼干：解析出它的真实 userhash，发送时显式携带。
+    // 不再依赖“服务器会话当前是谁”，从根上避免“界面显示 B、实际用 A 发送”。
+    cookieValue = await fetchSiteCookieUserhashValue(selectedCookie);
+  }
+  // ★ 发送前登记本次身份：发送成功后 getLastPost/ref/thread 的确认必须带同一枚饼干
+  try { setPostHistorySendCookie(cookieValue || ''); } catch (e) {}
+  if (!cookieValue) {
+    // 解析失败（未登录 / 导出接口异常）：退回“发送前强制切换 + 浏览器 cookie”
+    if (selectedCookie && selectedCookie.id) await ensureSiteCookieSession(selectedCookie);
+    const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
+    return res.text();
+  }
+  const runtime = getXDexRuntimeInfo();
+  // 【已停用主动预检】原先会先用该饼干 GET 一次饼干管理页判断是否失效，
+  // 但该页不校验「是否已应用」，对自定义饼干永远返回“有效”——既无效又多一次请求。
+  // 也【不再拦截已标记失效的饼干】：标记可能只是“账号侧尚未应用”，用户去应用后重试即可成功；
+  // 发送成功分支会清除标记。这里仅作诊断输出，是否发送交给服务器回执判定。
+  if (customSelected && selectedCookie && selectedCookie.name && isCustomCookieMarkedInvalid(selectedCookie.name)) {
+    try { xdexDbg('send:attempt-while-invalid', { name: abbreviateName(selectedCookie.name) }); } catch (e) {}
+  }
+  try {
+    console.info('[xdex] 发送使用饼干：', (selectedCookie && (selectedCookie.name || selectedCookie.id)) || '未知',
+      '| source:', customSelected ? 'custom' : 'site-export', '| runtime:', runtime.kind);
+  } catch (e) {}
+  xdexDbg('send:USE', { source: customSelected ? 'custom' : 'site-export', runtime: runtime.kind, len: String(cookieValue || '').length, head: String(cookieValue || '').slice(0,6) + '..' + String(cookieValue || '').slice(-4), cookieName: selectedCookie ? abbreviateName(selectedCookie.name || '') : null });
+  if (runtime.kind === 'userscript' && typeof GM_xmlhttpRequest === 'function') {
+    // 脚本：显式 Cookie 头，完全不触碰 document.cookie
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const request = GM_xmlhttpRequest({
+        method: (form.method || 'POST').toUpperCase(),
+        url: form.action,
+        headers: { Cookie: 'userhash=' + cookieValue },
+        data: fd,
+        timeout: timeoutMs,
+        onload: (resp) => { if (!settled) { settled = true; resolve(typeof resp.responseText === 'string' ? resp.responseText : ''); } },
+        onerror: () => { if (!settled) { settled = true; reject(new Error('发送失败，请检查网络或稍后重试')); } },
+        ontimeout: () => { if (!settled) { settled = true; reject(new Error('发送超时')); } }
+      });
+      if (signal) signal.addEventListener('abort', () => { try { request.abort(); } catch (e) {} }, { once: true });
+    });
+  }
+  if (runtime.kind === 'chrome-extension') {
+    // Chrome 扩展：DNR 会话规则只改写发帖 POST 的 Cookie 头；被浏览器拒绝时退回临时切换
+    try {
+      await setExtensionCookieRule(cookieValue, true);
+    } catch (err) {
+      console.warn('[xdex] DNR 规则不可用，退回容器接口替换 cookie：', err && err.message ? err.message : err);
+      if (getJarCookieApi()) {
+        try {
+          return await withJarSwappedUserhash(cookieValue, async () => {
+            const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
+            return res.text();
+          }, form.action);
+        } catch (e2) {
+          if (!e2 || !e2.xdexCookieApiFailed) throw e2;
+        }
+      }
+      return sendWithCookieSwap(form, fd, cookieValue, controller);
+    }
+    try {
+      const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
+      return await res.text();
+    } finally {
+      setExtensionCookieRule('', false).catch(() => {});
+    }
+  }
+  if (runtime.kind === 'qwqnt') {
+    if (getJarCookieApi()) {
+      // 主进程 cookie 接口可读写 HttpOnly：精确替换后由页面 fetch 发送，发送完按原属性还原
+      try {
+        return await withJarSwappedUserhash(cookieValue, async () => {
+          const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
+          return res.text();
+        }, form.action);
+      } catch (err) {
+        if (!err || !err.xdexCookieApiFailed) throw err;   // 请求本身失败：不重试，避免重复发送
+        if (typeof GM_xmlhttpRequest !== 'function') throw err;
+        return sendViaBridge(form, fd, cookieValue, controller, timeoutMs);
+      }
+    }
+    if (typeof GM_xmlhttpRequest === 'function') {
+      // 没有 cookie 接口时退回桥接：显式 Cookie + 自建 multipart
+      return sendViaBridge(form, fd, cookieValue, controller, timeoutMs);
+    }
+  }
+  if (runtime.kind === 'chrome-extension-limited' && getJarCookieApi()) {
+    // 扩展有 chrome.cookies 权限：用容器接口精确替换（可读写 HttpOnly）
+    try {
+      return await withJarSwappedUserhash(cookieValue, async () => {
+        const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
+        return res.text();
+      }, form.action);
+    } catch (err) {
+      if (!err || !err.xdexCookieApiFailed) throw err;
+    }
+  }
+  // 没有容器接口时的最后兜底：临时切换 document.cookie（作用域保持一致）
+  return sendWithCookieSwap(form, fd, cookieValue, controller);
+}
+
+  const getCustomCookies = () => {
+    const raw = GM_getValue(CUSTOM_COOKIE_KEY, {});
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  };
+  const saveCustomCookies = (map) => { GM_setValue(CUSTOM_COOKIE_KEY, map && typeof map === 'object' ? map : {}); };
+  const isCustomCookie = (cookie) => !!(cookie && cookie.custom);
+  // 从 Cookie 串里取出 userhash 值（允许裸值或含 userhash= 的完整 Cookie）
+  // userhash 值会直接进入 document.cookie / 请求头，必须拒绝分号、空格与控制字符
+  function isSafeUserhashForSend(value) {
+    const v = String(value || '');
+    if (!v || v.length > CUSTOM_COOKIE_MAX_BYTES) return false;
+    for (let i = 0; i < v.length; i += 1) {
+      const code = v.charCodeAt(i);
+      if (code < 0x21 || code > 0x7e || code === 0x3b) return false;
+    }
+    return true;
+  }
+  function extractUserhashValue(cookie) {
+    const raw = String(cookie || '').trim();
+    if (!raw) return '';
+    const hit = raw.split(';').map(part => part.trim()).find(part => part.startsWith('userhash='));
+    return (hit ? hit.slice('userhash='.length) : raw).trim();
+  }
+  function validateCustomCookie(name, cookie) {
+    const n = String(name || '').trim();
+    if (!n || n.length > 120) return { ok: false, error: '饼干名称无效（1–120 字符）' };
+    if (/[\x00-\x1f\x7f/\\:*?"<>|]/.test(n)) return { ok: false, error: '饼干名称包含非法字符' };
+    const value = extractUserhashValue(cookie);
+    if (!value) return { ok: false, error: '饼干内容为空' };
+    if (value.length > CUSTOM_COOKIE_MAX_BYTES) return { ok: false, error: '饼干内容过长（上限 8KB）' };
+    for (let i = 0; i < value.length; i += 1) {
+      const code = value.charCodeAt(i);
+      if (code < 0x20 || code > 0x7e) return { ok: false, error: '饼干包含非法字符（需为可打印 ASCII）' };
+    }
+    if (value.includes(';')) return { ok: false, error: '饼干格式无效（不能包含分号）' };
+    return { ok: true, name: n, value };
+  }
+  function upsertCustomCookie(name, cookie) {
+    const checked = validateCustomCookie(name, cookie);
+    if (!checked.ok) return checked;
+    const map = getCustomCookies();
+    const existed = map[checked.name];
+    if (existed && existed.cookie !== checked.value) {
+      return { ok: false, error: `同名饼干「${checked.name}」已存在且内容不同` };
+    }
+    const now = Date.now();
+    map[checked.name] = {
+      name: checked.name,
+      cookie: checked.value,
+      addedAt: existed && existed.addedAt ? existed.addedAt : now,
+      updatedAt: now
+    };
+    saveCustomCookies(map);
+    // 同名同值重新导入时保留原有失效标记；换了值则清除
+    try { reconcileCustomCookieStatus(checked.name, checked.value); } catch (e) {}
+    return { ok: true, name: checked.name, created: !existed };
+  }
+  function deleteCustomCookie(name) {
+    const map = getCustomCookies();
+    if (!Object.prototype.hasOwnProperty.call(map, name)) return false;
+    delete map[name];
+    saveCustomCookies(map);
+    markCustomCookieStatus(name, false);
+    return true;
+  }
+  const getCustomCookieValue = (name) => {
+    const entry = getCustomCookies()[name];
+    return entry && entry.cookie ? entry.cookie : '';
+  };
+  // 当前选中的自定义饼干值（站点饼干返回空串，交给浏览器自带 cookie）
+  function getSelectedCustomCookieValue(cookie) {
+    if (!isCustomCookie(cookie)) return '';
+    return getCustomCookieValue(cookie.name);
+  }
+
+  // 百分号解码：刻意不把 + 当作空格（标准 Base64 的 + 会被破坏）
+  function percentDecodeStrict(value) {
+    const src = String(value || '');
+    let out = '';
+    for (let i = 0; i < src.length; i += 1) {
+      const ch = src[i];
+      if (ch !== '%') { out += ch; continue; }
+      const hex = src.slice(i + 1, i + 3);
+      if (!/^[0-9a-fA-F]{2}$/.test(hex)) throw new Error('链接包含无效的百分号编码');
+      out += String.fromCharCode(parseInt(hex, 16));
+      i += 2;
+    }
+    try {
+      return decodeURIComponent(escape(out));
+    } catch (e) {
+      throw new Error('链接参数编码无效');
+    }
+  }
+  function base64ToUtf8(b64) {
+    const normalized = String(b64 || '').replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  // 标准二维码链接 → 返回 base64 载荷；不匹配返回 null（视为普通图片链接）
+  function parseStandardQrcodeUrl(input) {
+    let u;
+    try { u = new URL(input); } catch (e) { return null; }
+    if (!/^https?:$/.test(u.protocol)) return null;
+    if (u.hostname !== 'publicapi.ovear.info' || u.pathname !== '/qrcode.php') return null;
+    if (u.username || u.password || u.port || u.hash) return null;
+    const pairs = String(u.search || '').replace(/^\?/, '').split('&').filter(Boolean);
+    let text = null, base64Flag = null;
+    for (const pair of pairs) {
+      const eq = pair.indexOf('=');
+      const key = percentDecodeStrict(eq < 0 ? pair : pair.slice(0, eq));
+      const val = percentDecodeStrict(eq < 0 ? '' : pair.slice(eq + 1));
+      if (key === 'text') {
+        if (text !== null) return null;
+        text = val;
+      } else if (key === 'base64') {
+        if (base64Flag !== null) return null;
+        base64Flag = val;
+      }
+    }
+    if (base64Flag !== '1' || text === null) return null;
+    return text;
+  }
+  function fetchBinaryForQr(url, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      if (typeof GM_xmlhttpRequest !== 'function') { reject(new Error('当前环境不支持下载图片')); return; }
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        responseType: 'blob',
+        timeout: timeoutMs || 15000,
+        onload: (resp) => {
+          if (resp.status >= 200 && resp.status < 300 && resp.response) resolve(resp.response);
+          else reject(new Error('图片下载失败（HTTP ' + resp.status + '）'));
+        },
+        onerror: () => reject(new Error('图片下载失败')),
+        ontimeout: () => reject(new Error('图片下载超时'))
+      });
+    });
+  }
+  async function decodeQrFromImageBlob(blob) {
+    if (typeof window.jsQR !== 'function') throw new Error('图片解码库未加载，请改用链接或 JSON 导入');
+    let bitmap;
+    try { bitmap = await createImageBitmap(blob); } catch (e) { throw new Error('无法读取该图片'); }
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('无法解析该图片');
+    ctx.drawImage(bitmap, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const result = window.jsQR(imageData.data, imageData.width, imageData.height);
+    if (!result || !result.data) throw new Error('未能从图片中识别二维码');
+    return result.data;
+  }
+  function normalizeImportedCookiePayload(text) {
+    let obj;
+    try { obj = JSON.parse(String(text || '').trim()); } catch (e) { throw new Error('二维码内容不是有效的 JSON'); }
+    if (!obj || typeof obj.name !== 'string' || typeof obj.cookie !== 'string') {
+      throw new Error('内容需要包含 name 与 cookie 字段');
+    }
+    const checked = validateCustomCookie(obj.name, obj.cookie);
+    if (!checked.ok) throw new Error(checked.error);
+    return { name: checked.name, cookie: checked.value };
+  }
+  // 统一入口：接受 JSON 文本 / 标准二维码链接 / 任意二维码图片链接
+  async function parseCustomCookieInput(rawInput) {
+    const input = String(rawInput || '').trim();
+    if (!input) throw new Error('请输入二维码链接、图片链接或 JSON');
+    if (input.startsWith('{')) return normalizeImportedCookiePayload(input);
+    const base64Payload = parseStandardQrcodeUrl(input);
+    if (base64Payload !== null) return normalizeImportedCookiePayload(base64ToUtf8(base64Payload));
+    if (/^https?:\/\//i.test(input)) {
+      const blob = await fetchBinaryForQr(input);
+      const text = await decodeQrFromImageBlob(blob);
+      return normalizeImportedCookiePayload(text);
+    }
+    throw new Error('无法识别的输入：请粘贴二维码链接、二维码图片链接或 {"name":…,"cookie":…}');
+  }
+  const isCookieListUnavailable = (list) => (!list || Object.keys(list).length === 0) && Object.keys(getCustomCookies()).length === 0;
   const getLikelyActiveCookie = () => getCurrentCookie() || getLastUsedCookie();
   const COOKIE_USERHASH_DIGEST_CACHE_KEY = 'xdex-cookie-userhash-digests';
   const cookieDigestInflight = new Map();
@@ -6353,7 +7413,7 @@ ${markedSwatchHtml}
     if (cookieDigestInflight.has(id)) return cookieDigestInflight.get(id);
     const promise = (async () => {
       try {
-        const resp = await gmRequest(`https://www.nmbxd1.com/Member/User/Cookie/export/id/${encodeURIComponent(id)}.html`, 'text');
+        const resp = await gmRequest(`${location.origin}/Member/User/Cookie/export/id/${encodeURIComponent(id)}.html`, 'text');
         const raw = parseCookieExportUserhash(resp.responseText || '');
         const digest = await digestUserhash(raw);
         return digest ? Object.assign(getCookieDigestCacheEntry(cookie), { digest }) : null;
@@ -6418,7 +7478,21 @@ ${markedSwatchHtml}
       $d.text('待确认').css('color','red');
     } else if(cur){
       const nm = abbreviateName(cur.name);
-      $d.text(nm + (cur.desc ? ' - ' + cur.desc : '')).css('color','#000');
+      const suffix = isCustomCookie(cur) ? '' : (cur.desc ? ' - ' + cur.desc : '');
+      const invalid = isCustomCookie(cur) && isCustomCookieMarkedInvalid(cur.name);
+      $d.text(nm + suffix + (invalid ? '（已失效）' : ''))
+        .toggleClass('xdex-cookie-invalid', invalid)
+        .css('color', invalid ? '#e53935' : (isCustomCookie(cur) ? '#006666' : '#000'))
+        .attr('title', invalid ? '该自定义饼干已失效，仍会尝试发送；请重新导入或确认账号侧已应用' : '');
+      if (invalid) {
+        // 【已停用】主动复检：GET 饼干管理页无法反映「是否已应用」，对自定义饼干只会误报有效。
+        // 改为引导：确认账号侧已应用后重新尝试发送，发送成功会自动清除标记。
+        $d.off('click.xdex-recheck').on('click.xdex-recheck', () => {
+          toast('请确认该饼干在其所属账号的用户中心已应用，然后重新尝试发送；发送成功会自动清除失效标记', 3000, { queue: false, key: 'cookie-recheck' });
+        });
+      } else {
+        $d.off('click.xdex-recheck');
+      }
     } else {
       $d.text('无饼干').css('color','red');
       //showLoginPrompt(); // 这里触发
@@ -6565,18 +7639,37 @@ ${markedSwatchHtml}
   }
   function updateDropdownUI(list){
     const $dd = $('#cookie-dropdown'); $dd.empty();
-    const ids = Object.keys(list);
-    ids.forEach(id=>{
-      const c=list[id];
-      const txt=abbreviateName(c.name)+(c.desc?' - '+c.desc:'');
-      $dd.append(`<option value="${id}">${txt}</option>`);
+    const siteIds = Object.keys(list || {});
+    const customEntries = Object.values(getCustomCookies());
+    const appendGroup = (label, entries, render) => {
+      if (!entries.length) return;
+      const $group = $('<optgroup>').attr('label', label);
+      entries.forEach((entry) => {
+        const opt = render(entry);
+        if (opt) $group.append(opt);
+      });
+      if ($group.children().length) $dd.append($group);
+    };
+    // 站点饼干（服务器权威列表）
+    appendGroup('站点饼干', siteIds.map(id => list[id]), (c) => {
+      if (!c) return null;
+      const txt = abbreviateName(c.name) + (c.desc ? ' - ' + c.desc : '');
+      return $('<option>').attr('value', c.id).text(txt);
+    });
+    // 自定义饼干（独立存储，刷新服务器列表不会丢失）
+    appendGroup('自定义饼干', customEntries, (c) => {
+      if (!c || !c.name) return null;
+      // 只在选项里标注来源；失效的额外标红字提示
+      const _inv = isCustomCookieMarkedInvalid(c.name);
+      const invalidTag = _inv ? '（已失效）' : '';
+      return $('<option>').attr('value', 'custom:' + c.name).text(abbreviateName(c.name) + '「自定义」' + invalidTag);
     });
     const cur = getCurrentCookie();
-    if (cur && list[cur.id]) {
-      $dd.val(cur.id);
-    } else {
-      $dd.val(ids[0] || '');
-    }
+    const values = $dd.find('option').map((_, el) => el.value).get();
+    const want = cur ? (isCustomCookie(cur) ? 'custom:' + cur.name : cur.id) : '';
+    if (want && values.includes(want)) $dd.val(want);
+    else $dd.val(values[0] || '');
+    xdexDbg('dropdown:SET', { want: want || null, inValues: values.includes(want), finalVal: $dd.val() || null, storedNow: xdexDbgCookieTag(getCurrentCookie()), firstOpt: values[0] || null });
     removeDateString();
   }
   function scheduleCookieDropdownFocusRestore(dropdown, delay = 120) {
@@ -6630,7 +7723,18 @@ ${markedSwatchHtml}
         nextItem.scrollIntoView({ block: 'nearest' });
       }
     }
+    let lastGroupLabel = null;
     options.forEach((option) => {
+      const groupLabel = option.parentElement && option.parentElement.tagName === 'OPTGROUP'
+        ? (option.parentElement.getAttribute('label') || '')
+        : '';
+      if (groupLabel && groupLabel !== lastGroupLabel) {
+        lastGroupLabel = groupLabel;
+        const header = document.createElement('div');
+        header.textContent = groupLabel;
+        header.style.cssText = 'padding:6px 12px 2px;font-size:12px;color:#888;user-select:none;';
+        menu.appendChild(header);
+      }
       const isSelected = option.value === selectedValue;
       const item = document.createElement('button');
       item.type = 'button';
@@ -6706,13 +7810,38 @@ ${markedSwatchHtml}
       onFail && onFail();
       return;
     }
+    xdexDbg('switch_cookie:IN', { kind: isCustomCookie(cookie) ? 'custom' : 'site', name: abbreviateName(cookie.name || ''), id: cookie.id });
+    // 自定义饼干：只影响发送链路，绝不触碰站点会话 / document.cookie
+    if (isCustomCookie(cookie)) {
+      if (!getCustomCookieValue(cookie.name)) {
+        if (!silent) toast('该自定义饼干已被删除，请重新导入', 0, { type: 'error' });
+        onFail && onFail();
+        return;
+      }
+      xdexDbg('LAST_USED:write', { kind: 'custom', name: abbreviateName(cookie.name || '') });
+      GM_setValue('now-cookie', cookie);
+      GM_setValue(LAST_USED_COOKIE_KEY, cookie);
+      xdexDbg('switch_cookie:OK', { kind: 'custom', now: xdexDbgCookieTag(getCurrentCookie()) });
+      if (opts.focusBackNow) restorePostTextareaFocus();
+      updateCurrentCookieDisplay(cookie);
+      updateDropdownUI(getCookiesList());
+      removeDateString();
+      updatePreviewCookieId();
+      if (!silent) toast('已选择自定义饼干 ' + abbreviateName(cookie.name) + '（仅用于发送）');
+      onDone && onDone(cookie);
+      return;
+    }
     // ★ 选择即回归焦点：不等网络往返，避免换饼期间（网络延迟时）阻塞用户输入
     if (opts.focusBackNow) restorePostTextareaFocus();
-    $.get(`https://www.nmbxd1.com/Member/User/Cookie/switchTo/id/${cookie.id}.html`)
+    // 必须同源：在 nmbxd.com 页面里请求 nmbxd1.com 的切换接口只会改动另一个域的 cookie
+    xdexDbg('switchTo:REQ', { id: cookie.id, name: abbreviateName(cookie.name || ''), origin: location.origin });
+    $.get(`${location.origin}/Member/User/Cookie/switchTo/id/${cookie.id}.html`)
       .done(()=>{
         if (!silent) toast('切换成功! 当前饼干为 '+abbreviateName(cookie.name));
+        xdexDbg('LAST_USED:write', { kind: 'site', id: cookie.id, name: abbreviateName(cookie.name || '') });
         GM_setValue('now-cookie',cookie);
         GM_setValue(LAST_USED_COOKIE_KEY,cookie);
+        xdexDbg('switch_cookie:OK', { kind: 'site', now: xdexDbgCookieTag(getCurrentCookie()) });
         updateCurrentCookieDisplay(cookie);
         updateDropdownUI(getCookiesList());
         removeDateString();
@@ -6723,6 +7852,7 @@ ${markedSwatchHtml}
       })
       .fail(()=>{
         if (!silent) toast('切换失败，请重试', 0, { type: 'error' });
+        xdexDbg('switchTo:FAIL', { id: cookie.id, name: abbreviateName(cookie.name || '') });
         onFail && onFail();
       });
   }
@@ -6730,6 +7860,7 @@ ${markedSwatchHtml}
       const ids = Object.keys(list || {});
       if (!ids.length) return false;
       const cur = getCurrentCookie();
+      if (isCustomCookie(cur)) return false;   // 自定义饼干只影响发送，不被站点饼干自动替换
       if (cur && list[cur.id]) return false;
       const lastUsed = getLastUsedCookie();
       const preferred = lastUsed && list[lastUsed.id] ? list[lastUsed.id] : null;
@@ -6757,10 +7888,12 @@ ${markedSwatchHtml}
   function refreshCookies(cb, showToast = true, opts = {}){
     GM_xmlhttpRequest({
       method:'GET',
-      url:'https://www.nmbxd1.com/Member/User/Cookie/index.html',
+      url:`${location.origin}/Member/User/Cookie/index.html`,
       onload: async r=>{
         if(r.status!==200){ toast('刷新失败 HTTP '+r.status, 0, { type: 'error' }); return cb&&cb(); }
         const doc=new DOMParser().parseFromString(r.responseText,'text/html');
+        // 列表刷新意味着饼干可能变化，清掉本次会话解析出的 userhash 缓存
+        try { siteCookieValueCache.clear(); } catch (e) {}
         const rows=doc.querySelectorAll('tbody>tr'), list={};
         rows.forEach(row=>{
           const tds=row.querySelectorAll('td');
@@ -6784,20 +7917,40 @@ ${markedSwatchHtml}
         }
         let cur=getCurrentCookie();
         let deletedActualCookie = null;
-        if (cookieListUnavailableState) {
+        xdexDbg('refresh:IN', { curIn: xdexDbgCookieTag(cur), lastUsed: xdexDbgCookieTag(getLastUsedCookie()), unavailable: cookieListUnavailableState, actual: actualCookieBeforeSync ? (actualCookieBeforeSync.id + '/' + abbreviateName(actualCookieBeforeSync.name || '')) : null, ids0: Object.keys(list)[0], ids0name: (list[Object.keys(list)[0]] || {}).name });
+        if (isCustomCookie(cur)) {
+          // 自定义饼干与浏览器会话无关，刷新列表时保持当前选择
+          xdexDbg('branch=custom-guard', { cur: xdexDbgCookieTag(cur) });
+        } else if (cur && list[cur.id]) {
+          // 【修复】用户的明确选择优先：cookie 反推只用于诊断，绝不覆盖用户选择。
+          // 原实现在此无条件用 document.cookie 反推的身份覆盖，导致切页后被改回其它饼干。
+          const _actualTag = actualCookieBeforeSync
+            ? (actualCookieBeforeSync.id + '/' + abbreviateName(actualCookieBeforeSync.name || ''))
+            : null;
+          if (_actualTag && String(actualCookieBeforeSync.id) !== String(cur.id)) {
+            // 浏览器实际身份与界面选择不一致：只记录，不改变选择
+            xdexDbg('branch=keep-explicit', { keep: xdexDbgCookieTag(cur), cookieSays: _actualTag });
+          } else {
+            xdexDbg('branch=keep-explicit', { keep: xdexDbgCookieTag(cur) });
+          }
+        } else if (cookieListUnavailableState) {
           cur = await getLikelyActiveCookieAsync();
           if (!cur) cur = null;
+          xdexDbg('branch=unavailable', { after: xdexDbgCookieTag(cur) });
         } else if (actualCookieBeforeSync && actualCookieBeforeSync.id) {
           if (list[actualCookieBeforeSync.id]) {
             cur = list[actualCookieBeforeSync.id];
+            xdexDbg('branch=actual-adopt', { from: null, to: xdexDbgCookieTag(cur) });
           } else {
             deletedActualCookie = actualCookieBeforeSync;
             cur = null;
             GM_setValue('now-cookie', null);
+            xdexDbg('branch=actual-deleted', { actual: actualCookieBeforeSync.id });
           }
-        } else if(cur && !list[cur.id]) cur=null;
+        } else if (cur && !isCustomCookie(cur) && !list[cur.id]) { cur = null; xdexDbg('branch=stale-reset', {}); }
         // 若已登录且有饼干列表，但当前未应用任何饼干，则优先自动应用最近使用的饼干，否则应用第一个
         if (!cur && Object.keys(list).length) {
+          xdexDbg('autoApply:enter', { curNull: true, lastUsed: xdexDbgCookieTag(getLastUsedCookie()), ids0: Object.keys(list)[0], ids0name: (list[Object.keys(list)[0]] || {}).name });
           const started = autoApplyFirstCookieIfNeeded(list, {
             silent: true,
             showDefaultToast: !deletedActualCookie,
@@ -6817,10 +7970,12 @@ ${markedSwatchHtml}
           });
           if (started) return;
         }
+        xdexDbg('refresh:OUT', { curOut: xdexDbgCookieTag(cur) });
         GM_setValue('now-cookie',cur);
         updateCurrentCookieDisplay(cur);
         removeDateString();
         updatePreviewCookieId();
+        xdexDbg('refresh:WROTE', { curWritten: xdexDbgCookieTag(getCurrentCookie()) });
         // === 新增：检测是否无饼干，触发登录提示 ===
         const $display = $('#current-cookie-display');
         const $dropdown = $('#cookie-dropdown');
@@ -7078,6 +8233,7 @@ ${markedSwatchHtml}
     const checkLoginState = (onDone) => {
       if (isChecking) return;
       isChecking = true;
+      xdexDbg('CALLER=login-poll', {});
       refreshCookies(() => {
         isChecking = false;
         const hasCookies = Object.keys(getCookiesList() || {}).length > 0;
@@ -7294,12 +8450,23 @@ ${markedSwatchHtml}
     }
     // 单击下拉项即切换饼干
     $('#cookie-dropdown').on('change', function(){
-      const sel = $(this).val();
+      const sel = String($(this).val() || '');
       const l = getCookiesList();
-      if(!Object.keys(l).length) return showLoginPrompt();
-      if(!sel) return toast('请选择饼干', 0, { type: 'error' });
-      // focusBackNow：选择瞬间即交还焦点，不等 switch_cookie 的网络往返
-      l[sel] ? switch_cookie(l[sel], { focusBackNow: true }) : toast('饼干信息无效', 0, { type: 'error' });
+      if (!Object.keys(l).length && !Object.keys(getCustomCookies()).length) return showLoginPrompt();
+      if (!sel) return toast('请选择饼干', 0, { type: 'error' });
+      if (sel.startsWith('custom:')) {
+        const name = sel.slice('custom:'.length);
+        const entry = getCustomCookies()[name];
+        if (!entry) {
+          toast('该自定义饼干已被删除', 0, { type: 'error' });
+          updateDropdownUI(l);
+          return;
+        }
+        switch_cookie({ id: sel, name: entry.name, desc: '自定义', custom: true }, { focusBackNow: true });
+      } else {
+        // focusBackNow：选择瞬间即交还焦点，不等 switch_cookie 的网络往返
+        l[sel] ? switch_cookie(l[sel], { focusBackNow: true }) : toast('饼干信息无效', 0, { type: 'error' });
+      }
       scheduleCookieDropdownFocusRestore(this, 120);
       if (!this.__focusBackTarget) delete this.__openedValue;
     });
@@ -7333,6 +8500,7 @@ ${markedSwatchHtml}
       window.__loginPromptShown = false;
       const _rcBtn = e.currentTarget;
       if (_rcBtn) _rcBtn.classList.add('xdex-icon-loading');
+      xdexDbg('CALLER=manual-button', {});
       refreshCookies(() => { if (_rcBtn) _rcBtn.classList.remove('xdex-icon-loading'); }, true, { manualPrompt: true });
     });
   }
@@ -7713,6 +8881,10 @@ ${markedSwatchHtml}
           } catch (e) {}
         }
       });
+    } else if (isCustomCookie(cur)) {
+      // 预览展示的是“这次发送使用的身份”，因此用自定义饼干名，而不是页面会话
+      $uid.text('ID:' + abbreviateName(cur.name)).css('color', '');
+      cookieListUnavailableState = false;
     } else {
       const name=cur&&cur.name?abbreviateName(cur.name):'无饼干';
       $uid.text('ID:'+name).css('color', '');
@@ -13729,17 +14901,19 @@ ${markedSwatchHtml}
       ':root.xdex-custom-dark #cookie-confirm-list .h-threads-info-uid { color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark #cookie-confirm-actions button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border: 1px solid ' + D('#bbb') + ' !important; border-radius: 6px; cursor: pointer; }',
       // 设置面板分组输入行（标记/屏蔽/只看/常用串/订阅/关键词）：容器去白底、输入框深底浅字、徽标/删除钮暗底
-      ':root.xdex-custom-dark #marked-inputs-container > div > div, :root.xdex-custom-dark #blocked-inputs-container > div > div, :root.xdex-custom-dark #favorite-thread-inputs-container > div > div, :root.xdex-custom-dark #subscription-feed-inputs-container > div > div, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container > div > div, :root.xdex-custom-dark #blocked-keyword-inputs-container > div > div { background: ' + D('#fafafa') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      ':root.xdex-custom-dark #sp_custom_cookie_list > div > div, :root.xdex-custom-dark #marked-inputs-container > div > div, :root.xdex-custom-dark #blocked-inputs-container > div > div, :root.xdex-custom-dark #favorite-thread-inputs-container > div > div, :root.xdex-custom-dark #subscription-feed-inputs-container > div > div, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container > div > div, :root.xdex-custom-dark #blocked-keyword-inputs-container > div > div { background: ' + D('#fafafa') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
       // input 深底浅字，但排除 xdex-switch（正则开关保红/蓝语义）
-      ':root.xdex-custom-dark #marked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #favorite-thread-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #subscription-feed-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
+      ':root.xdex-custom-dark #sp_custom_cookie_list input:not(.xdex-switch), :root.xdex-custom-dark #marked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #favorite-thread-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #subscription-feed-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container input:not(.xdex-switch), :root.xdex-custom-dark #blocked-keyword-inputs-container select { background: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
       // button 深底浅字，但排除 marked-color-swatch（保持用户选定的标记色）
-      ':root.xdex-custom-dark #marked-inputs-container button:not(.marked-color-swatch), :root.xdex-custom-dark #blocked-inputs-container button, :root.xdex-custom-dark #favorite-thread-inputs-container button, :root.xdex-custom-dark #subscription-feed-inputs-container button, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container button, :root.xdex-custom-dark #blocked-keyword-inputs-container button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
-      ':root.xdex-custom-dark #marked-inputs-container span, :root.xdex-custom-dark #blocked-inputs-container span, :root.xdex-custom-dark #favorite-thread-inputs-container span, :root.xdex-custom-dark #subscription-feed-inputs-container span, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container span, :root.xdex-custom-dark #blocked-keyword-inputs-container span { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; }',
+      ':root.xdex-custom-dark #sp_custom_cookie_list button:not(.marked-color-swatch), :root.xdex-custom-dark #marked-inputs-container button:not(.marked-color-swatch), :root.xdex-custom-dark #blocked-inputs-container button, :root.xdex-custom-dark #favorite-thread-inputs-container button, :root.xdex-custom-dark #subscription-feed-inputs-container button, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container button, :root.xdex-custom-dark #blocked-keyword-inputs-container button { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; border-color: ' + D('#a98f7a') + ' !important; }',
+      ':root.xdex-custom-dark #sp_custom_cookie_list span, :root.xdex-custom-dark #marked-inputs-container span, :root.xdex-custom-dark #blocked-inputs-container span, :root.xdex-custom-dark #favorite-thread-inputs-container span, :root.xdex-custom-dark #subscription-feed-inputs-container span, :root.xdex-custom-dark #thread-cookie-whitelist-inputs-container span, :root.xdex-custom-dark #blocked-keyword-inputs-container span { background: ' + D('#fafafa') + ' !important; color: ' + F('#800000') + ' !important; }',
       // 常用串菜单（脚本自建侧栏）
       ':root.xdex-custom-dark .xdex-fav-threads-menu, :root.xdex-custom-dark .xdex-fav-threads-menu * { background-color: ' + D('#fff') + ' !important; color: ' + F('#800000') + ' !important; }',
       ':root.xdex-custom-dark .xdex-fav-threads-menu .h-active, :root.xdex-custom-dark .xdex-fav-threads-menu .h-active * { background: ' + D('#ea8') + ' !important; }',
       // 饼干切换模块：当前饼干名白色字体（含异常红色状态排除）
       ':root.xdex-custom-dark #current-cookie-display { color: #d8d7d4 !important; }',
+      '#current-cookie-display.xdex-cookie-invalid { color: #e53935 !important; cursor: pointer; text-decoration: underline dotted; }',
+      ':root.xdex-custom-dark #current-cookie-display.xdex-cookie-invalid { color: #ff6b60 !important; }',
       ':root.xdex-custom-dark #current-cookie-display[style*="red"], :root.xdex-custom-dark #current-cookie-display[style*="rgb(255, 0, 0)"] { color: #e85248 !important; }',
       // 折叠占位按钮（发送表单可选项/关键词/饼干屏蔽折叠区通用）
       ':root.xdex-custom-dark .xdex-placeholder.xdex-generic-toggle, :root.xdex-custom-dark .xdex-placeholder { background: ' + D('#fafafa') + ' !important; color: ' + F('#888') + ' !important; border-color: ' + D('#bbb') + ' !important; }',
@@ -14243,13 +15417,11 @@ ${markedSwatchHtml}
             // 检查是否存在打开的颜文字面板
             const openKaomojiPanel = document.querySelector('.kaomoji-panel[style*="display: grid"]');
             if (openKaomojiPanel) {
-                // 触发颜文字函数内的关闭逻辑（模拟点击空白或ESC）
-                openKaomojiPanel.style.display = 'none';
-                // 若有全局绑定的 hidePanel 函数（例如触发按钮附近定义的），触发它
+                // 统一出口：派发 kaomoji:hide，由面板实例走正规 hidePanel()
+                // （解绑全局监听、停跟随、移除键盘导航；直接裸改 style 会残留这些监听）
                 const hideEvent = new CustomEvent('kaomoji:hide');
                 document.dispatchEvent(hideEvent);
-                //openKaomojiPanel.style.display = 'none';
-                // ★ 新增：关闭颜文字面板后聚焦到浮窗内的 textarea
+                // ★ 关闭颜文字面板后聚焦到浮窗内的 textarea
                 const ta = overlay?.querySelector('textarea[name="content"]');
                 if (ta) {
                   ta.focus();
@@ -15248,6 +16420,7 @@ ${markedSwatchHtml}
     }
     if (typeof refreshCookies === 'function') {
       try {
+        xdexDbg('CALLER=after-send', {});
         refreshCookies(() => {
           try {
             if (typeof updatePreviewCookieId === 'function') {
@@ -15290,7 +16463,8 @@ ${markedSwatchHtml}
     if (existing) return existing;
     if (heic2anyApiPromise) return heic2anyApiPromise;
     const runtime = getXDexRuntimeInfo();
-    const isExtension = runtime && runtime.kind === 'extension';
+    // 只有拿到 chrome.runtime.getURL 的打包环境才能走 loader 桥接（QwQNT 若没有该 shim 会退回普通加载）
+    const isExtension = !!(runtime && runtime.packaged && runtime.hasChromeRuntime && typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.getURL === 'function');
     heic2anyApiPromise = (async () => {
       // Extension：通过 loader 桥接加载（解决 MAIN world ↔ ISOLATED world 隔离问题）
       // heic2any-loader.js 在 MAIN world 加载 heic2any 并通过 postMessage 提供转换服务
@@ -17255,14 +18429,9 @@ ${markedSwatchHtml}
           }, timeoutMs);
           form.__submitAbortTimer = abortTimer;
         }
-        // 用 Promise 包一层：fetch 同步抛错时也能进入 .catch，避免状态提示滞留
-        return Promise.resolve().then(() => fetch(form.action, {
-          method: form.method,
-          body: fd,
-          credentials: 'include',
-          signal: controller ? controller.signal : undefined
-        }))
-        .then(res => res.text())
+        // 用 Promise 包一层：请求同步抛错时也能进入 .catch，避免状态提示滞留。
+        // sendSubmitRequest 内部按当前饼干分流：站点饼干走 fetch，自定义饼干只影响这一次 POST
+        return Promise.resolve().then(() => sendSubmitRequest(form, fd, controller, timeoutMs))
         .then(async html => {
           // 收到服务器响应 = 结果已确定（成功或业务错误）：
           // 撤销本次请求的看门狗与中止计时器，避免后续图片转换/递归重试期间旧计时器误报。
@@ -17288,8 +18457,26 @@ ${markedSwatchHtml}
           if (successMsg) {
             // 与触底/手动局部刷新一致：快速即时 toast，不走默认队列
             toast(successMsg.textContent.trim() || (isReply ? '回复成功' : '发串成功'), 900, { queue: false, key: 'send-status' });
+            // 服务器已接受 → 该自定义饼干确定有效，清除失效标记与「未应用」计数
+            try {
+              const sc = getCurrentCookie();
+              if (isCustomCookie(sc) && sc.name) markCustomCookieStatus(sc.name, false);
+            } catch (e) {}
             // 服务器明确回执成功 → 本饼干进入 15s 冷却（失败不进入）
             try { startCookieCooldown(); } catch (e) {}
+            // ★ 发送成功：把“本次发送所用饼干”交给发言历史确认链
+            //   自定义饼干不在浏览器 jar 里，getLastPost 必须显式携带它才能查到
+            try {
+              const _sent = getCurrentCookie();
+              if (isCustomCookie(_sent)) {
+                setPostHistorySendCookie(getCustomCookieValue(_sent.name) || '');
+              } else {
+                // 站点饼干：与发送同源地解析出它的 userhash（已按 id 缓存），避免依赖会话
+                fetchSiteCookieUserhashValue(_sent).then((value) => {
+                  setPostHistorySendCookie(value || '');
+                }).catch(() => setPostHistorySendCookie(''));
+              }
+            } catch (e) {}
             const { confirmPromise, localId } = snapshotSubmittedPostHistory(fd, { isPost, isReply, form });
             // 清空输入框、图片、草稿及身份字段，并广播成功事件
             clearSuccessfulSubmitForm();
@@ -17325,10 +18512,33 @@ ${markedSwatchHtml}
             runSuccessfulSubmitNavigation(confirmPromise);
           } else if (errorMsg) {
             const msg = errorMsg.textContent.trim() || '提交失败';
+            let displayMsg = msg;
+            let cookieInvalid = false;
+            // 「未应用饼干」不等于饼干失效：有效饼干只要没在所属账号的用户中心应用过，
+            // 服务器也会这样回执。因此这里不写死失效标记，只提示用户去账号侧确认；
+            // 若确认已应用后重试仍失败，则判定为失效；一旦发送成功会清除标记。
+            try {
+              const sc = getCurrentCookie();
+              const notApplied = /未应用饼干|用户中心应用饼干/.test(msg);
+              const explicitlyDead = /并没有权限|已失效|饼干无效|请先登录|未登录/.test(msg);
+              if (isCustomCookie(sc) && sc.name && (notApplied || explicitlyDead)) {
+                // 不再区分“未应用/失效”两态：每次都给出同一条提示，由用户自行确认。
+                // 明确的登录墙回执才写失效标记（用于列表标红），其余只提示、不清不写。
+                cookieInvalid = true;   // 本轮按饼干问题处理，不进图片转换等重试链
+                // 服务器给出该回执即视为“当前不可用”：直接标记失效，便于用户在列表里看到；
+                // 不计数、不升级、不拦截——每次发送仍会重试并给出同一条提示。
+                markCustomCookieStatus(sc.name, true, '服务器提示：' + msg.slice(0, 40));
+                displayMsg = '服务器提示「' + msg + '」。'
+                  + '可能是该饼干尚未在其所属账号的用户中心应用，也可能已失效；请自行确认后重试。发送成功会自动清除标记';
+                customCookieCheckState = { value: '', at: 0, ok: null };
+                updateCurrentCookieDisplay(sc);
+                updateDropdownUI(getCookiesList());
+              }
+            } catch (e) {}
             // 服务端回执里带「冷却时间[N]s」→ 按服务器给出的剩余秒数校准显示
             // （仅在该饼干已有成功计时记录时生效，失败提交本身不创造冷却）
             try { syncCookieCooldownFromServer(msg); } catch (e) {}
-            const errorKind = classifySubmitError(msg);
+            const errorKind = cookieInvalid ? 'cookie-invalid' : classifySubmitError(msg);
             const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
             // 图片格式不被服务器接受（如 WebP）：转换为 PNG 后重新提交
             if (errorKind === 'image-format' && !isRetry && !prepared) {
@@ -17392,7 +18602,7 @@ ${markedSwatchHtml}
             if (errorKind === 'image-size') {
               if (!cfg.interceptReplyFormAutoCompress) {
                 try {
-                  toast(msg, 0, { type: 'error', key: 'send-error' });
+                  toast(displayMsg, 0, { type: 'error', key: 'send-error' });
                 } catch (e) {
                   console.warn('[interceptReplyForm] toast error for image-size message:', msg, e);
                 }
@@ -17641,6 +18851,17 @@ ${markedSwatchHtml}
         }
       }
       lockSubmit(form);
+      // 【不再硬拦截】已标记失效的自定义饼干仍允许尝试发送：
+      // 「未应用饼干」可能只是账号侧尚未应用，用户去应用后重试即可成功；
+      // 硬拦截会让这条恢复路径走不通。这里只做提示，是否发送由用户决定，
+      // 一旦发送成功，成功分支会自动清除失效标记。
+      try {
+        const _selectedCookie = getCurrentCookie();
+        if (isCustomCookie(_selectedCookie) && _selectedCookie.name && isCustomCookieMarkedInvalid(_selectedCookie.name)) {
+          updateCurrentCookieDisplay(_selectedCookie);
+          toast('该饼干此前被判为失效，仍将尝试发送。若再次提示未应用，请到其所属账号的用户中心应用后重试', 2600, { queue: false, key: 'send-error' });
+        }
+      } catch (e) {}
       // ── 发送前饼干确认（含串内偏好检查） ──
       const _cookieConfirmCfg = typeof getFilterConfig === "function" ? getFilterConfig() : {};
       const _cookieConfirmEnabled = _cookieConfirmCfg.enableCookieSwitch && _cookieConfirmCfg.enableCookieConfirm;
@@ -17659,7 +18880,11 @@ ${markedSwatchHtml}
           };
           if (_pref) {
             const _cookieList = getCookiesList();
-            if (!findCookieByHash(_cookieList, _pref.hash)) {
+            const _prefIsCustom = _pref.kind === 'custom';
+            const _prefAlive = _prefIsCustom
+              ? !!getCustomCookies()[String(_pref.name || '')]
+              : !!findCookieByHash(_cookieList, _pref.hash);
+            if (!_prefAlive) {
               // 默认饼干已失效
               toast('本串默认饼干已失效，请重新选择', 0, { type: 'error' });
               showCookieConfirmDialog(_threadId, (selectedHash) => {
@@ -17671,14 +18896,20 @@ ${markedSwatchHtml}
             }
             const _curCookie = getCurrentCookie();
             const _curHash = _curCookie ? abbreviateName(_curCookie.name) : '';
-            if (_curHash === _pref.hash) {
+            const _prefMatched = _prefIsCustom
+              ? (isCustomCookie(_curCookie) && _curCookie.name === _pref.name)
+              : (!isCustomCookie(_curCookie) && _curHash === _pref.hash);
+            if (_prefMatched) {
               // 匹配 → 直接发送
               _doSend();
               return;
             }
             // 不匹配 → 弹窗，预选偏好饼干
             showCookieConfirmDialog(_threadId, (selectedHash, pinnedHash) => {
-              if (pinnedHash) setThreadCookiePref(_threadId, pinnedHash);
+              if (pinnedHash) {
+                if (pinnedHash.indexOf('custom:') === 0) setThreadCustomCookiePref(_threadId, pinnedHash.slice('custom:'.length));
+                else setThreadCookiePref(_threadId, pinnedHash);
+              }
               if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
               _doSend();
             }, () => { unlockSubmit(form); }, { preselectHash: _pref.hash });
@@ -18023,7 +19254,7 @@ ${markedSwatchHtml}
       value: dropdown.value,
       hasShowPicker: typeof dropdown.showPicker === 'function'
     });
-    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
+    if (XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged)) {
       return openCookieShortcutMenu(dropdown, focusBackTarget);
     }
     if (typeof dropdown.showPicker === 'function') {
@@ -19960,6 +21191,9 @@ ${markedSwatchHtml}
               }
             }
             document.body.appendChild(panel);
+            // kaomoji:hide = 关闭本面板的全局出口（回复浮窗 ESC/遮罩都会派发）。
+            // hidePanel 幂等：未打开时重复调用无副作用；多个面板实例各自监听、各自关闭
+            document.addEventListener('kaomoji:hide', () => { hidePanel(); });
             function getQuoteElement() {
               // 仅当当前触发器本身位于回复面板中时，才跟随 qp-quote 定位
               // 避免默认页面场景误命中页面上其他/隐藏的 qp-quote，导致面板贴边
@@ -20108,9 +21342,16 @@ ${markedSwatchHtml}
                 }
                 // 捕获阶段执行，防止被其他脚本阻止
                 const target = e.target;
-                // 回复浮窗遮罩（.qp-overlay 内、.qp-quote 之外）：交给站点关闭浮窗。
-                // 编辑模式随浮窗关闭统一退出，这里不再“点外部即收面板”，避免同一次点击触发两套关闭逻辑
+                // 回复浮窗遮罩（.qp-overlay 内、.qp-quote 之外）：
+                // 面板打开时，第一次点击只收面板（与 ESC 行为一致），吞掉该次点击，
+                // 防止浮窗遮罩的同一次 click 立即关闭浮窗；面板未开则放行给浮窗关闭逻辑。
+                // 编辑模式随浮窗关闭统一退出，这里不再“点外部即收面板”的旧语义。
                 if (target && target.closest && target.closest('.qp-overlay') && !target.closest('.qp-quote')) {
+                    if (e.type === 'click' && panel.style.display === 'grid') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        hidePanel();
+                    }
                     return;
                 }
                 // 模态层（添加弹窗 / 二次确认）：关闭它们不应连带收起颜文字面板
@@ -20271,7 +21512,7 @@ ${markedSwatchHtml}
               "₍˄·͈༝·͈˄₎◞","⁽ ˇᐜˇ⁾","⁽ ˆ꒳ˆ⁾","⁽ ^ᐜ^⁾","⁽´°`⁾","⁽´ᵖ`⁾","⁽ ˙³˙⁾","⁽°ᵛ°⁾","⁽ `ᵂ´⁾",
               "( ;ˇωˇ; )","(　‸ო‸)","(　‸ω‸)","(　^ω。)","/̵͇̿̿/’̿’̿ ̿ ̿̿ ̿̿ ̿̿","( ;´ω`)人 ","_(:зゝ∠)_","(　ﾟ 灬ﾟ)","( `д´)7","(ᗜᴗᗜ)","(～ﾟωﾟ)～",
               "接☆龙☆大☆成☆功","ᑭ`д´)ᓀ ∑ᑭ(`ヮ´ )ᑫ","乚 (^ω^ ﾐэ)Э好钩我咬","乚(`ヮ´  ﾐэ)Э","( ﾟ∀。ﾐэ)Э三三三三　乚",
-              "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低",
+              "(ˇωˇ ﾐэ)Э三三三三　乚","(‸ω‸ ﾐэ)Э","( へ ﾟ∀ﾟ)べ摔低低","(ベ ˇωˇ)べ 摔低低","█",
           ];
           const EXTRA_RICH = {
               "҉( ﾟ∀。)": "　　҉\n( ﾟ∀。)",
@@ -23630,7 +24871,8 @@ function 注册自动保存编辑() {
   }
   const CHANGELOG = parseVersionAndChangelogFromMeta(GM_info.scriptMetaStr || '').changelog || '';
   function getUpdateCheckStorageKey() {
-    return XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? UPDATE_EXTENSION_CHECK_KEY : UPDATE_CHECK_KEY;
+    const packagedRuntime = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+    return packagedRuntime ? UPDATE_EXTENSION_CHECK_KEY : UPDATE_CHECK_KEY;
   }
   function getDefaultUpdateCheckState() {
     return {
@@ -23723,7 +24965,7 @@ function 注册自动保存编辑() {
     };
   }
   function getUpdateCheckRequestsForRuntime() {
-    if (XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension') {
+    if (XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged)) {
       return [
         () => fetchExtensionUpdateJson(UPDATE_EXTENSION_GITHUB_JSON_URL, 'github'),
         () => fetchExtensionUpdateJson(UPDATE_EXTENSION_JSDELIVR_JSON_URL, 'jsdelivr')
@@ -23740,7 +24982,8 @@ function 注册自动保存编辑() {
     valid.sort((a, b) => compareVersionStrings(b.version, a.version));
     const topVersion = valid[0].version;
     const topCandidates = valid.filter(item => compareVersionStrings(item.version, topVersion) === 0);
-    const preferredSource = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' ? 'github' : 'greasyfork';
+    const packagedRuntime = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+    const preferredSource = packagedRuntime ? 'github' : 'greasyfork';
     const preferred = topCandidates.find(item => item.source === preferredSource) || topCandidates[0];
     return preferred;
   }
@@ -23904,7 +25147,8 @@ function 注册自动保存编辑() {
       const requests = getUpdateCheckRequestsForRuntime();
       const settled = await Promise.allSettled(requests.map((request) => request()));
       const sourceResults = settled.map((item, index) => {
-        const source = XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension'
+        const packagedRuntime = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+        const source = packagedRuntime
           ? (index === 0 ? 'github' : 'jsdelivr')
           : (index === 0 ? 'greasyfork' : 'scriptcat');
         if (item.status === 'fulfilled') {
@@ -24234,7 +25478,11 @@ function 注册自动保存编辑() {
     // console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
   }
   function shouldUseExtensionNativeImageContextMenu(cfg) {
-    return !!(XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension' && cfg && cfg.enableImageContextMenu);
+    // 打包运行时（Chrome 扩展 / QwQNT）都有宿主自带的右键菜单：
+    // 扩展有 chrome.contextMenus，QwQNT 的 webview 原生菜单可以直接“复制图片”。
+    // 这类环境不要再注入页面内的自定义菜单，避免遮住原生菜单。
+    const packaged = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+    return !!(packaged && cfg && cfg.enableImageContextMenu);
   }
   function openImageContextMenu(context, x, y) {
     const menu = getImageContextMenu();
@@ -24852,6 +26100,20 @@ function 注册自动保存编辑() {
   const POST_HISTORY_REF_API_FALLBACK_BASE = 'https://api.nmb.best/api';
   const POST_HISTORY_THREAD_API_BASE = 'https://api.nmb.best/api';
   const POST_HISTORY_GET_LAST_POST_RETRY_DELAYS = [300, 800, 1500, 2500];
+  // ★ 发送后确认窗口：getLastPost 按 Cookie 识别“我刚发的帖”。
+  //   用自定义饼干发送时，浏览器 jar 里并不是这枚饼干，若不显式携带就会查不到，
+  //   导致发言历史停在“未确认”、串号/饼干信息缺失。
+  let postHistorySendCookieValue = '';
+  let postHistorySendCookieTimer = 0;
+  function setPostHistorySendCookie(value) {
+    postHistorySendCookieValue = String(value || '');
+    if (postHistorySendCookieTimer) clearTimeout(postHistorySendCookieTimer);
+    if (postHistorySendCookieValue) {
+      // 覆盖 getLastPost(0-3s) + thread/showf 回退的最长耗时
+      postHistorySendCookieTimer = setTimeout(() => { postHistorySendCookieValue = ''; postHistorySendCookieTimer = 0; }, 60000);
+    }
+  }
+  function getPostHistorySendCookie() { return postHistorySendCookieValue || ''; }
   const POST_HISTORY_CONFIRM_TIMEOUT_MS = 10000;
   const POST_HISTORY_REPLIES_PER_PAGE = 19;
   const POST_HISTORY_MATCH_TIME_WINDOW_MS = 45000;
@@ -25562,12 +26824,15 @@ function 注册自动保存编辑() {
     }
   }
   function schedulePostHistoryStorePersist(normalized) {
+    // ★ 即时落盘：a952e18 之后跨标签同步走小版本键，全量 GM_setValue 不再是卡顿源；
+    //   150ms 合并窗口失去意义，还会让刚拿到的信息延迟可见。旧实现注释保留备用。
     postHistoryPersistPending = normalized;
-    if (postHistoryPersistTimer) return;
-    postHistoryPersistTimer = setTimeout(() => {
-      postHistoryPersistTimer = 0;
-      flushPostHistoryStorePersist();
-    }, POST_HISTORY_PERSIST_DEBOUNCE_MS);
+    flushPostHistoryStorePersist();
+    // if (postHistoryPersistTimer) return;
+    // postHistoryPersistTimer = setTimeout(() => {
+    //   postHistoryPersistTimer = 0;
+    //   flushPostHistoryStorePersist();
+    // }, POST_HISTORY_PERSIST_DEBOUNCE_MS);
   }
   // 页面关闭/隐藏前兜底落盘，避免窗口期内最后一次写丢失
   if (typeof document !== 'undefined' && !window.__xdexPostHistoryPersistFlushBound) {
@@ -25614,17 +26879,19 @@ function 注册自动保存编辑() {
     setPostHistoryStore(store);
   }
   function schedulePostHistoryFieldPatchFlush() {
-    if (postHistoryFieldPatchTimer) return;
-    postHistoryFieldPatchTimer = setTimeout(() => {
-      postHistoryFieldPatchTimer = 0;
-      try {
-        if (typeof requestIdleCallback === 'function') {
-          requestIdleCallback(() => { try { flushPostHistoryFieldPatches(); } catch (e) {} }, { timeout: POST_HISTORY_FIELD_PATCH_FLUSH_MS + 3500 });
-          return;
-        }
-      } catch (e) { /* 回退直接执行 */ }
-      try { flushPostHistoryFieldPatches(); } catch (e) {}
-    }, POST_HISTORY_FIELD_PATCH_FLUSH_MS);
+    // ★ 即时落盘：回填字段拿到就写，不再等 1500ms + idle 窗口。旧实现注释保留备用。
+    try { flushPostHistoryFieldPatches(); } catch (e) {}
+    // if (postHistoryFieldPatchTimer) return;
+    // postHistoryFieldPatchTimer = setTimeout(() => {
+    //   postHistoryFieldPatchTimer = 0;
+    //   try {
+    //     if (typeof requestIdleCallback === 'function') {
+    //       requestIdleCallback(() => { try { flushPostHistoryFieldPatches(); } catch (e) {} }, { timeout: POST_HISTORY_FIELD_PATCH_FLUSH_MS + 3500 });
+    //       return;
+    //     }
+    //   } catch (e) { /* 回退直接执行 */ }
+    //   try { flushPostHistoryFieldPatches(); } catch (e) {}
+    // }, POST_HISTORY_FIELD_PATCH_FLUSH_MS);
   }
     // ★ 借道确认：发送链已拉取的 thread 数据直接回填 pending 记录的缺失字段。
   // 零新增请求、字段立即落盘（替代原 fallback 的独立 API 链与延迟写）。
@@ -25977,6 +27244,34 @@ function 注册自动保存编辑() {
   function fetchPostHistorySameOriginText(url, context, stage) {
     const label = stage || 'post history api';
     logPostHistory(label + ' request', Object.assign({}, context || {}, { url }));
+    const sendCookie = getPostHistorySendCookie();
+    if (sendCookie) {
+      // 与发送同身份地查询：扩展/QwQNT 用容器接口精确替换，脚本端用 GM 显式 Cookie
+      const viaGm = () => new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url,
+          headers: { Cookie: 'userhash=' + sendCookie },
+          timeout: 10000,
+          onload: (resp) => resolve({ status: resp.status, statusText: '', responseText: resp.responseText || '', response: resp.responseText || '', finalUrl: resp.finalUrl || url }),
+          onerror: () => reject(new Error('post history api error')),
+          ontimeout: () => reject(new Error('post history api timeout'))
+        });
+      });
+      const viaPlainFetch = () => fetch(url, { credentials: 'include', cache: 'no-store' })
+        .then((resp) => resp.text().then((text) => ({
+          status: resp.status, statusText: resp.statusText, responseText: text, response: text, finalUrl: resp.url || url
+        })));
+      if (getJarCookieApi()) {
+        // 容器接口精确替换 jar；若接口不可用，退回 GM 显式 Cookie（仍保持同一身份）
+        return withJarSwappedUserhash(sendCookie, () => viaPlainFetch(), url)
+          .catch((err) => {
+            if (err && err.xdexCookieApiFailed && typeof GM_xmlhttpRequest === 'function') return viaGm();
+            throw err;
+          });
+      }
+      if (typeof GM_xmlhttpRequest === 'function') return viaGm();
+    }
     return fetch(url, { credentials: 'include', cache: 'no-store' }).then(resp => {
       return resp.text().then(text => {
         logPostHistory(label + ' response', Object.assign({}, context || {}, {
@@ -26002,7 +27297,7 @@ function 注册自动保存编辑() {
     return fetchPostHistorySameOriginText(url, context, 'getLastPost').then(resp => parseLastPostResponse(resp, context));
   }
   function getPostHistoryApiCookieHeaders() {
-    const userhash = getCurrentBrowserUserhash();
+    const userhash = getPostHistorySendCookie() || getCurrentBrowserUserhash();
     return userhash ? { Cookie: `userhash=${userhash}` } : null;
   }
   function buildPostHistoryImageFile(img, ext) {
@@ -26210,13 +27505,15 @@ function 注册自动保存编辑() {
   function schedulePostHistoryThreadFallback(localId, snapshot) {
     const run = () => { try { completePostHistoryFromThreadFallback(localId, snapshot, 0); } catch (e) { logPostHistory('thread fallback schedule error', { localId, error: e && e.message ? e.message : String(e) }, 'warn'); } };
     const IDLE_DELAY_MS = 5000;
-    try {
-      if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(() => setTimeout(run, 0), { timeout: IDLE_DELAY_MS + 3000 });
-        return;
-      }
-    } catch (e) { /* 回退 setTimeout */ }
-    setTimeout(run, IDLE_DELAY_MS);
+    // ★ 即时执行：写入已改为即时，错峰到空闲时段不再有意义，反而拖慢 fid/页码补齐。旧实现注释保留备用。
+    run();
+    // try {
+    //   if (typeof requestIdleCallback === 'function') {
+    //     requestIdleCallback(() => setTimeout(run, 0), { timeout: IDLE_DELAY_MS + 3000 });
+    //     return;
+    //   }
+    // } catch (e) { /* 回退 setTimeout */ }
+    // setTimeout(run, IDLE_DELAY_MS);
   }
   async function completePostHistoryFromThreadFallback(localId, snapshot, retryAttempt) {
     if (!snapshot || snapshot.type !== 'reply' || !String(snapshot.resto || '').trim()) {
@@ -26605,7 +27902,16 @@ function 注册自动保存编辑() {
       contentRaw,
       contentText,
       contentHash: hashPostHistoryText(contentText),
-      userHash: '',
+      // 先按“本次发送所选饼干”占位（自定义饼干不在浏览器 jar 里，留空会导致待发记录没有饼干信息），
+      // 确认成功后会被服务端返回的 user_hash 覆盖
+      userHash: (function () {
+        try {
+          const _c = getCurrentCookie();
+          return _c ? abbreviateName(_c.name || '') : '';
+        } catch (e) {
+          return '';
+        }
+      })(),
       submittedAt,
       confirmedAt: 0,
       sourceUrl: location.href,
@@ -29375,7 +30681,11 @@ function 注册自动保存编辑() {
         const matchedCookie = userHash
           ? Object.values(cookieList).find(c => abbreviateName(c.name || '') === userHash)
           : null;
-        if (userHash && !matchedCookie) {
+        // 自定义饼干同样视为“已在列表中”，不弹缺失提示
+        const matchedCustomCookie = userHash
+          ? Object.values(getCustomCookies()).find(c => abbreviateName(c.name || '') === userHash)
+          : null;
+        if (userHash && !matchedCookie && !matchedCustomCookie) {
           if (!window.confirm('No.' + (replyId || postId) + ' 对应的饼干 ' + userHash + ' 不在当前列表之中，是否确认添加？')) {
             $btn.prop('disabled', false).text('手动添加');
             return;
@@ -29937,7 +31247,7 @@ function 注册自动保存编辑() {
     const $m = $(`
       <div id="subscription-feed-picker-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">
         <div class="subscription-feed-picker-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.4);"></div>
-        <div class="subscription-feed-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="subscription-feed-picker-title" style="position:relative;display:flex;flex-direction:column;width:420px;max-width:calc(100vw - 32px);min-height:min(280px, calc(100vh - 32px));max-height:min(80vh, calc(100vh - 32px));box-sizing:border-box;background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow:hidden;">
+        <div class="subscription-feed-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="subscription-feed-picker-title" style="position:relative;display:flex;flex-direction:column;width:420px;max-width:calc(100vw - 32px);min-height:min(280px, calc(100dvh - 24px));max-height:min(78vh, calc(100dvh - 24px));box-sizing:border-box;background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow:hidden;">
           <h3 id="subscription-feed-picker-title" style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);flex:0 0 auto;">选择订阅号</h3>
           <p style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted-foreground, #666);font-size:13px;flex:0 0 auto;">
             <span>订阅 <span id="subscription-feed-picker-tid"></span> 到：</span>
@@ -30062,11 +31372,13 @@ function 注册自动保存编辑() {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
-        updateFocus(focusedIndex + 1);
+        const total = $items().length;
+        updateFocus(total ? (focusedIndex + 1) % total : 0);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         e.stopPropagation();
-        updateFocus(focusedIndex - 1);
+        const total = $items().length;
+        updateFocus(total ? (focusedIndex - 1 + total) % total : 0);
       } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
@@ -30168,9 +31480,18 @@ function 注册自动保存编辑() {
     const cookieList = getCookiesList();
     const currentCookie = getCurrentCookie();
     const currentId = currentCookie ? String(currentCookie.id) : '';
-    // 与饼干下拉列表排序一致（Object.keys 顺序）
-    const allCookies = Object.keys(cookieList).map(id => cookieList[id]);
+    // 与饼干下拉列表排序一致：先站点饼干，再自定义饼干（分开成组展示）
+    const siteCookies = Object.keys(cookieList).map(id => cookieList[id]);
+    const customCookies = Object.values(getCustomCookies())
+      .filter(c => c && c.name)
+      .map(c => ({ id: 'custom:' + c.name, name: c.name, desc: '自定义', custom: true }));
+    const allCookies = siteCookies.concat(customCookies);
     const pref = getThreadCookiePref(threadId);
+    // 默认饼干可能是自定义项（kind:custom），此时不参与 findCookieByHash
+    const prefIsCustom = !!(pref && pref.kind === 'custom');
+    const defaultMarkerName = prefIsCustom
+      ? (String(pref.name || '') + '「自定义」')
+      : ((findCookieByHash(cookieList, pref && pref.hash) || {}).name || (pref && pref.hash) || '');
     let selectedId = currentId;
     if (preselectHash) {
       const match = allCookies.find(c => abbreviateName(c.name) === preselectHash);
@@ -30180,10 +31501,11 @@ function 注册自动保存编辑() {
     const $m = $(
         '<div id="cookie-confirm-modal" tabindex="-1" style="position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;outline:none;">' +
         '<div class="cookie-confirm-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.4);"></div>' +
-        '<div class="cookie-confirm-dialog" style="position:relative;display:flex;flex-direction:column;width:360px;max-width:calc(100vw - 32px);max-height:min(80vh, calc(100vh - 32px));background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow:hidden;">' +
+        // 高度约束：上不超视口 78%（距底 ≥22%），下不低于 180px；超长时仅列表区滚动
+        '<div class="cookie-confirm-dialog" style="position:relative;display:flex;flex-direction:column;width:360px;max-width:calc(100vw - 32px);height:auto;min-height:180px;max-height:min(78vh, calc(100dvh - 24px));background:var(--xdex-sp-panel-bg, #FFFFEE);border:1px solid var(--xdex-sp-border, #ccc);border-radius:8px;box-shadow:0 2px 12px var(--xdex-sp-shadow, rgba(0,0,0,.25));padding:16px;overflow:hidden;">' +
           '<h3 style="margin:0 0 8px;font-size:16px;color:var(--foreground, #333);flex:0 0 auto;">' + (mode === 'setDefault' ? '设置默认饼干' : '确认饼干') + '</h3>' +
-          '<p style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;color:var(--muted-foreground, #666);font-size:13px;flex:0 0 auto;"><span>当前串 <font color="#789922">No.' + threadId + '</font></span>' + (pref ? '<span style="color:#ffb300;font-size:11px;">默认: ' + (abbreviateName((findCookieByHash(cookieList, pref.hash) || {}).name || pref.hash || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim()) + '</span>' : '') + '</p>' +
-          '<div id="cookie-confirm-scroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:2px;">' +
+          '<p style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;color:var(--muted-foreground, #666);font-size:13px;flex:0 0 auto;"><span>当前串 <font color="#789922">No.' + threadId + '</font></span>' + (pref ? '<span style="color:#ffb300;font-size:11px;">默认: ' + abbreviateName(defaultMarkerName).replace(/ - 0000-00-00 00:00:00$/g, '').trim() + '</span>' : '') + '</p>' +
+          '<div id="cookie-confirm-scroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:4px;scrollbar-gutter:stable;">' +
             '<div id="cookie-confirm-list"></div>' +
           '</div>' +
           '<div id="cookie-confirm-tail-spacer" style="flex:0 0 auto;height:48px;flex-shrink:0;"></div>' +
@@ -30201,17 +31523,31 @@ function 注册自动保存编辑() {
       const selName = sel ? abbreviateName(sel.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim() : '';
       const prefNow = getThreadCookiePref(threadId);
       const defaultHash = prefNow ? prefNow.hash : '';
-      const isSelDefault = defaultHash && selHash === defaultHash;
+      const isSelDefault = !!prefNow && (
+        (prefNow.kind === 'custom' && sel && sel.custom && sel.name === prefNow.name) ||
+        (prefNow.kind !== 'custom' && sel && !sel.custom && selHash === defaultHash)
+      );
+      const selIsInvalid = sel && sel.custom && getCustomCookieState(sel.name) === 'invalid';
+      const invalidTag = selIsInvalid ? '（已失效）' : '';
       if (mode === 'setDefault') {
         $m.find('#cookie-confirm-ok').text('将' + selName + '设为默认');
       } else if (selectedId === currentId) {
-        $m.find('#cookie-confirm-ok').text('使用当前饼干发送' + (isSelDefault ? '（默认）' : ''));
+        $m.find('#cookie-confirm-ok').text('使用当前饼干发送' + (isSelDefault ? '（默认）' : '') + invalidTag);
       } else {
-        $m.find('#cookie-confirm-ok').text('切换到 ' + selName + ' 并发送' + (isSelDefault ? '（默认）' : ''));
+        $m.find('#cookie-confirm-ok').text('切换到 ' + selName + ' 并发送' + (isSelDefault ? '（默认）' : '') + invalidTag);
       }
     }
     const $list = $m.find('#cookie-confirm-list');
+    const groupHeader = (label) => $('<div>').attr('data-cookie-group', label)
+      .css({ padding: '6px 2px 2px', fontSize: '12px', color: 'var(--muted-foreground, #888)', userSelect: 'none' })
+      .text(label);
+    let lastGroup = null;
     allCookies.forEach(cookie => {
+      const group = cookie.custom ? '自定义饼干' : '站点饼干';
+      if (group !== lastGroup) {
+        lastGroup = group;
+        $list.append(groupHeader(group));
+      }
       const id = String(cookie.id);
       const cookieHash = abbreviateName(cookie.name || '');
       const st = stats[cookieHash];
@@ -30221,9 +31557,16 @@ function 注册自动保存编辑() {
       const rawName = abbreviateName(cookie.name || '').replace(/ - 0000-00-00 00:00:00$/g, '').trim();
       const rawDesc = (cookie.desc || '').trim();
       const hasDesc = rawDesc && !/^0{4}-0{2}-0{2}/.test(rawDesc);
-      const displayName = rawName + (hasDesc ? ' - ' + rawDesc : '');
-      const isDefault = (pref && pref.hash === cookieHash);
+      // 自定义饼干的分组标题已经说明来源，这里不再追加“ - 自定义”，避免重复
+      const displayName = rawName + (hasDesc && !cookie.custom ? ' - ' + rawDesc : '');
+      const isDefault = pref
+        ? (pref.kind === 'custom' ? (cookie.custom && cookie.name === pref.name) : (!cookie.custom && pref.hash === cookieHash))
+        : false;
       let statsHtml = '';
+      const cookieState = cookie.custom ? getCustomCookieState(cookie.name) : null;
+      if (cookieState === 'invalid') {
+        statsHtml = '<span style="background:rgba(229,57,53,.14);color:#e53935;padding:1px 5px;border-radius:3px;font-size:11px;margin-right:4px;" title="登录校验未通过或服务器提示未应用">已失效</span>';
+      }
       if (isDefault) {
         statsHtml = '<span style="background:rgba(255,193,7,.18);color:#ffb300;padding:1px 5px;border-radius:3px;font-size:11px;margin-right:4px;">默认</span>';
       }
@@ -30270,13 +31613,15 @@ function 注册自动保存编辑() {
           // 点击后是打开状态 → 刚刚从关闭切换到打开：设置偏好（互斥）
           $list.find('.xdex-pin-btn').prop('checked', false);
           $item.find('.xdex-pin-btn').prop('checked', true);
-          setThreadCookiePref(threadId, cookieHash);
+          if (cookie.custom) setThreadCustomCookiePref(threadId, cookie.name);
+          else setThreadCookiePref(threadId, cookieHash);
           // 更新右上角默认提示
+          const prefLabel = rawName + (cookie.custom ? '「自定义」' : '');
           const $existing = $m.find('p span[style*="color:#ffb300"], p span[style*="color: rgb(255, 179, 0)"]');
           if ($existing.length) {
-            $existing.text('默认: ' + rawName);
+            $existing.text('默认: ' + prefLabel);
           } else {
-            $m.find('p').append('<span style="color:#ffb300;font-size:11px;">默认: ' + rawName + '</span>');
+            $m.find('p').append('<span style="color:#ffb300;font-size:11px;">默认: ' + prefLabel + '</span>');
           }
           toast('已将 ' + rawName + ' 设为本串默认饼干');
         } else {
@@ -30309,7 +31654,7 @@ function 注册自动保存编辑() {
     }
     updateOkButton();
     $m.find('#cookie-confirm-ok').on('click', () => {
-      const targetCookie = cookieList[selectedId];
+      const targetCookie = allCookies.find(c => String(c.id) === selectedId);
       if (!targetCookie) { toast('饼干信息无效'); return; }
       const selectedHash = abbreviateName(targetCookie.name);
       if (mode === 'setDefault') {
@@ -30371,7 +31716,8 @@ function 注册自动保存编辑() {
     // ── 视口变化 / 旋转时重新约束弹窗高度，让聚焦项可见 ──
     const recomputeViewport = () => {
       const vh = window.innerHeight || document.documentElement.clientHeight;
-      const target = Math.max(180, Math.min(vh - 32, Math.floor(vh * 0.8)));
+      // 上不超视口 78%（距页面底部至少 22%），下不低于 180px
+      const target = Math.max(180, Math.min(vh - 24, Math.floor(vh * 0.78)));
       $m.find('.cookie-confirm-dialog').css('max-height', target + 'px');
       syncTailSpacer();
     };
@@ -30382,11 +31728,15 @@ function 注册自动保存编辑() {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
-        updateFocus(focusedIndex + 1);
+        const total = $items().length;
+        // 到底部再按下 → 回到顶部
+        updateFocus(total ? (focusedIndex + 1) % total : 0);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         e.stopPropagation();
-        updateFocus(focusedIndex - 1);
+        const total = $items().length;
+        // 在顶部再按上 → 跳到底部
+        updateFocus(total ? (focusedIndex - 1 + total) % total : 0);
       } else if (e.ctrlKey && e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -30417,12 +31767,31 @@ function 注册自动保存编辑() {
     const pref = getThreadCookiePrefs()[threadId];
     // 如果是清除标记，返回 null
     if (pref && pref.cleared) return null;
-    return pref || null;
+    if (!pref) return null;
+    if (pref.kind === 'custom') return { kind: 'custom', name: String(pref.name || ''), hash: abbreviateName(String(pref.name || '')) };
+    // 旧格式（只有 hash 字段）视为站点饼干
+    return { kind: 'site', hash: String(pref.hash || '') };
+  }
+  // 偏好键结构（向后兼容）：
+  //   旧格式 { hash: '<名字>' }            —— 只存在站点饼干时代，等价于站点饼干
+  //   新格式 { kind: 'site',   hash }       —— 站点饼干
+  //          { kind: 'custom', name }      —— 自定义饼干（按名称作为键，跨设备同步也用名字）
+  function normalizeThreadCookiePref(pref) {
+    if (!pref) return null;
+    if (pref.cleared) return null;
+    if (pref.kind === 'custom' && pref.name) return { kind: 'custom', name: String(pref.name), hash: abbreviateName(String(pref.name)) };
+    return { kind: 'site', hash: String(pref.hash || '') };
   }
   function setThreadCookiePref(threadId, hash) {
     if (!threadId || !hash) return;
     const prefs = getThreadCookiePrefs();
-    prefs[threadId] = { hash: String(hash), setAt: Date.now() };
+    prefs[threadId] = { kind: 'site', hash: String(hash), setAt: Date.now() };
+    try { GM_setValue(THREAD_COOKIE_PREFS_KEY, prefs); } catch (e) {}
+  }
+  function setThreadCustomCookiePref(threadId, name) {
+    if (!threadId || !name) return;
+    const prefs = getThreadCookiePrefs();
+    prefs[threadId] = { kind: 'custom', name: String(name), setAt: Date.now() };
     try { GM_setValue(THREAD_COOKIE_PREFS_KEY, prefs); } catch (e) {}
   }
   function removeThreadCookiePref(threadId) {
@@ -30440,10 +31809,11 @@ function 注册自动保存编辑() {
   // 当前饼干是否命中本串偏好：未开启偏好返回 null，命中 true，未命中 false
   function isCookieMatchingThreadPref(threadId) {
     const pref = getThreadCookiePref(threadId);
-    if (!pref || !pref.hash) return null;
+    if (!pref || (!pref.hash && !pref.name)) return null;
     const cur = getCurrentCookie();
     if (!cur) return false;
-    return abbreviateName(cur.name || '') === String(pref.hash);
+    if (pref.kind === 'custom') return isCustomCookie(cur) && cur.name === pref.name;
+    return !isCustomCookie(cur) && abbreviateName(cur.name || '') === String(pref.hash);
   }
   // 依据判定结果给开关圆圈加/去着色类并同步 tooltip；仅作视觉反馈，不改变任何发送逻辑
   function refreshCookiePrefSwitchState() {
@@ -30466,8 +31836,10 @@ function 注册自动保存编辑() {
         sw.title = '当前饼干即为默认饼干';
       } else if (matched === false) {
         const prefHash = String((pref || {}).hash || '');
-        const prefCookie = findCookieByHash(getCookiesList(), prefHash);
-        const prefName = (prefCookie ? abbreviateName(prefCookie.name || '') : prefHash) || '未设置';
+        const prefCookie = pref.kind === 'custom' ? null : findCookieByHash(getCookiesList(), prefHash);
+        const prefName = pref.kind === 'custom'
+          ? (abbreviateName(pref.name || '') + '「自定义」')
+          : ((prefCookie ? abbreviateName(prefCookie.name || '') : prefHash) || '未设置');
         sw.title = '当前饼干非默认饼干，默认饼干为' + prefName;
       } else {
         sw.removeAttribute('title');
@@ -30508,6 +31880,10 @@ function 注册自动保存编辑() {
     if (rawPref) {
       // 如果用户主动清除了偏好，不自动设置
       if (rawPref.cleared) return;
+      if (rawPref.kind === 'custom') {
+        if (getCustomCookies()[String(rawPref.name || '')]) return; // 自定义饼干仍存在：有效
+        return; // 已删除：失效留给发送时处理
+      }
       if (rawPref.hash && findCookieByHash(getCookiesList(), rawPref.hash)) return; // 有效
       return; // 失效留给发送时处理
     }
@@ -32553,7 +33929,7 @@ function initReplyParamScrollTo() {
   }
   function webdavFullSelection() {
     // 同步文件不含 WebDAV 配置（用户自行选择同步源更合理）；手动导入导出才迁移配置
-    return { settings: true, threadHistory: true, postHistory: true, drafts: false, kaomojiStats: true, kaomojiCustom: true, cookiePrefs: true };
+    return { settings: true, threadHistory: true, postHistory: true, drafts: false, kaomojiStats: true, kaomojiCustom: true, customCookies: true, cookiePrefs: true };
   }
   function getWebdavUtils() {
     // full-export 工具定义在 SettingPanel.render 嵌套作用域，需先打开过一次设置面板（按钮本身在面板内）
@@ -32826,6 +34202,7 @@ function initReplyParamScrollTo() {
       if (report.postHistory) parts.push('发言历史');
       if (report.drafts) parts.push('草稿');
       if (report.kaomojiStats) parts.push('颜文字统计');
+      if (report.customCookies) parts.push('自定义饼干');
       if (report.cookiePrefs) parts.push('饼干偏好');
       setWebdavStatus(settingsSkipped ? '双向合并完成（设置保留本地等待手动处理）' : '双向合并完成');
       notify('WebDAV：双向合并完成（' + (parts.join('、') || '无变化') + '）；可即时生效的设置已应用');
@@ -34580,6 +35957,7 @@ function initReplyParamScrollTo() {
     function autoRefreshCookiesToast() {
       try {
         if (typeof refreshCookies !== 'function') return;
+        xdexDbg('CALLER=visibility', { visibility: document.visibilityState });
         refreshCookies(() => {
           const list = getCookiesList();
           if (!list || !Object.keys(list).length) return;

@@ -64,6 +64,12 @@ test('请求挂起时焦点已回归（模拟网络延迟）', () => {
   const sandbox = {
     console: { log: () => {}, warn: () => {} },
     GM_setValue: () => {},
+    // 调试埋点 + 自定义饼干分支的真实依赖：桩成与焦点时序无关的最小实现
+    xdexDbg: () => {},
+    xdexDbgCookieTag: (c) => (c ? 'tag' : null),
+    isCustomCookie: (c) => !!(c && c.custom),
+    getCustomCookieValue: () => 'v',
+    getCurrentCookie: () => null,
     abbreviateName: (n) => String(n),
     LAST_USED_COOKIE_KEY: 'k',
     updateCurrentCookieDisplay: () => {},
@@ -74,6 +80,7 @@ test('请求挂起时焦点已回归（模拟网络延迟）', () => {
     toast: () => {},
     setTimeout: () => 0,                    // 兜底恢复不执行，确保只测即时恢复
     document: { querySelector: () => ({ focus: () => { focused++; } }) },
+    location: { origin: 'https://www.nmbxd1.com', hostname: 'www.nmbxd1.com', pathname: '/t/1', search: '' },
     $: { get: () => { const o = { done: (cb) => { pending = cb; return o; }, fail: () => o }; return o; } },
   };
   vm.createContext(sandbox);
@@ -93,10 +100,11 @@ test('未传 focusBackNow 时不得提前聚焦（保持既有调用方行为）
   let focused = 0;
   const sandbox = {
     console: { log: () => {}, warn: () => {} },
-    GM_setValue: () => {}, abbreviateName: (n) => String(n), LAST_USED_COOKIE_KEY: 'k',
+    GM_setValue: () => {}, xdexDbg: () => {}, xdexDbgCookieTag: (c) => (c ? 'tag' : null), isCustomCookie: (c) => !!(c && c.custom), getCustomCookieValue: () => 'v', getCurrentCookie: () => null, abbreviateName: (n) => String(n), LAST_USED_COOKIE_KEY: 'k',
     updateCurrentCookieDisplay: () => {}, updateDropdownUI: () => {}, getCookiesList: () => ({}), removeDateString: () => {},
     updatePreviewCookieId: () => {}, toast: () => {}, setTimeout: () => 0,
     document: { querySelector: () => ({ focus: () => { focused++; } }) },
+    location: { origin: 'https://www.nmbxd1.com', hostname: 'www.nmbxd1.com', pathname: '/t/1', search: '' },
     $: { get: () => { const o = { done: () => o, fail: () => o }; return o; } },
   };
   vm.createContext(sandbox);

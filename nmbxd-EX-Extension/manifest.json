@@ -26,7 +26,8 @@
     "downloads",
     "offscreen",
     "clipboardWrite",
-    "alarms"
+    "alarms",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "https://*.nmbxd1.com/*",
@@ -96,6 +97,7 @@
         "vendor/apng-js-1.1.5.js",
         "vendor/pako-2.1.0.min.js",
         "vendor/UPNG-2.1.0.js",
+        "vendor/jsqr-1.4.0.min.js",
         "src/content/gm-compat.js",
         "src/content/gifsicle-loader.js",
         "src/content/userscript-bridge.js",
