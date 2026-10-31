@@ -6493,6 +6493,26 @@ ${markedSwatchHtml}
   const getCurrentCookie = () => GM_getValue('now-cookie', null);
   const LAST_USED_COOKIE_KEY = 'xdex-last-used-cookie';
   const getLastUsedCookie = () => GM_getValue(LAST_USED_COOKIE_KEY, null);
+  // 本页显示层当前呈现的饼干 id（见 updateCurrentCookieDisplay 内的维护注释）
+  let nowCookieDisplayedId = '';
+  // 跨标签 now-cookie 同步：其他标签/视图切换饼干后，本页显示层（顶部当前饼干、下拉、预览
+  // cookie id）会冻结在离开时状态，而发送链路实时读 GM——显示与实际作用饼干脱节。
+  // 监听器纯事件驱动：无轮询/定时器，无事件时零开销；远端回调带「显示已一致则跳过」守卫，
+  // 本页自己的写入（remote=false）由 switch_cookie 等本地路径刷新过，直接忽略。
+  let nowCookieSyncBound = false;
+  function bindNowCookieCrossTabSync() {
+    if (nowCookieSyncBound || typeof GM_addValueChangeListener !== 'function') return;
+    nowCookieSyncBound = true;
+    GM_addValueChangeListener('now-cookie', (_key, _old, next, remote) => {
+      if (!remote) return; // 本页写入：本地路径已刷新过显示
+      const nextId = next && next.id != null ? String(next.id) : '';
+      if (nextId === nowCookieDisplayedId) return; // 显示已一致（如守卫写回同值），跳过重绘
+      updateCurrentCookieDisplay(next);
+      updateDropdownUI(getCookiesList());
+      removeDateString();
+      updatePreviewCookieId();
+    });
+  }
 
   /* --------------------------------------------------
    * 自定义饼干：链接 / 二维码图片 / JSON 导入，仅用于发送链路
@@ -7472,6 +7492,10 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
   function updateCurrentCookieDisplay(cur){
     // 当前饼干变化 → 同步串内偏好开关圆圈着色（置于 $d 守卫之前，各入口均可刷新）
     try { if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState(); } catch (e) {}
+    // 本页面显示层当前呈现的饼干 id（跨标签同步的比对基准；null → ''）。
+    // 本地写入点（switch_cookie/refreshCookies/删除自定义饼干）全部经由本函数刷新，
+    // 故这里维护的标记即「显示层单一事实源」：远端变更回调据此判断是否需要重绘。
+    nowCookieDisplayedId = cur && cur.id != null ? String(cur.id) : '';
     const $d = $('#current-cookie-display');
     if(!$d.length) return;
     if(cookieListUnavailableState){
@@ -7577,6 +7601,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
   }
   // 模块初始化：一次性注册跨标签同步监听（幂等，见上）
   bindCookieCooldownStorageSync();
+  // now-cookie 跨标签显示同步（事件驱动，零常驻开销；幂等）
+  bindNowCookieCrossTabSync();
   // 冷却提示固定在「字数」左侧，二者同属送出按钮容器（右对齐）
   function ensureCookieCooldownEl() {
     const counter = document.querySelector('.xdex-post-content-char-count');
