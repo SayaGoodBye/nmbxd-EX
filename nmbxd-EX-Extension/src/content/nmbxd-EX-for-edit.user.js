@@ -13763,6 +13763,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     if (!tid) return { kind: 'skip', queued: false };
     const state = context.state || {};
     if (state.extendQuoteAvailabilityDetection === false || state.extendQuote === false) return { kind: 'unknown', queued: false };
+    // 必然主串的容器，直接定论 thread，跳过缓存/IO/探测（省掉 api/ref + api/thread 两连击）：
+    // ① 回应模式行（.js-reply-mode-text）：注入的 No.xxxx 即表单 resto 值 = 回应目标主串；
+    // ② 发言历史 footer 串号行（.xdex-post-history-thread）：item.threadId 恒为主串（reply→resto / thread→id）。
+    // 走 applyQuoteAvailabilityResult 统一出口：样式回填 + thread 跳转按钮通知 + 汇总日志，与正常判定行为一致。
+    // 不写缓存：无持久层，会话内重复元素每次重算成本为零（纯 closest 判定）。
+    if (el.closest && el.closest('.js-reply-mode-text, .xdex-post-history-thread')) {
+      applyQuoteAvailabilityResult(tid, 'thread');
+      return { kind: 'thread', queued: false };
+    }
     const cached = context.cache && context.cache[tid];
     const kind = cached && cached.kind ? cached.kind : 'unknown';
     applyQuoteAvailabilityStyle(el, kind);
