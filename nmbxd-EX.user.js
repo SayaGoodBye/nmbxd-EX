@@ -31005,27 +31005,8 @@ function 注册自动保存编辑() {
     };
     addItem.appendChild(addLink);
     list.appendChild(addItem);
-    items.forEach((item) => {
-      const subItem = document.createElement('li');
-      const link = document.createElement('a');
-      link.href = getLatestThreadHistoryUrl(item.threadId) || makeFavoriteThreadUrl(item.threadId);
-      link.dataset.threadId = item.threadId;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.setAttribute('achecked', '1');
-      link.textContent = formatFavoriteThreadMenuText(item);
-      link.title = item.desc ? `${item.desc} - ${item.threadId}` : '';
-      subItem.appendChild(link);
-      list.appendChild(subItem);
-    });
-    wrapper.appendChild(list);
-    li.appendChild(wrapper);
-    if (window.jQuery) $(li).data('list-container', $(wrapper));
-    li.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    header.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const opening = !li.classList.contains('uk-open');
+    // 折叠动画（header 点击与串链接点击共用）：opening=false 时收起分组
+    function animateFavoriteMenu(opening) {
       li.classList.toggle('uk-open', opening);
       li.setAttribute('aria-expanded', opening ? 'true' : 'false');
       if (window.jQuery) {
@@ -31054,7 +31035,37 @@ function 注册自动保存编辑() {
           wrapper.classList.add('uk-hidden');
         });
       }
+    }
+    header.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      animateFavoriteMenu(!li.classList.contains('uk-open'));
     });
+    // 点击串链接（新标签打开）后，原页面的常用串分组自动收起，与「用完即收」的侧栏习惯一致；
+    // 已收起则无操作（不会把收起的分组重新展开）
+    function bindFavoriteLinkAutoCollapse(link) {
+      link.addEventListener('click', () => {
+        if (li.classList.contains('uk-open')) animateFavoriteMenu(false);
+      });
+    }
+    bindFavoriteLinkAutoCollapse(addLink);
+    items.forEach((item) => {
+      const subItem = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = getLatestThreadHistoryUrl(item.threadId) || makeFavoriteThreadUrl(item.threadId);
+      link.dataset.threadId = item.threadId;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.setAttribute('achecked', '1');
+      link.textContent = formatFavoriteThreadMenuText(item);
+      link.title = item.desc ? `${item.desc} - ${item.threadId}` : '';
+      bindFavoriteLinkAutoCollapse(link);
+      subItem.appendChild(link);
+      list.appendChild(subItem);
+    });
+    wrapper.appendChild(list);
+    li.appendChild(wrapper);
+    if (window.jQuery) $(li).data('list-container', $(wrapper));
     return li;
   }
   function createThreadHistoryMenuNode() {
