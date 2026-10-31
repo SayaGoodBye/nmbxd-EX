@@ -3415,8 +3415,10 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(impItem.maxVisitedPage) || 0),
               visitCount: (Number(localItem.visitCount) || 0) + (Number(impItem.visitCount) || 0),
               lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : impItem.lastScrollY),
+              lastReadReplyId: (newer.lastReadReplyId || localItem.lastReadReplyId || impItem.lastReadReplyId || ''),
+              lastReadReplyPage: Math.max(1, Number(newer.lastReadReplyPage) || Number(localItem.lastReadReplyPage) || Number(impItem.lastReadReplyPage) || 1),
               title: (newer.title || '').trim() ? newer.title : (localItem.title || impItem.title),
-              name: (newer.name || '').trim() ? newer.name : (localItem.name || impItem.name),
+              name: (newer.name || '').trim() ? newer.name : (localItem.title || impItem.title),
             };
             result.index[key] = buildThreadHistoryIndexEntry(result.items[key]); // index 为纯派生数据: 随合并后的 item 重建, 防止 lastVisitedAt 失步
           }
@@ -3501,6 +3503,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               url: mergedUrl,
               visitCount: mergedCount,
               lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : remoteItem.lastScrollY),
+              lastReadReplyId: (newer.lastReadReplyId || localItem.lastReadReplyId || remoteItem.lastReadReplyId || ''),
+              lastReadReplyPage: Math.max(1, Number(newer.lastReadReplyPage) || Number(localItem.lastReadReplyPage) || Number(remoteItem.lastReadReplyPage) || 1),
               title: (newer.title || '').trim() ? newer.title : (localItem.title || remoteItem.title),
               name: (newer.name || '').trim() ? newer.name : (localItem.name || remoteItem.name),
             };
@@ -28478,6 +28482,7 @@ function 注册自动保存编辑() {
     item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
     if (bounded.lastKnownPage && Number(bounded.lastKnownPage) > (Number(item.lastKnownPage) || 0)) item.lastKnownPage = bounded.lastKnownPage;
     item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    applyThreadHistoryLastReadReply(item);
     if (options.touchVisitedAt) item.lastVisitedAt = now;
     store.index[key] = buildThreadHistoryIndexEntry(item);
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
@@ -28502,6 +28507,8 @@ function 注册自动保存编辑() {
     record.page = Math.max(Number(record.page) || 1, Number(options.page || parsed.page) || 1);
     record.url = options.url || parsed.url;
     record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    // 无缝翻页：阅读位置单调不降，无需置空/重算——新页页码更大，后续滚动/落盘自然接管
+    applyThreadHistoryLastReadReply(record);
     return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
   }
   function updateThreadHistoryScrollPosition() {
@@ -28693,6 +28700,54 @@ function 注册自动保存编辑() {
       .sort((a, b) => compareThreadHistoryResults(a, b, sortMode || 'last-desc', numericTokens));
   }
   let threadHistoryScrollTrackingInstalled = false;
+  // 阅读位置（最接近视口纵向中心的回复）：滚动防抖只更新内存，落盘复用既有收尾写入。
+  // page = 回复所属页码（回翻场景：page 字段不回退、阅读位置可能属于更早的页）
+  let threadHistoryLastReadReplyId = '';
+  let threadHistoryLastReadReplyPage = 0;
+  let threadHistoryRestorePending = false;
+  // 从「浏览历史/常用串」打开的恢复链接标记：仅这些入口允许自动滚动恢复，
+  // 避免用户手动输入 URL / 站内引用跳转时被意外拉到旧位置
+  let threadHistoryRestoreArmed = false;
+  // 判定「阅读位置」：主文档回复列表中最接近视口纵向中心的回复，返回 {id, page}。
+  // page = 回复所属页码：无缝翻页 append 的容器有 data-cloned-page；首页原生 DOM 无该属性，
+  // 取当前 URL 解析页码。限定 .h-threads-list 直下链路：引用浮窗/增强预览内部也有
+  // .h-threads-item-replies > .h-threads-item-reply 克隆，不排除会把浮窗内容当成阅读位置。
+  function findClosestToViewportCenterReply() {
+    try {
+      const nodes = document.querySelectorAll('.h-threads-list .h-threads-item-reply[data-threads-id]');
+      if (!nodes.length) return { id: '', page: 0 };
+      const mid = (window.innerHeight || document.documentElement.clientHeight) / 2;
+      let best = '';
+      let bestPage = 0;
+      let bestDist = Infinity;
+      const urlParsed = parseThreadHistoryUrl(location.href);
+      const urlPage = Math.max(1, Number(urlParsed && urlParsed.page) || 1);
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        // 引用浮窗/预览克隆虽不在 .h-threads-list，防御性再排除一次（嵌套容器场景）
+        if (el.closest('.h-preview-box, #h-ref-view, .qp-quote')) continue;
+        const rect = el.getBoundingClientRect();
+        if (!rect || rect.height <= 0) continue;
+        const dist = Math.abs(rect.top + rect.height / 2 - mid);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = el.getAttribute('data-threads-id') || '';
+          const container = el.closest('.h-threads-item-replies');
+          const clonedPage = container ? Number(container.getAttribute('data-cloned-page')) || 0 : 0;
+          bestPage = clonedPage || urlPage;
+        }
+      }
+      return { id: best, page: bestPage };
+    } catch (e) { return { id: '', page: 0 }; }
+  }
+  // 把内存中的阅读位置并入既有持久化写（不新增 GM_setValue 次数）
+  function applyThreadHistoryLastReadReply(item) {
+    if (!item) return;
+    if (threadHistoryLastReadReplyId) {
+      item.lastReadReplyId = threadHistoryLastReadReplyId;
+      item.lastReadReplyPage = Math.max(1, Number(threadHistoryLastReadReplyPage) || 1);
+    }
+  }
   function installThreadHistoryScrollTracking() {
     if (threadHistoryScrollTrackingInstalled) return;
     threadHistoryScrollTrackingInstalled = true;
@@ -28701,10 +28756,28 @@ function 注册自动保存编辑() {
       if (scrollTimer) return;
       scrollTimer = setTimeout(() => {
         scrollTimer = 0;
+        // 滚动防抖只更新内存（O(可见回复数) rect 计算），持久化走既有收尾写入。
+        // 阅读位置单调不降：向上回翻视为临时回看，不回写锚点（与 page/maxVisitedPage 只升不降的哲学一致）
+        if (isThreadHistoryEnabledNow()) {
+          const found = findClosestToViewportCenterReply();
+          if (found.id && found.page >= threadHistoryLastReadReplyPage) {
+            threadHistoryLastReadReplyId = found.id;
+            threadHistoryLastReadReplyPage = found.page;
+          }
+        }
         updateThreadHistoryScrollPosition();
       }, 1200);
     }, { passive: true });
-    window.addEventListener('pagehide', updateThreadHistoryScrollPosition, { passive: true });
+    window.addEventListener('pagehide', () => {
+      if (isThreadHistoryEnabledNow()) {
+        const found = findClosestToViewportCenterReply();
+        if (found.id && found.page >= threadHistoryLastReadReplyPage) {
+          threadHistoryLastReadReplyId = found.id;
+          threadHistoryLastReadReplyPage = found.page;
+        }
+      }
+      updateThreadHistoryScrollPosition();
+    }, { passive: true });
   }
   function isThreadHistoryPageActive() {
     return document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
@@ -28924,6 +28997,10 @@ function 注册自动保存编辑() {
     replyLink.className = 'h-threads-info-id xdex-history-thread-id';
     replyLink.href = historyReplyUrl;
     replyLink.textContent = `No.${item.threadId || ''}`;
+    // 从浏览历史打开：武装阅读位置自动恢复（localStorage 同 partition 跨标签共享；消费即清，30s 时效）
+    replyLink.addEventListener('click', () => {
+      try { window.localStorage.setItem('xdex-restore-read-pos', JSON.stringify({ tid: String(item.threadId || ''), at: Date.now() })); } catch (e) {}
+    });
     infoMain.appendChild(replyLink);
     const replyAction = document.createElement('span');
     replyAction.className = 'h-threads-info-reply-btn xdex-history-reply-label';
@@ -28933,6 +29010,10 @@ function 注册自动保存编辑() {
     replyActionLink.target = '_blank';
     replyActionLink.rel = 'noopener';
     replyActionLink.textContent = '回应';
+    // 「回应」打开（新标签）：同样武装阅读位置恢复（与浏览历史一致）
+    replyActionLink.addEventListener('click', () => {
+      try { window.localStorage.setItem('xdex-restore-read-pos', JSON.stringify({ tid: String((result.item || {}).threadId || ''), at: Date.now() })); } catch (e) {}
+    });
     replyAction.appendChild(document.createTextNode('['));
     replyAction.appendChild(replyActionLink);
     replyAction.appendChild(document.createTextNode(']'));
@@ -30164,6 +30245,10 @@ function 注册自动保存编辑() {
     replyLink.className = 'h-threads-info-id xdex-history-thread-id';
     replyLink.href = `${location.origin}/t/${threadId}`;
     replyLink.textContent = `No.${threadId}`;
+    // 从订阅流打开：同样武装阅读位置恢复（与浏览历史一致）
+    replyLink.addEventListener('click', () => {
+      try { window.localStorage.setItem('xdex-restore-read-pos', JSON.stringify({ tid: String(threadId || ''), at: Date.now() })); } catch (e) {}
+    });
     infoMain.appendChild(replyLink);
     const replyCount = Number(item.reply_count) || 0;
     if (replyCount > 0) {
@@ -31085,6 +31170,10 @@ function 注册自动保存编辑() {
       link.setAttribute('achecked', '1');
       link.textContent = formatFavoriteThreadMenuText(item);
       link.title = item.desc ? `${item.desc} - ${item.threadId}` : '';
+      // 从常用串打开（新标签）：武装阅读位置恢复（与浏览历史一致）
+      link.addEventListener('click', () => {
+        try { window.localStorage.setItem('xdex-restore-read-pos', JSON.stringify({ tid: String(item.threadId || ''), at: Date.now() })); } catch (e) {}
+      });
       bindFavoriteLinkAutoCollapse(link);
       subItem.appendChild(link);
       list.appendChild(subItem);
@@ -33273,6 +33362,55 @@ function initReplyParamScrollTo() {
       };
       tryScroll();
     } catch (e) { /* 定位失败不影响页面 */ }
+  }
+  // ★ 阅读位置自动恢复：从「浏览历史/订阅流」打开串页时滚动到上次读到的回复。
+  // 触发条件（sessionStorage 武装标记，消费即清）：仅在标记串号与当前串一致时生效——
+  // 站内引用跳转（?r=）、手动输入 URL 不武装，不会被意外拉到旧位置。
+  // 与 ?r= 定位共存：?r= 优先（站内引用定位语义更高）。
+  // 元素未渲染（图片增强/无缝翻页时序）→ 复用 ?r= 定位的轮询 + 800ms 二次校准模式；
+  // 回复已删/在更深页码 → 静默放弃，不做跨页跳转。
+  function initThreadHistoryReplyRestore() {
+    try {
+      if (new URLSearchParams(location.search).get('r')) return; // ?r= 优先
+      let armedTid = '';
+      try {
+        const armedRaw = window.localStorage.getItem('xdex-restore-read-pos');
+        if (armedRaw) {
+          window.localStorage.removeItem('xdex-restore-read-pos');
+          const armed = JSON.parse(armedRaw);
+          // 30s 时效：防点击后未导航、残留标记被后续无关串页误消费
+          if (armed && armed.at && Date.now() - Number(armed.at) <= 30000) armedTid = String(armed.tid || '');
+        }
+      } catch (e) {}
+      if (!armedTid) return;
+      const parsed = parseThreadHistoryUrl(location.href);
+      if (!parsed || String(parsed.threadId) !== String(armedTid)) return;
+      if (!isThreadHistoryEnabledNow()) return;
+      const item = getThreadHistoryStore().items[getThreadHistoryKey(parsed.mode, parsed.threadId)];
+      const target = item && item.lastReadReplyId != null ? String(item.lastReadReplyId) : '';
+      // 存量数据无 lastReadReplyPage → 页码未知，只做当前页内尝试（不误重定向到 page=1）
+      const hasPage = item && Number(item.lastReadReplyPage) >= 1;
+      const targetPage = hasPage ? Math.max(1, Number(item.lastReadReplyPage)) : Math.max(1, Number(parsed.page) || 1);
+      if (!/^\d{6,8}$/.test(target)) return;
+      // 阅读位置单调不降：lastReadReplyPage 恒 ≤ 当前页，正常情况等于当前 URL 页；
+      // 存量数据缺页码 → targetPage 回退为当前页，页内尝试即可（不跨页跳转）
+      const scrollTarget = () => document.querySelector('.h-threads-list [data-threads-id="' + target + '"]');
+      let attempts = 0;
+      const tryScroll = () => {
+        const el = scrollTarget();
+        if (el) {
+          el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          setTimeout(() => {
+            try {
+              if (el.isConnected) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+            } catch (e) {}
+          }, 800);
+          return;
+        }
+        if (++attempts <= 20) setTimeout(tryScroll, 300);
+      };
+      tryScroll();
+    } catch (e) { /* 恢复失败不影响页面 */ }
   }
   function initDisableAutoQuote() {
     const rParam = new URLSearchParams(location.search).get('r');
@@ -35902,6 +36040,7 @@ function initReplyParamScrollTo() {
     const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     disableVerifyInputMemory(document);
     initReplyParamScrollTo();                                      //?page&r=链接定位到对应回复
+    initThreadHistoryReplyRestore();                               //浏览历史/订阅流打开时恢复上次阅读位置
     initDisableAutoQuote(); //关闭引用：阻止URL中?r=参数自动插入引用号
     replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
