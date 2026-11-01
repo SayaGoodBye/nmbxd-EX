@@ -661,6 +661,42 @@ function xdexEarlyDarkEnabled() {
   const XDEX_ICON_IMAGE = '<svg class="xdex-icon-image" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-4.6-4.6a2 2 0 0 0-2.8 0L5 20"/></svg>';
   function spData(name) { return xdexCall('data', name, Array.prototype.slice.call(arguments, 1)); }
   function spUpdate(name) { return xdexCall('update', name, Array.prototype.slice.call(arguments, 1)); }
+  // --------------------------------------------------
+  // 浮层滚轮遏制：鼠标在「面板」上时滚轮只作用于面板内部，不穿透到页面；
+  // 鼠标在「遮罩」上时放行，页面照常滚动（与用户预期一致）。
+  // 用法：installWheelScrollContainment(常驻根节点, 面板选择器)。
+  // 性能：监听挂在持久根节点上（每浮层一次，幂等标记），事件委托到面板；每次滚轮只做
+  //       一次 closest + 沿祖先链的 overflowY 计算（链深通常 3-8 层，且仅滚动时触发）。
+  function installWheelScrollContainment(rootEl, panelSelector) {
+    if (!rootEl || !panelSelector || rootEl.__xdexWheelContained) return rootEl;
+    rootEl.__xdexWheelContained = true;
+    rootEl.addEventListener('wheel', (e) => {
+      // Ctrl/⌘+滚轮 = 浏览器缩放；纯横向滚轮（deltaY=0）= 不处理，均直接放行
+      if (e.ctrlKey || e.metaKey || !e.deltaY) return;
+      const target = e.target;
+      if (!target || !target.closest) return;
+      const panel = target.closest(panelSelector);
+      if (!panel) return; // 鼠标落在遮罩上 → 放行页面滚动
+      // 向内→外找「此刻确实还能朝该方向滚」的容器；overflow:hidden 不算（回复浮窗默认贴高不滚）
+      let el = target;
+      while (el && el !== rootEl) {
+        if (el.nodeType === 1) {
+          const style = window.getComputedStyle(el);
+          const oy = style.overflowY;
+          if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && el.scrollHeight - el.clientHeight > 1) {
+            const atTop = el.scrollTop <= 0;
+            const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+            if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atBottom)) return; // 面板内可滚 → 放行给面板
+          }
+        }
+        el = el.parentElement;
+      }
+      // 面板内无处可滚 → 吞掉本次滚轮，避免穿透滚动页面
+      e.preventDefault();
+      e.stopPropagation();
+    }, { passive: false });
+    return rootEl;
+  }
   /* --------------------------------------------------
    * tag 1. 设置面板
    * -------------------------------------------------- */
@@ -2130,6 +2166,8 @@ function xdexEarlyDarkEnabled() {
       $('#sp_cover').remove();
       $('body').append(html);
       syncFavoriteThreadsLinks();
+      // 设置面板：面板内滚轮不外溢；遮罩上放行页面滚动（面板每次 init 重建，故在此绑定）
+      installWheelScrollContainment(document.getElementById('sp_cover'), '#sp_panel');
       installSettingPanelEasterEgg(document);
       function setSettingsPanelModule(moduleName) {
         // 离开对应模块时退出其回收站视图，回到正常列表态
@@ -3414,7 +3452,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               page: Math.max(Number(localItem.page) || 0, Number(impItem.page) || 0),
               maxVisitedPage: Math.max(Number(localItem.maxVisitedPage) || 0, Number(impItem.maxVisitedPage) || 0),
               visitCount: (Number(localItem.visitCount) || 0) + (Number(impItem.visitCount) || 0),
-              lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : impItem.lastScrollY),
+              // lastScrollY 已弃用（无消费方；且 spread 仍会透传存量值，此处不再显式参与合并）
+              // lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : impItem.lastScrollY),
               lastReadReplyId: (newer.lastReadReplyId || localItem.lastReadReplyId || impItem.lastReadReplyId || ''),
               lastReadReplyPage: Math.max(1, Number(newer.lastReadReplyPage) || Number(localItem.lastReadReplyPage) || Number(impItem.lastReadReplyPage) || 1),
               title: (newer.title || '').trim() ? newer.title : (localItem.title || impItem.title),
@@ -3502,7 +3541,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               lastKnownPage: mergedLastKp,
               url: mergedUrl,
               visitCount: mergedCount,
-              lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : remoteItem.lastScrollY),
+              // lastScrollY 已弃用（无消费方；且 spread 仍会透传存量值，此处不再显式参与合并）
+              // lastScrollY: newer.lastScrollY != null ? newer.lastScrollY : (localItem.lastScrollY != null ? localItem.lastScrollY : remoteItem.lastScrollY),
               lastReadReplyId: (newer.lastReadReplyId || localItem.lastReadReplyId || remoteItem.lastReadReplyId || ''),
               lastReadReplyPage: Math.max(1, Number(newer.lastReadReplyPage) || Number(localItem.lastReadReplyPage) || Number(remoteItem.lastReadReplyPage) || 1),
               title: (newer.title || '').trim() ? newer.title : (localItem.title || remoteItem.title),
@@ -12858,6 +12898,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       attributeFilter: ['style']
     });
     const $overlay = $('<div class="qp-overlay-quote"></div>').appendTo('body');
+    // 引用浮窗：面板（.qp-quote，每次打开新建）内滚轮不外溢；遮罩上放行页面滚动
+    installWheelScrollContainment($overlay[0], '.qp-quote');
     const $stack   = $('<div class="qp-stack"></div>').appendTo($overlay);
     const $closeAll= $('<div class="qp-close-all" title="关闭所有引用浮窗"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="red" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path style="fill:none" d="M6 6l12 12"/><path style="fill:none" d="M18 6L6 18"/></svg></div>').appendTo($overlay);
     $closeAll.on('click', () => {
@@ -15433,6 +15475,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
               <div class="qp-reset-btn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
           `;
           document.body.appendChild(overlay);
+          // 回复浮窗：面板内滚轮不外溢（含 .qp-body 表单与内容滚动区）；遮罩上放行页面滚动。
+          // 面板/表单随回复重建，故监听挂在持久的遮罩根上做事件委托。
+          installWheelScrollContainment(overlay, '.qp-stack > .qp-quote');
           // 点击遮罩关闭（点内容不关闭，且允许事件冒泡到 document 以触发引用弹窗）
           overlay.addEventListener('click', function (e) {
             // 冒泡途中若有控件替换了自身内容（如 .js-extra 切换图标），e.target 会脱离文档，
@@ -28390,7 +28435,8 @@ function 注册自动保存编辑() {
       imageFile,
       contentFlags: { hasVisibleText, hasWhitespaceOnly, hasZeroWidth },
       sageHtml,
-            lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
+            // lastScrollY 已弃用：无任何消费方（恢复走 lastReadReplyId 锚点，像素偏移会因图片加载/加宽漂移）
+            // lastScrollY: Math.max(0, Math.floor(window.scrollY || 0))
     };
   }
   // 索引指纹:覆盖 searchText 与全部布尔谓词的来源字段;仅短标量拼接,远廉于重建 searchText
@@ -28481,7 +28527,8 @@ function 注册自动保存编辑() {
     item.url = bounded.url || item.url;
     item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
     if (bounded.lastKnownPage && Number(bounded.lastKnownPage) > (Number(item.lastKnownPage) || 0)) item.lastKnownPage = bounded.lastKnownPage;
-    item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    // item.lastScrollY 已弃用（见 extractThreadHistoryRecord 处说明）
+    // item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
     applyThreadHistoryLastReadReply(item);
     if (options.touchVisitedAt) item.lastVisitedAt = now;
     store.index[key] = buildThreadHistoryIndexEntry(item);
@@ -28506,7 +28553,8 @@ function 注册自动保存编辑() {
     record.threadId = parsed.threadId;
     record.page = Math.max(Number(record.page) || 1, Number(options.page || parsed.page) || 1);
     record.url = options.url || parsed.url;
-    record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
+    // record.lastScrollY 已弃用（见 extractThreadHistoryRecord 处说明）
+    // record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
     // 无缝翻页：阅读位置单调不降，无需置空/重算——新页页码更大，后续滚动/落盘自然接管
     applyThreadHistoryLastReadReply(record);
     return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
@@ -35524,6 +35572,8 @@ function initReplyParamScrollTo() {
       + '  </div>'
       + '</div>';
     document.body.appendChild(dialog);
+    // 导出串弹窗：面板内滚轮不外溢（滚动区在 .xdex-export-dialog-tasks）；遮罩上放行页面滚动
+    installWheelScrollContainment(dialog, '.xdex-export-dialog-panel');
 
     const q = (sel) => dialog.querySelector(sel);
     const status = (text, tone) => {
