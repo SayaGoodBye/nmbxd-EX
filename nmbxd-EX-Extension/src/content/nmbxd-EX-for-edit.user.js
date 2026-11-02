@@ -28988,6 +28988,43 @@ function 注册自动保存编辑() {
     const po = store.items[getThreadHistoryKey('po', tid)];
     return po ? buildThreadHistoryItemUrl(po) : '';
   }
+  // 版块页/时间线页：串卡片「回应」链接点击时改写到上次阅读位置（与浏览历史条目「回应」一致）。
+  // 设计要点：
+  //  · document 级单监听（捕获阶段）+ 事件委托——绝不为每张串卡片绑定，页面有多少卡片都只 1 个监听；
+  //  · 首行做页面类型判定，串内页/其它页点击零成本直接返回；
+  //  · 只认「纯 /t/{tid}」的回应链接（No.xxxx 是 /t/{tid}?r=…、回复是 ?r={replyId}，均不匹配），
+  //    同时天然幂等：改写后的链接带 /page/N，不会二次命中；
+  //  · 只有「普通模式」历史才替换；仅有只看 PO 记录时保持默认行为（PO 页与串页语义不同）；
+  //  · 改 href 而非 preventDefault——保留中键/Ctrl+点击在新标签打开的原生行为。
+  let boardReplyHistoryHijackBound = false;
+  function installBoardReplyHistoryHijack() {
+    if (boardReplyHistoryHijackBound) return;
+    boardReplyHistoryHijackBound = true;
+    document.addEventListener('click', (e) => {
+      if (!PageType.isBoardOrTimelinePage()) return;
+      if (!isThreadHistoryEnabledNow()) return;
+      const target = e.target;
+      if (!target || !target.closest) return;
+      const link = target.closest('a[href]');
+      if (!link) return;
+      // 只处理串卡片信息区的「回应」链接
+      if (!link.closest('.h-threads-info-reply-btn')) return;
+      // 排除已带查询/页码的链接（No.xxxx、回复号、以及已被改写过的）
+      const m = String(link.getAttribute('href') || '').match(/^\/t\/(\d{6,8})$/);
+      if (!m) return;
+      const tid = m[1];
+      const normal = getThreadHistoryStore().items[getThreadHistoryKey('normal', tid)];
+      // 仅有 PO 记录时不替换（保持默认 /t/{tid}）
+      if (!normal) return;
+      const url = buildThreadHistoryItemUrl(normal);
+      if (!url) return;
+      link.setAttribute('href', url);
+      // 武装阅读位置恢复（与浏览历史条目「回应」同款；30s 时效、消费即清）
+      try {
+        window.localStorage.setItem('xdex-restore-read-pos', JSON.stringify({ tid, at: Date.now() }));
+      } catch (err) {}
+    }, true);
+  }
   function appendThreadHistoryText(parent, tagName, className, text) {
     const el = document.createElement(tagName);
     if (className) el.className = className;
@@ -36145,6 +36182,7 @@ function initReplyParamScrollTo() {
     } else {
       installThreadHistoryReactivationTracking(false);
     }
+    installBoardReplyHistoryHijack();                                //版块页/时间线「回应」跳到上次阅读位置
     startupPerfDebug.mark('document.ready.syncSetup.end', startupPerfDebug.summarizeRoot(document));
     // 保存原始函数
     const _initContent = window.initContent;
