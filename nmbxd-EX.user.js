@@ -23686,6 +23686,15 @@ function 注册自动保存编辑() {
               //    读布局+写样式交错，整串重跑会强制重排数百次 = 插入后卡顿主源）
               for (const node of appendedNodes) {
                 const replyScope = node.closest('.h-threads-item-reply') || node;
+                // ★ 自动识别链接必须最先执行（与 applyPageEnhancements 的
+                // preprocessPageEnhancementsBeforeInsert 顺序一致：链接化 → 引用包裹）。
+                // extendQuote 会把正文里的 8 位数字单独包进 <font color="#789922">，
+                // 把 URL 物理切成多个文本节点（"https://…/t/" | <font>66994128</font> | "?page=99"），
+                // 之后再链接化只能匹配到被截断的第一段 → 链接丢参数。
+                // 纯 DOM 结构替换、无布局读，放在布局热点之前不会引入重排。
+                // 作用域传 replyScope：其内部 .h-threads-content 会被 querySelectorAll 命中；
+                // processContainer 的 data-xdex-linkified 幂等锁保证旧回复不重复遍历。
+                try { if (cfg2 && cfg2.enableAutoUrlLinkify && typeof runAutoUrlLinkify === 'function') runAutoUrlLinkify(replyScope); } catch (err) {}
                 try { if (cfg2 && cfg2.enableHDImageAndLayoutFix && typeof enableHDImageAndLayoutFix === 'function') enableHDImageAndLayoutFix(replyScope); } catch (err) {}
                 try { if (cfg2 && cfg2.enableHDImage && typeof enableHDImage === 'function') enableHDImage(replyScope); } catch (err) {}
                 try { if (cfg2 && cfg2.enableLinkBlank && typeof runLinkBlank === 'function') runLinkBlank(node); } catch (err) {}
@@ -23726,7 +23735,9 @@ function 注册自动保存编辑() {
         const _e = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const id = String(reply.id);
         const title = String(reply.title || '');
-        const email = String(reply.email || '');
+        // API 回复对象没有 email 字段，名称承载在 name（原站 DOM 中渲染到 .h-threads-info-email，
+        // 即绿色字体位置）。保留 email 优先以兼容其它 API 版本/镜像。
+        const email = String(reply.email || reply.name || '');
         const now = String(reply.now || '');
         const hash = String(reply.user_hash || '');
         const contentHtml = String(reply.content || '');
