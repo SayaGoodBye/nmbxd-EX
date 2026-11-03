@@ -14,6 +14,7 @@
 // @grant        GM_deleteValue
 // @grant        GM_listValues
 // @grant        GM_addStyle
+// @grant        GM_download
 // @grant        unsafeWindow
 // @connect      nmbxd1.com
 // @connect      www.nmbxd1.com
@@ -764,6 +765,7 @@ function xdexEarlyDarkEnabled() {
       enableQuotePreview: true, // 优化引用弹窗
       enableUpdateCheck: true,
       enableImageContextMenu: true,
+      enableQuickAddPostHistory: true, // 右键串链接快捷添加到发言历史（脚本自建菜单 / 扩展原生菜单）
       enableImageHideMode: true, // 图片隐藏/无图模式
       applyImageHideMode: 'default', // default | blur | noimage | tips
       imageViewerSeparators: true, // 阅图模式：显示页码分隔线与“第N页”标识
@@ -1787,7 +1789,7 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_extendQuote" class="xdex-switch" role="switch"><label for="sp_extendQuote"> 拓展引用格式</label><input type="checkbox" id="sp_extendQuoteAvailabilityDetection" class="xdex-switch" role="switch"><label for="sp_extendQuoteAvailabilityDetection"> 可用性检测</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_toggleSidebar" class="xdex-switch" role="switch"><label for="sp_toggleSidebar"> 自动收起侧边栏</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableUpdateCheck" class="xdex-switch" role="switch"><label for="sp_enableUpdateCheck"> 检查更新</label></div>
-                <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片菜单</label></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageContextMenu" class="xdex-switch" role="switch"><label for="sp_enableImageContextMenu"> 图片右键菜单</label><input type="checkbox" id="sp_enableQuickAddPostHistory" class="xdex-switch" role="switch"><label for="sp_enableQuickAddPostHistory"> 快捷添加发言历史</label></div>
                 <div style="${checkboxItemStyle}"><input type="checkbox" id="sp_enableThreadHistory" class="xdex-switch" role="switch"><label for="sp_enableThreadHistory"> 浏览历史</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostHistory" class="xdex-switch" role="switch"><label for="sp_enablePostHistory"> 发言历史</label><input type="checkbox" id="sp_disableAutoQuote" class="xdex-switch" role="switch"><label for="sp_disableAutoQuote"> 关闭引用</label><select id="sp_postAfterAction" style="height:24px;"><option value="jump">发串后跳转</option><option value="refresh">发串后刷新</option></select></div>
                 <!-- <div style="width:50%;"><label for="sp_占位"> </label></div> -->
@@ -2334,6 +2336,15 @@ function xdexEarlyDarkEnabled() {
       });
       $('#sp_enablePostHistory').off('change.xdexHistoryToggle').on('change.xdexHistoryToggle', () => {
         applyHistoryToggleImmediately('enablePostHistory', '发言历史');
+      });
+      // ★ 快捷添加发言历史：即时生效（右键菜单每次实时读设置，无需刷新）
+      $('#sp_enableQuickAddPostHistory').off('change.xdexQuickAddToggle').on('change.xdexQuickAddToggle', () => {
+        const checked = $('#sp_enableQuickAddPostHistory').is(':checked');
+        this.state.enableQuickAddPostHistory = checked;
+        try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('快捷添加发言历史', e); }
+        // 即时生效：开启时补齐菜单与监听（关闭时无需拆除，右键判定实时读开关）
+        if (checked) { try { if (typeof enableQuickAddPostHistoryMenu === 'function') enableQuickAddPostHistoryMenu(); } catch (e) {} }
+        toast('快捷添加发言历史' + (checked ? '已开启' : '已关闭'), 1400, { queue: false, key: 'quick-add-toggle' });
       });
       // ★ 发送链开关：即时保存（消费点每次从 GM 重读：doSubmit / finishSubmitImageProcessing）
       // ——无需刷新，下次发送即生效；跨页同步由 GM 存储监听自然完成。
@@ -3270,7 +3281,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'interceptReplyFormAutoCompress', 'enableSeamlessPaging',
         'enableAutoSeamlessPaging', 'enableHDImageAndLayoutFix',
         'enableLinkBlank', 'enableAutoUrlLinkify', 'enableQuotePreview',
-        'enableUpdateCheck', 'enableImageContextMenu', 'enableImageHideMode',
+        'enableUpdateCheck', 'enableImageContextMenu', 'enableQuickAddPostHistory', 'enableImageHideMode',
         'applyImageHideMode', 'imageViewerSeparators', 'enableDraft', 'timeDisplayMode',
         'extendQuote', 'kaomojiSort', 'toggleSidebar',
         'threadCookieWhitelistDisplayMode', 'poAnnotationSideDisplayMode',
@@ -4516,6 +4527,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableAutoSeamlessPaging: '滚动到页面底部后自动触发无缝翻页，关闭则可使用按钮手动无缝翻页',
         sp_enableHDImageAndLayoutFix: 'X岛-揭示板的增强型体验:默认加载原图而非缩略图，并为所有图片添加X岛自带图片控件；调整布局，防止文字与图片溢出',
         sp_enableImageContextMenu: 'userscript模式：为图片/动图启用自定义右键菜单，关闭后保留浏览器原生图片右键菜单，复制图片过程中需要浏览器窗口在前台。\nextension模式：在浏览器右键菜单中添加“X岛-EX：复制GIF/APNG”按钮，仅用于复制GIF/APNG，在复制GIF/APNG过程中焦点可不在前台',
+        sp_enableQuickAddPostHistory: 'userscript模式：右键串链接时，脚本自建菜单首项为“添加到发言历史”，可直接把该串/回复加入发言历史，无需先复制链接再手动添加。\nextension模式：在浏览器右键菜单中添加“X岛-EX：添加到发言历史”。仅在右键 /t/串号 链接时出现，默认开启、即时生效',
         sp_enableLinkBlank: 'X岛-揭示板的增强型体验:串页链接在新标签页打开',
         sp_enableAutoUrlLinkify: '自动将正文中的网址转换为可点击的新标签页蓝色链接，可与“拓展引用格式”共存',
         sp_enableQuotePreview: '优化引用弹窗显示，将鼠标悬停出现引用弹窗改为点击显示引用弹窗，引用弹窗可持久存在，支持嵌套、拖拽，点击非引用弹窗区域或ESC键可关闭当前引用弹窗，点击右下角×以关闭全部引用弹窗',
@@ -4698,6 +4710,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enableAutoSeamlessPaging',
         'enableHDImageAndLayoutFix',
         'enableImageContextMenu',
+        'enableQuickAddPostHistory',
         'enableThreadHistory',
         'enablePostHistory',
         'enableLinkBlank',
@@ -9322,15 +9335,31 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
   function runEarlyStartupPass(root) {
     runCriticalVisualEnhancements(root, getEarlyStartupConfig());
   }
+  // 早期视觉增强的就绪判据：拓展坞已由 early shell 注入、原生工具栏已移除、按钮已绑定。
+  // 达成后本轮增强的目标状态已成立，继续按帧重跑只会重复主题同步/查询/绑定/打印。
+  function earlyCriticalPassSettled() {
+    const docker = document.querySelector('.hld__docker');
+    if (!docker) return false;
+    if (docker.dataset.xdexEarlyDocker !== '1') return false;
+    if (docker.dataset.xdexSidebarShellBound !== '1') return false;
+    return !document.querySelector('#h-tool');
+  }
   function installEarlyCriticalVisualPass() {
     const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
     const duration = 800;
+    // ★ 上限：原先按帧跑满 800ms（≈48 遍 runCriticalVisualEnhancements），
+    // 每遍都会重跑主题同步/坞模式/侧栏绑定与相对时间全页遍历，是启动期长帧的主要来源。
+    const MAX_PASSES = 12;
     let rafId = 0;
+    let passes = 0;
     function now() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
     function pass() {
       rafId = 0;
+      passes += 1;
       try { runCriticalVisualEnhancements(document, getEarlyStartupConfig()); } catch (e) {}
-      if (now() - startedAt < duration) {
+      // 目标状态已成立：立即收工（保留首次 pass 的成果），不再按帧重复
+      if (earlyCriticalPassSettled()) return;
+      if (passes < MAX_PASSES && now() - startedAt < duration) {
         rafId = requestAnimationFrame(pass);
       }
     }
@@ -9520,6 +9549,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     const browserEvents = [];
     const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
     const target = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    // 采集开关同样挂到页面主世界：TM 沙箱下脚本里的 window 不是页面 window，
+    // 否则在页面控制台执行 __xdexPerfCollectOn() 会直接 ReferenceError（含 __xdexPerfPrint 等
+    // 其余 API 已同时挂 target，只有这三个漏了）。
+    try {
+      target.__xdexPerfCollectOn = window.__xdexPerfCollectOn;
+      target.__xdexPerfCollectOff = window.__xdexPerfCollectOff;
+      target.__xdexPerfCollectState = window.__xdexPerfCollectState;
+    } catch (e) {}
     function now() {
       return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
     }
@@ -9837,7 +9874,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                 }))
               };
               browserEvents.push(item);
-              console.log('[XDEX browser perf]', item);
+              // 打印上限：留档照旧全量记录，但只打印前 60 条（DevTools 打开时逐条打印会显著放大开销）
+              if (browserEvents.length <= 60) console.log('[XDEX browser perf]', item);
+              else if (browserEvents.length === 61) console.log('[XDEX browser perf] 后续条目仅记录、不再打印（可用 __xdexPerfLoaf() 汇总查看）');
             });
           });
           observer.observe({ entryTypes: ['longtask'] });
@@ -9866,15 +9905,90 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                 })).sort((a, b) => (b.duration + b.forcedStyleAndLayout) - (a.duration + a.forcedStyleAndLayout))
               };
               browserEvents.push(item);
-              console.log('[XDEX browser perf]', item);
+              if (browserEvents.length <= 60) console.log('[XDEX browser perf]', item);
+              else if (browserEvents.length === 61) console.log('[XDEX browser perf] 后续条目仅记录、不再打印（可用 __xdexPerfLoaf() 汇总查看）');
             });
           });
           observer.observe({ type: 'long-animation-frame', buffered: true });
         } catch (e) {}
       }
     }
+    // ★ 长帧归因汇总：把 LoAF 的 scripts[]（文件::函数）与 longtask 的 attribution 聚合排序。
+    // 用途：控制台 __xdexPerfLoaf() 一眼看出「哪个脚本/函数造成了长帧」，含强制样式布局耗时。
+    function summarizeLoaf() {
+      const groups = new Map();
+      const add = (key, kind, ms, forced) => {
+        const g = groups.get(key) || { 归因: key, 类型: kind, 次数: 0, 合计ms: 0, 最大ms: 0, 强制样式布局ms: 0 };
+        g.次数 += 1; g.合计ms += ms; g.强制样式布局ms += (forced || 0); g.最大ms = Math.max(g.最大ms, ms);
+        groups.set(key, g);
+      };
+      const base = (src) => String(src || '').split('/').pop().split('?')[0] || '(inline)';
+      browserEvents.forEach(ev => {
+        if (ev.label === 'browser:longtask') {
+          const who = (ev.attribution || []).map(a => base(a.containerSrc) + (a.name ? '/' + a.name : '')).join(', ') || ev.name || 'unknown';
+          add('longtask @' + who, 'longtask', ev.duration, 0);
+          return;
+        }
+        if (ev.label === 'browser:long-animation-frame') {
+          const scripts = ev.scripts || [];
+          if (!scripts.length) add('(无可归因脚本：纯样式/布局/渲染)', 'long-frame', ev.duration, ev.blockingDuration || 0);
+          scripts.forEach(sc => add(base(sc.src) + ' :: ' + (sc.fn || '(匿名)'), 'long-frame', sc.duration || 0, sc.forcedStyleAndLayout || 0));
+          add('【帧总计】blocking=' + Math.round(ev.blockingDuration || 0) + 'ms', 'long-frame', ev.duration, 0);
+        }
+      });
+      const rows = Array.from(groups.values())
+        .map(g => ({ 归因: g.归因, 类型: g.类型, 次数: g.次数, 合计ms: Number(g.合计ms.toFixed(1)), 最大ms: Number(g.最大ms.toFixed(1)), 强制样式布局ms: Number(g.强制样式布局ms.toFixed(1)) }))
+        .sort((a, b) => b.合计ms - a.合计ms);
+      console.table(rows);
+      return rows;
+    }
+    // ★ 帧节拍探针：在「滚动中」调用，量化卡顿本身（主线程交付节奏）。
+    // 与 __xdexPerfLoaf() 配合可区分三种情况：
+    //   ① 帧间隔差 + LoAF 有本站函数 → 我们主线程忙；
+    //   ② 帧间隔差 + LoAF 无可归因脚本 → 样式/布局/渲染，或隔离世界脚本（其它油猴脚本不产出
+    //      scripts[] 归因，且完全不进本站埋点）；
+    //   ③ 帧间隔正常但你仍觉卡 → 合成/GPU/后台进程（用浏览器任务管理器看进程级 CPU）。
+    function sampleFramePacing(seconds) {
+      const dur = Math.max(1, Math.min(30, Number(seconds) || 5)) * 1000;
+      return new Promise(resolve => {
+        const intervals = [];
+        let last = now();
+        const startedAt = last;
+        function step() {
+          const t = now();
+          intervals.push(t - last);
+          last = t;
+          if (t - startedAt < dur) { requestAnimationFrame(step); return; }
+          const sorted = intervals.slice().sort((a, b) => a - b);
+          const pick = q => sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] : 0;
+          const total = intervals.reduce((a, b) => a + b, 0);
+          const over = ms => intervals.filter(v => v > ms).length;
+          const summary = {
+            窗口秒: Number((dur / 1000).toFixed(1)),
+            帧数: intervals.length,
+            平均FPS: Number((intervals.length / Math.max(0.001, total / 1000)).toFixed(1)),
+            帧间隔均值ms: Number((total / Math.max(1, intervals.length)).toFixed(2)),
+            帧间隔中位ms: Number(pick(0.5).toFixed(2)),
+            'p95帧间隔ms': Number(pick(0.95).toFixed(2)),
+            最差帧间隔ms: Number(Math.max(0, ...intervals).toFixed(2)),
+            '>33ms帧数': over(33),
+            '>50ms帧数': over(50),
+            '>100ms帧数': over(100)
+          };
+          try {
+            if (performance.memory && performance.memory.usedJSHeapSize) {
+              summary['JS堆MB'] = Number((performance.memory.usedJSHeapSize / 1048576).toFixed(1));
+            }
+          } catch (e) {}
+          console.table([summary]);
+          console.log('[XDEX perf] 帧节拍（必须在滚动过程中采样才反映卡顿）', summary);
+          resolve(summary);
+        }
+        requestAnimationFrame(step);
+      });
+    }
     const api = { measure, measureAsync, measureObserver, begin, finish, record, recordObserver, mark, report, reset, summarizeRoot,
-      capture, exportAll, printAll, listRounds, clearRounds };
+      capture, exportAll, printAll, listRounds, clearRounds, summarizeLoaf, sampleFramePacing };
     window.__xdexStartupPerfReport = report;
     window.__xdexStartupPerfReset = reset;
     target.__xdexStartupPerfReport = report;
@@ -9890,6 +10004,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     target.__xdexPerfExport = exportAll;
     target.__xdexPerfPrint = printAll;
     target.__xdexPerfClear = clearRounds;
+    target.__xdexPerfLoaf = summarizeLoaf;   // 长帧归因汇总（控制台可直接调用）
+    target.__xdexPerfJank = sampleFramePacing; // 帧节拍采样：__xdexPerfJank(6) 滚动中运行
+    window.__xdexPerfJank = sampleFramePacing;
     if (AUTO_COLLECTION_ENABLED) {
       installBrowserObservers();
       setTimeout(() => {
@@ -14675,6 +14792,17 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
   }
   function tryReplaceRightSidebarEarly() {
     if (!document.body) return false;
+    // ★ 幂等快路径：early shell 已完成（坞已注入、原生工具栏已移除、模式类与按钮绑定均已到位）
+    // → 直接返回。调用方包括启动期按帧的早期增强轮与局部增强预处理器，重复调用原本会
+    // 重跑主题同步（写 class/colorScheme + 打印）、坞模式应用与按钮绑定检查（各打印一行）。
+    const existingDocker = document.querySelector('.hld__docker');
+    if (existingDocker
+      && existingDocker.dataset.xdexEarlyDocker === '1'
+      && existingDocker.dataset.xdexSidebarShellBound === '1'
+      && !document.querySelector('#h-tool')
+      && existingDocker.classList.contains('xdex-dock-fixed') === (getDockDisplayMode() === 'fixed')) {
+      return true;
+    }
     ensureRightSidebarShellStyle();
     // 尽早同步 Dark Reader class：设置面板暗色依赖它，不能等 qp-style / batch2
     try { ensureDarkReaderThemeSync(); } catch (e) {}
@@ -14706,6 +14834,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     const docker = document.querySelector('.hld__docker');
     if (!docker) return;
     const fixed = mode === 'fixed';
+    // ★ 幂等短路：已是目标态则不动 class、不打日志（本函数在早期增强轮与局部增强里会被反复调用）
+    if (docker.classList.contains('xdex-dock-fixed') === fixed) return;
     docker.classList.toggle('xdex-dock-fixed', fixed);
     console.log('[rightSidebarDocker] 显示模式应用', { mode: fixed ? 'fixed' : 'hover' });
   }
@@ -25416,6 +25546,10 @@ function 注册自动保存编辑() {
       :root.xdex-darkreader-active #xdex-image-context-menu .xdex-image-context-item:focus {
         background: rgba(102, 204, 255, 0.18);
       }
+      /* 菜单模式：图片 / 串链接 二选一，同一套容器复用，避免重复监听与样式 */
+      #xdex-image-context-menu .xdex-menu-link-only { display: none; }
+      #xdex-image-context-menu.xdex-menu-mode-link .xdex-menu-link-only { display: flex; }
+      #xdex-image-context-menu.xdex-menu-mode-link .xdex-menu-image-only { display: none; }
       #xdex-image-context-menu .xdex-image-context-sep {
         height: 1px;
         margin: 4px 0;
@@ -25463,6 +25597,86 @@ function 注册自动保存编辑() {
     if (!resp.ok) throw new Error(`fetch 请求失败: ${resp.status} ${url}`);
     return await resp.blob();
   }
+  // 串链接右键上下文判定：/t/串号（可带 ?r=回复号&page=页码），最短为 /t/串号。
+  // 返回 null 表示不该接管（交给浏览器原生菜单）。
+  const THREAD_LINK_HREF_RE = /^\/t\/(\d{6,8})(?:\?(?:[^#]*))?(?:#.*)?$/;
+  function resolveThreadLinkContext(target) {
+    const a = target && target.closest ? target.closest('a[href]') : null;
+    if (!a) return null;
+    // 输入框/可编辑区域内不接管（保留原生粘贴/选择菜单）
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return null;
+    // 预览框/引用浮窗内的克隆链接不作为上下文
+    if (a.closest('.h-preview-box, .qp-quote, #xdex-image-context-menu, #sp_cover, .kaomoji-panel')) return null;
+    const href = String(a.getAttribute('href') || '');
+    const m = href.match(THREAD_LINK_HREF_RE);
+    if (!m) return null;
+    let linkUrl = href;
+    try { linkUrl = new URL(href, location.origin).href; } catch (err) { linkUrl = href; }
+    return { kind: 'link', threadId: m[1], href, linkUrl };
+  }
+  // 链接另存为：拉取目标并触发下载。链接均为同源 /t/ 页面，直接 fetch 即可（无需 GM 通道）。
+  function buildLinkSaveFileName(ctx) {
+    const tid = String(ctx && ctx.threadId || '');
+    let page = 0;
+    try {
+      const u = new URL(ctx.linkUrl);
+      const m = u.searchParams.get('page');
+      if (m) page = parseInt(m, 10) || 0;
+    } catch (e) {}
+    if (tid) return 't-' + tid + (page > 1 ? '-p' + page : '') + '.html';
+    let base = 'link';
+    try {
+      const u = new URL(ctx.linkUrl);
+      base = (u.pathname.split('/').filter(Boolean).pop() || u.hostname || 'link').replace(/[\\/:*?"<>|]+/g, '_');
+    } catch (e) {}
+    return /.[a-z0-9]{2,5}$/i.test(base) ? base : base + '.html';
+  }
+  // 链接另存为：优先 GM_download（saveAs 弹系统保存对话框、直接取服务器响应、不占页面内存），
+  // 管理器不支持（如扩展/客户端的 GM 宿主）时回退到 fetch + Blob 下载。
+  function tryGmDownloadLink(url, fileName) {
+    if (typeof GM_download !== 'function') return null;
+    return new Promise((resolve, reject) => {
+      try {
+        GM_download({
+          url,
+          name: fileName,
+          saveAs: true,
+          onload: () => resolve(true),
+          onerror: (err) => reject(new Error(String((err && (err.error || err.details)) || 'GM_download failed'))),
+          ontimeout: () => reject(new Error('GM_download timeout'))
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+  async function saveLinkTarget(ctx) {
+    const url = ctx && ctx.linkUrl;
+    if (!url) return;
+    const fileName = buildLinkSaveFileName(ctx);
+    toast('正在保存链接内容…', 1200, { queue: false, key: 'save-link' });
+    const viaGm = tryGmDownloadLink(url, fileName);
+    if (viaGm) {
+      try {
+        await viaGm;
+        toast('已保存：' + fileName);
+        return;
+      } catch (err) {
+        console.warn('[tag23] GM_download 失败，回退 fetch 下载:', err && err.message ? err.message : err);
+      }
+    }
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const blob = await resp.blob();
+    blobToObjectUrlDownload(blob, fileName);
+  }
+  function addPostHistoryFromLinkContext(ctx) {
+    const url = ctx && ctx.linkUrl ? ctx.linkUrl : '';
+    if (!url) return;
+    // 复用设置面板「手动添加」同一套解析与写入链路（含查重、ref API 拉取、面包屑补全）
+    const promise = addPostHistoryFromManualInput(url, { source: 'context-menu' });
+    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+  }
   function handleImageContextMenuEvent(e, layer) {
     if (layer === 'document' && e.defaultPrevented) return false;
     // console.info('【右键菜单｜收到右键】', {
@@ -25473,13 +25687,30 @@ function 注册自动保存编辑() {
     // });
     const anchor = e.target && e.target.closest ? e.target.closest('.h-threads-img-a') : null;
     if (!anchor) {
-      // console.info('【右键菜单｜跳过】', { 原因: '未命中图片链接', 层级: layer });
-      return false;
+      // 图片未命中 → 尝试串链接模式（开关即时生效：每次右键实时读取）
+      if (!isQuickAddPostHistoryEnabled()) return false;
+      const linkCtx = resolveThreadLinkContext(e.target);
+      if (!linkCtx) {
+        // console.info('【右键菜单｜跳过】', { 原因: '未命中图片/串链接', 层级: layer });
+        return false;
+      }
+      const menuEl = getImageContextMenu();
+      menuEl.classList.add('xdex-menu-mode-link');
+      e.preventDefault();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      e.stopPropagation();
+      e.cancelBubble = true;
+      e.returnValue = false;
+      openImageContextMenu(linkCtx, e.clientX, e.clientY);
+      return true;
     }
+    if (!isImageContextMenuEnabled()) return false;
     if (anchor.closest('.h-preview-box')) {
       // console.info('【右键菜单｜跳过】', { 原因: '命中预览框图片', 层级: layer });
       return false;
     }
+    // 图片模式：清掉链接模式类，避免上次的链接项残留
+    getImageContextMenu().classList.remove('xdex-menu-mode-link');
     // console.info('【右键菜单｜命中】', { 链接: (anchor.href || '').slice(0, 200), 层级: layer });
     const ctx = resolveImageContextData(anchor);
     if (!ctx) {
@@ -25508,11 +25739,20 @@ function 注册自动保存编辑() {
     menu.className = 'xdex-hidden';
     menu.innerHTML = [
       // '<button type="button" class="xdex-image-context-item" data-action="copy-image">复制图片<span class="xdex-image-context-hint">GIF 先尝试原样复制，失败时自动降级</span></button>',
-      '<button type="button" class="xdex-image-context-item" data-action="copy-image">复制图片</button>',
-      '<button type="button" class="xdex-image-context-item" data-action="download-image">下载图片</button>',
-      '<button type="button" class="xdex-image-context-item" data-action="copy-image-url">复制图片链接</button>',
+      '<button type="button" class="xdex-image-context-item xdex-menu-image-only" data-action="copy-image">复制图片</button>',
+      '<button type="button" class="xdex-image-context-item xdex-menu-image-only" data-action="download-image">下载图片</button>',
+      '<button type="button" class="xdex-image-context-item xdex-menu-image-only" data-action="copy-image-url">复制图片链接</button>',
       // '<div class="xdex-image-context-sep"></div>',
-      '<button type="button" class="xdex-image-context-item" data-action="copy-thread-link">复制串链接</button>'
+      '<button type="button" class="xdex-image-context-item xdex-menu-image-only" data-action="copy-thread-link">复制串链接</button>',
+      // ── 串链接模式（右键 /t/串号 链接）：添加到发言历史置顶，其后为链接常规操作。
+      //    注：浏览器原生菜单的「在分屏视角打开」「在隐私窗口打开」无法从页面脚本触发，故不提供。
+      '<button type="button" class="xdex-image-context-item xdex-menu-link-only" data-action="add-post-history">添加到发言历史</button>',
+      '<div class="xdex-image-context-sep xdex-menu-link-only"></div>',
+      '<button type="button" class="xdex-image-context-item xdex-menu-link-only" data-action="open-link-new-tab">在新标签页打开</button>',
+      '<button type="button" class="xdex-image-context-item xdex-menu-link-only" data-action="open-link-new-window">在新窗口打开</button>',
+      '<div class="xdex-image-context-sep xdex-menu-link-only"></div>',
+      '<button type="button" class="xdex-image-context-item xdex-menu-link-only" data-action="save-link-as">链接另存为</button>',
+      '<button type="button" class="xdex-image-context-item xdex-menu-link-only" data-action="copy-link-url">复制链接地址</button>'
     ].join('');
     menu.__context = null;
     menu.addEventListener('click', async (e) => {
@@ -25532,6 +25772,17 @@ function 注册自动保存编辑() {
           await copyImageUrl(ctx);
         } else if (action === 'copy-thread-link') {
           await copyThreadLink(ctx);
+        } else if (action === 'add-post-history') {
+          addPostHistoryFromLinkContext(ctx);
+        } else if (action === 'open-link-new-tab') {
+          window.open(ctx.linkUrl, '_blank', 'noopener');
+        } else if (action === 'open-link-new-window') {
+          // 带尺寸特性会走「新窗口」而非新标签（各浏览器策略略有差异）
+          window.open(ctx.linkUrl, '_blank', 'noopener,width=1200,height=900');
+        } else if (action === 'save-link-as') {
+          await saveLinkTarget(ctx);
+        } else if (action === 'copy-link-url') {
+          await writeClipboardText(ctx.linkUrl, '链接已复制');
         }
       } catch (err) {
         console.warn('[tag23] action failed:', action, err);
@@ -25541,31 +25792,23 @@ function 注册自动保存编辑() {
     document.body.appendChild(menu);
     // console.info('【右键菜单｜挂载】', { 位置: 'body', 菜单项数: menu.querySelectorAll('.xdex-image-context-item').length });
     if (!getImageContextMenu.__globalBound) {
-      // console.info('【右键菜单｜注册】', { 类型: 'contextmenu/click/blur/scroll/keydown', 阶段: 'capture' });
+      // 仅常驻两个 contextmenu 监听（它们只在右键时触发）。
       window.addEventListener('contextmenu', (e) => {
         return handleImageContextMenuEvent(e, 'window') ? false : undefined;
       }, true);
       document.addEventListener('contextmenu', (e) => {
         return handleImageContextMenuEvent(e, 'document') ? false : undefined;
       }, true);
-      document.addEventListener('click', (e) => {
-        const cur = document.getElementById('xdex-image-context-menu');
-        if (!cur || cur.classList.contains('xdex-hidden')) return;
-        if (cur.contains(e.target)) return;
-        closeImageContextMenu();
-      }, true);
-      window.addEventListener('blur', () => closeImageContextMenu());
-      window.addEventListener('scroll', () => closeImageContextMenu(), true);
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeImageContextMenu();
-      });
       getImageContextMenu.__globalBound = true;
     }
     return menu;
   }
   function closeImageContextMenu() {
     const menu = document.getElementById('xdex-image-context-menu');
+    // 关闭即摘监听（即使菜单元素已不存在也要摘，避免悬挂回调）
+    unbindImageContextMenuDismissListeners();
     if (!menu) return;
+    if (menu.classList.contains('xdex-hidden')) return;
     menu.classList.add('xdex-hidden');
     menu.style.left = '-9999px';
     menu.style.top = '-9999px';
@@ -25579,8 +25822,37 @@ function 注册自动保存编辑() {
     const packaged = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
     return !!(packaged && cfg && cfg.enableImageContextMenu);
   }
+  // 关闭类监听（点外部 / 失焦 / 滚动 / Esc）只在菜单可见期间存在：
+  // 纯滚动浏览时不留任何 scroll 捕获回调，避免「不起眼但持续」的滚动路径开销。
+  function bindImageContextMenuDismissListeners() {
+    if (getImageContextMenu.__dismiss) return;
+    const onDocClick = (e) => {
+      const cur = document.getElementById('xdex-image-context-menu');
+      if (!cur || cur.classList.contains('xdex-hidden')) return;
+      if (cur.contains(e.target)) return;
+      closeImageContextMenu();
+    };
+    const onBlur = () => closeImageContextMenu();
+    const onScroll = () => closeImageContextMenu();
+    const onKeydown = (e) => { if (e.key === 'Escape') closeImageContextMenu(); };
+    getImageContextMenu.__dismiss = { onDocClick, onBlur, onScroll, onKeydown };
+    document.addEventListener('click', onDocClick, true);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('scroll', onScroll, true);
+    document.addEventListener('keydown', onKeydown);
+  }
+  function unbindImageContextMenuDismissListeners() {
+    const bound = getImageContextMenu.__dismiss;
+    if (!bound) return;
+    document.removeEventListener('click', bound.onDocClick, true);
+    window.removeEventListener('blur', bound.onBlur);
+    window.removeEventListener('scroll', bound.onScroll, true);
+    document.removeEventListener('keydown', bound.onKeydown);
+    getImageContextMenu.__dismiss = null;
+  }
   function openImageContextMenu(context, x, y) {
     const menu = getImageContextMenu();
+    bindImageContextMenuDismissListeners();
     menu.__context = context;
     menu.classList.remove('xdex-hidden');
     menu.style.left = '0px';
@@ -25920,6 +26192,57 @@ function 注册自动保存编辑() {
   async function copyThreadLink(ctx) {
     console.info('【右键菜单｜执行】', { 动作: '复制串链接', 串链接: String(ctx && ctx.threadUrl || '').slice(0, 200) });
     await writeClipboardText(ctx.threadUrl, '串链接已复制');
+  }
+  // 串链接右键菜单安装器：与图片菜单共用同一容器/监听，仅按运行时与开关决定是否创建。
+  // 打包运行时（Chrome 扩展 / QwQNT）都有宿主原生右键菜单，不注入页面内菜单以免遮挡；
+  // 其中扩展端由 SW 的 chrome.contextMenus 提供“添加到发言历史”，QwQNT 本轮未接原生项。
+  function enableQuickAddPostHistoryMenu(root = document) {
+    return startupPerfDebug.measure('enableQuickAddPostHistoryMenu', () => {
+      if (!isQuickAddPostHistoryEnabled()) return;
+      const packaged = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+      if (packaged) return;
+      ensureImageContextMenuStyle();
+      getImageContextMenu();
+    }, () => startupPerfDebug.summarizeRoot(root));
+  }
+  // 扩展端“添加到发言历史”桥接：SW 的原生菜单点击 → gm-compat 转发为 document 事件 →
+  // 这里调用与面板「手动添加」完全相同的链路。仅绑定一次；开关关闭时直接忽略。
+  let quickAddPostHistoryBridgeBound = false;
+  function installQuickAddPostHistoryBridge() {
+    if (quickAddPostHistoryBridgeBound) return;
+    quickAddPostHistoryBridgeBound = true;
+    // QwQNT 原生菜单入口：主进程用 executeJavaScript 调用（主世界脚本，与扩展事件总线同语义）。
+    // 暴露到页面主世界；TM 下暴露在沙箱 window 也无副作用。与设置面板「手动添加」共用同一链路。
+    try {
+      const pageWindow = (typeof unsafeWindow !== 'undefined' && unsafeWindow) ? unsafeWindow : window;
+      pageWindow.__xdexAddPostHistoryFromUrl = (url) => {
+        if (!isQuickAddPostHistoryEnabled()) { toast('快捷添加发言历史已在设置中关闭', 1800); return; }
+        const promise = addPostHistoryFromManualInput(String(url || ''), { source: 'qwqnt-menu' });
+        if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+      };
+      pageWindow.__xdexIsQuickAddPostHistoryEnabled = () => isQuickAddPostHistoryEnabled();
+    } catch (e) {}
+    document.addEventListener('xdex:add-post-history', (e) => {
+      if (!isQuickAddPostHistoryEnabled()) return;
+      const url = e && e.detail && e.detail.url ? String(e.detail.url) : '';
+      if (!url) return;
+      const promise = addPostHistoryFromManualInput(url, { source: 'extension-menu' });
+      if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+    });
+  }
+  // 图片右键菜单是否应当由页面自建菜单接管（与 enableImageContextMenu 的安装条件一致）。
+  // 链接菜单会绑定同一批全局监听，故图片分支必须右键时复查本开关，否则关掉图片菜单后仍会被接管。
+  function isImageContextMenuEnabled() {
+    try {
+      const sp = typeof SettingPanel !== 'undefined' ? SettingPanel : null;
+      // 优先用内存 state（SettingPanel.init 在 document.ready 已填充，key 必定存在）：
+      // 右键路径不再每次 GM_getValue 全量读设置（TM 下是整份设置的同步读+解析）。
+      const state = sp && sp.state ? sp.state : null;
+      const cfg = state || Object.assign({}, (sp && sp.defaults) || {}, GM_getValue(SettingPanel.key, {}));
+      if (!cfg.enableImageContextMenu) return false;
+      if (shouldUseExtensionNativeImageContextMenu(cfg)) return false;
+      return true;
+    } catch (e) { return false; }
   }
   function enableImageContextMenu(root = document) {
     return startupPerfDebug.measure('enableImageContextMenu', () => {
@@ -26487,11 +26810,17 @@ function 注册自动保存编辑() {
     return store;
   }
   function setThreadHistoryStore(store) {
+    // ★ 计时埋点（默认关闭，零开销）：userscript 的 GM_setValue 是同步落盘，
+    // 整份历史库的序列化+写盘在滚动时可能周期性卡顿；扩展/客户端为内存态存储故不明显。
+    // 取证：__xdexPerfCollectOn() → 刷新 → 滚动 → __xdexPerfPrint()，看 threadHistory.persist 的
+    // 次数 / 总耗时 / 单次最大耗时。
+    const __persistToken = startupPerfDebug.begin();
     const normalized = normalizeThreadHistoryStore(store);
     GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
     GM_setValue(THREAD_HISTORY_REV_KEY, nextHistoryRev());
     threadHistoryStoreCache = normalized;
     notifyThreadHistoryStoreChanged('local-write', false);
+    startupPerfDebug.finish('threadHistory.persist', __persistToken, () => ({ items: Object.keys((store && store.items) || {}).length }));
     return normalized;
   }
   function isThreadHistoryPanelOpen() {
@@ -28518,6 +28847,12 @@ function 注册自动保存编辑() {
     try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
     return saved;
   }
+  // 滚动位置的落盘延后：浏览历史库可能达数百条（含正文/标题/URL，可达 MB 级），
+  // 而 GM_setValue 在脚本猫/篡改猴是"同步序列化+落盘"。滚动时视口中心回复号几乎每次都变，
+  // 若每次防抖都落盘，长串滚动会出现周期性卡顿（扩展/客户端是内存态存储故无感）。
+  // 策略：内存即时更新（读侧看到的始终是最新），落盘推迟到滚动停止 2.5s 或页面离开时一次。
+  let threadHistoryScrollPersistTimer = 0;
+  let threadHistoryScrollDirty = false;
   function touchThreadHistoryCurrentLocation(options = {}) {
     if (!isThreadHistoryEnabledNow()) return getThreadHistoryStore(); // 浏览历史已关闭：不更新位置
     const parsed = parseThreadHistoryUrl(options.url || location.href);
@@ -28527,6 +28862,18 @@ function 注册自动保存编辑() {
     const item = store.items[key];
     if (!item) return store;
     const now = Date.now();
+    // ★ 写前快照：纯滚动且进度未变化时（最常见的滚动场景）跳过全量写盘。
+    // 关键收益：userscript 端 GM_setValue 是同步落盘，整份历史最大化序列化+写盘会周期性卡顿；
+    // 扩展/客户端的存储是内存态，故此前只有脚本端明显。
+    const before = {
+      page: item.page,
+      url: item.url,
+      maxVisitedPage: Number(item.maxVisitedPage) || 0,
+      lastKnownPage: Number(item.lastKnownPage) || 0,
+      lastReadReplyId: item.lastReadReplyId || '',
+      lastReadReplyPage: Number(item.lastReadReplyPage) || 0,
+      lastVisitedAt: Number(item.lastVisitedAt) || 0
+    };
     // 写前校验: 以存量进度为信任下限, 过时分页快照不得降级写入; lastKnownPage/maxVisitedPage 单调只升
     const knownMax = Math.max(Number(item.maxVisitedPage) || 0, Number(item.page) || 0);
     // page = 最近查看页, 如实记录当前所在页(允许主动回退到更低页码); maxVisitedPage 不受回翻影响
@@ -28542,8 +28889,27 @@ function 注册自动保存编辑() {
     // item.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
     applyThreadHistoryLastReadReply(item);
     if (options.touchVisitedAt) item.lastVisitedAt = now;
+    const changed = item.page !== before.page
+      || item.url !== before.url
+      || (Number(item.maxVisitedPage) || 0) !== before.maxVisitedPage
+      || (Number(item.lastKnownPage) || 0) !== before.lastKnownPage
+      || (item.lastReadReplyId || '') !== before.lastReadReplyId
+      || (Number(item.lastReadReplyPage) || 0) !== before.lastReadReplyPage
+      || (Number(item.lastVisitedAt) || 0) !== before.lastVisitedAt
+      || !(store.order && store.order[0] === key);
+    if (!changed) {
+      // 无变化：索引/顺序均为派生数据，无需重建；直接返回，不写盘、不同步菜单
+      return store;
+    }
     store.index[key] = buildThreadHistoryIndexEntry(item);
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
+    if (options.deferPersist) {
+      // 内存已是最新；落盘推到滚动停止后一次（见 flushThreadHistoryScrollPersist）
+      threadHistoryScrollDirty = true;
+      if (threadHistoryScrollPersistTimer) clearTimeout(threadHistoryScrollPersistTimer);
+      threadHistoryScrollPersistTimer = setTimeout(() => { threadHistoryScrollPersistTimer = 0; flushThreadHistoryScrollPersist({ reason: 'scroll-idle' }); }, 2500);
+      return store;
+    }
     const saved = setThreadHistoryStore(store);
     logThreadHistory('location touched', { key, reason: options.reason || '', page: item.page, url: item.url, maxVisitedPage: item.maxVisitedPage, touchVisitedAt: !!options.touchVisitedAt });
     // 同步常用串菜单中对应串的链接
@@ -28571,7 +28937,19 @@ function 注册自动保存编辑() {
     return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
   }
   function updateThreadHistoryScrollPosition() {
-    touchThreadHistoryCurrentLocation({ reason: 'scroll-position' });
+    touchThreadHistoryCurrentLocation({ reason: 'scroll-position', deferPersist: true });
+  }
+  // 滚动停止后落盘一次（延后落盘的真正写入点）
+  function flushThreadHistoryScrollPersist(options = {}) {
+    if (threadHistoryScrollPersistTimer) { clearTimeout(threadHistoryScrollPersistTimer); threadHistoryScrollPersistTimer = 0; }
+    if (!threadHistoryScrollDirty) return;
+    threadHistoryScrollDirty = false;
+    try {
+      const store = getThreadHistoryStore();
+      setThreadHistoryStore(store);
+      try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
+      logThreadHistory('scroll position persisted', { reason: options.reason || 'idle', key: (store.order || [])[0] || '' });
+    } catch (e) { /* 落盘失败不影响浏览 */ }
   }
   function deleteThreadHistoryItem(key) {
     const store = getThreadHistoryStore();
@@ -28783,8 +29161,8 @@ function 注册自动保存编辑() {
       const urlPage = Math.max(1, Number(urlParsed && urlParsed.page) || 1);
       for (let i = 0; i < nodes.length; i++) {
         const el = nodes[i];
-        // 引用浮窗/预览克隆虽不在 .h-threads-list，防御性再排除一次（嵌套容器场景）
-        if (el.closest('.h-preview-box, #h-ref-view, .qp-quote')) continue;
+        // 选择器已限定 .h-threads-list；引用浮窗(.qp-quote)/增强预览(.h-preview-box) 均挂在其外，
+        // 故这里不再逐节点做多选择器 closest（长串可达数百条，属纯浪费）
         const rect = el.getBoundingClientRect();
         if (!rect || rect.height <= 0) continue;
         const dist = Math.abs(rect.top + rect.height / 2 - mid);
@@ -28836,6 +29214,11 @@ function 注册自动保存编辑() {
         }
       }
       updateThreadHistoryScrollPosition();
+      flushThreadHistoryScrollPersist({ reason: 'pagehide' });   // 离开前把延后的滚动位置落盘
+    }, { passive: true });
+    // 切走标签也落盘一次（后台标签不再滚动，滞留的脏数据应尽快落地）
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushThreadHistoryScrollPersist({ reason: 'hidden' });
     }, { passive: true });
   }
   function isThreadHistoryPageActive() {
@@ -28904,6 +29287,19 @@ function 注册自动保存编辑() {
       if (typeof state.enablePostHistory === 'boolean') return state.enablePostHistory;
       const defaults = sp.defaults || {};
       return defaults.enablePostHistory !== false;
+    } catch (e) { return true; }
+  }
+  // 快捷添加发言历史开关（右键串链接 → 添加到发言历史）。
+  // 默认开启；消费点在右键瞬间实时读取，故设置面板改动即时生效；
+  // 跨页同步由 SettingPanel 的 GM 存储监听回写 state 自然完成。
+  function isQuickAddPostHistoryEnabled() {
+    try {
+      const sp = typeof SettingPanel !== 'undefined' ? SettingPanel : null;
+      if (!sp) return true;
+      const state = sp.state || {};
+      if (typeof state.enableQuickAddPostHistory === 'boolean') return state.enableQuickAddPostHistory;
+      const defaults = sp.defaults || {};
+      return defaults.enableQuickAddPostHistory !== false;
     } catch (e) { return true; }
   }
   function recordCurrentThreadHistory(attempt = 0, options = {}) {
@@ -30720,6 +31116,192 @@ function 注册自动保存编辑() {
       .filter(`[data-post-history-type="${postHistoryActiveType}"]`).addClass('active');
     renderPostHistoryModule();
   }
+  // 手动添加发言历史（设置面板输入框 / 右键串链接菜单共用）
+  // raw 支持：No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23
+  // options：{ clearInput, busyEl, source }；返回 Promise<{ ok, reason? }>
+  function addPostHistoryFromManualInput(raw, options = {}) {
+    // 面板按钮加载态（右键菜单路径不传 busyEl，等价于无 UI 反馈）
+    const setBusy = (busy) => {
+      const el = options.busyEl;
+      if (!el || !el.length) return;
+      el.prop('disabled', busy).text(busy ? '获取中…' : '手动添加');
+    };
+    // 仅面板路径清空输入框
+    const clearInput = () => {
+      if (!options.clearInput) return;
+      $('#sp_posts_manual_add_input').val('');
+    };
+    // 支持格式：No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23
+    let postId = '';
+    let replyId = '';
+    let inputPage = 0;
+    // 解析 URL 中的主题号、回复号、页码
+    const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{6,8})(?:\?([^#]*))?(?:#.*)?$/i);
+    const simpleMatch = raw.match(/^(?:No\.)?(\d{6,8})$/);
+    if (urlMatch) {
+      postId = urlMatch[1];
+      const qs = urlMatch[2] || '';
+      const rMatch = qs.match(/(?:^|&)r=(\d{6,8})(?:&|$)/);
+      const pMatch = qs.match(/(?:^|&)page=(\d+)(?:&|$)/);
+      replyId = rMatch ? rMatch[1] : '';
+      inputPage = pMatch ? parseInt(pMatch[1], 10) : 0;
+    } else if (simpleMatch) {
+      postId = simpleMatch[1];
+    } else {
+      toast('格式错误，支持:No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23');
+      return { ok: false, reason: 'format' };
+    }
+    // 前后号相同 → 直接当主题处理
+    if (replyId && replyId === postId) replyId = '';
+    const existingStore = getPostHistoryStore();
+    // 查找是否已存在匹配记录：有 replyId 时只匹配回复号，无 replyId 时匹配主题号
+    const existingMatch = replyId
+      ? Object.values(existingStore.items).find(item =>
+          String(item.id) === replyId || String(item.postId) === replyId
+        )
+      : Object.values(existingStore.items).find(item =>
+          String(item.id) === postId || String(item.postId) === postId
+        );
+    // 已存在且有完整信息 → 检查是否需要补充页码
+    if (existingMatch && existingMatch.resto && existingMatch.resto !== '0') {
+      if (inputPage && inputPage !== Number(existingMatch.page || 0)) {
+        // 有新页码且与已有记录不同 → 更新页码
+        updatePostHistoryRecord(existingMatch.localId, { page: inputPage });
+        renderPostHistoryModule();
+        clearInput();
+        toast('已更新 No.' + (replyId || postId) + ' 的页码为 ' + inputPage);
+      } else {
+        toast(replyId ? '回复 No.' + replyId + ' 已存在' : '主题 No.' + postId + ' 已存在');
+      }
+      return;
+    }
+    setBusy(true);
+    // 有 replyId → 直接用 ref API 获取回复内容
+    // 无 replyId → 用 ref API 获取帖子内容，再用 thread API 判定类型
+    const refTarget = replyId || postId;
+    const refUrl = 'https://api.nmb.best/api/ref?id=' + encodeURIComponent(refTarget);
+    const refHeaders = getPostHistoryApiCookieHeaders();
+    const refDetail = { id: refTarget, source: 'manual-add', api: true };
+    return gmRequest(refUrl, 'text', refHeaders).then(async (resp) => {
+      const post = parsePostHistoryRefResponse(resp, refDetail);
+      if (!post || !post.id) { toast('未找到该串/回复'); return; }
+      let type = 'thread';
+      let resto = '0';
+      let fid = getPostHistoryPostFid(post);
+      if (replyId) {
+        // 有 replyId → 明确是回复，resto = 主题号
+        type = 'reply';
+        resto = postId;
+        try {
+          const pageData = await fetchPostHistoryThreadPage(postId, 1, { source: 'manual-add-fid' });
+          if (!fid) fid = getPostHistoryPostFid(pageData && pageData.thread) || '';
+        } catch (e) {}
+      } else {
+        // 无 replyId → 用 thread API 判定类型
+        try {
+          const pageData = await fetchPostHistoryThreadPage(post.id, 1, { source: 'manual-add-type' });
+          const thread = pageData && pageData.thread;
+          if (thread && thread.id && String(thread.id) === String(post.id)) {
+            if (!fid) fid = getPostHistoryPostFid(thread) || '';
+          } else {
+            type = 'reply';
+            toast('该串号为回复，无法确定所属主题');
+          }
+        } catch (e) {
+          type = 'reply';
+          toast('该串号为回复，无法确定所属主题');
+        }
+      }
+      // 饼干校验
+      const userHash = String(post.user_hash || post.userHash || '').trim();
+      const cookieList = getCookiesList();
+      const matchedCookie = userHash
+        ? Object.values(cookieList).find(c => abbreviateName(c.name || '') === userHash)
+        : null;
+      // 自定义饼干同样视为“已在列表中”，不弹缺失提示
+      const matchedCustomCookie = userHash
+        ? Object.values(getCustomCookies()).find(c => abbreviateName(c.name || '') === userHash)
+        : null;
+      if (userHash && !matchedCookie && !matchedCustomCookie) {
+        if (!window.confirm('No.' + (replyId || postId) + ' 对应的饼干 ' + userHash + ' 不在当前列表之中，是否确认添加？')) {
+          setBusy(false);
+          return;
+        }
+      }
+      const serverContentRaw = post.content || '';
+      const serverContentText = normalizePostHistoryText(serverContentRaw);
+      const imageFile = buildPostHistoryImageFile(post.img, post.ext);
+      // 无主题号的回复 → url 留空，不构建跳转链接
+      const url = (type === 'reply' && resto === '0') ? '' : buildPostHistoryUrl(type, replyId || post.id, resto);
+      if (existingMatch) {
+        // 已存在但 resto=0 → 补充真实串号和相关信息
+        const patch = {};
+        if (type === 'reply' && resto !== '0') {
+          patch.resto = resto;
+          patch.threadId = resto;
+          patch.url = url;
+        }
+        if (inputPage && !existingMatch.page) {
+          patch.page = inputPage;
+        }
+        if (fid && !existingMatch.fid) {
+          patch.fid = fid;
+          patch.forumName = getPostHistoryForumNameByFid(fid);
+        }
+        if (imageFile && !existingMatch.imageFile) {
+          Object.assign(patch, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+        }
+        updatePostHistoryRecord(existingMatch.localId, patch);
+        renderPostHistoryModule();
+        clearInput();
+        const updated = [];
+        if (patch.resto) updated.push('串号');
+        if (patch.page) updated.push('页码');
+        if (patch.fid) updated.push('板块');
+        if (patch.imageFile) updated.push('图片');
+        toast('已更新 No.' + (replyId || postId) + '：' + (updated.join('、') || '无变化'));
+      } else {
+        // 新记录
+        const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        const record = {
+          status: 'confirmed',
+          type,
+          localId,
+          id: post.id,
+          resto,
+          threadId: type === 'reply' ? resto : post.id,
+          postId: post.id,
+          page: inputPage || Number(post.page) || (type === 'thread' ? 1 : 0),
+          fid,
+          forumName: getPostHistoryForumNameByFid(fid),
+          title: post.title || '',
+          name: post.name || '',
+          email: post.email || '',
+          contentRaw: serverContentRaw,
+          contentText: serverContentText,
+          contentHash: hashPostHistoryText(serverContentText),
+          contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
+          userHash,
+          submittedAt: Date.parse(post.now) || Date.now(),
+          confirmedAt: Date.now(),
+          sourceUrl: location.href,
+          url
+        };
+        if (imageFile) Object.assign(record, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
+        upsertPostHistoryRecord(record);
+        renderPostHistoryModule();
+        clearInput();
+        toast(type === 'thread' ? '已添加主题 No.' + postId : '已添加回复 No.' + (replyId || postId));
+      }
+      return { ok: true };
+    }).catch(() => {
+      toast('获取失败，请检查串号或网络');
+      return { ok: false, reason: 'fetch-failed' };
+    }).finally(() => {
+      setBusy(false);
+    });
+  }
+
   function bindPostHistoryModuleEvents() {
     bindHistorySearchInput('#sp_posts_search', renderPostHistoryModule, 'xdex-post-history');
     $('#sp_posts_type_buttons').off('click.xdex-post-history', '[data-post-history-type]').on('click.xdex-post-history', '[data-post-history-type]', function (e) {
@@ -30809,174 +31391,7 @@ function 注册自动保存编辑() {
     $('#sp_posts_manual_add_btn').off('click.xdex-post-history-manual').on('click.xdex-post-history-manual', function (e) {
       e.preventDefault();
       const raw = ($('#sp_posts_manual_add_input').val() || '').trim();
-      // 支持格式：No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23
-      let postId = '';
-      let replyId = '';
-      let inputPage = 0;
-      // 解析 URL 中的主题号、回复号、页码
-      const urlMatch = raw.match(/(?:https?:\/\/[^/]*\/t\/)?(\d{6,8})(?:\?([^#]*))?(?:#.*)?$/i);
-      const simpleMatch = raw.match(/^(?:No\.)?(\d{6,8})$/);
-      if (urlMatch) {
-        postId = urlMatch[1];
-        const qs = urlMatch[2] || '';
-        const rMatch = qs.match(/(?:^|&)r=(\d{6,8})(?:&|$)/);
-        const pMatch = qs.match(/(?:^|&)page=(\d+)(?:&|$)/);
-        replyId = rMatch ? rMatch[1] : '';
-        inputPage = pMatch ? parseInt(pMatch[1], 10) : 0;
-      } else if (simpleMatch) {
-        postId = simpleMatch[1];
-      } else {
-        toast('格式错误，支持:No.67024789、67024789、https://nmbxd1.com/t/67024789、67024789?r=68811442&page=23');
-        return;
-      }
-      // 前后号相同 → 直接当主题处理
-      if (replyId && replyId === postId) replyId = '';
-      const existingStore = getPostHistoryStore();
-      // 查找是否已存在匹配记录：有 replyId 时只匹配回复号，无 replyId 时匹配主题号
-      const existingMatch = replyId
-        ? Object.values(existingStore.items).find(item =>
-            String(item.id) === replyId || String(item.postId) === replyId
-          )
-        : Object.values(existingStore.items).find(item =>
-            String(item.id) === postId || String(item.postId) === postId
-          );
-      // 已存在且有完整信息 → 检查是否需要补充页码
-      if (existingMatch && existingMatch.resto && existingMatch.resto !== '0') {
-        if (inputPage && inputPage !== Number(existingMatch.page || 0)) {
-          // 有新页码且与已有记录不同 → 更新页码
-          updatePostHistoryRecord(existingMatch.localId, { page: inputPage });
-          renderPostHistoryModule();
-          $('#sp_posts_manual_add_input').val('');
-          toast('已更新 No.' + (replyId || postId) + ' 的页码为 ' + inputPage);
-        } else {
-          toast(replyId ? '回复 No.' + replyId + ' 已存在' : '主题 No.' + postId + ' 已存在');
-        }
-        return;
-      }
-      const $btn = $(this);
-      $btn.prop('disabled', true).text('获取中…');
-      // 有 replyId → 直接用 ref API 获取回复内容
-      // 无 replyId → 用 ref API 获取帖子内容，再用 thread API 判定类型
-      const refTarget = replyId || postId;
-      const refUrl = 'https://api.nmb.best/api/ref?id=' + encodeURIComponent(refTarget);
-      const refHeaders = getPostHistoryApiCookieHeaders();
-      const refDetail = { id: refTarget, source: 'manual-add', api: true };
-      gmRequest(refUrl, 'text', refHeaders).then(async (resp) => {
-        const post = parsePostHistoryRefResponse(resp, refDetail);
-        if (!post || !post.id) { toast('未找到该串/回复'); return; }
-        let type = 'thread';
-        let resto = '0';
-        let fid = getPostHistoryPostFid(post);
-        if (replyId) {
-          // 有 replyId → 明确是回复，resto = 主题号
-          type = 'reply';
-          resto = postId;
-          try {
-            const pageData = await fetchPostHistoryThreadPage(postId, 1, { source: 'manual-add-fid' });
-            if (!fid) fid = getPostHistoryPostFid(pageData && pageData.thread) || '';
-          } catch (e) {}
-        } else {
-          // 无 replyId → 用 thread API 判定类型
-          try {
-            const pageData = await fetchPostHistoryThreadPage(post.id, 1, { source: 'manual-add-type' });
-            const thread = pageData && pageData.thread;
-            if (thread && thread.id && String(thread.id) === String(post.id)) {
-              if (!fid) fid = getPostHistoryPostFid(thread) || '';
-            } else {
-              type = 'reply';
-              toast('该串号为回复，无法确定所属主题');
-            }
-          } catch (e) {
-            type = 'reply';
-            toast('该串号为回复，无法确定所属主题');
-          }
-        }
-        // 饼干校验
-        const userHash = String(post.user_hash || post.userHash || '').trim();
-        const cookieList = getCookiesList();
-        const matchedCookie = userHash
-          ? Object.values(cookieList).find(c => abbreviateName(c.name || '') === userHash)
-          : null;
-        // 自定义饼干同样视为“已在列表中”，不弹缺失提示
-        const matchedCustomCookie = userHash
-          ? Object.values(getCustomCookies()).find(c => abbreviateName(c.name || '') === userHash)
-          : null;
-        if (userHash && !matchedCookie && !matchedCustomCookie) {
-          if (!window.confirm('No.' + (replyId || postId) + ' 对应的饼干 ' + userHash + ' 不在当前列表之中，是否确认添加？')) {
-            $btn.prop('disabled', false).text('手动添加');
-            return;
-          }
-        }
-        const serverContentRaw = post.content || '';
-        const serverContentText = normalizePostHistoryText(serverContentRaw);
-        const imageFile = buildPostHistoryImageFile(post.img, post.ext);
-        // 无主题号的回复 → url 留空，不构建跳转链接
-        const url = (type === 'reply' && resto === '0') ? '' : buildPostHistoryUrl(type, replyId || post.id, resto);
-        if (existingMatch) {
-          // 已存在但 resto=0 → 补充真实串号和相关信息
-          const patch = {};
-          if (type === 'reply' && resto !== '0') {
-            patch.resto = resto;
-            patch.threadId = resto;
-            patch.url = url;
-          }
-          if (inputPage && !existingMatch.page) {
-            patch.page = inputPage;
-          }
-          if (fid && !existingMatch.fid) {
-            patch.fid = fid;
-            patch.forumName = getPostHistoryForumNameByFid(fid);
-          }
-          if (imageFile && !existingMatch.imageFile) {
-            Object.assign(patch, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
-          }
-          updatePostHistoryRecord(existingMatch.localId, patch);
-          renderPostHistoryModule();
-          $('#sp_posts_manual_add_input').val('');
-          const updated = [];
-          if (patch.resto) updated.push('串号');
-          if (patch.page) updated.push('页码');
-          if (patch.fid) updated.push('板块');
-          if (patch.imageFile) updated.push('图片');
-          toast('已更新 No.' + (replyId || postId) + '：' + (updated.join('、') || '无变化'));
-        } else {
-          // 新记录
-          const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-          const record = {
-            status: 'confirmed',
-            type,
-            localId,
-            id: post.id,
-            resto,
-            threadId: type === 'reply' ? resto : post.id,
-            postId: post.id,
-            page: inputPage || Number(post.page) || (type === 'thread' ? 1 : 0),
-            fid,
-            forumName: getPostHistoryForumNameByFid(fid),
-            title: post.title || '',
-            name: post.name || '',
-            email: post.email || '',
-            contentRaw: serverContentRaw,
-            contentText: serverContentText,
-            contentHash: hashPostHistoryText(serverContentText),
-            contentHtml: sanitizePostHistoryServerContentHtml(serverContentRaw),
-            userHash,
-            submittedAt: Date.parse(post.now) || Date.now(),
-            confirmedAt: Date.now(),
-            sourceUrl: location.href,
-            url
-          };
-          if (imageFile) Object.assign(record, { imageFile, imageImg: post.img || '', imageExt: post.ext || '' });
-          upsertPostHistoryRecord(record);
-          renderPostHistoryModule();
-          $('#sp_posts_manual_add_input').val('');
-          toast(type === 'thread' ? '已添加主题 No.' + postId : '已添加回复 No.' + (replyId || postId));
-        }
-      }).catch(() => {
-        toast('获取失败，请检查串号或网络');
-      }).finally(() => {
-        $btn.prop('disabled', false).text('手动添加');
-      });
+      addPostHistoryFromManualInput(raw, { clearInput: true, busyEl: $(this), source: 'panel' });
     });
     $('#sp_posts_manual_add_input').off('keydown.xdex-post-history-manual').on('keydown.xdex-post-history-manual', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); $('#sp_posts_manual_add_btn').trigger('click.xdex-post-history-manual'); }
@@ -35346,11 +35761,28 @@ function initReplyParamScrollTo() {
   function xdexExportEnsureProgressPolling() {
     if (xdexExportPollTimer) return;
     let inFlight = false;
+    // 连续「取不到状态」的探测次数：后台可用但 list 一直失败时，st 会永久停在 null，
+    // 原逻辑会因此每 3s 空转不停（每个标签页各一份）。这里限次后停表。
+    let nullProbes = 0;
     xdexExportPollTimer = setInterval(() => {
+      // 轮询回调绝不外抛：一次异常若逃逸，就会变成「每 3 秒一条未捕获错误」，
+      // 控制台在打开时会显著放大开销（历史事故：st 为 null 时读 .tasks 抛错）。
+      try {
       if (document.hidden || inFlight) return;
       // 首次未知（本页尚未取过状态）→ 探测一次；之后按是否有在跑任务决定是否继续
       const st = xdexExportLastState;
-      const active = (st === null) || !!(st.tasks && st.tasks.length);
+      if (st === null) {
+        nullProbes += 1;
+        if (nullProbes > 4) {
+          clearInterval(xdexExportPollTimer);
+          xdexExportPollTimer = null;
+          console.warn('[X岛-EX 导出] 多次取不到任务状态，已停止进度轮询');
+          return;
+        }
+      } else {
+        nullProbes = 0;
+      }
+      const active = (st === null) || !!(st && st.tasks && st.tasks.length);
       if (!active) {
         xdexExportIdleTicks += 1;
         if (xdexExportIdleTicks >= 2) {
@@ -35377,6 +35809,7 @@ function initReplyParamScrollTo() {
       }
       inFlight = true;
       Promise.resolve(xdexExportRefreshState()).catch(() => {}).then(() => { inFlight = false; });
+      } catch (e) { /* 见上：吞掉本轮回调异常，避免变成周期性未捕获错误 */ }
     }, 3000);
   }
 
@@ -36194,6 +36627,11 @@ function initReplyParamScrollTo() {
       installThreadHistoryReactivationTracking(false);
     }
     installBoardReplyHistoryHijack();                                //版块页/时间线「回应」跳到上次阅读位置
+    // 串链接右键菜单与扩展端桥接：一次性安装（幂等）。
+    // 不放 enableHDImageAndLayoutFix —— 那是「每条新回复/每次无缝翻页」都会跑的热路径，
+    // 而菜单创建只需一次；放热路径会让每次增强多做两次 getElementById 与开关判定。
+    if (typeof enableQuickAddPostHistoryMenu === 'function') enableQuickAddPostHistoryMenu();
+    if (typeof installQuickAddPostHistoryBridge === 'function') installQuickAddPostHistoryBridge();
     startupPerfDebug.mark('document.ready.syncSetup.end', startupPerfDebug.summarizeRoot(document));
     // 保存原始函数
     const _initContent = window.initContent;
