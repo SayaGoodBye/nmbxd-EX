@@ -157,7 +157,23 @@ function xdexEarlyDarkEnabled() {
       const scriptHandler = String((typeof GM_info !== 'undefined' && GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler))) || '');
       const hasChromeRuntime = typeof chrome !== 'undefined' && !!(chrome && chrome.runtime);
       const hasChromeExtensionId = hasChromeRuntime && !!chrome.runtime.id;
-      const hasDnr = hasChromeRuntime && !!(chrome.declarativeNetRequest && typeof chrome.declarativeNetRequest.updateSessionRules === 'function');
+      // ★ 内容脚本看不到 declarativeNetRequest（Chrome 只向内容脚本暴露 dom / i18n / storage / runtime.*，
+      //   实测 chrome.declarativeNetRequest === undefined），而"规则由后台安装"本来就发生在后台，
+      //   所以能力判定以**扩展清单是否声明该权限**为准；只有拿不到清单时才退回 API 可见性判断。
+      //   两条都会命中时取并集：声明了但 API 恰好可见（如扩展页/未来宿主）同样按可用处理。
+      const hasDnrApi = hasChromeRuntime && !!(chrome.declarativeNetRequest && typeof chrome.declarativeNetRequest.updateSessionRules === 'function');
+      const declaredPermissions = (function getDeclaredPermissions() {
+          try {
+              if (!hasChromeExtensionId || !chrome.runtime || typeof chrome.runtime.getManifest !== 'function') return [];
+              const perms = chrome.runtime.getManifest().permissions;
+              return Array.isArray(perms) ? perms : [];
+          } catch (e) {
+              return [];
+          }
+      })();
+      const hasDnrDeclared = declaredPermissions.indexOf('declarativeNetRequest') >= 0
+          || declaredPermissions.indexOf('declarativeNetRequestWithHostAccess') >= 0;
+      const hasDnr = hasDnrApi || hasDnrDeclared;
       const hasQwqntBridge = typeof window !== 'undefined' && !!(window.QwQNTNmbxd && typeof window.QwQNTNmbxd.xdexRequest === 'function');
       const declaredStorage = declared && declared.storage ? String(declared.storage) : '';
       const browserFamily = XDEX_BROWSER_FAMILY;
@@ -182,6 +198,8 @@ function xdexEarlyDarkEnabled() {
               scriptHandler: scriptHandler || 'extension',
               hasChromeRuntime: true,
               hasDnr,
+              hasDnrApi,
+              hasDnrDeclared,
               qwqntBridge: false
           };
       }
@@ -34631,15 +34649,19 @@ function 注册自动保存编辑() {
     const hrefMatch = href.match(/(?:[?&]r=|No\.)(\d{4,8})/i);
     return hrefMatch ? hrefMatch[1] : '';
   }
-  // ★ ?page=N&r=ID 链接定位：打开页面时滚动到 r= 对应回复并尽量在视野中居中。
+  // ★ ?r=ID 链接定位：打开页面时滚动到 r= 对应回复并尽量在视野中居中。
 // 独立于「关闭引用」开关（开关只控制剥引用，定位是浏览体验）。
+// ★ 不再要求 URL 带 page=（原先的 `page === null → return` 会让 `/t/<tid>?r=<rid>` 这种
+//   无 page 的链接既不定位、又被历史恢复短路，最后停在页首）。现在只要 URL 有 r= 就尝试定位：
+//   元素在渲染出的 DOM 里 → 居中；不在（回复在更深页）→ 轮询耗尽后静默放弃，不做跨页跳转
+//   （与 initThreadHistoryReplyRestore 同策略；页码无法廉价解析：api/ref 只返回回复内容不含页码）。
 // 判定用 data-threads-id（r= 号即回复号），不依赖站点的 selected 标记时序；
 // 图片/相对时间等增强会改变高度，定位后二次校准。
 function initReplyParamScrollTo() {
     try {
       const params = new URLSearchParams(location.search);
       const rParam = params.get('r');
-      if (!rParam || params.get('page') === null || !/^\d{6,8}$/.test(rParam)) return;
+      if (!rParam || !/^\d{6,8}$/.test(rParam)) return;
       const scrollTarget = () => document.querySelector('[data-threads-id="' + rParam + '"]');
       let attempts = 0;
       const tryScroll = () => {
