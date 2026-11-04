@@ -248,6 +248,8 @@ function xdexEarlyDarkEnabled() {
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info .h-threads-info-title{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-item-reply-main{background:transparent !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info *,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content *{color:#d9d0d0 !important;}' +
+        // 红名（UID 里的 <font color="red">）保留红色：否则会被上面那条 `*` 通配压成灰色（绿名/绿引用已有例外）
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info-uid font[color="red" i],:root.xdex-custom-dark .qp-overlay-quote .h-threads-info-uid font[color="#ff0000" i]{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-tips.uk-text-danger{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote font[color="#789922"]{color:#b5d06d !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info a{color:#3e8eec !important;}' +
@@ -15378,6 +15380,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       ':root.xdex-custom-dark .kaomoji-panel *, :root.xdex-custom-dark .kaomoji-popup *, :root.xdex-custom-dark .kaomoji-dropdown * { color: ' + F('#800000') + ' !important; }',
       // 回复浮窗内的原生片段：默认白化，但功能性彩色（title/email/引用/链接/SAGE）保色相
       ':root.xdex-custom-dark .qp-body .h-threads-info, :root.xdex-custom-dark .qp-body .h-threads-info *, :root.xdex-custom-dark .qp-body .h-threads-content, :root.xdex-custom-dark .qp-body .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      // 红名（UID 里的 <font color="red">）保留红色：否则被上面那条 `*` 通配压平
+      ':root.xdex-custom-dark .qp-body .h-threads-info-uid font[color="red" i], :root.xdex-custom-dark .qp-body .h-threads-info-uid font[color="#ff0000" i] { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-tips.uk-text-danger { color: ' + D('#cc1105') + ' !important; }',
@@ -15390,6 +15394,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info, :root.xdex-custom-dark .h-preview-box .h-threads-info *, :root.xdex-custom-dark .h-preview-box .h-threads-content, :root.xdex-custom-dark .h-preview-box .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      // 红名（UID 里的 <font color="red">）保留红色：否则被上面那条 `*` 通配压平
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info-uid font[color="red" i], :root.xdex-custom-dark .h-preview-box .h-threads-info-uid font[color="#ff0000" i] { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info a, :root.xdex-custom-dark .h-preview-box .h-threads-content a { color: ' + D('#07d') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .uk-text-primary { color: ' + D('#07d') + ' !important; }',
@@ -34651,10 +34657,12 @@ function 注册自动保存编辑() {
   }
   // ★ ?r=ID 链接定位：打开页面时滚动到 r= 对应回复并尽量在视野中居中。
 // 独立于「关闭引用」开关（开关只控制剥引用，定位是浏览体验）。
-// ★ 不再要求 URL 带 page=（原先的 `page === null → return` 会让 `/t/<tid>?r=<rid>` 这种
-//   无 page 的链接既不定位、又被历史恢复短路，最后停在页首）。现在只要 URL 有 r= 就尝试定位：
-//   元素在渲染出的 DOM 里 → 居中；不在（回复在更深页）→ 轮询耗尽后静默放弃，不做跨页跳转
-//   （与 initThreadHistoryReplyRestore 同策略；页码无法廉价解析：api/ref 只返回回复内容不含页码）。
+  // ★ 不再要求 URL 带 page=（原先的 `page === null → return` 会让 `/t/<tid>?r=<rid>` 这种
+//   无 page 的链接既不定位、又被历史恢复短路，最后停在页首）。现在带不带 page 走**同一条路径**：
+//   进入页面先查一次；命中 → `scrollIntoView({block:'center'})` + 800ms 后二次校准；
+//   未命中 → 每 300ms 重试一次，最多重试 20 次（合计 21 次查询、约 6 秒）后**静默放弃**：
+//   不提示、不跨页跳转、不留常驻定时器（与 initThreadHistoryReplyRestore 同策略；
+//   页码无法廉价解析：api/ref 只返回回复内容不含页码）。
 // 判定用 data-threads-id（r= 号即回复号），不依赖站点的 selected 标记时序；
 // 图片/相对时间等增强会改变高度，定位后二次校准。
 function initReplyParamScrollTo() {
