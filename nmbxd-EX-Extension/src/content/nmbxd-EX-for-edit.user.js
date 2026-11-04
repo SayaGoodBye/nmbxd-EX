@@ -122,6 +122,36 @@ function xdexEarlyDarkEnabled() {
   const VERSION = GM_info.script.version;
   const XDEX_SINGLETON_OWNER_DATASET_KEY = 'xdexSingletonOwner';
   const XDEX_SINGLETON_WAIT_MS = 100;
+  // 浏览器家族只用于给运行时 kind 命名（chrome-* / firefox-*）与日志定位；
+  // 所有分支判定必须走下面的 isXDex* 辅助函数，保证 Chrome / Firefox 两种扩展版行为完全等同。
+  function detectXDexBrowserFamily(){
+      try {
+          const ua = String((typeof navigator !== 'undefined' && navigator && navigator.userAgent) || '');
+          if (/Firefox\//i.test(ua)) return 'firefox';
+          const hasBrowserApi = typeof browser !== 'undefined' && !!(browser && browser.runtime && browser.runtime.id);
+          const hasChromeApi = typeof chrome !== 'undefined' && !!(chrome && chrome.runtime && chrome.runtime.id);
+          return hasBrowserApi && !hasChromeApi ? 'firefox' : 'chrome';
+      } catch (e) {
+          return 'chrome';
+      }
+  }
+  const XDEX_BROWSER_FAMILY = detectXDexBrowserFamily();
+  // 打包扩展的 kind 前缀随浏览器变化：chrome-extension* / firefox-extension*
+  function isXDexExtensionKind(kind){
+      return kind === 'chrome-extension' || kind === 'chrome-extension-limited'
+          || kind === 'firefox-extension' || kind === 'firefox-extension-limited';
+  }
+  function isXDexDnrExtensionKind(kind){
+      return kind === 'chrome-extension' || kind === 'firefox-extension';
+  }
+  function isXDexLimitedExtensionKind(kind){
+      return isXDexExtensionKind(kind) && !isXDexDnrExtensionKind(kind);
+  }
+  function isXDexPackagedRuntime(runtimeInfo){
+      const rt = runtimeInfo || XDEX_RUNTIME;
+      if (!rt) return false;
+      return rt.packaged === true || rt.kind === 'extension' || isXDexExtensionKind(rt.kind);
+  }
   function getXDexRuntimeInfo(){
       const declared = typeof globalThis !== 'undefined' ? globalThis.__xdexRuntime : null;
       const scriptHandler = String((typeof GM_info !== 'undefined' && GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler))) || '');
@@ -130,11 +160,14 @@ function xdexEarlyDarkEnabled() {
       const hasDnr = hasChromeRuntime && !!(chrome.declarativeNetRequest && typeof chrome.declarativeNetRequest.updateSessionRules === 'function');
       const hasQwqntBridge = typeof window !== 'undefined' && !!(window.QwQNTNmbxd && typeof window.QwQNTNmbxd.xdexRequest === 'function');
       const declaredStorage = declared && declared.storage ? String(declared.storage) : '';
+      const browserFamily = XDEX_BROWSER_FAMILY;
+      const extensionKindPrefix = browserFamily === 'firefox' ? 'firefox' : 'chrome';
       // QwQNT：Electron 客户端注入，虽然有 __xdexRuntime，但没有可用的 Chrome 扩展 API
       if (hasQwqntBridge || scriptHandler === 'qwqnt-electron' || declaredStorage === 'electron-localStorage') {
           return {
               kind: 'qwqnt',
               packaged: true,
+              browser: 'electron',
               scriptHandler: scriptHandler || 'qwqnt-electron',
               hasChromeRuntime,
               hasDnr: false,
@@ -143,8 +176,9 @@ function xdexEarlyDarkEnabled() {
       }
       if (hasChromeExtensionId) {
           return {
-              kind: hasDnr ? 'chrome-extension' : 'chrome-extension-limited',
+              kind: extensionKindPrefix + (hasDnr ? '-extension' : '-extension-limited'),
               packaged: true,
+              browser: browserFamily,
               scriptHandler: scriptHandler || 'extension',
               hasChromeRuntime: true,
               hasDnr,
@@ -154,8 +188,9 @@ function xdexEarlyDarkEnabled() {
       if (declared && declared.kind === 'extension') {
           // 声明为扩展但没有 chrome.runtime.id（保守按“受限扩展”处理，避免误用扩展专属 API）
           return {
-              kind: 'chrome-extension-limited',
+              kind: extensionKindPrefix + '-extension-limited',
               packaged: true,
+              browser: browserFamily,
               scriptHandler: scriptHandler || 'extension',
               hasChromeRuntime,
               hasDnr: false,
@@ -165,6 +200,7 @@ function xdexEarlyDarkEnabled() {
       return {
           kind: 'userscript',
           packaged: false,
+          browser: browserFamily,
           scriptHandler: scriptHandler || 'unknown',
           hasChromeRuntime,
           hasDnr: false,
@@ -212,7 +248,7 @@ function xdexEarlyDarkEnabled() {
   function shouldExitForXDexSingleton(runtimeInfo){
       const root = document.documentElement;
       const owner = root && root.dataset ? root.dataset[XDEX_SINGLETON_OWNER_DATASET_KEY] : '';
-      return owner === 'extension' && (!runtimeInfo || (runtimeInfo.kind !== 'extension' && !runtimeInfo.packaged));
+      return owner === 'extension' && !isXDexPackagedRuntime(runtimeInfo);
   }
   function cat_version(){
       console.log('[version]:', VERSION);
@@ -987,6 +1023,7 @@ function xdexEarlyDarkEnabled() {
       }
       this.render();
       GM_addValueChangeListener(this.key,(k,ov,nv,remote)=>{
+        try { if (typeof invalidateSettingsSnapshot === 'function') invalidateSettingsSnapshot(); } catch (e) {}
         if(remote){
           this.state = Object.assign({}, this.defaults, nv);
           this.state.markedGroups = spData('normalizeMarkedGroups', this.state.markedGroups);
@@ -1010,7 +1047,7 @@ function xdexEarlyDarkEnabled() {
           // 面板渲染后回填 WebDAV 已保存配置（tag29），避免需先点击输入框才显示
           try { if (typeof ensureWebdavConfigInPanel === 'function') ensureWebdavConfigInPanel(); } catch (e) {}
           try { renderFavoriteThreadsMenu(); } catch (e) {}
-          try { refreshFilterDisplay(this.state); } catch (e) {}
+          try { refreshFilterDisplay(this.state, undefined, 'settingsToggle'); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
           try { if (typeof applyImageViewerSeparatorSetting === 'function') applyImageViewerSeparatorSetting(); } catch (e) {}
           // 引用号拓展（跨页同步）：开启时对当前页重跑一次（幂等）
@@ -2508,14 +2545,14 @@ function xdexEarlyDarkEnabled() {
         const mode = $('#sp_blockDisplayMode').val() || 'fold';
         this.state.blockDisplayMode = mode;
         try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('屏蔽显示模式', e); }
-        refreshFilterDisplay(this.state);
+        refreshFilterDisplay(this.state, undefined, 'settingsToggle');
       };
       $('#sp_blockDisplayMode').off('change').on('change', applyBlockDisplayModeImmediately);
       const applyThreadCookieWhitelistDisplayModeImmediately = () => {
         this.state.threadCookieWhitelistDisplayMode = $('#sp_threadCookieWhitelistDisplayMode').val() || 'fold';
         this.state.poAnnotationSideDisplayMode = $('#sp_poAnnotationSideDisplayMode').val() || 'collapse';
         try { GM_setValue(this.key, this.state); } catch (e) { warnSettingSaveFailed('串内饼干白名单显示模式', e); }
-        refreshFilterDisplay(this.state);
+        refreshFilterDisplay(this.state, undefined, 'settingsToggle');
       };
       $('#sp_threadCookieWhitelistDisplayMode').off('change').on('change', applyThreadCookieWhitelistDisplayModeImmediately);
       $('#sp_poAnnotationSideDisplayMode').off('change').on('change', applyThreadCookieWhitelistDisplayModeImmediately);
@@ -2678,7 +2715,7 @@ function xdexEarlyDarkEnabled() {
         GM_setValue(this.key, this.state);
         this.syncInputs();
         toast(fromDelete ? '已删除标记分组' : '标记分组已保存');
-        refreshFilterDisplay(this.state);
+        refreshFilterDisplay(this.state, undefined, 'settingsToggle');
         return true;
       };
       const saveBlockedGroups = ({ fromDelete = false } = {}) => {
@@ -2699,7 +2736,7 @@ function xdexEarlyDarkEnabled() {
         GM_setValue(this.key, this.state);
         this.syncInputs();
         toast(fromDelete ? '已删除屏蔽分组' : '屏蔽分组已保存');
-        refreshFilterDisplay(this.state);
+        refreshFilterDisplay(this.state, undefined, 'settingsToggle');
         return true;
       };
       const saveThreadCookieWhitelistGroups = ({ fromDelete = false } = {}) => {
@@ -2731,7 +2768,7 @@ function xdexEarlyDarkEnabled() {
         });
         this.syncInputs();
         toast(fromDelete ? '已删除只看饼干分组' : '只看饼干分组已保存');
-        refreshFilterDisplay(this.state);
+        refreshFilterDisplay(this.state, undefined, 'settingsToggle');
         return true;
       };
       const collectBlockedKeywordGroupsFromPanel = () => {
@@ -2765,7 +2802,7 @@ function xdexEarlyDarkEnabled() {
         if (fromDelete) toast('已删除关键词分组');
         else if (fromToggle) toast(`第${toggleIndex}组${toggleOn ? '开启' : '关闭'}正则`);
         else toast('屏蔽关键词已保存');
-        refreshFilterDisplay(this.state);
+        refreshFilterDisplay(this.state, undefined, 'settingsToggle');
         return true;
       };
       const saveFavoriteThreads = ({ fromDelete = false } = {}) => {
@@ -3761,7 +3798,9 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           payload.myScriptSettings = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
         }
         if (selection.threadHistory) {
-          payload.threadHistory = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
+          // ★ 必须走 getThreadHistoryStore()：滚动位置可能只写在位置小键里，
+          //   直接读整库会漏掉本次会话以来的最新阅读位置（读取时会叠加小键）。
+          payload.threadHistory = getThreadHistoryStore();
         }
         if (selection.postHistory) {
           payload.postHistory = normalizePostHistoryStore(GM_getValue(POST_HISTORY_STORAGE_KEY, null));
@@ -5594,7 +5633,7 @@ ${markedSwatchHtml}
       return next;
     }
     try {
-      const next = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const next = Object.assign({}, SettingPanel.defaults, readSettingsCached());
       next.markedGroups = normalizeMarkedGroups(next.markedGroups);
       next.blockedCookies = normalizeBlockedGroups(next.blockedCookies);
       next.blockedKeywords = normalizeBlockedKeywordGroups(next.blockedKeywords);
@@ -5812,7 +5851,7 @@ ${markedSwatchHtml}
       return false;
     }
   }
-  function refreshFilterDisplay(cfg, root) {
+  function refreshFilterDisplay(cfg, root, source) {
     return startupPerfDebug.measure('refreshFilterDisplay', () => {
       if (!isLiveDocumentRoot(root)) {
         applyFilters(cfg, root || document);
@@ -5823,7 +5862,7 @@ ${markedSwatchHtml}
       } else if (typeof applyFilters === 'function') {
         applyFilters(cfg, root || document);
       }
-    }, () => startupPerfDebug.summarizeRoot(root || document));
+    }, () => Object.assign({ source: source || '' }, startupPerfDebug.summarizeRoot(root || document)));
   }
   function getThreadCookieWhitelistDisplayMode(cfg) {
     return (cfg && cfg.threadCookieWhitelistDisplayMode) || 'fold';
@@ -6670,10 +6709,10 @@ ${markedSwatchHtml}
   }
   /* ===== [TEMP-DBG] end ===== */
 // ===== 自定义饼干发送：只影响这一次 POST =====
-// 发送链路按 getXDexRuntimeInfo().kind 分流：
+// 发送链路按 getXDexRuntimeInfo().kind 分流（chrome-* 与 firefox-* 完全等价，见 isXDex*Kind）：
 //  - userscript：GM_xmlhttpRequest + 显式 Cookie 头（不触碰 cookie jar，严格隔离）
-//  - chrome-extension：DNR 会话规则只改发帖 POST（严格隔离），被拒则退回临时切换
-//  - chrome-extension-limited：没有 DNR，退回临时切换
+//  - <browser>-extension：DNR 会话规则只改发帖 POST（严格隔离），被拒则退回临时切换
+//  - <browser>-extension-limited：没有 DNR，退回 cookie 容器接口替换（再退回临时切换）
 //  - qwqnt：Electron 客户端，GM 请求走 IPC 无法携带 FormData → 临时切换 document.cookie
 function setExtensionCookieRule(cookieValue, enable) {
   return new Promise((resolve, reject) => {
@@ -7164,8 +7203,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (signal) signal.addEventListener('abort', () => { try { request.abort(); } catch (e) {} }, { once: true });
     });
   }
-  if (runtime.kind === 'chrome-extension') {
-    // Chrome 扩展：DNR 会话规则只改写发帖 POST 的 Cookie 头；被浏览器拒绝时退回临时切换
+  if (isXDexDnrExtensionKind(runtime.kind)) {
+    // 扩展（Chrome / Firefox ≥128）：DNR 会话规则只改写发帖 POST 的 Cookie 头；被拒绝时退回临时切换
     try {
       await setExtensionCookieRule(cookieValue, true);
     } catch (err) {
@@ -7208,8 +7247,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       return sendViaBridge(form, fd, cookieValue, controller, timeoutMs);
     }
   }
-  if (runtime.kind === 'chrome-extension-limited' && getJarCookieApi()) {
-    // 扩展有 chrome.cookies 权限：用容器接口精确替换（可读写 HttpOnly）
+  if (isXDexLimitedExtensionKind(runtime.kind) && getJarCookieApi()) {
+    // 扩展有 chrome.cookies 权限（Firefox 同样提供 chrome.cookies）：用容器接口精确替换（可读写 HttpOnly）
     try {
       return await withJarSwappedUserhash(cookieValue, async () => {
         const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
@@ -9301,7 +9340,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (typeof highlightPO === 'function') highlightPO(root);
     } catch (e) {}
     try {
-      if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(liveCfg, root || document);
+      if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(liveCfg, root || document, 'runCriticalVisual');
     } catch (e) {}
     try {
       if (liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root || document);
@@ -9532,14 +9571,33 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     // 开启方式（无需改源码）：
     //   localStorage.setItem('xdexPerfCollect','1') 后刷新页面；或控制台执行 __xdexPerfCollectOn() 再刷新
     // 关闭：__xdexPerfCollectOff() 后刷新，或 localStorage.removeItem('xdexPerfCollect')
+    // ★ 诊断总开关（默认关闭）：以下自动埋点全部受它约束 ——
+    //   浏览器长帧/长任务观察器（console 逐条输出）、60 秒自动报告、GM 存储调用包装、
+    //   以及热路径上的 begin/finish/measure 计时。关闭时即使 localStorage 里还留着
+    //   xdexPerfCollect=1，也不会安装观察器、不会自动报告、不会包装 GM，
+    //   热路径埋点退化为"一次属性判断 + 直接调用原函数"。
+    //   需要重新取证时把这一行改回 true（其余代码全部保留）。
+    const XDEX_PERF_DIAGNOSTICS_ENABLED = true;
+    // ★ 静默模式：观察器照常安装、数据照常累计，但**不做任何自动打印**
+    //   （不再逐条输出长帧/长任务、不再自动出 60 秒报告）。只有手动调用
+    //   __xdexStartupPerfReport() / __xdexPerfLoaf() / __xdexPerfLayout() 等才输出。
+    const XDEX_PERF_QUIET = true;
     let AUTO_COLLECTION_ENABLED = false;
     try {
-      AUTO_COLLECTION_ENABLED = (typeof localStorage !== 'undefined' && localStorage.getItem('xdexPerfCollect') === '1');
+      AUTO_COLLECTION_ENABLED = XDEX_PERF_DIAGNOSTICS_ENABLED
+        && (typeof localStorage !== 'undefined' && localStorage.getItem('xdexPerfCollect') === '1');
     } catch (e) {}
     try {
-      window.__xdexPerfCollectOn = () => { try { localStorage.setItem('xdexPerfCollect', '1'); } catch (e) {} console.log('[XDEX perf] 采集已开启，请刷新页面后复现操作'); };
+      window.__xdexPerfCollectOn = () => {
+        try { localStorage.setItem('xdexPerfCollect', '1'); } catch (e) {}
+        if (!XDEX_PERF_DIAGNOSTICS_ENABLED) {
+          console.warn('[XDEX perf] 诊断总开关已关闭（XDEX_PERF_DIAGNOSTICS_ENABLED=false），本次开启不会生效');
+          return;
+        }
+        console.log('[XDEX perf] 采集已开启，请刷新页面后复现操作');
+      };
       window.__xdexPerfCollectOff = () => { try { localStorage.removeItem('xdexPerfCollect'); } catch (e) {} console.log('[XDEX perf] 采集已关闭，请刷新页面'); };
-      window.__xdexPerfCollectState = () => ({ enabled: AUTO_COLLECTION_ENABLED, report: 'window.__xdexStartupPerfReport()', reset: 'window.__xdexStartupPerfReset()', capture: 'window.__xdexPerfCapture("场景名")', list: 'window.__xdexPerfRounds()', print: 'window.__xdexPerfPrint()', clear: 'window.__xdexPerfClear()' });
+      window.__xdexPerfCollectState = () => ({ diagnosticsEnabled: XDEX_PERF_DIAGNOSTICS_ENABLED, enabled: AUTO_COLLECTION_ENABLED, report: 'window.__xdexStartupPerfReport()', reset: 'window.__xdexStartupPerfReset()', capture: 'window.__xdexPerfCapture("场景名")', list: 'window.__xdexPerfRounds()', print: 'window.__xdexPerfPrint()', clear: 'window.__xdexPerfClear()' });
     } catch (e) {}
     const LONG_TASK_MS = 50;
     const LOG_TASK_MS = 16;
@@ -9589,7 +9647,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         meta: stat.meta
       };
       events.push(event);
-      if (duration >= LOG_TASK_MS) {
+      if (!XDEX_PERF_QUIET && duration >= LOG_TASK_MS) {
         console.log('[XDEX startup perf]', event);
       }
     }
@@ -9696,10 +9754,53 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         .sort((a, b) => b.total - a.total || b.max - a.max);
       const elapsed = Number((now() - startedAt).toFixed(2));
       if (options.table !== false) console.table(table);
+      // ★ 长帧归因随报告一起打印：控制台导出日志里能直接看到阻塞来自哪个「文件::函数」
+      //   （隔离世界脚本无归因，会显示为"无可归因脚本"）。此前必须单独执行 __xdexPerfLoaf()，
+      //   实际取证里常被漏掉，导致长帧无从定性。
+      let loafRows = [];
+      try {
+        if (browserEvents.length) loafRows = summarizeLoaf() || [];
+      } catch (e) {}
+      // ★ 布局成本随报告一起输出：长帧列表 + 本页布局单价，合起来才能判断长帧是"谁的"
+      let layoutCost = null;
+      try { if (options.layout !== false) layoutCost = measureLayoutCost(); } catch (e) {}
+      // ★ 最长 5 帧时间线：静默模式下没有逐条日志，用已有数据回答"何时、哪一类"阻塞。
+      //   时刻 = 页面加载起算的毫秒数；渲染开始/样式布局开始 用来区分"脚本阻塞"与"样式布局占用"。
+      let longestFrames = [];
+      try {
+        longestFrames = browserEvents
+          .filter((e) => e.label === 'browser:long-animation-frame' || e.label === 'browser:longtask')
+          .slice()
+          .sort((a, b) => (b.duration || 0) - (a.duration || 0))
+          .slice(0, 5)
+          .map((e) => {
+            const scripts = e.scripts || [];
+            const top = scripts[0];
+            return {
+              时刻ms: e.at,
+              类型: e.label === 'browser:longtask' ? 'longtask' : '长帧',
+              时长ms: e.duration,
+              阻塞ms: e.blockingDuration == null ? '' : e.blockingDuration,
+              渲染开始: e.renderStart || '',
+              样式布局开始: e.styleAndLayoutStart || '',
+              主要脚本: top
+                ? String(top.sourceURL || '').split('/').pop().split('?')[0] + ' :: ' + (top.sourceFunctionName || '(匿名)')
+                : '(无脚本归因)'
+            };
+          });
+        if (longestFrames.length) console.table(longestFrames);
+      } catch (e) {}
+      // ★ GM 存储调用统计：脚本端与扩展端的单价差异在这里最直观
+      let gmCalls = [];
+      try { gmCalls = summarizeGmCalls() || []; } catch (e) {}
       const result = {
         elapsed,
         autoWindowMs: AUTO_REPORT_AFTER_MS,
         stats: table,
+        loaf: loafRows.slice(0, 12),
+        longestFrames,
+        layout: layoutCost,
+        gm: gmCalls.slice(0, 15),
         events: events.slice(-300),
         browserEvents: browserEvents.slice(-200)
       };
@@ -9854,6 +9955,54 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       console.log('[XDEX perf] 留档已清空');
       return 'cleared';
     }
+    // ★ GM 存储调用探针：GM_getValue/GM_setValue 在脚本端要经扩展通道（扩展端 gm-compat 是内存缓存），
+    //   其开销不会出现在任何"我们的函数"埋点里，却可能吃掉大量主线程时间。
+    //   这里对两个 API 做透明包装，按「键」统计 次数 / 合计ms / 最大ms（包装开销为两次 now() + Map 读写）。
+    const gmCallProfiles = new Map();
+    function recordGmCall(api, key, ms) {
+      const k = api + ' ' + key;
+      const cur = gmCallProfiles.get(k) || { api, key, count: 0, total: 0, max: 0 };
+      cur.count += 1;
+      cur.total += ms;
+      if (ms > cur.max) cur.max = ms;
+      gmCallProfiles.set(k, cur);
+    }
+    function summarizeGmCalls() {
+      const rows = Array.from(gmCallProfiles.values())
+        .map((c) => ({ 调用: c.api, 键: c.key, 次数: c.count, 合计ms: Number(c.total.toFixed(2)), 最大ms: Number(c.max.toFixed(2)), 均ms: Number((c.total / Math.max(1, c.count)).toFixed(3)) }))
+        .sort((a, b) => b.合计ms - a.合计ms);
+      console.table(rows.slice(0, 15));
+      return rows;
+    }
+    function wrapGmStorageForProfiling() {
+      try {
+        if (typeof GM_getValue === 'function' && !GM_getValue.__xdexProfiled) {
+          const raw = GM_getValue;
+          const wrapped = function (key, defaultValue) {
+            const t0 = now();
+            try { return raw.apply(this, arguments); } finally { recordGmCall('get', String(key), now() - t0); }
+          };
+          wrapped.__xdexProfiled = true;
+          GM_getValue = wrapped;
+        }
+      } catch (e) { /* 沙箱不允许改写：退化为不计数 */ }
+      try {
+        if (typeof GM_setValue === 'function' && !GM_setValue.__xdexProfiled) {
+          const raw = GM_setValue;
+          const wrapped = function (key, value) {
+            const t0 = now();
+            try {
+              // 设置键被写入 → 立刻失效设置快照（保证"即时生效"语义不受缓存影响）
+              try { if (typeof SettingPanel !== 'undefined' && SettingPanel && key === SettingPanel.key) invalidateSettingsSnapshot(); } catch (e) {}
+              return raw.apply(this, arguments);
+            } finally { recordGmCall('set', String(key), now() - t0); }
+          };
+          wrapped.__xdexProfiled = true;
+          GM_setValue = wrapped;
+        }
+      } catch (e) { /* 同上 */ }
+    }
+    if (XDEX_PERF_DIAGNOSTICS_ENABLED) wrapGmStorageForProfiling();
     function installBrowserObservers() {
       if (typeof PerformanceObserver === 'undefined' || !PerformanceObserver.supportedEntryTypes) return;
       const supported = PerformanceObserver.supportedEntryTypes;
@@ -9875,8 +10024,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
               };
               browserEvents.push(item);
               // 打印上限：留档照旧全量记录，但只打印前 60 条（DevTools 打开时逐条打印会显著放大开销）
-              if (browserEvents.length <= 60) console.log('[XDEX browser perf]', item);
-              else if (browserEvents.length === 61) console.log('[XDEX browser perf] 后续条目仅记录、不再打印（可用 __xdexPerfLoaf() 汇总查看）');
+              if (!XDEX_PERF_QUIET && browserEvents.length <= 60) console.log('[XDEX browser perf]', item);
+              else if (!XDEX_PERF_QUIET && browserEvents.length === 61) console.log('[XDEX browser perf] 后续条目仅记录、不再打印（可用 __xdexPerfLoaf() 汇总查看）');
             });
           });
           observer.observe({ entryTypes: ['longtask'] });
@@ -9905,13 +10054,48 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                 })).sort((a, b) => (b.duration + b.forcedStyleAndLayout) - (a.duration + a.forcedStyleAndLayout))
               };
               browserEvents.push(item);
-              if (browserEvents.length <= 60) console.log('[XDEX browser perf]', item);
-              else if (browserEvents.length === 61) console.log('[XDEX browser perf] 后续条目仅记录、不再打印（可用 __xdexPerfLoaf() 汇总查看）');
+              if (!XDEX_PERF_QUIET && browserEvents.length <= 60) console.log('[XDEX browser perf]', item);
+              else if (!XDEX_PERF_QUIET && browserEvents.length === 61) console.log('[XDEX browser perf] 后续条目仅记录、不再打印（可用 __xdexPerfLoaf() 汇总查看）');
             });
           });
           observer.observe({ type: 'long-animation-frame', buffered: true });
         } catch (e) {}
       }
+    }
+    // ★ 布局成本探针：量化"本页一次样式+布局要多少钱"。
+    // 用途：长帧里常有大量"无可归因脚本（纯样式/布局/渲染）"的帧 —— 若本页强制布局本身就要几十毫秒，
+    // 那么任何样式失效（我们写的或站点写的）都会变成一帧长卡；此时优化方向是"减少让样式失效的写入"，
+    // 而不是继续在 JS 里找凶手。改一个自定义属性再读回几何即可逼出一次完整的样式+布局。
+    function measureLayoutCost() {
+      const out = {};
+      try {
+        out['DOM节点'] = document.getElementsByTagName('*').length;
+        out['样式表'] = document.styleSheets ? document.styleSheets.length : 0;
+        let rules = 0;
+        try {
+          Array.from(document.styleSheets || []).forEach((ss) => {
+            try { rules += (ss.cssRules || []).length; } catch (e) { /* 跨源样式表读不到 */ }
+          });
+        } catch (e) {}
+        out['CSS规则'] = rules;
+        const probe = document.documentElement;
+        const times = [];
+        for (let i = 0; i < 3; i++) {
+          probe.style.setProperty('--xdex-layout-probe', String(i));
+          const t0 = now();
+          void document.body.offsetHeight;
+          times.push(now() - t0);
+        }
+        try { probe.style.removeProperty('--xdex-layout-probe'); } catch (e) {}
+        times.sort((a, b) => a - b);
+        out['强制布局ms(中位)'] = Number((times[Math.floor(times.length / 2)] || 0).toFixed(2));
+        out['强制布局ms(最大)'] = Number((times[times.length - 1] || 0).toFixed(2));
+      } catch (e) {
+        out['错误'] = String((e && e.message) || e);
+      }
+      console.table([out]);
+      console.log('[XDEX perf] 布局成本（判断"无脚本归因的长帧"是否由本页布局规模决定）', out);
+      return out;
     }
     // ★ 长帧归因汇总：把 LoAF 的 scripts[]（文件::函数）与 longtask 的 attribution 聚合排序。
     // 用途：控制台 __xdexPerfLoaf() 一眼看出「哪个脚本/函数造成了长帧」，含强制样式布局耗时。
@@ -9987,8 +10171,53 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         requestAnimationFrame(step);
       });
     }
+    // ★ 浏览历史库体积探针（仅手动调用时执行，零常态开销）：为"位置/进度小键拆分"提供容量依据。
+    // 输出：整库字节、条目数、单条均字节、位置投影字节与占比、归一化耗时、索引/墓碑体积、最大条目构成。
+    function measureHistoryStore() {
+      const out = {};
+      try {
+        const t0 = now();
+        const raw = GM_getValue(THREAD_HISTORY_STORAGE_KEY, null);
+        out['读取ms'] = Number((now() - t0).toFixed(2));
+        const json = JSON.stringify(raw || null);
+        out['整库KB'] = Number((json.length / 1024).toFixed(1));
+        const items = (raw && raw.items && typeof raw.items === 'object') ? raw.items : {};
+        const keys = Object.keys(items);
+        out['条目数'] = keys.length;
+        out['单条均KB'] = keys.length ? Number((json.length / keys.length / 1024).toFixed(2)) : 0;
+        // 位置投影：即将搬到小键的字段（短名）体积 —— 决定小键容量上限
+        let posBytes = 0;
+        keys.forEach((k) => {
+          const it = items[k] || {};
+          posBytes += k.length + JSON.stringify({
+            p: it.page, u: it.url, mv: it.maxVisitedPage, lk: it.lastKnownPage,
+            rid: it.lastReadReplyId, rp: it.lastReadReplyPage, at: it.lastVisitedAt
+          }).length + 4;
+        });
+        out['位置投影KB'] = Number((posBytes / 1024).toFixed(1));
+        out['位置占比'] = json.length ? Number((posBytes / json.length * 100).toFixed(1)) + '%' : '0%';
+        out['索引KB'] = Number((JSON.stringify((raw && raw.index) || {}).length / 1024).toFixed(1));
+        try {
+          const posRaw = GM_getValue(THREAD_HISTORY_POS_KEY, null);
+          out['位置小键KB'] = Number((JSON.stringify(posRaw || {}).length / 1024).toFixed(1));
+          out['位置小键条数'] = posRaw && typeof posRaw === 'object' ? Object.keys(posRaw).length : 0;
+        } catch (e) {}
+        out['墓碑KB'] = Number((JSON.stringify((raw && raw.tombstones) || {}).length / 1024).toFixed(1));
+        const t1 = now();
+        try { normalizeThreadHistoryStore(JSON.parse(json || 'null')); } catch (e) {}
+        out['归一化ms'] = Number((now() - t1).toFixed(2));
+        console.table([out]);
+        const top = keys.map(k => ({ 键: k, KB: Number((JSON.stringify(items[k]).length / 1024).toFixed(2)) })).sort((a, b) => b.KB - a.KB).slice(0, 5);
+        console.log('[XDEX perf] 体积最大的 5 条', top);
+        return { summary: out, biggest: top };
+      } catch (e) {
+        out['错误'] = String((e && e.message) || e);
+        console.table([out]);
+        return { summary: out, biggest: [] };
+      }
+    }
     const api = { measure, measureAsync, measureObserver, begin, finish, record, recordObserver, mark, report, reset, summarizeRoot,
-      capture, exportAll, printAll, listRounds, clearRounds, summarizeLoaf, sampleFramePacing };
+      capture, exportAll, printAll, listRounds, clearRounds, summarizeLoaf, sampleFramePacing, measureHistoryStore, measureLayoutCost, summarizeGmCalls };
     window.__xdexStartupPerfReport = report;
     window.__xdexStartupPerfReset = reset;
     target.__xdexStartupPerfReport = report;
@@ -10006,16 +10235,37 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     target.__xdexPerfClear = clearRounds;
     target.__xdexPerfLoaf = summarizeLoaf;   // 长帧归因汇总（控制台可直接调用）
     target.__xdexPerfJank = sampleFramePacing; // 帧节拍采样：__xdexPerfJank(6) 滚动中运行
+    target.__xdexPerfStore = measureHistoryStore; // 浏览历史库体积探针（容量依据）
+    target.__xdexPerfLayout = measureLayoutCost;  // 布局成本探针（样式+布局一次多少钱）
+    target.__xdexPerfGm = summarizeGmCalls;       // GM 存储调用统计（次数/合计/最大，按键）
+    window.__xdexPerfStore = measureHistoryStore;
     window.__xdexPerfJank = sampleFramePacing;
     if (AUTO_COLLECTION_ENABLED) {
+      // 观察器照常安装（数据累计，供手动报告读取），但静默模式下不自动报告、不打印
       installBrowserObservers();
-      setTimeout(() => {
-        report({ auto: true });
-      }, AUTO_REPORT_AFTER_MS);
-      console.log('[XDEX startup perf] auto collection started; auto report in 60s');
+      if (!XDEX_PERF_QUIET) {
+        setTimeout(() => {
+          report({ auto: true });
+        }, AUTO_REPORT_AFTER_MS);
+        console.log('[XDEX startup perf] auto collection started; auto report in 60s');
+      }
     }
     return api;
   })();
+  // ★ 设置快照缓存：脚本猫的 GM_getValue 是"经扩展通道"的调用，而扩展端 gm-compat 读的是内存缓存，
+  //   同一份代码在两个运行时的单价完全不同。设置键既有 35 处直接读取，又有若干热路径 helper
+  //   （引用时间显示、常用串配置、过滤配置回退、坞模式回退）在滚动/增强期被反复调用，
+  //   因此在脚本端会累积成可感知的卡顿，而在扩展端毫无影响。
+  //   这里做一层内存快照：任何 GM_setValue(SettingPanel.key) 与跨标签变更都会立刻失效它。
+  let settingsSnapshotCache = null;
+  function invalidateSettingsSnapshot() { settingsSnapshotCache = null; }
+  function readSettingsCached() {
+    if (settingsSnapshotCache) return settingsSnapshotCache;
+    let value = null;
+    try { value = GM_getValue(SettingPanel.key, null); } catch (e) { value = null; }
+    settingsSnapshotCache = (value && typeof value === 'object') ? value : {};
+    return settingsSnapshotCache;
+  }
   function deferStartupTask(task, delay = 0, label = 'anonymous') {
     const run = () => {
       try {
@@ -10164,7 +10414,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       try { if (liveCfg && liveCfg.enableQuotePreview && typeof enableQuotePreview === 'function') enableQuotePreview(); } catch (e) {}
       // 作用域必须与上方各步骤一致传 root：传 document 会在每次局部刷新/快速回复/翻页时
       // 对整条串的全部回复重跑「重置PO布局 → 过滤 → 重算PO布局」，成本随串长度线性放大
-      try { refreshFilterDisplay(liveCfg, root); } catch (e) {}
+      try { refreshFilterDisplay(liveCfg, root, 'applyPageEnhancements'); } catch (e) {}
       try { if (liveCfg && liveCfg.enableRelativeTime && typeof formatDateStrOnPage === 'function') formatDateStrOnPage(root); } catch (e) {}
       try { if (typeof initContent === 'function') initContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
@@ -10475,27 +10725,48 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       window.addEventListener('scroll', onUserScroll, { passive: true });
       window.addEventListener('wheel', onWheel, { passive: true });
       // ======== 新增：桥接器 + 自动重执行器 ========
+      // 已在本文档执行过的外链脚本：同一文档内不重复执行。
+      // 站点统计/广告类外链每次翻页重跑纯属浪费（还会重复注册全局监听、重复上报）。
+      // 内联脚本仍照原样执行，保持站点对新增内容的初始化行为不变。
+      const reinitExecutedScriptSrc = new Set();
       function reinitForNewContent(container) {
         try {
-          // 1. 派发自定义事件
+          // 1. 派发自定义事件（我们的桥接契约；事件本身很便宜，保持同步）
           document.dispatchEvent(new CustomEvent('SeamlessPageAppended', {
             detail: { container }
           }));
-          // 2. 模拟 DOMContentLoaded（部分脚本只监听这个）
-          document.dispatchEvent(new Event('DOMContentLoaded'));
-          // 3. 重新执行 container 内的 <script> 标签
-          container.querySelectorAll('script').forEach(oldScript => {
-            const newScript = document.createElement('script');
-            if (oldScript.src) {
-              newScript.src = oldScript.src;
-            } else {
-              newScript.textContent = oldScript.textContent;
-            }
-            [...oldScript.attributes].forEach(attr => {
-              newScript.setAttribute(attr.name, attr.value);
+          // 2/3. 模拟 DOMContentLoaded + 重新执行 container 内的 <script>：★ 全部移出插入关键帧。
+          //    实测同帧内同步执行时：DOMContentLoaded 再派发 79~97ms（站点与其它脚本的 ready
+          //    处理器整体重跑）、<script> 重建 87~138ms（且 hm.js 等外链被反复执行），
+          //    两者合起来就是每次翻页一次 100~300ms 的卡顿。
+          //    事件语义不变（第三方脚本照样收到），只是改为空闲时段执行，插入帧不再被阻塞。
+          const scripts = Array.from(container.querySelectorAll('script'));
+          const runDeferred = () => {
+            const __deferToken = startupPerfDebug.begin();
+            const __domReadyToken = startupPerfDebug.begin();
+            try { document.dispatchEvent(new Event('DOMContentLoaded')); } catch (e) {}
+            startupPerfDebug.finish('seamless.loadNext.reinitDomReady', __domReadyToken, () => ({}));
+            scripts.forEach(oldScript => {
+              try {
+                if (oldScript.src) {
+                  let abs = oldScript.src;
+                  try { abs = new URL(oldScript.src, location.href).href; } catch (e) {}
+                  if (reinitExecutedScriptSrc.has(abs)) return;
+                  reinitExecutedScriptSrc.add(abs);
+                }
+                const newScript = document.createElement('script');
+                if (oldScript.src) newScript.src = oldScript.src;
+                else newScript.textContent = oldScript.textContent;
+                [...oldScript.attributes].forEach(attr => {
+                  newScript.setAttribute(attr.name, attr.value);
+                });
+                oldScript.replaceWith(newScript);
+              } catch (e) { /* 单个脚本失败不影响其余 */ }
             });
-            oldScript.replaceWith(newScript);
-          });
+            startupPerfDebug.finish('seamless.loadNext.deferredReinit', __deferToken, () => ({ scripts: scripts.length }));
+          };
+          if (typeof requestIdleCallback === 'function') requestIdleCallback(runDeferred, { timeout: 1000 });
+          else setTimeout(runDeferred, 0);
         } catch (err) {
           console.warn('reinitForNewContent error:', err);
         }
@@ -14824,7 +15095,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     try {
       const stateMode = SettingPanel && SettingPanel.state && SettingPanel.state.dockDisplayMode;
       if (stateMode === 'fixed' || stateMode === 'hover') return stateMode;
-      const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      const cfg = Object.assign({}, SettingPanel.defaults, readSettingsCached());
       const m = cfg.dockDisplayMode;
       if (m === 'fixed' || m === 'hover') return m;
     } catch (e) {}
@@ -19426,7 +19697,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           // 内部还会 scoped 调一次，全文档版是冗余的（发送后既有回复的过滤状态不变，无需重算）。
           try {
             if (cfg2 && typeof applyFilters === 'function') {
-              try { refreshFilterDisplay(cfg2, targetReplies); } catch (e) {}
+              try { refreshFilterDisplay(cfg2, targetReplies, 'seamless'); } catch (e) {}
             }
           } catch (e) {}
           if (typeof done === 'function') done();
@@ -19468,7 +19739,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       value: dropdown.value,
       hasShowPicker: typeof dropdown.showPicker === 'function'
     });
-    if (XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged)) {
+    if (isXDexPackagedRuntime(XDEX_RUNTIME)) {
       return openCookieShortcutMenu(dropdown, focusBackTarget);
     }
     if (typeof dropdown.showPicker === 'function') {
@@ -22853,7 +23124,7 @@ function 注册自动保存编辑() {
     }
     function getTimeDisplayMode() {
       try {
-        const saved = GM_getValue(SettingPanel.key, {});
+        const saved = readSettingsCached();
         return saved && saved.timeDisplayMode === 'exact' ? 'exact' : 'relative';
       } catch (e) {
         return cfg.timeDisplayMode === 'exact' ? 'exact' : 'relative';
@@ -23836,7 +24107,7 @@ function 注册自动保存编辑() {
               //    新回复的过滤结果可能影响串的展开/折叠形态）
               const __tf = startupPerfDebug.begin();
               for (const node of allOldNodes) {
-                try { if (cfg2) refreshFilterDisplay(cfg2, node); } catch (err) {}
+                try { if (cfg2) refreshFilterDisplay(cfg2, node, 'quickReply'); } catch (err) {}
               }
               startupPerfDebug.finish('boardQuickReply.deferred.refreshFilter', __tf, () => ({ nodes: allOldNodes.length }));
               const __tp = startupPerfDebug.begin();
@@ -25096,7 +25367,7 @@ function 注册自动保存编辑() {
   }
   const CHANGELOG = parseVersionAndChangelogFromMeta(GM_info.scriptMetaStr || '').changelog || '';
   function getUpdateCheckStorageKey() {
-    const packagedRuntime = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+    const packagedRuntime = isXDexPackagedRuntime(XDEX_RUNTIME);
     return packagedRuntime ? UPDATE_EXTENSION_CHECK_KEY : UPDATE_CHECK_KEY;
   }
   function getDefaultUpdateCheckState() {
@@ -25190,7 +25461,7 @@ function 注册自动保存编辑() {
     };
   }
   function getUpdateCheckRequestsForRuntime() {
-    if (XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged)) {
+    if (isXDexPackagedRuntime(XDEX_RUNTIME)) {
       return [
         () => fetchExtensionUpdateJson(UPDATE_EXTENSION_GITHUB_JSON_URL, 'github'),
         () => fetchExtensionUpdateJson(UPDATE_EXTENSION_JSDELIVR_JSON_URL, 'jsdelivr')
@@ -25207,7 +25478,7 @@ function 注册自动保存编辑() {
     valid.sort((a, b) => compareVersionStrings(b.version, a.version));
     const topVersion = valid[0].version;
     const topCandidates = valid.filter(item => compareVersionStrings(item.version, topVersion) === 0);
-    const packagedRuntime = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+    const packagedRuntime = isXDexPackagedRuntime(XDEX_RUNTIME);
     const preferredSource = packagedRuntime ? 'github' : 'greasyfork';
     const preferred = topCandidates.find(item => item.source === preferredSource) || topCandidates[0];
     return preferred;
@@ -25372,7 +25643,7 @@ function 注册自动保存编辑() {
       const requests = getUpdateCheckRequestsForRuntime();
       const settled = await Promise.allSettled(requests.map((request) => request()));
       const sourceResults = settled.map((item, index) => {
-        const packagedRuntime = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+        const packagedRuntime = isXDexPackagedRuntime(XDEX_RUNTIME);
         const source = packagedRuntime
           ? (index === 0 ? 'github' : 'jsdelivr')
           : (index === 0 ? 'greasyfork' : 'scriptcat');
@@ -25816,10 +26087,10 @@ function 注册自动保存编辑() {
     // console.debug('【右键菜单｜关闭】', { 原因: '隐藏菜单' });
   }
   function shouldUseExtensionNativeImageContextMenu(cfg) {
-    // 打包运行时（Chrome 扩展 / QwQNT）都有宿主自带的右键菜单：
+    // 打包运行时（Chrome / Firefox 扩展、QwQNT）都有宿主自带的右键菜单：
     // 扩展有 chrome.contextMenus，QwQNT 的 webview 原生菜单可以直接“复制图片”。
     // 这类环境不要再注入页面内的自定义菜单，避免遮住原生菜单。
-    const packaged = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+    const packaged = isXDexPackagedRuntime(XDEX_RUNTIME);
     return !!(packaged && cfg && cfg.enableImageContextMenu);
   }
   // 关闭类监听（点外部 / 失焦 / 滚动 / Esc）只在菜单可见期间存在：
@@ -26194,12 +26465,12 @@ function 注册自动保存编辑() {
     await writeClipboardText(ctx.threadUrl, '串链接已复制');
   }
   // 串链接右键菜单安装器：与图片菜单共用同一容器/监听，仅按运行时与开关决定是否创建。
-  // 打包运行时（Chrome 扩展 / QwQNT）都有宿主原生右键菜单，不注入页面内菜单以免遮挡；
+  // 打包运行时（Chrome / Firefox 扩展、QwQNT）都有宿主原生右键菜单，不注入页面内菜单以免遮挡；
   // 其中扩展端由 SW 的 chrome.contextMenus 提供“添加到发言历史”，QwQNT 本轮未接原生项。
   function enableQuickAddPostHistoryMenu(root = document) {
     return startupPerfDebug.measure('enableQuickAddPostHistoryMenu', () => {
       if (!isQuickAddPostHistoryEnabled()) return;
-      const packaged = !!(XDEX_RUNTIME && (XDEX_RUNTIME.kind === 'extension' || XDEX_RUNTIME.packaged));
+      const packaged = isXDexPackagedRuntime(XDEX_RUNTIME);
       if (packaged) return;
       ensureImageContextMenuStyle();
       getImageContextMenu();
@@ -26465,7 +26736,7 @@ function 注册自动保存编辑() {
   const THREAD_HISTORY_STORE_VERSION = 1;
   // const THREAD_HISTORY_LIMIT = 500;
   const THREAD_HISTORY_LIMIT = Infinity;
-  const THREAD_HISTORY_EXCERPT_LIMIT = 250;
+  const THREAD_HISTORY_EXCERPT_LIMIT = 250;   // 仅 UI 显示上限；完整正文必须保留（检索依赖全文）
   const THREAD_HISTORY_RECORD_RETRY_LIMIT = 10;
   const THREAD_HISTORY_RECORD_RETRY_DELAY = 500;
   const THREAD_HISTORY_SYNC_EVENT = 'xdex:thread-history-changed';
@@ -26483,6 +26754,20 @@ function 注册自动保存编辑() {
   // 否则每次全量写都会把整份历史（MB 级）投递给每个注册了大键监听的标签页。
   const THREAD_HISTORY_REV_KEY = 'xdex_thread_history_rev';
   const POST_HISTORY_REV_KEY = 'xdex_post_history_rev';
+  // ★ 位置/进度小键：把"高频小数据"从"低频大库"里分出来。
+  //   整库含完整正文（检索用，不可裁剪），脚本猫的 GM_setValue 是"整库序列化+写盘"
+  //   （实测均值约 39ms），且每次写入都会把整库变更广播给所有标签页；而滚动只改变几个标量。
+  //   不变式：
+  //     ① 位置以本键为准（读取时叠加到整库之上）；整库同名字段保留为镜像，供旧版本回退读取；
+  //     ② 同串比较 lastVisitedAt 与 at：大者新 —— 访问会写整库并刷新本键位置，位置更新写本键，
+  //        因此 WebDAV 合并（远端访问更新）能正确覆盖本地位置，反向亦然；
+  //     ③ 超限条目只在整库写入时淘汰（此刻值已镜像进整库，不会丢数据）。
+  const THREAD_HISTORY_POS_KEY = 'xdex_thread_history_pos';
+  // 热表键（localStorage，同源）：滚动中的位置更新只写这里 —— GM 写入会经扩展存储通道落盘
+  // 并向所有标签页广播，是滚动卡顿的直接来源；而 localStorage 写入是同步内存写、无广播。
+  // GM 小键仅在检查点（页面离开 / 切走标签 / 任何整库写入）落一次。
+  const THREAD_HISTORY_POS_HOT_KEY = 'xdex_thread_history_pos_hot';
+  const THREAD_HISTORY_POS_LIMIT = 300;
   let historyRevSeq = 0;
   function nextHistoryRev() {
     // 同一毫秒内连续写入也必须得到不同值，否则存储层可能判定“未变化”而不发变更事件
@@ -26798,14 +27083,266 @@ function 注册自动保存编辑() {
   // 归一化结果记忆化:检索随输入触发,写入远少于读取;缓存由 setThreadHistoryStore 与跨标签变更监听失效
   let threadHistoryStoreCache = null;
   function invalidateThreadHistoryStoreCache() { threadHistoryStoreCache = null; }
+  let threadHistoryPosGmCache = null;      // GM 侧位置表：持久 + 跨标签/跨端/跨运行时可见
+  let threadHistoryPosHotCache = null;     // 热位置表（localStorage）：高频写、无扩展往返、无跨标签广播
+  let threadHistoryPosPendingGm = false;   // 有热写入尚未落 GM → 检查点时落一次
+  let threadHistoryPosMigrated = false;
+  // 小键变更后置位：下次读取时做增量叠加（避免每收到一次跨页位置变更就重建整个整库缓存）
+  let threadHistoryStoreNeedsPosOverlay = false;
+  function normalizeThreadHistoryPosEntry(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const page = Math.max(1, Number(entry.p) || 1);
+    return {
+      p: page,
+      u: String(entry.u || ''),
+      mv: Math.max(page, Number(entry.mv) || page),
+      lk: Math.max(page, Number(entry.lk) || page),
+      rid: String(entry.rid || ''),
+      rp: Math.max(page, Number(entry.rp) || page),
+      // 最近访问时间：翻页/继续阅读会刷新它（影响历史列表与检索的"最近访问"排序）。
+      // 它属于排序语义而非内容，放进位置层后翻页就不必再写整库。
+      vat: Number(entry.vat) || 0,
+      // 访问次数（绝对值，不是增量）：重复访问走轻量入口时不写整库，用它承载 +1；
+      // 叠加时取 max 保证幂等，整库写入时再落库（WebDAV 的基线增量合并依赖它准确）。
+      vc: Number(entry.vc) || 0,
+      at: Number(entry.at) || 0
+    };
+  }
+  function serializeThreadHistoryPosMap(map) {
+    const out = {};
+    try {
+      Object.keys(map || {}).forEach((k) => {
+        const entry = normalizeThreadHistoryPosEntry(map[k]);
+        if (entry) out[k] = entry;
+      });
+    } catch (e) { /* 忽略：按已收集到的条目写出 */ }
+    return out;
+  }
+  function parseThreadHistoryPosMap(raw) {
+    const out = {};
+    try {
+      if (raw && typeof raw === 'object') {
+        Object.keys(raw).forEach((k) => {
+          const entry = normalizeThreadHistoryPosEntry(raw[k]);
+          if (entry) out[k] = entry;
+        });
+      }
+    } catch (e) { /* 忽略 */ }
+    return out;
+  }
+  function readThreadHistoryPosGmMap() {
+    if (threadHistoryPosGmCache) return threadHistoryPosGmCache;
+    let map = {};
+    try { map = parseThreadHistoryPosMap(GM_getValue(THREAD_HISTORY_POS_KEY, null)); } catch (e) { map = {}; }
+    threadHistoryPosGmCache = map;
+    return map;
+  }
+  function readThreadHistoryPosHotMap() {
+    if (threadHistoryPosHotCache) return threadHistoryPosHotCache;
+    let map = {};
+    try {
+      const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(THREAD_HISTORY_POS_HOT_KEY) : null;
+      if (raw) map = parseThreadHistoryPosMap(JSON.parse(raw));
+    } catch (e) { map = {}; }
+    threadHistoryPosHotCache = map;
+    return map;
+  }
+  function writeThreadHistoryPosHotMap(map) {
+    const normalized = serializeThreadHistoryPosMap(map);
+    threadHistoryPosHotCache = normalized;
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      // 关键：同源 localStorage 写入是同步内存写，不经扩展存储通道、不向其它标签页广播
+      localStorage.setItem(THREAD_HISTORY_POS_HOT_KEY, JSON.stringify(normalized));
+    } catch (e) {
+      try { localStorage.removeItem(THREAD_HISTORY_POS_HOT_KEY); } catch (_e) {}
+      return false;
+    }
+    return true;
+  }
+  function writeThreadHistoryPosGmMap(map) {
+    const normalized = serializeThreadHistoryPosMap(map);
+    try { GM_setValue(THREAD_HISTORY_POS_KEY, normalized); } catch (e) {}
+    threadHistoryPosGmCache = normalized;
+    threadHistoryPosPendingGm = false;
+    return normalized;
+  }
+  function invalidateThreadHistoryPosCache() { threadHistoryPosGmCache = null; threadHistoryPosHotCache = null; }
+  // 合并视图：同串取 at 较大者。热表来自本页滚动（最新），GM 侧来自检查点/其它标签页/其它设备。
+  function readThreadHistoryPosMap() {
+    const gm = readThreadHistoryPosGmMap();
+    const hot = readThreadHistoryPosHotMap();
+    const hotKeys = Object.keys(hot);
+    if (!hotKeys.length) return gm;
+    const gmKeys = Object.keys(gm);
+    if (!gmKeys.length) return hot;
+    const merged = {};
+    gmKeys.forEach((k) => { merged[k] = gm[k]; });
+    hotKeys.forEach((k) => {
+      const entry = hot[k];
+      const prev = merged[k];
+      if (!prev) { merged[k] = entry; return; }
+      const newer = (Number(entry.at) || 0) >= (Number(prev.at) || 0) ? entry : prev;
+      const older = newer === entry ? prev : entry;
+      // vat 取两者较大：两个方向（本页翻页 / 别处写入）都不能丢"最近访问"时间
+      merged[k] = Object.assign({}, newer, {
+        vat: Math.max(Number(newer.vat) || 0, Number(older.vat) || 0),
+        vc: Math.max(Number(newer.vc) || 0, Number(older.vc) || 0)
+      });
+    });
+    return merged;
+  }
+  // 检查点：把热表并进 GM（页面离开/切走标签/任何整库写入时调用）
+  function persistThreadHistoryPosToGm(reason) {
+    if (!threadHistoryPosPendingGm) return false;
+    const __token = startupPerfDebug.begin();
+    const merged = readThreadHistoryPosMap();
+    writeThreadHistoryPosHotMap(merged);   // 保持热表与 GM 一致（含淘汰结果）
+    writeThreadHistoryPosGmMap(merged);
+    startupPerfDebug.finish('threadHistory.posFlushGM', __token, () => ({ reason: reason || '', entries: Object.keys(merged).length }));
+    return true;
+  }
+  // 记录一串的位置：**高频路径写热表（不再逐次落 GM）**，GM 由检查点统一落盘。
+  // 无变化不写；过期时间戳不覆盖（跨标签/合并防回退）。
+  function setThreadHistoryPosEntry(key, fields, at) {
+    if (!key) return readThreadHistoryPosMap();
+    const gm = readThreadHistoryPosGmMap();
+    const hot = readThreadHistoryPosHotMap();
+    const prev = hot[key] || gm[key];
+    if (prev && Number(at) && Number(at) < Number(prev.at)) return readThreadHistoryPosMap();
+    const nextAt = Math.max(Number(at) || Date.now(), Number(prev && prev.at) || 0);
+    const next = normalizeThreadHistoryPosEntry(Object.assign({}, prev || {}, fields || {}, { at: nextAt }));
+    if (!next) return readThreadHistoryPosMap();
+    if (prev && prev.at === next.at && prev.p === next.p && prev.u === next.u && prev.mv === next.mv
+      && prev.lk === next.lk && prev.rid === next.rid && prev.rp === next.rp && prev.vat === next.vat && prev.vc === next.vc) {
+      return readThreadHistoryPosMap();
+    }
+    const __token = startupPerfDebug.begin();
+    hot[key] = next;
+    const wroteHot = writeThreadHistoryPosHotMap(hot);
+    startupPerfDebug.finish('threadHistory.posWriteHot', __token, () => ({ ok: wroteHot, entries: Object.keys(hot).length }));
+    if (!wroteHot) {
+      // localStorage 不可用（受限环境）：退回逐次落 GM，保持原行为
+      gm[key] = next;
+      writeThreadHistoryPosGmMap(gm);
+      return readThreadHistoryPosMap();
+    }
+    threadHistoryPosPendingGm = true;
+    return readThreadHistoryPosMap();
+  }
+  // 首次迁移：两侧都为空时把整库里的位置字段投影到热表（幂等；旧版本读整库镜像仍可工作）
+  function migrateThreadHistoryPosFromStore(store) {
+    if (threadHistoryPosMigrated) return;
+    threadHistoryPosMigrated = true;
+    if (!store || !store.items) return;
+    if (Object.keys(readThreadHistoryPosMap()).length) return;   // 已有（含热表）→ 不覆盖
+    const projected = {};
+    Object.keys(store.items).forEach((key) => {
+      const item = store.items[key];
+      if (!item) return;
+      projected[key] = normalizeThreadHistoryPosEntry({
+        p: item.page, u: item.url, mv: item.maxVisitedPage, lk: item.lastKnownPage,
+        rid: item.lastReadReplyId, rp: item.lastReadReplyPage, at: Number(item.lastVisitedAt) || 0
+      });
+    });
+    if (Object.keys(projected).length) writeThreadHistoryPosHotMap(projected);
+  }
+  // 小键 → 整库镜像（只遍历小键条数，O(小键)，不触碰整库规模）；
+  // 跨标签位置变更时用它做增量叠加，避免"失效整库缓存 → 下次读取重新归一化整库"。
+  function applyThreadHistoryPosOverlayToStore(store) {
+    if (!store || !store.items) return false;
+    const map = readThreadHistoryPosMap();
+    const keys = Object.keys(map);
+    let touched = false;
+    let orderTouched = false;
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const entry = map[key];
+      const item = store.items[key];
+      if (!entry || !item) continue;
+      if (Number(entry.at) < (Number(item.lastVisitedAt) || 0)) continue;
+      item.page = entry.p;
+      item.url = entry.u || buildThreadHistoryPageUrl(item.mode, item.threadId, entry.p);
+      item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, entry.mv);
+      item.lastKnownPage = Math.max(Number(item.lastKnownPage) || 0, entry.lk);
+      item.lastReadReplyId = entry.rid || '';
+      item.lastReadReplyPage = Number(entry.rp) || entry.p;
+      if (Number(entry.vat) > (Number(item.lastVisitedAt) || 0)) {
+        // 翻页/继续阅读刷新了"最近访问" → 同步条目、索引与顺序（读取侧即可看到正确排序）
+        item.lastVisitedAt = Number(entry.vat);
+        if (store.index[key]) store.index[key].lastVisitedAt = Number(entry.vat);
+        orderTouched = true;
+      }
+      // 访问计数（绝对值，取 max 保证幂等）：历史面板"共访问 N 次"与 visits-asc/desc 排序都读它
+      if (Number(entry.vc) > (Number(item.visitCount) || 0)) item.visitCount = Number(entry.vc);
+      touched = true;
+    }
+    if (orderTouched && Array.isArray(store.order) && store.order.length > 1) {
+      store.order.sort((a, b) => (Number(store.items[b] && store.items[b].lastVisitedAt) || 0) - (Number(store.items[a] && store.items[a].lastVisitedAt) || 0));
+    }
+    return touched;
+  }
+  // 双向镜像：读路径只做"小键→整库"叠加（不写）；写路径刷新小键并把结果落到 GM（检查点）。
+  function syncThreadHistoryPosAndStore(store, options = {}) {
+    if (!store || !store.items) return store;
+    applyThreadHistoryPosOverlayToStore(store);
+    if (options.readOnly) return store;
+    const gm = readThreadHistoryPosGmMap();
+    const hot = readThreadHistoryPosHotMap();
+    let posDirty = false;
+    Object.keys(store.items).forEach((key) => {
+      const item = store.items[key];
+      if (!item) return;
+      const entry = hot[key] || gm[key];
+      const visitedAt = Number(item.lastVisitedAt) || 0;
+      if (entry && Number(entry.at) >= visitedAt) return;   // 小键更新已在上方覆盖镜像
+      if (visitedAt > Number(entry && entry.at || 0)) {
+        // 整库更新（访问 / WebDAV 合并取到更新的远端访问）→ 刷新小键
+        hot[key] = normalizeThreadHistoryPosEntry({
+          p: Number(item.page) || 1, u: item.url || '', mv: Number(item.maxVisitedPage) || 1,
+          lk: Number(item.lastKnownPage) || 0, rid: item.lastReadReplyId || '',
+          rp: Number(item.lastReadReplyPage) || Number(item.page) || 1, at: visitedAt,
+          vc: Math.max(Number(entry && entry.vc) || 0, Number(item.visitCount) || 0)
+        });
+        posDirty = true;
+      }
+    });
+    // 清理与淘汰：只保留仍在库中的串，超限时淘汰最旧（此刻值已镜像进整库，不丢数据）
+    const merged = readThreadHistoryPosMap();
+    let posRemoved = false;
+    Object.keys(merged).forEach((k) => {
+      if (!store.items[k]) { delete merged[k]; delete hot[k]; posRemoved = true; }
+    });
+    const keys = Object.keys(merged);
+    if (keys.length > THREAD_HISTORY_POS_LIMIT) {
+      keys.sort((a, b) => (Number(merged[b] && merged[b].at) || 0) - (Number(merged[a] && merged[a].at) || 0));
+      keys.slice(THREAD_HISTORY_POS_LIMIT).forEach((k) => { delete merged[k]; delete hot[k]; posRemoved = true; });
+    }
+    // 整库写入本身就是检查点：把热表并进 GM，保证跨标签/跨端看到的位置不落后
+    if (posDirty || posRemoved || threadHistoryPosPendingGm) {
+      writeThreadHistoryPosHotMap(merged);
+      writeThreadHistoryPosGmMap(merged);
+    }
+    return store;
+  }
   function getThreadHistoryStore() {
-    if (threadHistoryStoreCache) return threadHistoryStoreCache;
+    if (threadHistoryStoreCache) {
+      // 跨标签位置变更后：只把小键增量叠加进缓存（O(小键)），不重新读取/归一化整库
+      if (threadHistoryStoreNeedsPosOverlay) {
+        threadHistoryStoreNeedsPosOverlay = false;
+        try { applyThreadHistoryPosOverlayToStore(threadHistoryStoreCache); } catch (e) {}
+      }
+      return threadHistoryStoreCache;
+    }
     let store;
     try {
       store = normalizeThreadHistoryStore(GM_getValue(THREAD_HISTORY_STORAGE_KEY, null));
     } catch (e) {
       store = createDefaultThreadHistoryStore();
     }
+    // ★ 位置小键叠加（小键为准）与首次迁移投影；读到的位置始终是最新的
+    try { migrateThreadHistoryPosFromStore(store); } catch (e) {}
+    try { syncThreadHistoryPosAndStore(store, { readOnly: true }); } catch (e) {}
     threadHistoryStoreCache = store;
     return store;
   }
@@ -26814,6 +27351,8 @@ function 注册自动保存编辑() {
     // 整份历史库的序列化+写盘在滚动时可能周期性卡顿；扩展/客户端为内存态存储故不明显。
     // 取证：__xdexPerfCollectOn() → 刷新 → 滚动 → __xdexPerfPrint()，看 threadHistory.persist 的
     // 次数 / 总耗时 / 单次最大耗时。
+    // ★ 写前与小键对齐：小键更新则刷新镜像；整库更新则刷新小键并淘汰超限条目
+    try { syncThreadHistoryPosAndStore(store); } catch (e) {}
     const __persistToken = startupPerfDebug.begin();
     const normalized = normalizeThreadHistoryStore(store);
     GM_setValue(THREAD_HISTORY_STORAGE_KEY, normalized);
@@ -26870,18 +27409,51 @@ function 注册自动保存编辑() {
     } catch (e) {}
     scheduleThreadHistoryLiveRender(source, remote);
   }
+  let threadHistoryPosReactTimer = 0;
+  function reactToThreadHistoryPosChange() {
+    const __token = startupPerfDebug.begin();
+    invalidateThreadHistoryPosCache();
+    if (threadHistoryStoreCache) threadHistoryStoreNeedsPosOverlay = true;
+    const hidden = !!document.hidden;
+    if (!hidden) {
+      scheduleThreadHistoryLiveRender('gm-pos-change', true);
+      syncFavoriteThreadsLinks();
+    }
+    startupPerfDebug.finish('threadHistory.receivePos', __token, () => ({ hidden }));
+  }
   function bindThreadHistoryLiveSync() {
     if (threadHistoryLiveSyncBound) return;
     threadHistoryLiveSyncBound = true;
     if (typeof GM_addValueChangeListener === 'function') {
       try {
         bindHistoryValueChangeSync(THREAD_HISTORY_STORAGE_KEY, THREAD_HISTORY_REV_KEY, (remote) => {
+          // ★ 跨页广播成本控制（本回调会在【每个】nmBXD 标签页因别处写入而触发）：
+          //   缓存只丢引用（便宜），渲染由 scheduleThreadHistoryLiveRender 内部按面板可见性门控；
+          //   链接同步保留（远端变更必须让常用串指向最新阅读页），但改走原始读取——
+          //   不再为几个链接触发整库归一化+索引重建（那是「一处写入、所有页同时卡」的主因）。
           invalidateThreadHistoryStoreCache();
           scheduleThreadHistoryLiveRender('gm-value-change', remote);
           syncFavoriteThreadsLinks();
         });
       } catch (e) {
         logThreadHistory('live sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
+      }
+      // ★ 位置小键的变更：载荷只有百字节级。接收侧只做三件便宜事，且合并突发：
+      //   ① 丢小键缓存；② 给整库缓存打"待叠加"标记（下次读取时 O(小键) 增量叠加，不重新归一化整库）；
+      //   ③ 可见标签才重建 UI/链接（后台标签不做 DOM 工作，切回可见时补一次）。
+      try {
+        GM_addValueChangeListener(THREAD_HISTORY_POS_KEY, () => {
+          if (threadHistoryPosReactTimer) return;   // 合并突发：滚动期间小键写入很密集
+          threadHistoryPosReactTimer = setTimeout(() => {
+            threadHistoryPosReactTimer = 0;
+            reactToThreadHistoryPosChange();
+          }, 600);
+        });
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible' && threadHistoryStoreNeedsPosOverlay) reactToThreadHistoryPosChange();
+        }, { passive: true });
+      } catch (e) {
+        logThreadHistory('pos sync listener failed', { error: e && e.message ? e.message : String(e) }, 'warn');
       }
     }
     window.addEventListener(THREAD_HISTORY_SYNC_EVENT, (event) => {
@@ -28841,18 +29413,30 @@ function 注册自动保存编辑() {
     });
     store.items[key] = merged;
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
+    if (options.positionOnly) {
+      // ★ 纯位置/进度更新（翻页、无缝翻页）：这些字段正是"最远页/最近查看页/最近浏览位置"，
+      //   与滚动位置同级 → 只写位置层（热表），**不写整库**，从而避免整库序列化 + 跨标签页广播。
+      //   读取时位置层会叠加到整库镜像之上，所以列表显示/恢复阅读位置/常用串链接/WebDAV 上传
+      //   看到的都是最新值；整库镜像在下一次整库写入（访问/合并/删除）时自动刷新。
+      setThreadHistoryPosEntry(key, {
+        p: merged.page,
+        u: merged.url,
+        mv: merged.maxVisitedPage,
+        lk: merged.lastKnownPage,
+        rid: merged.lastReadReplyId,
+        rp: merged.lastReadReplyPage,
+        vat: Number(merged.lastVisitedAt) || now
+      }, now);
+      threadHistoryStoreCache = store;
+      logThreadHistory('position saved', { key, reason: options.reason || '', page: merged.page, maxVisitedPage: merged.maxVisitedPage, lastKnownPage: merged.lastKnownPage });
+      return store;
+    }
     const saved = setThreadHistoryStore(store);
     logThreadHistory('record saved', { key, total: saved.order.length, countVisit, reason: options.reason || '', record: JSON.parse(JSON.stringify({ page: merged.page, maxVisitedPage: merged.maxVisitedPage, lastKnownPage: merged.lastKnownPage, url: merged.url, visitCount: merged.visitCount })) });
     // 同步常用串菜单中对应串的链接
     try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
     return saved;
   }
-  // 滚动位置的落盘延后：浏览历史库可能达数百条（含正文/标题/URL，可达 MB 级），
-  // 而 GM_setValue 在脚本猫/篡改猴是"同步序列化+落盘"。滚动时视口中心回复号几乎每次都变，
-  // 若每次防抖都落盘，长串滚动会出现周期性卡顿（扩展/客户端是内存态存储故无感）。
-  // 策略：内存即时更新（读侧看到的始终是最新），落盘推迟到滚动停止 2.5s 或页面离开时一次。
-  let threadHistoryScrollPersistTimer = 0;
-  let threadHistoryScrollDirty = false;
   function touchThreadHistoryCurrentLocation(options = {}) {
     if (!isThreadHistoryEnabledNow()) return getThreadHistoryStore(); // 浏览历史已关闭：不更新位置
     const parsed = parseThreadHistoryUrl(options.url || location.href);
@@ -28903,11 +29487,18 @@ function 注册自动保存编辑() {
     }
     store.index[key] = buildThreadHistoryIndexEntry(item);
     store.order = [key].concat((store.order || []).filter(itemKey => itemKey !== key));
-    if (options.deferPersist) {
-      // 内存已是最新；落盘推到滚动停止后一次（见 flushThreadHistoryScrollPersist）
-      threadHistoryScrollDirty = true;
-      if (threadHistoryScrollPersistTimer) clearTimeout(threadHistoryScrollPersistTimer);
-      threadHistoryScrollPersistTimer = setTimeout(() => { threadHistoryScrollPersistTimer = 0; flushThreadHistoryScrollPersist({ reason: 'scroll-idle' }); }, 2500);
+    if (options.positionOnly) {
+      // ★ 纯位置更新：只写位置小键（百字节级，成本与库体积无关），不写整库、不广播整库。
+      // 位置精度不受影响——每次防抖都照写；整库镜像在下次整库写入时自动带上最新值。
+      setThreadHistoryPosEntry(key, {
+        p: item.page,
+        u: item.url,
+        mv: item.maxVisitedPage,
+        lk: item.lastKnownPage,
+        rid: item.lastReadReplyId,
+        rp: item.lastReadReplyPage
+      }, now);
+      threadHistoryStoreCache = store;   // 本页内存整库镜像已含本次值，读侧无需回退
       return store;
     }
     const saved = setThreadHistoryStore(store);
@@ -28920,12 +29511,17 @@ function 注册自动保存编辑() {
     if (!isThreadHistoryEnabledNow()) return getThreadHistoryStore(); // 浏览历史已关闭：不记录翻页进度
     const parsed = parseThreadHistoryUrl(options.url || location.href);
     if (!parsed) return getThreadHistoryStore();
-    const record = extractThreadHistoryRecord(document) || {
-      key: getThreadHistoryKey(parsed.mode, parsed.threadId),
-      mode: parsed.mode,
-      threadId: parsed.threadId
-    };
-    record.key = getThreadHistoryKey(parsed.mode, parsed.threadId);
+    const key = getThreadHistoryKey(parsed.mode, parsed.threadId);
+    // ★ 纯进度（翻页/无缝翻页）更新的是位置类字段（最远页/最近查看页/最近浏览位置）→ 走位置层，
+    //   不写整库；此时也无需从 DOM 提取正文（那次提取含整篇 HTML 清洗，属整库路径成本）。
+    //   仅当本次需要更新"访问时间"（touchVisitedAt）或库里还没有这条记录时才走整库路径。
+    // ★ 只要记录已存在就走位置层：连"最近访问时间"也由位置层的 vat 承载，
+    //   因此翻页（原先传 touchVisitedAt:true）不再需要写整库。
+    const positionOnly = !!getThreadHistoryStore().items[key];
+    const record = positionOnly
+      ? { key, mode: parsed.mode, threadId: parsed.threadId }
+      : (extractThreadHistoryRecord(document) || { key, mode: parsed.mode, threadId: parsed.threadId });
+    record.key = key;
     record.mode = parsed.mode;
     record.threadId = parsed.threadId;
     record.page = Math.max(Number(record.page) || 1, Number(options.page || parsed.page) || 1);
@@ -28934,22 +29530,11 @@ function 注册自动保存编辑() {
     // record.lastScrollY = Math.max(0, Math.floor(window.scrollY || 0));
     // 无缝翻页：阅读位置单调不降，无需置空/重算——新页页码更大，后续滚动/落盘自然接管
     applyThreadHistoryLastReadReply(record);
-    return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress' });
+    return upsertThreadHistoryRecord(record, { countVisit: false, touchVisitedAt: options.touchVisitedAt === true, reason: options.reason || 'progress', positionOnly });
   }
   function updateThreadHistoryScrollPosition() {
-    touchThreadHistoryCurrentLocation({ reason: 'scroll-position', deferPersist: true });
-  }
-  // 滚动停止后落盘一次（延后落盘的真正写入点）
-  function flushThreadHistoryScrollPersist(options = {}) {
-    if (threadHistoryScrollPersistTimer) { clearTimeout(threadHistoryScrollPersistTimer); threadHistoryScrollPersistTimer = 0; }
-    if (!threadHistoryScrollDirty) return;
-    threadHistoryScrollDirty = false;
-    try {
-      const store = getThreadHistoryStore();
-      setThreadHistoryStore(store);
-      try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
-      logThreadHistory('scroll position persisted', { reason: options.reason || 'idle', key: (store.order || [])[0] || '' });
-    } catch (e) { /* 落盘失败不影响浏览 */ }
+    // positionOnly：滚动只改变位置标量 → 只写小键，避免整库序列化/写盘/跨页广播
+    touchThreadHistoryCurrentLocation({ reason: 'scroll-position', positionOnly: true });
   }
   function deleteThreadHistoryItem(key) {
     const store = getThreadHistoryStore();
@@ -29149,22 +29734,70 @@ function 注册自动保存编辑() {
   // page = 回复所属页码：无缝翻页 append 的容器有 data-cloned-page；首页原生 DOM 无该属性，
   // 取当前 URL 解析页码。限定 .h-threads-list 直下链路：引用浮窗/增强预览内部也有
   // .h-threads-item-replies > .h-threads-item-reply 克隆，不排除会把浮窗内容当成阅读位置。
+  // ★ 视口内回复的"可见集合"：滚动防抖只需在少量可见回复里找中心。
+  // 原实现对【全部】回复逐个 getBoundingClientRect()（长串可达数百上千条），
+  // 每次防抖都可能触发整页强制布局 —— 与注释里"O(可见回复数)"的意图不符。
+  // 这里用 IntersectionObserver 维护可见集合，把成本降到 O(可见)；节点集合变化时按需补观察
+  // （querySelectorAll 只读 DOM 树，不触发布局）。
+  let threadHistoryVisibleIo = null;
+  const threadHistoryVisibleSet = new Set();
+  // 已观察节点用 Set（而非 WeakSet）：IntersectionObserver 会强引用被观察节点，
+  // 无缝翻页反复增删回复时必须能主动 unobserve 掉已脱离文档的节点，否则会滞留整棵子树。
+  const threadHistoryObservedNodes = new Set();
+  function refreshThreadHistoryVisibleObservation() {
+    if (typeof IntersectionObserver !== 'function') return false;
+    if (!threadHistoryVisibleIo) {
+      threadHistoryVisibleIo = new IntersectionObserver((entries) => {
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          if (entry.isIntersecting) threadHistoryVisibleSet.add(entry.target);
+          else threadHistoryVisibleSet.delete(entry.target);
+        }
+      }, { root: null, rootMargin: '0px', threshold: 0 });
+    }
+    // 摘除已脱离文档的节点（isConnected 是属性读取，不触发布局）
+    if (threadHistoryObservedNodes.size) {
+      threadHistoryObservedNodes.forEach((el) => {
+        if (el && el.isConnected) return;
+        threadHistoryObservedNodes.delete(el);
+        threadHistoryVisibleSet.delete(el);
+        try { threadHistoryVisibleIo.unobserve(el); } catch (e) {}
+      });
+    }
+    const nodes = document.querySelectorAll('.h-threads-list .h-threads-item-reply[data-threads-id]');
+    if (!nodes.length) {
+      threadHistoryVisibleSet.clear();
+      return false;
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const el = nodes[i];
+      if (threadHistoryObservedNodes.has(el)) continue;
+      threadHistoryObservedNodes.add(el);
+      try { threadHistoryVisibleIo.observe(el); } catch (e) {}
+    }
+    return threadHistoryVisibleSet.size > 0;
+  }
   function findClosestToViewportCenterReply() {
     try {
-      const nodes = document.querySelectorAll('.h-threads-list .h-threads-item-reply[data-threads-id]');
-      if (!nodes.length) return { id: '', page: 0 };
       const mid = (window.innerHeight || document.documentElement.clientHeight) / 2;
+      const urlParsed = parseThreadHistoryUrl(location.href);
+      const urlPage = Math.max(1, Number(urlParsed && urlParsed.page) || 1);
+      // 优先只在可见集合里找（O(可见)）；观察集尚未建立时回退全量扫描，保证行为不变
+      let candidates = null;
+      try { candidates = refreshThreadHistoryVisibleObservation() ? threadHistoryVisibleSet : null; } catch (e) { candidates = null; }
+      let nodes = null;
+      if (!candidates) {
+        nodes = document.querySelectorAll('.h-threads-list .h-threads-item-reply[data-threads-id]');
+        if (!nodes.length) return { id: '', page: 0 };
+      }
       let best = '';
       let bestPage = 0;
       let bestDist = Infinity;
-      const urlParsed = parseThreadHistoryUrl(location.href);
-      const urlPage = Math.max(1, Number(urlParsed && urlParsed.page) || 1);
-      for (let i = 0; i < nodes.length; i++) {
-        const el = nodes[i];
+      const scan = (el) => {
         // 选择器已限定 .h-threads-list；引用浮窗(.qp-quote)/增强预览(.h-preview-box) 均挂在其外，
         // 故这里不再逐节点做多选择器 closest（长串可达数百条，属纯浪费）
         const rect = el.getBoundingClientRect();
-        if (!rect || rect.height <= 0) continue;
+        if (!rect || rect.height <= 0) return;
         const dist = Math.abs(rect.top + rect.height / 2 - mid);
         if (dist < bestDist) {
           bestDist = dist;
@@ -29173,7 +29806,9 @@ function 注册自动保存编辑() {
           const clonedPage = container ? Number(container.getAttribute('data-cloned-page')) || 0 : 0;
           bestPage = clonedPage || urlPage;
         }
-      }
+      };
+      if (candidates) candidates.forEach(scan);
+      else for (let i = 0; i < nodes.length; i++) scan(nodes[i]);
       return { id: best, page: bestPage };
     } catch (e) { return { id: '', page: 0 }; }
   }
@@ -29195,14 +29830,21 @@ function 注册自动保存编辑() {
         scrollTimer = 0;
         // 滚动防抖只更新内存（O(可见回复数) rect 计算），持久化走既有收尾写入。
         // 阅读位置单调不降：向上回翻视为临时回看，不回写锚点（与 page/maxVisitedPage 只升不降的哲学一致）
-        if (isThreadHistoryEnabledNow()) {
-          const found = findClosestToViewportCenterReply();
-          if (found.id && found.page >= threadHistoryLastReadReplyPage) {
-            threadHistoryLastReadReplyId = found.id;
-            threadHistoryLastReadReplyPage = found.page;
+        const __token = startupPerfDebug.begin();
+        try {
+          if (isThreadHistoryEnabledNow()) {
+            const __findToken = startupPerfDebug.begin();
+            const found = findClosestToViewportCenterReply();
+            startupPerfDebug.finish('threadHistory.findCenter', __findToken, () => ({ visible: threadHistoryVisibleSet.size }));
+            if (found.id && found.page >= threadHistoryLastReadReplyPage) {
+              threadHistoryLastReadReplyId = found.id;
+              threadHistoryLastReadReplyPage = found.page;
+            }
           }
+          updateThreadHistoryScrollPosition();
+        } finally {
+          startupPerfDebug.finish('threadHistory.scrollDebounce', __token, () => ({}));
         }
-        updateThreadHistoryScrollPosition();
       }, 1200);
     }, { passive: true });
     window.addEventListener('pagehide', () => {
@@ -29214,11 +29856,11 @@ function 注册自动保存编辑() {
         }
       }
       updateThreadHistoryScrollPosition();
-      flushThreadHistoryScrollPersist({ reason: 'pagehide' });   // 离开前把延后的滚动位置落盘
+      persistThreadHistoryPosToGm('pagehide');   // 检查点：热表并进 GM（离开前落盘一次）
     }, { passive: true });
-    // 切走标签也落盘一次（后台标签不再滚动，滞留的脏数据应尽快落地）
+    // 切走标签也落一次：此后不再滚动，热表内容应尽快进入持久层（跨标签/跨端可见）
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flushThreadHistoryScrollPersist({ reason: 'hidden' });
+      if (document.visibilityState === 'hidden') persistThreadHistoryPosToGm('hidden');
     }, { passive: true });
   }
   function isThreadHistoryPageActive() {
@@ -29302,8 +29944,107 @@ function 注册自动保存编辑() {
       return defaults.enableQuickAddPostHistory !== false;
     } catch (e) { return true; }
   }
+  // ★ 轻量入口：库里已有该串正文时，不再"从 DOM 提取 + 写整库"，
+  //   只更新"位置类字段 + 最近访问 + 访问计数"到位置层（localStorage：无扩展往返、无广播）。
+  //   正文只在"首次访问 / 库里没有正文"时提取 —— 内容只能来自页面，故检索与预览数据不缺失。
+  function recordThreadHistoryLightVisit(key, parsed, item, store, options = {}) {
+    try {
+      if (!key || !item || !parsed) return false;
+      const now = Date.now();
+      const knownMax = Math.max(Number(item.maxVisitedPage) || 0, Number(item.page) || 0);
+      const bounded = applyThreadHistoryPageBounds(Object.assign({}, item, {
+        page: Number(parsed.page) || Number(item.page) || 1,
+        url: options.url || location.href
+      }), document, knownMax);
+      item.page = bounded.page;
+      item.url = bounded.url || item.url;
+      item.maxVisitedPage = Math.max(Number(item.maxVisitedPage) || 1, Number(item.page) || 1);
+      if (bounded.lastKnownPage && Number(bounded.lastKnownPage) > (Number(item.lastKnownPage) || 0)) {
+        item.lastKnownPage = bounded.lastKnownPage;
+      }
+      applyThreadHistoryLastReadReply(item);
+      const countVisit = options.countVisit !== false;
+      const touchVisitedAt = countVisit || options.touchVisitedAt === true;
+      if (touchVisitedAt) item.lastVisitedAt = now;
+      const hotMap = readThreadHistoryPosHotMap();
+      const prevVc = Math.max(Number(hotMap[key] && hotMap[key].vc) || 0, Number(item.visitCount) || 0);
+      const nextVc = prevVc + (countVisit ? 1 : 0);
+      if (countVisit) item.visitCount = nextVc;
+      setThreadHistoryPosEntry(key, {
+        p: item.page,
+        u: item.url,
+        mv: item.maxVisitedPage,
+        lk: item.lastKnownPage,
+        rid: item.lastReadReplyId,
+        rp: item.lastReadReplyPage,
+        vat: Number(item.lastVisitedAt) || now,
+        vc: nextVc
+      }, now);
+      // 只广播"本页 UI 该刷新"，不经 GM 写整库（因此没有跨标签存储变更投递）
+      notifyThreadHistoryStoreChanged('light-visit', false);
+      logThreadHistory('light visit saved', {
+        key, reason: options.reason || 'initial-load', page: item.page,
+        maxVisitedPage: item.maxVisitedPage, lastKnownPage: item.lastKnownPage, visitCount: nextVc
+      });
+      try { if (typeof syncFavoriteThreadsLinks === 'function') syncFavoriteThreadsLinks(); } catch (e) {}
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  // ★ 恢复后重抓令牌：串被移入回收站（墓碑软删除）后又从墓碑恢复（墓碑带 revivedAt）时，
+  //   恢复合并只把「删除前的正文快照」搬回 items，正文可能已过期 —— 因此该串**下一次访问**
+  //   要重新抓取一次正文（从页面 DOM 提取，走完整路径）。抓完把令牌记到 item.revivedRefetchAt，
+  //   之后该串再访问就回到轻量入口；令牌取的就是那次恢复的时间戳，天然幂等。
+  //   默认不触发：只有"移入回收站 → 从墓碑恢复 → 再次访问"这一条链路会命中。
+  function getThreadHistoryReviveRefetchToken(key, item, store) {
+    try {
+      if (!key) return 0;
+      const source = store || getThreadHistoryStore();
+      const tomb = (source.tombstones || {})[key];
+      // purged（彻底删除）与无 revivedAt（仍在回收站中）都不算"已恢复"
+      const revivedAt = tomb && !tomb.purged ? Number(tomb.revivedAt) || 0 : 0;
+      if (!revivedAt) return 0;
+      return Number(item && item.revivedRefetchAt) === revivedAt ? 0 : revivedAt;
+    } catch (e) {
+      return 0;
+    }
+  }
   function recordCurrentThreadHistory(attempt = 0, options = {}) {
     if (!isThreadHistoryEnabledNow()) return; // 浏览历史已关闭：不再自动记录（已有数据保留）
+    // ★ 分流：库里已有正文 → 轻量入口（不提取、不写整库）；否则走下面的完整路径。
+    //   可用 options.forceFull 强制走完整路径（例如需要刷新正文时）。
+    //   ★ 例外（默认不触发）：该串刚从回收站墓碑恢复（revivedAt）时，恢复只带回删除前的正文快照，
+    //     这次再访问改用完整路径**重新抓取一次**正文；抓完消费标记，之后回到轻量入口。
+    if (!options.forceFull) {
+      try {
+        const parsedNow = parseThreadHistoryUrl(options.url || location.href);
+        const keyNow = parsedNow ? getThreadHistoryKey(parsedNow.mode, parsedNow.threadId) : '';
+        const storeNow = getThreadHistoryStore();
+        const itemNow = keyNow ? storeNow.items[keyNow] : null;
+        const reviveRefetchToken = getThreadHistoryReviveRefetchToken(keyNow, itemNow, storeNow);
+        if (reviveRefetchToken) {
+          logThreadHistory('revive refetch: 从墓碑恢复后首次访问，改用完整路径重新抓取正文', { key: keyNow, revivedAt: reviveRefetchToken });
+          updateThreadHistoryDebugState({
+            lastRecord: {
+              status: 'revive-refetch', attempt, reason: options.reason || 'initial-load',
+              key: keyNow, revivedAt: reviveRefetchToken, at: new Date().toISOString()
+            }
+          });
+        } else if (itemNow && (itemNow.contentText || itemNow.excerpt)) {
+          const __lightToken = startupPerfDebug.begin();
+          const ok = recordThreadHistoryLightVisit(keyNow, parsedNow, itemNow, storeNow, options);
+          startupPerfDebug.finish('threadHistory.lightVisit', __lightToken, () => ({ ok: !!ok }));
+          if (ok) {
+            updateThreadHistoryDebugState({
+              lastRecord: { status: 'light', attempt, reason: options.reason || 'initial-load', key: keyNow, at: new Date().toISOString() }
+            });
+            installThreadHistoryScrollTracking();
+            return;
+          }
+        }
+      } catch (e) { /* 判定/轻量路径失败 → 落回完整路径，保证仍能记录 */ }
+    }
     const record = extractThreadHistoryRecord(document);
     if (!record) {
       const parsed = parseThreadHistoryUrl(location.href);
@@ -29330,10 +30071,25 @@ function 注册自动保存编辑() {
       }
       return;
     }
+    // 从墓碑恢复后的首次抓取：把重抓令牌写进这条记录（同一笔整库写入落库），之后该串回归轻量入口
+    const storeForReviveMarker = getThreadHistoryStore();
+    const reviveTokenForMarker = getThreadHistoryReviveRefetchToken(record.key, storeForReviveMarker.items[record.key], storeForReviveMarker);
+    if (reviveTokenForMarker) {
+      record.revivedRefetchAt = reviveTokenForMarker;
+      logThreadHistory('revive refetch: 正文已重新抓取，令牌已消费', { key: record.key, revivedAt: reviveTokenForMarker });
+    }
     upsertThreadHistoryRecord(record, Object.assign({ reason: 'initial-load', countVisit: true }, options));
     updateThreadHistoryDebugState({ lastRecord: { status: 'saved', attempt, reason: options.reason || 'initial-load', record, at: new Date().toISOString() } });
     installThreadHistoryScrollTracking();
   }
+  // 手动重抓入口（默认不会自动调用）：需要当场刷新当前串正文时用
+  //   window.__xdexRefetchThreadContent()               // 重抓 + 正常计数
+  //   window.__xdexRefetchThreadContent({ countVisit: false })  // 只重抓，不计访问次数
+  window.__xdexRefetchThreadContent = function xdexRefetchThreadContent(options) {
+    const opts = Object.assign({ reason: 'manual-refetch', forceFull: true }, options || {});
+    updateThreadHistoryDebugState({ lastManualRefetch: { at: new Date().toISOString(), options: { countVisit: opts.countVisit !== false, reason: opts.reason } } });
+    recordCurrentThreadHistory(0, opts);
+  };
   function formatThreadHistoryTime(ts) {
     if (!ts) return '';
     const d = new Date(ts);
@@ -31400,7 +32156,7 @@ function 注册自动保存编辑() {
 
   function getFavoriteThreadsConfig() {
     try {
-      const cfg = Object.assign({}, SettingPanel.defaults, SettingPanel.state || {}, GM_getValue(SettingPanel.key, {}));
+      const cfg = Object.assign({}, SettingPanel.defaults, SettingPanel.state || {}, readSettingsCached());
       cfg.favoriteThreads = normalizeFavoriteThreads(cfg.favoriteThreads);
       return cfg;
     } catch (e) {
@@ -31661,7 +32417,10 @@ function 注册自动保存编辑() {
     header.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
-      animateFavoriteMenu(!li.classList.contains('uk-open'));
+      const opening = !li.classList.contains('uk-open');
+      animateFavoriteMenu(opening);
+      // 展开时按需同步一次链接：跨页写入不再无条件重建（后台标签因此不再重复读取整库）
+      if (opening) { try { syncFavoriteThreadsLinks(); } catch (err) {} }
     });
     // 点击串链接（新标签打开）后，原页面的常用串分组自动收起，与「用完即收」的侧栏习惯一致；
     // 已收起则无操作（不会把收起的分组重新展开）
@@ -31743,23 +32502,49 @@ function 注册自动保存编辑() {
   }
   // 同步常用串菜单与设置面板串内链接的 href（浏览历史更新后调用，指向最近查看页，允许低于最远访问页）
   function syncFavoriteThreadsLinks() {
+    // 后台标签不做 DOM 工作（跨页位置变更很密集）：切回可见时由 reactToThreadHistoryPosChange 补一次
+    if (document.hidden) return;
+    const __token = startupPerfDebug.begin();
     const links = document.querySelectorAll('#xdex-favorite-threads-menu a[data-thread-id], #sp_panel_footer a[data-thread-id]');
-    if (!links.length) return;
-    const store = getThreadHistoryStore();
+    if (!links.length) { startupPerfDebug.finish('threadHistory.syncLinks', __token, () => ({ links: 0 })); return; }
+    // ★ 跨标签变更会在每个标签页触发本函数：位置优先取小键（百字节级），只有小键没有该串时才惰性读整库，
+    //   避免"只为几个 page/mode 标量就把整库取回本页 + 归一化"。
+    const posMap = readThreadHistoryPosMap();
+    let items = null;
+    const getItemsLazily = () => {
+      if (items) return items;
+      try {
+        const raw = GM_getValue(THREAD_HISTORY_STORAGE_KEY, null);
+        items = (raw && raw.items && typeof raw.items === 'object') ? raw.items : null;
+      } catch (e) { items = null; }
+      if (!items || !Object.keys(items).length) items = getThreadHistoryStore().items;   // 兜底：原始读取失败时用完整路径
+      return items;
+    };
     links.forEach(link => {
       const tid = link.dataset.threadId;
       if (tid) {
+        const normalKey = getThreadHistoryKey('normal', tid);
+        const poKey = getThreadHistoryKey('po', tid);
+        // 只在目标 URL 真变化时写 href：跨页位置变更下多数链接其实没变，避免无谓的属性写入与重排
+        const assign = (url) => { if (link.getAttribute('href') !== url) link.href = url; };
+        const pos = posMap[normalKey] || posMap[poKey];
+        if (pos) {
+          assign(buildThreadHistoryPageUrl(posMap[normalKey] ? 'normal' : 'po', tid, pos.p || 1));
+          return;
+        }
+        const lookup = getItemsLazily();
         // 优先普通模式，没有再回退只看 PO；都没有则指向普通第 1 页
-        const normal = store.items[getThreadHistoryKey('normal', tid)];
-        const item = normal || store.items[getThreadHistoryKey('po', tid)];
+        const normal = lookup[normalKey];
+        const item = normal || lookup[poKey];
         if (item) {
           const page = item.page || 1;
-          link.href = buildThreadHistoryPageUrl(item.mode, tid, page);
+          assign(buildThreadHistoryPageUrl(item.mode, tid, page));
         } else {
-          link.href = buildThreadHistoryPageUrl('normal', tid, 1);
+          assign(buildThreadHistoryPageUrl('normal', tid, 1));
         }
       }
     });
+    startupPerfDebug.finish('threadHistory.syncLinks', __token, () => ({ links: links.length }));
   }
   // ─── 页面内「订阅EX」快捷按钮 ─────────────────────────────────────────────────────────
   function ensureSubscriptionExButtonStyle() {
@@ -34582,7 +35367,7 @@ function initReplyParamScrollTo() {
       if (typeof SettingPanel !== 'undefined' && SettingPanel && SettingPanel.state) {
         SettingPanel.state.markedGroups = nextGroups;
         try { if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs(); } catch (e) {}
-        try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state); } catch (e) {}
+        try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state, undefined, 'settingsPanel'); } catch (e) {}
       }
       console.log('[webdav] 标记配色按规则合并', nextGroups.filter((g) => g.colorAt > 0).map((g) => ({ desc: g.desc, color: g.color, colorAt: g.colorAt })));
       return true;
@@ -34848,7 +35633,7 @@ function initReplyParamScrollTo() {
           if (typeof SettingPanel.syncInputs === 'function') SettingPanel.syncInputs();
           if (typeof SettingPanel.syncAuxiliaryControls === 'function') SettingPanel.syncAuxiliaryControls();
           try { if (typeof renderFavoriteThreadsMenu === 'function') renderFavoriteThreadsMenu(); } catch (e) {}
-          try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state); } catch (e) {}
+          try { if (typeof refreshFilterDisplay === 'function') refreshFilterDisplay(SettingPanel.state, undefined, 'settingsPanel'); } catch (e) {}
           try { if (typeof window.__xdexApplyTimeDisplayMode === 'function') window.__xdexApplyTimeDisplayMode(document); } catch (e) {}
           try { if (typeof applyImageHideMode === 'function') applyImageHideMode(SettingPanel.state.applyImageHideMode || 'default', document); } catch (e) {}
         } catch (e) {

@@ -1,0 +1,10 @@
+{
+  "extension": {
+    "version": "4.3.0",
+    "changelog": "### 新增\n\n- 新增导出功能，支持将串导出为Markdown/TXT文件\n- 新增饼干计时器，发送回复后提示当前饼干冷却时间\n- 新增被屏蔽串内的临时显示功能\n\n### 优化\n\n- 发送消息前对图像大小/格式进行预检，提前将图像压缩大小至2048KB以内或转化为合法格式之后再提交\n- 打开浏览历史/发言历史面板时自动聚焦搜索\n- 性能优化，减少在写入发言历史/发送消息后局部刷新的场景中发生的卡顿\n- 正文/标题/名称/E-mai拼音组词过程中不计算字数\n\n### 修复\n\n- 修复在弹出二次确认饼干时弹出“可能提交失败”toast提示的问题\n- 修复在部分场景下没有拓宽带图消息的问题",
+    "downloads": {
+      "github": "https://github.com/SayaGoodBye/nmbxd-EX/releases/latest",
+      "baidupan": "https://pan.baidu.com/s/1-ELWglsTXG8jK5S6WwqtsQ?pwd=k8zf"
+    }
+  }
+}

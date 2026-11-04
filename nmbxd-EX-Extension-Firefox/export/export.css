@@ -1,0 +1,299 @@
+:root {
+  --xdex-color-ink: #2b211c;
+  --xdex-color-muted: #77665b;
+  --xdex-color-surface: #fff8ef;
+  --xdex-color-surface-raised: rgba(255, 252, 247, 0.92);
+  --xdex-color-line: #d7bca4;
+  --xdex-color-primary: #8f4a2f;
+  --xdex-color-primary-strong: #683520;
+  --xdex-color-accent: #1f6f74;
+  --xdex-color-danger: #9d3026;
+  --xdex-color-page-start: #f2dfcf;
+  --xdex-color-page-end: #ead1bc;
+  --xdex-color-input-surface: #fffdf8;
+  --xdex-color-on-primary: #fffaf4;
+  --xdex-color-field-line: rgba(215, 188, 164, 0.72);
+  --xdex-color-glow-primary: rgba(143, 74, 47, 0.16);
+  --xdex-color-glow-accent: rgba(31, 111, 116, 0.14);
+  --xdex-radius-sm: 8px;
+  --xdex-radius-md: 14px;
+  --xdex-radius-lg: 24px;
+  --xdex-shadow-panel: 0 18px 50px rgba(58, 37, 24, 0.16);
+  --xdex-shadow-button: 0 8px 18px rgba(104, 53, 32, 0.18);
+  --xdex-font-display: "Yu Mincho", "Songti SC", "SimSun", serif;
+  --xdex-font-body: "Microsoft YaHei", "PingFang SC", sans-serif;
+  --xdex-transition: 160ms ease;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 720px;
+  margin: 0;
+  color: var(--xdex-color-ink);
+  font: 15px/1.65 var(--xdex-font-body);
+  background:
+    radial-gradient(circle at 12% 8%, var(--xdex-color-glow-primary), transparent 32%),
+    radial-gradient(circle at 88% 12%, var(--xdex-color-glow-accent), transparent 30%),
+    linear-gradient(135deg, var(--xdex-color-page-start) 0%, var(--xdex-color-surface) 46%, var(--xdex-color-page-end) 100%);
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.hero-panel,
+.card {
+  border: 1px solid var(--xdex-color-line);
+  background: var(--xdex-color-surface-raised);
+  box-shadow: var(--xdex-shadow-panel);
+  backdrop-filter: blur(10px);
+  border-radius: var(--xdex-radius-lg);
+}
+
+.hero-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  padding: 32px;
+}
+
+.hero-mark {
+  display: grid;
+  width: 96px;
+  height: 96px;
+  place-items: center;
+  border: 1px solid var(--xdex-color-primary);
+  border-radius: 50%;
+  overflow: hidden;
+  /* 言和图标：保留轻微倾斜以呼应原 EX 徽标的动感 */
+  transform: rotate(-10deg);
+}
+.hero-mark img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+}
+
+h1, h2 {
+  margin: 0;
+  font-family: var(--xdex-font-display);
+  line-height: 1.15;
+}
+
+h1 { font-size: 40px; letter-spacing: 0.04em; }
+h2 { font-size: 20px; }
+
+.hero-text p {
+  margin: 8px 0 0;
+  color: var(--xdex-color-muted);
+}
+
+.card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field.grow { flex: 1; }
+
+.field span,
+.field-label {
+  color: var(--xdex-color-muted);
+  font-size: 13px;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--xdex-color-field-line);
+  border-radius: var(--xdex-radius-sm);
+  background: var(--xdex-color-input-surface);
+  color: var(--xdex-color-ink);
+  font: 14px/1 var(--xdex-font-body);
+}
+
+input[type="text"] { width: 100%; }
+input.num { width: 84px; }
+
+.dash { color: var(--xdex-color-muted); padding-bottom: 10px; }
+
+.btn {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid var(--xdex-color-line);
+  border-radius: 999px;
+  background: var(--xdex-color-surface);
+  color: var(--xdex-color-primary-strong);
+  font: 700 14px/1 var(--xdex-font-body);
+  cursor: pointer;
+  transition: transform var(--xdex-transition), box-shadow var(--xdex-transition), border-color var(--xdex-transition);
+}
+
+.btn:hover { border-color: var(--xdex-color-primary); box-shadow: var(--xdex-shadow-button); transform: translateY(-1px); }
+.btn.primary { background: var(--xdex-color-primary); border-color: var(--xdex-color-primary-strong); color: var(--xdex-color-on-primary); }
+.btn.tiny { min-height: 30px; padding: 0 12px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--xdex-color-muted);
+}
+
+.probe-info,
+.submit-status {
+  min-height: 20px;
+  font-size: 13px;
+  color: var(--xdex-color-muted);
+  white-space: pre-wrap;
+}
+
+.submit-status[data-tone="ok"] { color: var(--xdex-color-accent); }
+.submit-status[data-tone="error"] { color: var(--xdex-color-danger); }
+
+.muted { color: var(--xdex-color-muted); font-size: 13px; }
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task-row {
+  border: 1px solid var(--xdex-color-field-line);
+  border-radius: var(--xdex-radius-md);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.42);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-title { font-weight: 700; }
+.task-title small { color: var(--xdex-color-muted); font-weight: 400; margin-left: 8px; }
+
+.task-meta { color: var(--xdex-color-muted); font-size: 12px; }
+
+.progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(143, 74, 47, 0.12);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--xdex-color-primary), var(--xdex-color-accent));
+  transition: width var(--xdex-transition);
+}
+
+.task-actions { display: flex; gap: 8px; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--xdex-color-line);
+  color: var(--xdex-color-muted);
+}
+
+.badge.running { color: var(--xdex-color-accent); border-color: var(--xdex-color-accent); }
+.badge.done { color: var(--xdex-color-primary-strong); }
+.badge.failed { color: var(--xdex-color-danger); border-color: var(--xdex-color-danger); }
+
+.empty { color: var(--xdex-color-muted); font-size: 13px; padding: 4px 0; }
+
+/* 「只看 PO」沿用与脚本端一致的开关外观 */
+.switch-row {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--xdex-color-muted); font-size: 13px; cursor: pointer; user-select: none;
+}
+.switch {
+  appearance: none; width: 34px; height: 18px; flex: 0 0 34px;
+  border: 1px solid #a98f7a; border-radius: 999px; background: #EE0000;
+  cursor: pointer; position: relative; box-sizing: border-box;
+  transition: background var(--xdex-transition), border-color var(--xdex-transition);
+}
+.switch::before {
+  content: ""; position: absolute; width: 14px; height: 14px; left: 1px; top: 1px;
+  border-radius: 50%; background: #FFFFEE; box-shadow: 0 1px 2px rgba(0, 0, 0, .24);
+  transition: transform var(--xdex-transition);
+}
+.switch:checked { background: #66CCFF; border-color: #7da6bf; }
+.switch:checked::before { transform: translateX(16px); }
+.switch:focus-visible { outline: 2px solid var(--xdex-color-danger); outline-offset: 2px; }
+
+/* 暗色（跟随系统 / 浏览器暗色模式）：整体由 CSS 变量驱动，覆盖变量即可 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --xdex-color-ink: #e6dede;
+    --xdex-color-muted: #b9aeb0;
+    --xdex-color-surface: #232425;
+    --xdex-color-surface-raised: rgba(43, 44, 45, 0.94);
+    --xdex-color-line: #5a4d42;
+    --xdex-color-primary: #c07a52;
+    --xdex-color-primary-strong: #e0a077;
+    --xdex-color-accent: #4fb3b8;
+    --xdex-color-danger: #ff9a90;
+    --xdex-color-page-start: #1b1c1d;
+    --xdex-color-page-end: #232425;
+    --xdex-color-input-surface: #1f2021;
+    --xdex-color-on-primary: #1a1210;
+    --xdex-color-field-line: rgba(90, 77, 66, 0.72);
+    --xdex-color-glow-primary: rgba(192, 122, 82, 0.18);
+    --xdex-color-glow-accent: rgba(79, 179, 184, 0.16);
+    --xdex-shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.55);
+    --xdex-shadow-button: 0 8px 18px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+  .switch { background: #5a2222; border-color: #7a4a44; }
+  .switch:checked { background: #1f6f74; border-color: #2f8a90; }
+  .switch::before { background: #e8e0d8; }
+}
+
+.task-list .empty { display: flex; align-items: center; justify-content: center; padding: 8px 0; }
