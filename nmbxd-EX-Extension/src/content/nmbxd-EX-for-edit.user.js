@@ -23655,9 +23655,10 @@ function 注册自动保存编辑() {
           if (typeof initContent === 'function') { try { initContent(root); } catch(e){} }
           //if (typeof autoHideRefView === 'function') { try { autoHideRefView(root); } catch(e){} }
           toast('已自动填充回复串号，请确认无误后再发送');
-          // 串号变化 → 先解析偏好再重建开关，避免开关渲染与偏好脱节
-          if (typeof initThreadCookiePref === 'function') initThreadCookiePref(pendingReplyParams.tid);
+          // 串号变化 → 偏好开关必须跟随新串（只按新串**渲染**已有偏好，不自动"设定"偏好）；
+          // 否则会残留上一串的默认饼干状态与齿轮
           if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(pendingReplyParams.tid);
+          if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
           pendingReplyParams = null; // 用过一次就清空
           autofilled = true;
         } else {
@@ -23855,6 +23856,10 @@ function 注册自动保存编辑() {
           });
         }
         else {
+          // ★ 串号已变化 → 立刻按新串重建"饼干偏好"开关（**不依赖后面 fetch 是否成功**，也**不自动设定**偏好）：
+          //   否则换串后仍显示上一串的默认饼干状态与齿轮（实测复现）。
+          if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(tid);
+          if (typeof refreshCookiePrefSwitchState === 'function') refreshCookiePrefSwitchState();
           $.get(`/t/${tid}?r=${rid}`).done(html => {
             const $doc = $(html);
             const restoVal = $doc.find('form[action="/Home/Forum/doReplyThread.html"] input[name="resto"]').val();
@@ -23868,10 +23873,6 @@ function 注册自动保存编辑() {
               $replyModeText.html(
                 `<font color="#789922" data-darkreader-inline-color="" style="--darkreader-inline-color: var(--darkreader-text-789922, #aec66f);">No.${tid}</font>`
               );
-
-              // 串号变化 → 先解析偏好再重建开关，避免开关渲染与偏好脱节
-              if (typeof initThreadCookiePref === 'function') initThreadCookiePref(tid);
-              if (typeof injectCookieCheckSwitch === 'function') injectCookieCheckSwitch(tid);
 
               const root = $replyModeText[0];
               if (typeof initExtendedContent === 'function') { try { initExtendedContent(root); } catch(e){} }
@@ -23980,6 +23981,17 @@ function 注册自动保存编辑() {
             // ★ 借道回填：本次请求的数据已含刚发回复与 thread 顶层 fid——立即补齐
             // pending 发言历史记录的 fid/forumName/page/title（零新增请求，字段即刻安全）
             try { enrichPendingPostHistoryFromThreadData(t, tailReplies, tailPage); } catch (e) {}
+            // ★ 借道同一份数据：更新/新建该串的浏览历史（浏览历史与发言历史都开启时才做；零新增请求）
+            //   更新已有条目走位置层（零整库写、访问计数 +1）；新建走一次整库写（延后到空闲）
+            try {
+              syncThreadHistoryFromBoardReply({
+                threadId: tid,
+                page: tailPage,
+                threadObj: p1,
+                replies: tailReplies,
+                isReplySuccess: e.type !== 'xdexBoardThreadRefresh'
+              });
+            } catch (e) {}
             // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
             const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
             if (!allOldNodes.length) return;
@@ -29235,13 +29247,15 @@ function 注册自动保存编辑() {
     const match = String(value).match(/[A-Za-z0-9]{3,8}/);
     return match ? match[0] : value;
   }
+  // ★ 只做"原样渲染"，**不做任何红名/角标启发式拆分**：
+  //   旧版串里的饼干可能就是 8 位，长度/形态无法可靠区分"普通饼干"与"红名"，
+  //   任何猜测都会把普通饼干显示成红名（实测：ID:5TM0hro → <font color=red>5TM0hr</font>+角标 o）。
+  //   红名只在**读到红名信息**时才处理：记录带站点原始标记 cookieHtml（真实访问写入），
+  //   或由 API 的 admin 字段合成（版块页快捷回复写入）。
   function buildThreadHistoryLegacyCookieHtml(cookieId) {
     const value = String(cookieId || '').trim();
-    const match = value.match(/^([A-Za-z0-9]{3,8})(.+)$/);
-    if (!match || !match[2].trim()) return '';
-    const id = escapeThreadHistoryHtml(match[1]);
-    const badge = escapeThreadHistoryHtml(match[2].trim());
-    return `ID:<font color="red">${id}<sub style="color: darkorange; font-weight: bold;">${badge}</sub></font>`;
+    if (!value) return '';
+    return `ID:${escapeThreadHistoryHtml(value)}`;
   }
   function getThreadHistoryCookieMarkId(item) {
     const value = String(item && item.cookieId || '').trim();
@@ -29329,8 +29343,10 @@ function 注册自动保存编辑() {
     const mains = Array.from(scope.querySelectorAll('.h-threads-item-main'));
     return mains.find(isThreadHistoryMainCandidate) || null;
   }
-  function extractThreadHistoryRecord(root) {
-    const parsed = parseThreadHistoryUrl(location.href);
+  function extractThreadHistoryRecord(root, parsedOverride) {
+    // ★ parsedOverride：版块页等"当前 URL 不是串页"的场景由调用方显式给出目标串
+    //   （默认仍从 location.href 解析，行为不变）
+    const parsed = parsedOverride || parseThreadHistoryUrl(location.href);
     if (!parsed) {
       logThreadHistory('skip record: unsupported url', { url: location.href });
       return null;
@@ -29423,6 +29439,9 @@ function 注册自动保存编辑() {
   function upsertThreadHistoryRecord(nextRecord, options = {}) {
     if (!nextRecord || !nextRecord.threadId || !nextRecord.mode) return getThreadHistoryStore();
     const now = Date.now();
+    // ★ 允许调用方指定"访问时间"（版块页快捷回复用服务端回应时间）：
+    //   只影响 lastVisitedAt（与位置层的 at/vat），访问计数语义不变；缺省＝本机 now。
+    const visitedAt = Number(options.visitedAt) || now;
     const countVisit = options.countVisit !== false;
     const touchVisitedAt = countVisit || options.touchVisitedAt === true;
     const store = getThreadHistoryStore();
@@ -29438,7 +29457,7 @@ function 注册自动保存编辑() {
     const merged = Object.assign({}, applyThreadHistoryPageBounds(mergedBase, document, knownMax), {
       key,
       firstVisitedAt: old.firstVisitedAt || now,
-      lastVisitedAt: touchVisitedAt ? now : (Number(old.lastVisitedAt) || now),
+      lastVisitedAt: touchVisitedAt ? Math.max(Number(old.lastVisitedAt) || 0, visitedAt) : (Number(old.lastVisitedAt) || now),
       visitCount: (Number(old.visitCount) || 0) + (countVisit ? 1 : 0),
       maxVisitedPage,
       cookieHtml: nextRecord.cookieHtml || old.cookieHtml || ''
@@ -29457,8 +29476,8 @@ function 注册自动保存编辑() {
         lk: merged.lastKnownPage,
         rid: merged.lastReadReplyId,
         rp: merged.lastReadReplyPage,
-        vat: Number(merged.lastVisitedAt) || now
-      }, now);
+        vat: Number(merged.lastVisitedAt) || visitedAt
+      }, now);   // at 仍是写入时间：它是"新旧判定"的基准，不能被业务时间（回应时间）替代
       threadHistoryStoreCache = store;
       logThreadHistory('position saved', { key, reason: options.reason || '', page: merged.page, maxVisitedPage: merged.maxVisitedPage, lastKnownPage: merged.lastKnownPage });
       return store;
@@ -29567,6 +29586,265 @@ function 注册自动保存编辑() {
   function updateThreadHistoryScrollPosition() {
     // positionOnly：滚动只改变位置标量 → 只写小键，避免整库序列化/写盘/跨页广播
     touchThreadHistoryCurrentLocation({ reason: 'scroll-position', positionOnly: true });
+  }
+  // ============ 版块页快捷回复 → 浏览历史同步（零新增请求） ============
+  // 数据来源：版块页快捷回复链路**已经取到**的 API 响应
+  //   · threadObj（page=1 响应）：title / content（OP 正文 HTML）/ user_hash / name / img / ext / now
+  //   · tailPage：本次回复落在的（末）页
+  //   · replies（末页 Replies）：其中"我们自己那条"的 id 与 now（用发言历史同一套匹配器定位）
+  // 语义（按维护者定义）：
+  //   · 浏览时间 = **服务端回应时间**（解析失败才回退本机发送时间）
+  //   · 已有条目 → 只写位置层，**访问次数 +1**（零整库写）
+  //   · 无条目 → 一次整库写（延迟到空闲），内容用 API 正文（兜底：版块页该串那一行 DOM）
+
+  // ★ 站点时间串（形如 2026-11-06(五)09:52:36）→ 毫秒；解析失败/明显在未来 → 0（调用方回退本机时间）
+  function parseThreadHistorySiteTime(value) {
+    try {
+      const text = String(value || '').replace(/\([^)]*\)/g, ' ').trim();
+      const m = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{1,2}):(\d{1,2})/);
+      if (!m) return 0;
+      const ms = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])).getTime();
+      if (!Number.isFinite(ms) || ms <= 0) return 0;
+      if (ms > Date.now() + 10 * 60 * 1000) return 0;
+      return ms;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // ★ 由 API 的 HTML 正文构建库内字段：复用既有清洗/裁剪/标记判定，保证与串页提取同源（不新增第二套清洗）
+  function buildThreadHistoryContentFromHtml(html) {
+    const holder = document.createElement('div');
+    holder.innerHTML = String(html || '');
+    const el = holder.querySelector('.h-threads-content') || holder;
+    const rawContent = getElementTextPreserveZeroWidth(el);
+    const contentText = trimThreadHistoryContentText(rawContent);
+    const hasVisibleText = !!getVisibleTextForHistory(rawContent);
+    return {
+      contentText,
+      contentHtml: sanitizeThreadHistoryContentHtml(el),
+      contentTruncated: isThreadHistoryContentTruncated(contentText),
+      excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
+      contentFlags: {
+        hasZeroWidth: ZERO_WIDTH_RE.test(rawContent),
+        hasVisibleText,
+        hasWhitespaceOnly: !hasVisibleText && /^[\s\u00a0]*$/.test(rawContent.replace(ZERO_WIDTH_RE, '')) && rawContent.length > 0
+      }
+    };
+  }
+
+  // ★ 在本次回复的候选回复里找"我们自己那条"（复用发言历史的 pending + 快照匹配），拿到 id 与站点时间
+  function findThreadHistoryOwnReply(threadId, replies) {
+    try {
+      const PENDING_TTL_MS = 180000;
+      const now = Date.now();
+      const postStore = getPostHistoryStore();
+      const pendings = Object.keys((postStore && postStore.items) || {})
+        .map((k) => postStore.items[k])
+        .filter((it) => it && it.status === 'pending' && it.type === 'reply'
+          && String(it.threadId || '') === String(threadId)
+          && now - (Number(it.submittedAt) || 0) <= PENDING_TTL_MS);
+      if (!pendings.length) return null;
+      let best = null;
+      (replies || []).forEach((reply) => {
+        if (!reply || !reply.id) return;
+        for (let i = 0; i < pendings.length; i++) {
+          const item = pendings[i];
+          const hit = (item.id && String(item.id) === String(reply.id))
+            || postHistoryMatchesSnapshot(reply, item, new Set());
+          if (hit && (!best || Number(reply.id) >= Number(best.replyId))) {
+            best = { replyId: String(reply.id), replyTime: parseThreadHistorySiteTime(reply.now) };
+          }
+        }
+      });
+      return best;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ★ 用 API 响应组装一条浏览历史记录（主路径）；API 没给正文时用"版块页该串那一行"DOM 兜底
+  function buildThreadHistoryRecordFromApiThread(options) {
+    const opts = options || {};
+    const mode = opts.mode || 'normal';
+    const threadId = String(opts.threadId || '');
+    const page = Math.max(1, Number(opts.page) || 1);
+    const url = opts.url || buildThreadHistoryPageUrl(mode, threadId, page);
+    const threadObj = opts.threadObj || {};
+    const content = String(threadObj.content || '');
+    let fields = content ? buildThreadHistoryContentFromHtml(content) : null;
+    let title = String(threadObj.title || '');
+    let author = String(threadObj.name || '');
+    let cookieId = String(threadObj.user_hash || '');
+    let createdAt = String(threadObj.now || '');
+    // ★ cookieHtml：优先取版块页该串行的站点原始标记（红名/角标都原样保留）；
+    //   拿不到就按 API 的 admin 判定合成——普通饼干必须是纯文本，绝不能让它走
+    //   buildThreadHistoryLegacyCookieHtml 的"红名+角标"启发式（否则普通饼干会显示成红名）。
+    const row = document.querySelector('.h-threads-list div[data-threads-id="' + threadId + '"]')
+      || document.querySelector('div[data-threads-id="' + threadId + '"]');
+    let cookieHtml = '';
+    if (row) {
+      const uidEl = row.querySelector('.h-threads-item-main .h-threads-info-uid');
+      if (uidEl) cookieHtml = sanitizeThreadHistoryInlineHtml(uidEl);
+    }
+    if (!cookieHtml && cookieId) {
+      cookieHtml = Number(threadObj.admin)
+        ? 'ID:<font color="red">' + escapeThreadHistoryHtml(String(threadObj.user_hash || cookieId)) + '</font>'
+        : 'ID:' + escapeThreadHistoryHtml(cookieId);
+    }
+    const imageFile = normalizeThreadHistoryImageFile(
+      'https://image.nmb.best/thumb/' + String(threadObj.img || '') + String(threadObj.ext || '')
+    );
+    if (!fields || !fields.contentText) {
+      // 兜底 A：行级作用域 + 显式目标串（findThreadHistoryMainElement 不按 threadId 匹配，必须限定到该行）
+      const fromDom = row ? extractThreadHistoryRecord(row, { mode, threadId, page, url }) : null;
+      if (fromDom) {
+        title = title || fromDom.title || '';
+        author = author || fromDom.author || '';
+        cookieId = cookieId || fromDom.cookieId || '';
+        cookieHtml = cookieHtml || fromDom.cookieHtml || '';
+        createdAt = createdAt || fromDom.createdAt || '';
+        fields = {
+          contentText: fromDom.contentText || '',
+          contentHtml: fromDom.contentHtml || '',
+          contentTruncated: !!fromDom.contentTruncated,
+          excerpt: fromDom.excerpt || '',
+          contentFlags: fromDom.contentFlags || {}
+        };
+      }
+    }
+    if (!fields) fields = { contentText: '', contentHtml: '', contentTruncated: false, excerpt: '', contentFlags: {} };
+    return {
+      key: getThreadHistoryKey(mode, threadId),
+      mode,
+      threadId,
+      page,
+      url,
+      title,
+      author,
+      cookieId,
+      cookieHtml,
+      createdAt,
+      imageFile: imageFile || '',
+      contentText: fields.contentText || '',
+      contentHtml: fields.contentHtml || '',
+      contentTruncated: !!fields.contentTruncated,
+      excerpt: fields.excerpt || String(fields.contentText || '').slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
+      contentFlags: fields.contentFlags || {},
+      lastReadReplyId: String(opts.replyId || ''),
+      lastReadReplyPage: page
+    };
+  }
+
+  // ★ 主入口：版块页快捷回复成功、拿到 API 数据后调用（零新增请求）
+  //   返回 1＝已更新（位置层）、2＝已排期新建（整库写延后）、0＝跳过
+  function syncThreadHistoryFromBoardReply(payload) {
+    const __token = startupPerfDebug.begin();
+    let __mode = 'skip';
+    try {
+      if (!isThreadHistoryEnabledNow()) return 0;
+      if (typeof isPostHistoryEnabledNow === 'function' && !isPostHistoryEnabledNow()) return 0;   // 两者都开才记录
+      // 同一 handler 也绑在「按钮刷新」（xdexBoardThreadRefresh）上 —— 那不是回复，不参与计数/新建
+      if (payload && payload.isReplySuccess === false) return 0;
+      const threadId = String((payload && payload.threadId) || '').trim();
+      if (!/^\d{6,8}$/.test(threadId)) return 0;
+      const page = Math.max(1, Number(payload && payload.page) || 1);
+      const mode = 'normal';                       // 版块页快捷回复的目标是普通串
+      const key = getThreadHistoryKey(mode, threadId);
+      const store = getThreadHistoryStore();
+      // 墓碑守卫：用户删掉的串（回收站内/彻底删）不复活；已恢复（items 里又存在）照常更新
+      const tomb = (store.tombstones || {})[key];
+      if (tomb && !store.items[key]) return 0;
+      const own = findThreadHistoryOwnReply(threadId, payload && payload.replies);
+      const fallbackTime = Number(payload && payload.fallbackTime) || Date.now();
+      const visitedAt = (own && own.replyTime) || fallbackTime;
+      const replyId = own ? own.replyId : '';
+      const url = buildThreadHistoryPageUrl(mode, threadId, page);
+      const old = store.items[key];
+      if (old) {
+        // ── 更新：只写位置层（零整库写） ──
+        const hotMap = readThreadHistoryPosHotMap();
+        const prev = hotMap[key] || readThreadHistoryPosMap()[key] || {};
+        // 幂等：位置层 rid 已等于本次回复 id ⇒ 这条回复已计过数，不再 +1；
+        // 也用于"未能识别出我方回复"（replyId 为空）时**不计数**——宁可少计，不误计
+        const alreadyCounted = !replyId || String(prev.rid || '') === replyId;
+        const nextVc = Math.max(Number(prev.vc) || 0, Number(old.visitCount) || 0) + (alreadyCounted ? 0 : 1);
+        setThreadHistoryPosEntry(key, {
+          p: Math.max(Number(old.page) || 1, Number(prev.p) || 1, page),
+          u: url,
+          mv: Math.max(Number(old.maxVisitedPage) || 1, Number(prev.mv) || 1, page),
+          lk: Math.max(Number(old.lastKnownPage) || 0, Number(prev.lk) || 0, page),
+          rid: replyId || prev.rid || old.lastReadReplyId || '',
+          rp: replyId ? page : (Number(prev.rp) || Number(old.lastReadReplyPage) || page),
+          vat: Math.max(Number(prev.vat) || 0, Number(old.lastVisitedAt) || 0, visitedAt),
+          vc: nextVc
+        }, Date.now());   // ★ at＝本次写入时间（用于"要不要覆盖"的新鲜度判定）；浏览时间由 vat 承载
+        invalidateThreadHistoryPosCache();
+        // ★ 本页也要立刻看到顺序变化：跨标签靠 storage/GM 变更事件，但**写入方本页收不到该事件**
+        //   （这正是"别处已置顶、版块页里没动"的原因），所以这里显式刷新本页；
+        //   可见性策略与 reactToThreadHistoryPosChange 一致（后台标签不做 DOM 工作）。
+        if (threadHistoryStoreCache) threadHistoryStoreNeedsPosOverlay = true;
+        if (!document.hidden) {
+          scheduleThreadHistoryLiveRender('board-reply', false);
+          try { syncFavoriteThreadsLinks(); } catch (e) {}
+        }
+        __mode = 'update';
+        updateThreadHistoryDebugState({
+          lastBoardReply: { mode: 'update', key, page, replyId: replyId || '', alreadyCounted, visitCount: nextVc, visitedAt, at: new Date().toISOString() }
+        });
+        logThreadHistory('board reply: 浏览历史已更新（位置层，计数 ' + nextVc + '）', { key, page, replyId: replyId || '(未匹配到本条回复)', alreadyCounted, visitedAt });
+        return 1;
+      }
+      // ── 新建：整库写延后到空闲，避免与"发帖后插入/刷新"抢主线程 ──
+      __mode = 'create-scheduled';
+      updateThreadHistoryDebugState({
+        lastBoardReply: { mode: 'create-scheduled', key, page, replyId: replyId || '', visitedAt, at: new Date().toISOString() }
+      });
+      const runCreate = () => {
+        try {
+          const fresh = getThreadHistoryStore();
+          if (fresh.items[key]) return;                                  // 期间已被其它路径创建 → 不重复建
+          if ((fresh.tombstones || {})[key]) return;                     // 期间进了回收站 → 放弃
+          const record = buildThreadHistoryRecordFromApiThread({
+            mode, threadId, page, url,
+            threadObj: payload && payload.threadObj,
+            replyId
+          });
+          if (!record) return;
+          // ★ 没有拿到任何正文（API 与版块页行都为空，例如串已删除/非正常串）→ 不新建：
+          //   宁可暂时没有这条记录，也不要留一个"看不到具体内容"的空条目
+          if (!record.contentHtml && !record.contentText) {
+            updateThreadHistoryDebugState({
+              lastBoardReply: { mode: 'create-skipped-no-content', key, page, replyId: replyId || '', visitedAt, at: new Date().toISOString() }
+            });
+            logThreadHistory('board reply: 未取到正文，跳过新建（避免空条目）', { key, page, replyId: replyId || '(未匹配到本条回复)' });
+            return;
+          }
+          upsertThreadHistoryRecord(record, { countVisit: true, touchVisitedAt: true, visitedAt, reason: 'board-reply' });
+          updateThreadHistoryDebugState({
+            lastBoardReply: {
+              mode: 'create', key, page, replyId: replyId || '', visitedAt,
+              title: record.title, contentLen: String(record.contentText || '').length, at: new Date().toISOString()
+            }
+          });
+          logThreadHistory('board reply: 浏览历史已新建', { key, page, replyId: replyId || '(未匹配到本条回复)', title: record.title, contentLen: String(record.contentText || '').length });
+        } catch (e) {
+          logThreadHistory('board reply: 新建失败 ' + (e && e.message ? e.message : String(e)), {}, 'warn');
+        }
+      };
+      try {
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(runCreate, { timeout: 2000 });
+        else setTimeout(runCreate, 0);
+      } catch (e) {
+        runCreate();
+      }
+      return 2;
+    } catch (e) {
+      logThreadHistory('board reply sync error: ' + (e && e.message ? e.message : String(e)), {}, 'warn');
+      return 0;
+    } finally {
+      startupPerfDebug.finish('threadHistory.boardReply', __token, () => ({ mode: __mode }));
+    }
   }
   function deleteThreadHistoryItem(key) {
     const store = getThreadHistoryStore();
@@ -30121,6 +30399,11 @@ function 注册自动保存编辑() {
     const opts = Object.assign({ reason: 'manual-refetch', forceFull: true }, options || {});
     updateThreadHistoryDebugState({ lastManualRefetch: { at: new Date().toISOString(), options: { countVisit: opts.countVisit !== false, reason: opts.reason } } });
     recordCurrentThreadHistory(0, opts);
+  };
+  // 调试/排查用（不参与正常流程）：手工触发"版块页快捷回复 → 浏览历史同步"
+  //   window.__xdexSyncThreadHistoryFromBoardReply({ threadId, page, threadObj, replies })
+  window.__xdexSyncThreadHistoryFromBoardReply = function xdexSyncThreadHistoryFromBoardReply(payload) {
+    return syncThreadHistoryFromBoardReply(payload || {});
   };
   function formatThreadHistoryTime(ts) {
     if (!ts) return '';
@@ -33310,9 +33593,15 @@ function 注册自动保存编辑() {
     });
   }
   // ── PO 主饼干检测 ──
-  function detectPOCookieHash() {
-    // 直接从 PO 的 uid 文本提取 hash（如 "ID:z19vISg" → "z19vISg"）
-    const uidSpan = document.querySelector('.h-threads-item-main .h-threads-info .h-threads-info-uid');
+  function detectPOCookieHash(root) {
+    // ★ 作用域守卫：只有"当前页是该串的串页/PO 页"时，页面上第一个 .h-threads-item-main 才必然是这条串的 OP。
+    //   版块页/时间线页上第一个 OP 属于**别的串**——据此写偏好会张冠李戴（把第一条串的饼干设成被回复串的默认饼干）。
+    //   调用方若已知目标所在容器，可显式传入 root。
+    const scope = root || ((typeof PageType !== 'undefined' && PageType
+      && ((PageType.isThreadPage && PageType.isThreadPage()) || (PageType.isPOThreadPage && PageType.isPOThreadPage())))
+      ? document : null);
+    if (!scope) return null;
+    const uidSpan = scope.querySelector('.h-threads-item-main .h-threads-info .h-threads-info-uid');
     if (!uidSpan) return null;
     const rawText = (uidSpan.textContent || '').trim();
     const poHash = rawText.replace(/^ID:\s*/, '').trim();

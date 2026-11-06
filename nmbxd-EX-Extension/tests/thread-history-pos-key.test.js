@@ -253,7 +253,9 @@ function testVisitTimeTravelsInPositionLayer() {
     'progress must be position-only whenever the record exists (visit time rides in vat)');
   const upsertBody = extractFunctionBody(script, 'upsertThreadHistoryRecord');
   const branch = upsertBody.slice(upsertBody.indexOf('if (options.positionOnly)'), upsertBody.indexOf('const saved = setThreadHistoryStore(store);', upsertBody.indexOf('if (options.positionOnly)')));
-  assert(branch.includes('vat: Number(merged.lastVisitedAt) || now'), 'position layer must carry the visit time (vat)');
+  // 只校验语义：位置层必须用 vat 承载"访问时间"（兜底值可以是 now，也可以是调用方指定的 visitedAt）
+  assert(/vat:\s*Number\(merged\.lastVisitedAt\)/.test(branch), 'position layer must carry the visit time (vat)');
+  assert(/const visitedAt = Number\(options\.visitedAt\) \|\| now;/.test(upsertBody), 'upsert must accept an explicit visit time (visitedAt)');
   const overlay = extractFunctionBody(script, 'applyThreadHistoryPosOverlayToStore');
   assert(overlay.includes('item.lastVisitedAt = Number(entry.vat)'), 'overlay must apply vat to the record');
   assert(overlay.includes('store.index[key].lastVisitedAt = Number(entry.vat)'), 'overlay must refresh the derived index timestamp');
