@@ -16,7 +16,7 @@ function hasActiveLine(source, text) {
 
 function testUserscriptSkipsCustomMenuInExtension() {
   assert(userscript.includes('function shouldUseExtensionNativeImageContextMenu(cfg)'), 'userscript must define Extension native image menu gate');
-  assert(userscript.includes("XDEX_RUNTIME.kind === 'extension'"), 'gate must check Extension runtime');
+  assert(userscript.includes('isXDexPackagedRuntime('), 'gate must check packaged Extension runtime (chrome-* / firefox-*)');
   const gateIndex = userscript.indexOf('shouldUseExtensionNativeImageContextMenu(cfg)');
   const styleIndex = userscript.indexOf('ensureImageContextMenuStyle();', gateIndex);
   const menuIndex = userscript.indexOf('getImageContextMenu();', gateIndex);

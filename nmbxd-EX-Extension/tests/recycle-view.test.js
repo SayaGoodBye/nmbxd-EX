@@ -105,6 +105,9 @@ function testAllTombstoneConsumersHandleRevived() {
     if (!/tombstones/.test(l)) return;
     if (!/purged/.test(l)) return;
     if (/revivedAt/.test(l)) return;
+    // 只认"墓碑表访问"形态（`tombs || {}` / `tombs[key]`）；`tombstones` 作计数器/字段名的行不算消费者
+    // （如颜文字导入报告里的 `tombstones: 0, purgedSkipped: 0` 统计）
+    if (!/tombstones\s*(?:\|\||\[)/.test(l)) return;
     // 允许：清理/写入墓碑本身的行（赋值、purged 置位）
     if (/store\.tombstones\[/.test(l) && /=/.test(l)) return;
     if (/if \(t\.purged\)/.test(l)) return; // 过期清理内部

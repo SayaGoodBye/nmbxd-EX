@@ -131,9 +131,12 @@ node ".temp\nmbxd-EX-Extension-Firefox\tests\direct-replacement.test.js"   # 校
 
 `scripts/audit-firefox-apis.js` 会检查：
 
+0. **内容副本新鲜度**：把本构建的 `src/content/nmbxd-EX-for-edit.user.js` 与开发源 `.temp/nmbxd-EX-for-edit.user.js` 逐字节比对，不一致即失败（"忘了按 Sync workflow 第 2 步复制"从静默通过变成硬失败；找不到开发源时只记一条提示——因为 `.temp` 之外的副本或 CI 里该检查无意义）；
 1. 清单：禁止 `background.service_worker`、必须有 `background.scripts` 与 `gecko.id`、不得含 `key` / `offscreen` 权限 / offscreen 资源、必须含 `dom-jobs.js` 与 `clipboard-writer.js`；
 2. 代码：禁止 `chrome.offscreen`、`chrome.runtime.getContexts`、`chrome.sidePanel`；
 3. API 白名单：出现未审计的 `chrome.<api>` 即失败（提醒人工确认 Firefox 支持情况）。
+
+> 因为审计读的是**本构建成品**（`src/`、`export/`、`options/` + `manifest.json`），它在同步流程里的位置必须在"复制 + 元数据同步"**之后**：AGENTS.md 的顺序是 2 复制 → 3 两个构建各跑 `sync-userscript-meta.js` → 4 本审计 → 5 `fc /b` 五处校验。
 
 ## 7.1 `web-ext lint` 实测结果（2026-11-04）
 
@@ -168,7 +171,7 @@ npx --yes web-ext lint --source-dir . --output=json
 | 清单 JSON | `node -e "require('./manifest.json')"` | 通过：MV3 / `background.scripts` 4 项 / gecko id / min 128.0 / 无 `key` / 无 `offscreen` 权限 |
 | API 静态审计 | `node scripts/audit-firefox-apis.js` | **通过**（仅 1 条提示：`updateSessionRules` 需 ≥128，已由 strict_min_version 约束） |
 | 官方校验 | `npx web-ext lint --source-dir . --output=json` | **errors: 0** / warnings: 53 / notices: 1 |
-| 契约测试 | `node tests/*.test.js`（与 Chrome 版同一套） | **32 通过 / 6 失败**，6 个失败在 Chrome 版**同样失败**（既有问题，非移植引入）：`group-order-propagation`、`hot-path-guards`、`recycle-view`、`refresh-toast`、`reply-submit-refactor`、`submit-preflight`（详见下方说明） |
+| 契约测试 | `node tests/*.test.js`（与 Chrome 版同一套） | **34 通过 / 5 失败**，5 个失败在 Chrome 版**同样失败**（既有问题，非移植引入）：`group-order-propagation`、`hot-path-guards`、`refresh-toast`、`reply-submit-refactor`、`submit-preflight`（详见下方说明） |
 | 内容副本字节一致 | `fc /b` / md5 | 与 `.temp\nmbxd-EX-for-edit.user.js`、Chrome 版内容副本、两处 QwQNT 副本**同一哈希** `ea7d540190b76d0da4f2a758e69d041f` |
 | 元数据链 | `node scripts/sync-userscript-meta.js` | 用户脚本 `@version` = manifest = update.json = gm-compat = **4.3.0** |
 
@@ -321,34 +324,63 @@ root.__xdexRuntime = root.__xdexRuntime || {
 `isFirefoxHost` 与脚本端用同一套 UA/API 探测；两个构建的 `gm-compat.js` **仍字节相同**（`fc /b` 无差异），
 仅运行时结果不同。
 
-#### H.5 实测：内容脚本看不到 `declarativeNetRequest`
+#### H.5 实测：内容脚本看不到 `declarativeNetRequest` → 判定改用清单声明
 
 Chrome 官方文档《Content scripts》明确列出内容脚本可直接访问的扩展 API 只有
 `dom`、`i18n`、`storage`、`runtime.{id,getURL,getManifest,sendMessage,connect,onMessage,onConnect}`。
-**`declarativeNetRequest` 不在其中**（Firefox 同样只在后台/扩展页暴露）。因此：
+**`declarativeNetRequest` 不在其中**（Firefox 同样只在后台/扩展页暴露）。真机（Chrome 138）实测：
+隔离世界里 `typeof chrome.declarativeNetRequest === "undefined"`、`Object.keys(chrome)` 只有
+`dom/extension/i18n/runtime/storage`。
 
-- 两种扩展在**内容脚本**里 `hasDnr === false` → 实际 kind 是 `*-extension-limited`；
-- 自定义饼干走的是 `chrome.cookies` 容器接口替换（Firefox 同样提供 `chrome.cookies`），不是 DNR；
-- `<browser>-extension`（DNR 严格隔离）分支只在“内容脚本可见 DNR”的宿主上触发，属于保留能力。
+因此判定不再依赖"API 可见性"，而是读**清单声明**（`runtime.getManifest().permissions`，内容脚本可用）：
 
-#### H.6 契约测试 `tests/runtime-identity.test.js`（10 项全过）
+| 修正前 | 修正后 |
+|---|---|
+| `hasDnr = 可见 API` → 扩展内恒为 `false` → kind 恒为 `*-extension-limited` → **DNR 分支永不可达** | `hasDnr = 可见 API \|\| 清单声明 \`declarativeNetRequest\`/\`declarativeNetRequestWithHostAccess\`` → kind 为 `chrome-extension` / `firefox-extension`，真正走 DNR |
+
+规则由**后台**安装，"后台有没有能力"才是关键，所以以清单声明为准是正确的口径；拿不到清单时才退回 API 可见性判断。
+
+**真机验证**（Chrome 138 + 本扩展，CDP 观测）：
+
+| 项 | 实测 |
+|---|---|
+| 内容脚本 `[runtime]` | `chrome-extension`（`hasDnrApi: false`、`hasDnrDeclared: true`） |
+| 走扩展自身消息链路装规则 | `{ok:true}`；`getSessionRules()` = 9101/9102：`modifyHeaders` `set cookie = userhash=…`，`urlFilter` 为两个发帖端点、`requestMethods:['post']`、`resourceTypes:['xmlhttprequest']` |
+| 实际发出的请求（`Network.requestWillBeSentExtraInfo`） | 未开规则：`PHPSESSID=…; _ga=…`（站点自身饼干）；开启后：**仅** `userhash=PROBE_ONLY`；关闭后规则清空 |
+
+**两条实测坑（已写进后台实现）**：
+
+1. `getSessionRules()` 报告规则存在 **≠** 规则生效 —— `modifyHeaders` 需要**已授予的站点访问权限**，
+   否则规则静默不生效（后果是带着站点饼干发帖 = 用错身份）。故后台新增：
+   - `ensureXdexHostPermissionForRules()`：权限守卫，不通过就直接报错（内容脚本随即退回 cookie 容器接口替换）；
+   - `verifyXdexPostRulesApplied()`：加规则后用 `getSessionRules()` 复核落地，未落地则移除并报错。
+   这条对 Firefox 尤其重要：MV3 的站点访问权限默认可选，`about:debugging` 临时安装不会自动授予。
+2. 权限查询**不能用自造的 `*://*.domain/*`**：http/https 分别授权，`*://` 不是 `https://` 的子集，
+   `permissions.contains` 会假阴性（实测 `contains({origins:['*://*.nmbxd1.com/*']}) === false`，
+   而用清单声明模式 `https://*.nmbxd1.com/*` 查为 `true`）→ 必须用清单里声明的模式，并在为否时用
+   `permissions.getAll()` 的宽泛授权（`https://*/*`）复核一次，避免把可用路径误判为不可用。
+
+#### H.6 契约测试 `tests/runtime-identity.test.js`（13 项全过）
 
 用 vm 沙箱抽出脚本端 `tag 0` 的识别段 + 单例压制函数，注入 UA / `chrome` / `browser` / `__xdexRuntime` 桩：
 
 | 用例 | 断言 |
 |---|---|
-| Chrome 内容脚本 | `chrome-extension-limited`，`packaged=true`，`browser='chrome'` |
-| Firefox 内容脚本 | `firefox-extension-limited`，`packaged=true`，`browser='firefox'` |
+| Chrome 内容脚本 + 清单声明 DNR | `chrome-extension`，`hasDnrDeclared=true`、`hasDnrApi=false`、`packaged=true`、`browser='chrome'` |
+| Chrome 内容脚本 + 清单**无** DNR | 退回 `chrome-extension-limited`（走 cookie 容器接口替换） |
+| Firefox 内容脚本 + 清单声明 DNR | `firefox-extension`，`browser='firefox'` |
+| Firefox 内容脚本 + 清单**无** DNR | 退回 `firefox-extension-limited` |
 | 无 Firefox UA 只有 `browser.runtime.id` | 仍识别为 `firefox` |
-| 假设内容脚本可见 DNR | `chrome-extension` / `firefox-extension` 成对 |
+| 假设内容脚本可见 DNR（无清单） | 仍为 `chrome-extension` / `firefox-extension`（API 这条判定保留） |
 | 声明式 `__xdexRuntime.kind === 'extension'` | 按家族给出 `firefox-extension-limited` / `chrome-extension-limited` |
 | userscript / QwQNT | `userscript`（packaged=false）/ `qwqnt`（packaged=true, browser=electron） |
 | 四个辅助函数对称性 | 两种前缀的返回值逐一相等 |
 | 单例压制 | 脚本端退出、扩展自身不退出、无 owner 时正常运行（两个家族各测一遍） |
 | 源码残留 | 不允许再出现 `kind === 'chrome-extension'` / `kind === 'extension' || packaged` |
 | `gm-compat` | 必须声明 `browser` 与随宿主变化的 `storage` 命名 |
+| 后台 DNR 守卫 | 顺序必须是"权限守卫 → 加规则 → `getSessionRules` 落地校验 → ok"；权限查询必须用清单声明模式（禁止自造 `*://`）且含 `getAll()` 复核 |
 
-**实测结果**：Firefox 测试集 **32 通过 / 6 失败**；Chrome 版 **31 通过 / 6 失败**（差额 1 为 Firefox 专有的 `dom-jobs.test.js`），两边失败的 6 个用例**完全相同**。
+**实测结果**：Firefox 测试集 **34 通过 / 5 失败**；Chrome 版 **33 通过 / 5 失败**（差额 1 为 Firefox 专有的 `dom-jobs.test.js`），两边失败的 5 个用例**完全相同**。
 Chrome 测试集同名用例同样通过。
 
 ### I. 本轮已实测的结论汇总
@@ -359,7 +391,7 @@ Chrome 测试集同名用例同样通过。
 | 该告警是否由 `content_scripts.world: "MAIN"` 引起 | 临时移除 `world` 后重跑 lint | **否**（移除后同样存在）→ 确认来自 `data_collection_permissions`，已还原 manifest |
 | 审计脚本能否拦住"漏声明数据收集" | 临时删除该字段后运行审计 | **退出码 1** 并报"缺少 …data_collection_permissions.required"；还原后退出码 0 → 审计具备负向能力 |
 | 剪贴板降级链是否真的按预期回退 | `tests/dom-jobs.test.js`（vm 沙箱跑真实代码） | 见 §8.1-F：5/5 通过 |
-| 全量测试 | `node tests/*.test.js` | **32 通过 / 6 失败**（6 个失败与 Chrome 版完全相同，非移植引入） |
+| 全量测试 | `node tests/*.test.js` | **34 通过 / 5 失败**（5 个失败与 Chrome 版完全相同，非移植引入） |
 | 清单结构与 gecko 字段 | `node -e` 解析 + 审计脚本 | `background.scripts` × 4、`gecko.id`、`strict_min_version 128.0`、`data_collection_permissions.required=["none"]` |
 | Chrome 版未被影响 | 文件级 diff | 仅 Firefox 目录新增 4 文件、删除 2 文件；Chrome 目录哈希未变 |
 
@@ -368,14 +400,14 @@ Chrome 测试集同名用例同样通过。
 
 1. 后台页写剪贴板：右键图片 → 「X岛-EX：复制GIF/APNG」；若后台被拒应自动回退内容脚本（看后台控制台的 `[X岛-EX Extension 图片菜单]` stage 日志）。
 2. 导出下载：设置/导出页触发导出 → 文件名是否为预期（锚点路径），失败时应回退 downloads API（文件名可能被浏览器改写）。
-3. 自定义饼干发帖：授予 host 权限后，POST `doReplyThread.html` / `doPostThread.html` 的 `Cookie` 头是否被改写（规则 id 9101/9102，用完即删）。
+3. 自定义饼干发帖（Chrome 侧已实测通过，Firefox 侧待验）：确认站点访问权限已授予后，POST `doReplyThread.html` / `doPostThread.html` 的 `Cookie` 头应被改写成**且仅为** `userhash=<所选饼干>`（规则 id 9101/9102，用完即删）。
+   Chrome 实测口径：`Network.requestWillBeSentExtraInfo` 里未开规则为 `PHPSESSID=…`，开启后为 `userhash=PROBE_ONLY`。
+   若权限未授予：后台会返回 `ok:false`（含提示），脚本自动退回 cookie 容器接口替换，**不会**静默用站点身份发帖。
 4. `world: "MAIN"` 桥接：页面主世界能否收到 `xdex:*` 事件（`page-bridge.js`）。
 5. 浏览器重启后：历史/设置/导出任务是否保留（`storage.local` 语义一致，预期保留）；事件页被挂起后 alarm 续跑导出任务是否正常。
-6. 运行时标识：在扩展内容脚本上下文执行
-   ```js
-   console.log(getXDexRuntimeInfo());
-   ```
-   期望 `kind: 'firefox-extension-limited'`、`browser: 'firefox'`、`packaged: true`；
-   若报 `ReferenceError`（`getXDexRuntimeInfo` 在 IIFE 内），改看启动日志里的 `[runtime]:` 行。
+6. 运行时标识：看内容脚本启动日志里的 `[runtime]:` 行，期望
+   `kind: 'firefox-extension'`（清单声明了 `declarativeNetRequest`）、`browser: 'firefox'`、`packaged: true`、
+   `hasDnrDeclared: true`、`hasDnrApi: false`。若为 `firefox-extension-limited`，说明清单里没有 DNR 权限声明。
+   自检：`chrome.runtime.getManifest().permissions` 应含 `declarativeNetRequest`。
 7. 脚本端压制：同站点同时装 Tampermonkey 脚本 + 本扩展，页面 `documentElement.dataset` 应含单例 owner 标记，
    且控制台只有一份 `[xdex]` 启动日志（脚本端已让位）。

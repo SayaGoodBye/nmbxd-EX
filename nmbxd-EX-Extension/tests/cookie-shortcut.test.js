@@ -33,7 +33,7 @@ function testCookieShortcutUsesStableBackslashMatch() {
 function testCookieShortcutUsesDocumentCaptureHandler() {
   assert(script.includes('function openCookieDropdownFromShortcut(focusBackTarget)'), 'userscript must centralize cookie dropdown opening');
   assert(script.includes('function openCookieShortcutMenu(dropdown, focusBackTarget)'), 'Extension shortcut must use a script-rendered cookie menu instead of relying on native select picker');
-  assert(script.includes("XDEX_RUNTIME && XDEX_RUNTIME.kind === 'extension'"), 'Extension cookie shortcut path must be runtime gated');
+  assert(script.includes('isXDexPackagedRuntime(XDEX_RUNTIME)'), 'Extension cookie shortcut path must be runtime gated (chrome-* / firefox-* both)');
   assert(script.includes('return openCookieShortcutMenu(dropdown, focusBackTarget);'), 'Extension cookie shortcut must bypass silent showPicker path');
   assert(script.includes('custom-menu-opened'), 'Extension cookie shortcut must log script-rendered menu opening');
   assert(script.includes('function installCookieDropdownShortcutHandler()'), 'userscript must install a document-level cookie shortcut handler');

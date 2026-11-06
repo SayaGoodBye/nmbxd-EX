@@ -28,7 +28,7 @@
     "// @name         X岛-EX",
     "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
     "// @version      4.3.0",
-    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。",
+    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 版块页快速回复 / 展开版块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。",
     "// @author       XY",
     "// @match        https://*.nmbxd1.com/*",
     "// @match        https://*.nmbxd.com/*",
@@ -40,6 +40,7 @@
     "// @grant        GM_deleteValue",
     "// @grant        GM_listValues",
     "// @grant        GM_addStyle",
+    "// @grant        GM_download",
     "// @grant        unsafeWindow",
     "// @connect      nmbxd1.com",
     "// @connect      www.nmbxd1.com",
@@ -429,9 +430,24 @@
     scriptMetaStr
   };
 
+  // 扩展侧运行时声明：浏览器家族与存储命名空间随宿主自动识别，
+  // 脚本端的 kind 名（chrome-extension* / firefox-extension*）与此保持一致。
+  const isFirefoxHost = (function detectFirefoxHost() {
+    try {
+      const ua = String((typeof navigator !== 'undefined' && navigator && navigator.userAgent) || '');
+      if (/Firefox\//i.test(ua)) return true;
+      const hasBrowserApi = typeof browser !== 'undefined' && !!(browser && browser.runtime && browser.runtime.id);
+      const hasChromeApi = typeof chrome !== 'undefined' && !!(chrome && chrome.runtime && chrome.runtime.id);
+      return hasBrowserApi && !hasChromeApi;
+    } catch (err) {
+      return false;
+    }
+  }());
+
   root.__xdexRuntime = root.__xdexRuntime || {
     kind: 'extension',
-    storage: 'chrome.storage.local',
+    browser: isFirefoxHost ? 'firefox' : 'chrome',
+    storage: (isFirefoxHost ? 'browser' : 'chrome') + '.storage.local',
     gmCompat: true,
     cookieBridge: true,
     pageBridge: true,
@@ -529,7 +545,17 @@
   if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
     try {
       chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (!message || message.type !== 'xdex:image-menu-log') return false;
+        if (!message || typeof message.type !== 'string') return false;
+        // 扩展原生右键菜单「添加到发言历史」→ 事件总线交给 userscript（与 SW 解耦，且时序无关）
+        if (message.type === 'xdex:add-post-history') {
+          try {
+            document.dispatchEvent(new CustomEvent('xdex:add-post-history', {
+              detail: { url: String(message.url || '') }
+            }));
+          } catch (err) {}
+          return false;
+        }
+        if (message.type !== 'xdex:image-menu-log') return false;
       // if (!message || (message.type !== 'xdex:image-menu-log' && message.type !== 'xdex:copy-thread-link-from-image')) return false;
       // if (message.type === 'xdex:copy-thread-link-from-image') {
       //   handleCopyThreadLinkFromImage(message)
@@ -604,6 +630,8 @@
   }
 
   function showExtensionToast(text, duration = 1800, type = '') {
+    // ★ 扩展侧 toast 也留痕：与脚本端统一 [toast] 前缀，便于一并排查
+    try { console.log('[toast]', text, { channel: 'extension', type: type || 'default', duration }); } catch (e) {}
     const toast = document.createElement('div');
     toast.className = 'ae-toast';
     toast.textContent = text;

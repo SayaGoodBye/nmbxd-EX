@@ -106,6 +106,13 @@ const consts = [
 
 const stubs = `
 let threadHistoryStoreCache = null;
+// 位置小键（浏览历史高频小数据）在检索层之外，这里按"无小键"桩接，保持检索行为不变
+let threadHistoryStoreNeedsPosOverlay = false;
+const THREAD_HISTORY_POS_KEY = 'xdex_thread_history_pos';
+const THREAD_HISTORY_POS_LIMIT = 300;
+function migrateThreadHistoryPosFromStore() {}
+function syncThreadHistoryPosAndStore(store) { return store; }
+function applyThreadHistoryPosOverlayToStore() { return false; }
 let postHistoryStoreCache = null;
 function invalidateThreadHistoryStoreCache() { threadHistoryStoreCache = null; }
 function invalidatePostHistoryStoreCache() { postHistoryStoreCache = null; }
@@ -133,6 +140,18 @@ function nextHistoryRev() {
 const GM = { v: {} };
 function GM_getValue(k, d) { return k in GM.v ? JSON.parse(JSON.stringify(GM.v[k])) : d; }
 function GM_setValue(k, v) { GM.v[k] = JSON.parse(JSON.stringify(v)); }
+// 性能埋点桩：setThreadHistoryStore 内含 begin/finish 计时（采集关闭时为零开销），
+// 沙箱需提供同名全局，语义与真实实现一致（不采集 ⇒ begin 返回 null、finish 直接返回）
+const startupPerfDebug = {
+  begin: () => null,
+  finish: () => {},
+  record: () => {},
+  mark: () => {},
+  measure: (label, fn) => fn(),
+  summarizeRoot: () => ({}),
+  recordObserver: () => {},
+  measureObserver: (label, mutations, fn) => fn(),
+};
 `;
 
 // 旧算法参考实现(检索优化前的行为基线)

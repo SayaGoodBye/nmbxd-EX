@@ -240,7 +240,7 @@ function testRuntimeSpecificUpdateSources() {
   assert(upstream.includes('https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@main/nmbxd-EX-Extension/update.json'), 'Extension update source must use explicit fastly jsDelivr @main update.json fallback');
   assert(upstream.includes('fetchExtensionUpdateJson('), 'Extension update checks must parse the generated update.json index');
   assert(upstream.includes('function getUpdateCheckRequestsForRuntime()'), 'userscript must route update requests by runtime');
-  assert(upstream.includes("XDEX_RUNTIME.kind === 'extension'"), 'update checks must branch for the Extension runtime');
+  assert(upstream.includes('isXDexPackagedRuntime(XDEX_RUNTIME)'), 'update checks must branch for the packaged Extension runtime (chrome-* / firefox-*)');
   assert(upstream.includes("fetchMetaVersionAndChangelog(UPDATE_GREASYFORK_META_URL, 'greasyfork')"), 'userscript runtime must keep GreasyFork update checks');
   assert(upstream.includes("fetchScriptCatVersionAndChangelog(UPDATE_SCRIPTCAT_API_URL, 'scriptcat')"), 'userscript runtime must keep ScriptCat update checks');
 }
@@ -1326,7 +1326,7 @@ function testSingletonStartupGuard() {
   assert(upstream.includes("const XDEX_SINGLETON_OWNER_DATASET_KEY = 'xdexSingletonOwner';"), 'userscript must define the shared singleton owner dataset key');
   assert(upstream.includes('function shouldExitForXDexSingleton(runtimeInfo)'), 'userscript must include a singleton startup guard');
   assert(upstream.includes("owner === 'extension'"), 'singleton guard must recognize Extension ownership');
-  assert(upstream.includes("runtimeInfo.kind !== 'extension'"), 'singleton guard must allow the Extension runtime to continue');
+  assert(upstream.includes('!isXDexPackagedRuntime(runtimeInfo)'), 'singleton guard must allow the Extension runtime (chrome-* / firefox-*) to continue');
   assert(waitIndex !== -1, 'userscript must define a bounded Extension marker wait window for cross-extension races');
   assert(startupFunctionIndex !== -1, 'userscript must wrap real startup in a callable startup function');
   assert(scheduleFunctionIndex !== -1, 'userscript must schedule startup through the singleton arbitrator');

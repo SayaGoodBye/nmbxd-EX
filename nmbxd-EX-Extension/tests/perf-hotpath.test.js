@@ -43,8 +43,8 @@ test('采集开关的读取不得让脚本因 localStorage 受限而抛错', () 
 test('applyPageEnhancements 内 refreshFilterDisplay 必须传 root 而非 document', () => {
   assert(!/refreshFilterDisplay\(liveCfg, document\)/.test(src),
     '不得对 document 重跑过滤（成本随串长度线性放大）');
-  assert(/refreshFilterDisplay\(liveCfg, root\)/.test(src),
-    '应把作用域收敛到本次新增的 root');
+  assert(/refreshFilterDisplay\(liveCfg, root(,|\))/.test(src),
+    '应把作用域收敛到本次新增的 root（允许追加来源标记参数）');
 });
 
 test('applyPageEnhancements 内各步骤作用域一致（均为 root）', () => {
@@ -144,6 +144,26 @@ test('applyPageEnhancements 计时点在异步回调内（外层 measure 量不�
   const fin = body.indexOf("startupPerfDebug.finish('applyPageEnhancements.total'");
   assert(setT !== -1 && tok !== -1 && fin !== -1, '计时点必须存在');
   assert(tok > setT && fin > tok, 'begin/finish 必须在 setTimeout 回调内部，包住真正的增强步骤');
+});
+
+test('报告与延后回调不得引用未声明的计时变量', () => {
+  // 防止"只落了一半的补丁"：标签用到的 token 必须在同一函数内声明
+  const reinit = src.slice(src.indexOf('function reinitForNewContent('), src.indexOf('function reinitForNewContent(') + 3000);
+  if (/seamless\.loadNext\.deferredReinit/.test(reinit)) {
+    assert(/const __deferToken = startupPerfDebug\.begin\(\)/.test(reinit),
+      'deferredReinit 标签的 __deferToken 必须在同一函数内声明');
+  }
+  if (/seamless\.loadNext\.reinitDomReady/.test(reinit)) {
+    assert(/const __domReadyToken = startupPerfDebug\.begin\(\)/.test(reinit),
+      'reinitDomReady 标签的 __domReadyToken 必须在同一函数内声明');
+  }
+  // 报告输出里引用的聚合变量必须先定义
+  if (/longestFrames,/.test(src)) {
+    assert(/let longestFrames = \[\];/.test(src), 'report 结果里引用 longestFrames 前必须先定义它');
+  }
+  if (/gmCalls\.slice\(0, 15\),/.test(src)) {
+    assert(/let gmCalls = \[\];/.test(src), 'report 结果里引用 gmCalls 前必须先定义它');
+  }
 });
 
 test('观察器创建处均有计数埋点（H1-H3 真机验收判据）', () => {

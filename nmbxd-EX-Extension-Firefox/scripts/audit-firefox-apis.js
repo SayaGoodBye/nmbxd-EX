@@ -18,6 +18,21 @@ const notes = [];
 function fail(msg) { failures.push(msg); }
 function note(msg) { notes.push(msg); }
 
+// ---------- 0. 内容副本新鲜度 ----------
+// 本审计校验的是「按 Sync workflow 第 2 步复制后的成品」；若副本落后于开发源（漏了复制），
+// 只审计成品会静默通过旧内容。这里显式比对，把"忘了同步"变成硬失败。
+{
+  const devSource = path.resolve(root, '..', 'nmbxd-EX-for-edit.user.js');
+  const ffCopy = path.join(root, 'src', 'content', 'nmbxd-EX-for-edit.user.js');
+  if (fs.existsSync(devSource) && fs.existsSync(ffCopy)) {
+    if (!fs.readFileSync(devSource).equals(fs.readFileSync(ffCopy))) {
+      fail('内容副本与开发源 .temp/nmbxd-EX-for-edit.user.js 不一致：先按 Sync workflow 第 2 步复制，再审计成品');
+    }
+  } else {
+    note('未找到开发源或内容副本，跳过"副本新鲜度"检查（仅在本仓 .temp 工作区内有意义）');
+  }
+}
+
 // ---------- 1. 清单审计 ----------
 const manifestPath = path.join(root, 'manifest.json');
 let manifest;
@@ -93,7 +108,10 @@ const forbidden = [
 // Firefox 支持、且本仓实际用到的扩展 API 顶层集合
 const supportedApis = new Set([
   'chrome.runtime', 'chrome.storage', 'chrome.tabs', 'chrome.contextMenus', 'chrome.cookies',
-  'chrome.downloads', 'chrome.alarms', 'chrome.action', 'chrome.declarativeNetRequest'
+  'chrome.downloads', 'chrome.alarms', 'chrome.action', 'chrome.declarativeNetRequest',
+  // permissions：Firefox 支持 permissions.contains / getAll（用于 DNR 规则生效前的站点权限守卫），
+  // 不需要在清单里额外声明 "permissions" 权限
+  'chrome.permissions'
 ]);
 
 const usedApis = new Map();

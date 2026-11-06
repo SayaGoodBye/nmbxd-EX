@@ -2,7 +2,7 @@
 // @name         X岛-EX
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
 // @version      4.3.0
-// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
+// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 版块页快速回复 / 展开版块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。
 // @author       XY
 // @match        https://*.nmbxd1.com/*
 // @match        https://*.nmbxd.com/*
@@ -157,7 +157,23 @@ function xdexEarlyDarkEnabled() {
       const scriptHandler = String((typeof GM_info !== 'undefined' && GM_info && (GM_info.scriptHandler || (GM_info.script && GM_info.script.handler))) || '');
       const hasChromeRuntime = typeof chrome !== 'undefined' && !!(chrome && chrome.runtime);
       const hasChromeExtensionId = hasChromeRuntime && !!chrome.runtime.id;
-      const hasDnr = hasChromeRuntime && !!(chrome.declarativeNetRequest && typeof chrome.declarativeNetRequest.updateSessionRules === 'function');
+      // ★ 内容脚本看不到 declarativeNetRequest（Chrome 只向内容脚本暴露 dom / i18n / storage / runtime.*，
+      //   实测 chrome.declarativeNetRequest === undefined），而"规则由后台安装"本来就发生在后台，
+      //   所以能力判定以**扩展清单是否声明该权限**为准；只有拿不到清单时才退回 API 可见性判断。
+      //   两条都会命中时取并集：声明了但 API 恰好可见（如扩展页/未来宿主）同样按可用处理。
+      const hasDnrApi = hasChromeRuntime && !!(chrome.declarativeNetRequest && typeof chrome.declarativeNetRequest.updateSessionRules === 'function');
+      const declaredPermissions = (function getDeclaredPermissions() {
+          try {
+              if (!hasChromeExtensionId || !chrome.runtime || typeof chrome.runtime.getManifest !== 'function') return [];
+              const perms = chrome.runtime.getManifest().permissions;
+              return Array.isArray(perms) ? perms : [];
+          } catch (e) {
+              return [];
+          }
+      })();
+      const hasDnrDeclared = declaredPermissions.indexOf('declarativeNetRequest') >= 0
+          || declaredPermissions.indexOf('declarativeNetRequestWithHostAccess') >= 0;
+      const hasDnr = hasDnrApi || hasDnrDeclared;
       const hasQwqntBridge = typeof window !== 'undefined' && !!(window.QwQNTNmbxd && typeof window.QwQNTNmbxd.xdexRequest === 'function');
       const declaredStorage = declared && declared.storage ? String(declared.storage) : '';
       const browserFamily = XDEX_BROWSER_FAMILY;
@@ -182,6 +198,8 @@ function xdexEarlyDarkEnabled() {
               scriptHandler: scriptHandler || 'extension',
               hasChromeRuntime: true,
               hasDnr,
+              hasDnrApi,
+              hasDnrDeclared,
               qwqntBridge: false
           };
       }
@@ -230,6 +248,8 @@ function xdexEarlyDarkEnabled() {
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info .h-threads-info-title{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-item-reply-main{background:transparent !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info *,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content *{color:#d9d0d0 !important;}' +
+        // 红名（UID 里的 <font color="red">）保留红色：否则会被上面那条 `*` 通配压成灰色（绿名/绿引用已有例外）
+        ':root.xdex-custom-dark .qp-overlay-quote .h-threads-info-uid font[color="red" i],:root.xdex-custom-dark .qp-overlay-quote .h-threads-info-uid font[color="#ff0000" i]{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote .h-threads-tips.uk-text-danger{color:#e85248 !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote font[color="#789922"]{color:#b5d06d !important;}' +
         ':root.xdex-custom-dark .qp-overlay-quote a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-content a,:root.xdex-custom-dark .qp-overlay-quote .h-threads-info a{color:#3e8eec !important;}' +
@@ -381,7 +401,7 @@ function xdexEarlyDarkEnabled() {
     }
     isShowing = true;
     const { msg, duration } = toastQueue.shift();
-    console.log('[toast]', msg);
+    console.log('[toast]', msg, { channel: 'queue', duration });
     // ✅ 每次创建一个新的 toast 节点
     // 多行支持：white-space:pre-wrap 保留 \n 与缩进（同时仍自动换行长行）；
     // 文本一律走 .text() 转义，避免消息里的 < > 被当成 HTML（此前是裸插值，且全仓无调用方传 HTML）
@@ -399,7 +419,15 @@ function xdexEarlyDarkEnabled() {
   }
   function showImmediateToast(msg, duration = 900, key = 'default', type = '') {
     const safeKey = String(key || 'default').replace(/[^a-z0-9_-]/gi, '-');
-    if (safeKey === 'refresh-status') console.log('[toast]', msg); // 刷新状态提示同步输出到控制台（对齐通用 toast 路径）
+    // ★ 立即/快速链路同样要在控制台留痕：此前只有 refresh-status 会打印，其余（queue:false / error / hold）
+    //   全部静默 → 表现为"toast 后控制台没有输出"。现在三条链路统一 [toast] 前缀，第二参数标明通道。
+    try {
+      console.log('[toast]', msg, {
+        channel: type === 'error' ? 'error' : (type === 'hold' ? 'hold' : 'immediate'),
+        key: safeKey,
+        duration
+      });
+    } catch (e) {}
     let $t = $(`#xdex-immediate-toast-${safeKey}`);
     if (!$t.length) {
       $t = $(`<div id="xdex-immediate-toast-${safeKey}" class="ae-toast" style="
@@ -623,7 +651,7 @@ function xdexEarlyDarkEnabled() {
           </div>
         `);
         $elem.before($ph).hide().data('xdex-collapsed',true);
-        $elem.addClass('xdex-generic-collapsed'); // ★ 标记为公用折叠，以免触发板块页长串折叠/收起
+        $elem.addClass('xdex-generic-collapsed'); // ★ 标记为公用折叠，以免触发版块页长串折叠/收起
         $ph.on('click',()=>{
           if($elem.is(':visible')){
             $elem.hide(); $ph.html(`${cap}（点击展开）`);
@@ -811,18 +839,18 @@ function xdexEarlyDarkEnabled() {
       timeDisplayMode: 'relative', // relative | exact
       extendQuote: true, // 拓展引用格式
       extendQuoteAvailabilityDetection: true, // 检测引用串是否存在
-      enablePostExpandAll: true, // 默认展开板块页长串
+      enablePostExpandAll: true, // 默认展开版块页长串
       kaomojiSort: 'default', // 颜文字排序：default | freq | recent
       toggleSidebar: false, // 侧边栏收起功能
       enableCustomDarkTheme: 'light', // 自定义深色模式：light=浅色 / dark=深色
       dockDisplayMode: 'fixed', // 扩展坞增强：hover=隐藏（悬浮显示）| fixed=固定显示（默认）
-      postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回板块第一页
+      postAfterAction: 'jump', // 发串后：jump=新标签页打开 / refresh=刷新页面回版块第一页
       disableAutoQuote: true, // 关闭引用：阻止URL中?r=参数自动插入引用号
       threadCookieWhitelistGroups: [],
       threadCookieWhitelistDisplayMode: 'fold', // 只看饼干：fold | hide | column
       poAnnotationSideDisplayMode: 'collapse', // 分栏侧栏：collapse | expand
-      replyModeDefault: '回复',   // 板块页默认模式：发串/回复
-      replyExtraDefault: '临时',  // 板块/时间线默认额外模式：临时/连续
+      replyModeDefault: '回复',   // 版块页默认模式：发串/回复
+      replyExtraDefault: '临时',  // 版块/时间线默认额外模式：临时/连续
       markedGroups: [],
       blockedCookies: [],
       blockedKeywords: [],
@@ -1841,7 +1869,7 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_threadCookieWhitelistModeEnabled" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_threadCookieWhitelistModeEnabled"> 只看饼干</label><select id="sp_threadCookieWhitelistDisplayMode" style="height:24px;"><option value="fold">折叠</option><option value="hide">隐藏</option><option value="column">分栏</option></select><select id="sp_poAnnotationSideDisplayMode" style="height:24px;"><option value="collapse">收起</option><option value="expand">展开</option></select></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhancePostFormLayout" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enhancePostFormLayout"> 发串UI调整</label><input type="hidden" name="sp_enhancePostFormLayout" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enhanceIsland" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enhanceIsland"> 增强X岛匿名版</label><select id="sp_enableDraftMode" style="height:24px;"><option value="on">关闭草稿</option><option value="off">开启草稿</option></select><select id="sp_timeDisplayMode" style="height:24px;"><option value="relative">相对时间</option><option value="exact">精确时间</option></select><input type="hidden" name="sp_enhanceIsland" value="1"></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostExpand"> 展开板块页长串</label><select id="sp_postExpandAllMode" style="height:24px;"><option value="collapse">全部收起</option><option value="expand">全部展开</option></select><input type="hidden" name="sp_enablePostExpand" value="1"></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enablePostExpand" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enablePostExpand"> 展开版块页长串</label><select id="sp_postExpandAllMode" style="height:24px;"><option value="collapse">全部收起</option><option value="expand">全部展开</option></select><input type="hidden" name="sp_enablePostExpand" value="1"></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_searchServiceBy4sY" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_searchServiceBy4sY"> 野生搜索酱</label><input type="hidden" name="sp_searchServiceBy4sY" value="1"></div>
                 <div style="${checkboxRowStyle}">
                   <input type="checkbox" id="sp_enableImageHideMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageHideMode"> 图片显示模式</label>
@@ -1859,11 +1887,11 @@ function xdexEarlyDarkEnabled() {
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadExport" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadExport"> 导出串</label><button type="button" id="sp_openThreadExport" class="xdex-icon-btn" style="margin-left:4px;" title="打开导出窗口">${XDEX_EXPORT_ICON}</button></div>
             </div>
               <div style="margin-top:12px;">
-                <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">板块页快速回复默认设置</h3>
+                <h3 id="sp_replyQuicklyOnBoardPage" style="margin:6px 0;">版块页快速回复默认设置</h3>
                 <div style="${quickReplyRowStyle}">
-                  <!-- 左侧：板块页默认模式 -->
+                  <!-- 左侧：版块页默认模式 -->
                   <div style="${quickReplyColumnStyle}">
-                    <label for="sp_replyModeDefault" style="margin-bottom:4px;">板块页默认模式</label>
+                    <label for="sp_replyModeDefault" style="margin-bottom:4px;">版块页默认模式</label>
                     <select id="sp_replyModeDefault" style="width:100%;">
                       <option value="发串">发串</option>
                       <option value="回复">回复</option>
@@ -2428,7 +2456,7 @@ function xdexEarlyDarkEnabled() {
         toast(label + '已保存：' + val, 1400, { queue: false, key: 'reply-default-toggle' });
       };
       $('#sp_replyModeDefault').off('change.xdexReplyDefault').on('change.xdexReplyDefault', () => {
-        saveReplyDefaultImmediately('replyModeDefault', '板块页默认模式', false);
+        saveReplyDefaultImmediately('replyModeDefault', '版块页默认模式', false);
       });
       $('#sp_replyExtraDefault').off('change.xdexReplyDefault').on('change.xdexReplyDefault', () => {
         saveReplyDefaultImmediately('replyExtraDefault', '回复默认模式', true);
@@ -3292,7 +3320,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         'enhancePostFormLayout', // 发串UI调整
         'applyFilters',          // 标记/屏蔽-饼干/关键词
         'enhanceIsland',         // 增强X岛匿名版
-        'enablePostExpand',      // 展开板块页长串
+        'enablePostExpand',      // 展开版块页长串
         'searchServiceBy4sY',    // 野生搜索酱
       ]);
       // 清理字符串值中的零宽/不可见控制字符
@@ -4588,8 +4616,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_applyFilters: '标记/屏蔽-饼干/关键词过滤规则\n折叠：匹配到的串/回复显示为可展开的按钮\n隐藏：匹配到的串/回复完全隐藏',
         sp_enhanceIsland: '增强X岛匿名版:\n1.发串前显示预览：麻麻再也不用担心我的ASCII ART排版失误了,另外支持预览插入图片和外部图床图片；\n2.自动保存编辑：记忆文本框内容（防止屏蔽词导致被吞），可以在翻页等各种页面切换后保存，仅在“回复成功”后删除，按主串号 "/t/xxxx" 分开存储；\n3.追记引用串号：点击串号回复时附加到光标所在处（或替换文本选区），可追记多条引用；\n4.人类友好的时间显示：如“5秒前”、“1小时前”、“昨天”等；\n5.粘贴插入图片：直接粘贴，将自动作为图片插入\n自动添加标题：将po主设置的标题或者第一行文字 + 页码设置为标签页标题',
         sp_timeDisplayMode: '切换串内时间显示方式。相对时间会在当前可见页面定时刷新；精确时间显示原始发帖时间',
-        sp_replyQuicklyOnBoardPage: '为板块页添加快速回复模式，在板块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“板块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
-        sp_enablePostExpand: '为板块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
+        sp_replyQuicklyOnBoardPage: '为版块页添加快速回复模式，在版块页即可回串，页面实时更新，无需跳转串内；并额外支持时间线内回串。\n“版块页默认模式”可选“发串/回复”两种模式，“回复默认模式”可选“临时/连续”两种回复模式，临时模式下回复成功即清除回串信息，连续模式可连续回复直到手动清理回串信息，搭配回复浮窗使用效果更佳',
+        sp_enablePostExpand: '为版块页内串添加“展开/收起”按钮，点击即可切换长串的完整显示与折叠显示',
         sp_searchServiceBy4sY: '官方搜索当前不可用，公告详见：https://www.nmbxd1.com/t/56546294\n替换搜索按钮为来自4sYbzEX的“野生搜索酱”，具体使用方法请查阅原串：https://www.nmbxd.com/t/64792841',
         sp_enableImageHideMode: '“默认/模糊/无图/Tips”四种模式可选。默认模式不做修改；选择模糊模式时可使用鼠标悬浮暂时预览图片；无图模式隐藏图片；Tips模式随机显示Tips娘，点击后可恢复原图显示',
         sp_enableFavoriteThreads: '在侧边栏添加常用串，支持串内一键添加，并优先跳转浏览历史中的最近阅读页',
@@ -4599,7 +4627,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         sp_enableThreadExport: '导出串：把当前串（或指定串号）导出为 Markdown / TXT 文件。支持批量串号、页码范围与「只看 PO」；任务在后台按顺序执行，页面可关闭。右侧图标按钮可直接打开导出窗口',
         sp_enableImageViewerMode: '阅图模式：以瀑布流方式浏览当前串的所有图片，点击单图进入详情，支持旋转、缩放、键盘翻页（←→方向键切换、[]旋转、+-缩放、0复位、↑↓平移）。右侧图标按钮可在设置面板内进入；无图模式下右上角入口会隐藏，可用此按钮作为备选',
         sp_imageViewerSeparators: '在各页图片之间显示红色分隔线与“第N页”页码标识；关闭以获得更纯净的阅图体验',
-        sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前板块页回到顶部',
+        sp_postAfterAction: '发串成功后的行为：新标签页打开新串，或刷新当前版块页回到顶部',
         sp_subscriptionFeeds: '管理X岛订阅号，可添加多个订阅号并设置备注，用于在"我的订阅"标签中查看和管理订阅内容',
         sp_disableAutoQuote: '在类似https://www.nmbxd1.com/t/67024789?page=23&r=68811442等携带r=参数的串中，保留高亮的同时控制其是否在输入框中自动添加引用号，值班室版块默认不生效',
         sp_autoSelectReportReason: '值班室默认选择“其他”理由，且在值班室版块快捷回复面板中默认为“发串”模式以便提交举报',
@@ -5945,7 +5973,7 @@ ${markedSwatchHtml}
         if (matchedCookie) {
           if (displayMode === 'hide') {
             const _c = $el.closest('.h-threads-item-reply'); const $target = _c.length ? _c : $el;
-            // 板块页主串：隐藏下方的 <hr> 分隔线
+            // 版块页主串：隐藏下方的 <hr> 分隔线
             if ($target.hasClass('h-threads-item-index')) {
               const $hr = $target.next('hr');
               if ($hr.length) $hr.hide().attr('data-xdex-filter-hidden', '1');
@@ -5963,7 +5991,7 @@ ${markedSwatchHtml}
       if (kw) {
         if (displayMode === 'hide') {
           const _c = $el.closest('.h-threads-item-reply'); const $target = _c.length ? _c : $el;
-            // 板块页主串：隐藏下方的 <hr> 分隔线
+            // 版块页主串：隐藏下方的 <hr> 分隔线
             if ($target.hasClass('h-threads-item-index')) {
               const $hr = $target.next('hr');
               if ($hr.length) $hr.hide().attr('data-xdex-filter-hidden', '1');
@@ -9358,7 +9386,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (typeof tryReplaceRightSidebarEarly === 'function') tryReplaceRightSidebarEarly();
     } catch (e) {}
     try {
-      // tag 30：测试板块侧边栏入口（每次页面加载 / 局部增强都会补挂，含观察器兜底）
+      // tag 30：测试版块侧边栏入口（每次页面加载 / 局部增强都会补挂，含观察器兜底）
       if (typeof installTestBoardSidebarLinkObserver === 'function') installTestBoardSidebarLinkObserver();
       // tag 30：测试版主串列表守护（抢在站点内联脚本移除前装好 removedNodes 守护器）
       if (typeof installTestBoardListGuard === 'function') installTestBoardListGuard();
@@ -9825,7 +9853,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       'applyPageEnhancements.total', 'applyPageEnhancements.syncPreprocess', // A/B/C/D：增强收口
       'refresh.checkNext.syncDom',                                      // C：刷新按钮 / 末页旁路
       'refresh.postReply.syncDom',                                      // A：串内页发送后刷新
-      // B：板块页/时间线发送后增量刷新（Step 5-8 的同步 DOM 工作与两处全文档调用）
+      // B：版块页/时间线发送后增量刷新（Step 5-8 的同步 DOM 工作与两处全文档调用）
       'boardQuickReply.total',
       'boardQuickReply.step5.measure', 'boardQuickReply.step6.insert', 'boardQuickReply.step7.compensate',
       'boardQuickReply.step8.post', 'boardQuickReply.buildNode',
@@ -10377,7 +10405,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     // ★ 同步段埋点：插入前的预增强（URL 链接化 / 引用扩展）属同步成本，与下面的异步段分开计量
     startupPerfDebug.measure('applyPageEnhancements.syncPreprocess', () => preprocessPageEnhancementsBeforeInsert(root, liveCfg), { root: root === document ? 'document' : 'scoped' });
     setTimeout(() => {
-      // ★ 埋点覆盖全部 4 个调用点（板块增量刷新 / 快速回复 / 无缝翻页两种）：
+      // ★ 埋点覆盖全部 4 个调用点（版块增量刷新 / 快速回复 / 无缝翻页两种）：
       // 本函数体是 setTimeout 异步，外层 measure 只能量到同步的 preprocess 部分（数十微秒），
       // 真正耗时在这段回调里，故计时点必须放在回调内部。
       const __perfToken = startupPerfDebug.begin();
@@ -10419,7 +10447,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       try { if (typeof initContent === 'function') initContent(root); } catch (e) {}
       //try { if (typeof autoHideRefView === 'function') autoHideRefView(root); } catch (e) {}
       try { if (typeof enablePostExpand === 'function') enablePostExpand(root); } catch (e) {}
-      // 板块页/时间线串卡片「获取最新回复」按钮：与 enablePostExpand 同为逐卡片注入，必须随每次追加重应用
+      // 版块页/时间线串卡片「获取最新回复」按钮：与 enablePostExpand 同为逐卡片注入，必须随每次追加重应用
       // （原先只有启动时两处一次性 document 扫描，导致无缝翻页新增卡片无按钮）
       // 置于 enablePostExpand 之后，使 .js-toggle-mode 已存在、本按钮可正确排到其左侧
       try { if (typeof bindBoardThreadRefreshButtons === 'function') bindBoardThreadRefreshButtons(root); } catch (e) {}
@@ -10655,7 +10683,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       // let hasUserInteracted = false;
       // let lastUserScrollDir = 0;
       // let lastScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
-      // Phase3-2：串内/板块自动观察器去重（滚动意图 / 视口判定 / observer 绑定）
+      // Phase3-2：串内/版块自动观察器去重（滚动意图 / 视口判定 / observer 绑定）
       function isSeamlessNearBottom(marginPx) {
         const margin = (marginPx == null) ? 200 : marginPx;
         return (window.scrollY + window.innerHeight) >= (document.documentElement.scrollHeight - margin);
@@ -10671,7 +10699,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           ? container.lastReplies.querySelector('.h-threads-img-box.h-active')
           : null;
       }
-      // 共用触发门：相交 + 非 loading + 用户向下滚动意图；extraGate===false 时额外拦截（板块 done）
+      // 共用触发门：相交 + 非 loading + 用户向下滚动意图；extraGate===false 时额外拦截（版块 done）
       function shouldTriggerSeamlessAutoLoad(entry, extraGate) {
         if (!entry || !entry.isIntersecting || loading) return false;
         if (extraGate === false) return false;
@@ -10782,7 +10810,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         if (!replies || replies.length === 0) return null;
         return { root, lastReplies: replies[replies.length - 1] };
       }
-      // 哨兵节点创建：串页/板块页共用，避免两处复制样式
+      // 哨兵节点创建：串页/版块页共用，避免两处复制样式
       function ensureSentinelNode() {
         if (!sentinel) {
           sentinel = document.createElement('div');
@@ -10807,7 +10835,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         // if (!sentinel) { ... }
         placeSentinelAfter(containers.lastReplies);
       }
-      // 板块页容器
+      // 版块页容器
       function ensureSentinelPlacedBoard() {
         const lists = document.querySelectorAll('.h-threads-list');
         const lastList = lists[lists.length - 1];
@@ -10816,7 +10844,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         // if (!sentinel) { ... }
         placeSentinelAfter(lastList);
       }
-      // Phase3-4：串内/板块哨兵放置对称入口（mode 策略；不改变放置目标）
+      // Phase3-4：串内/版块哨兵放置对称入口（mode 策略；不改变放置目标）
       function ensureSeamlessSentinel(mode) {
         if (mode === 'board') ensureSentinelPlacedBoard();
         else ensureSentinelPlaced(); // thread（默认）
@@ -11329,7 +11357,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           const base = location.pathname.replace(/\/page\/\d+\.html$/, ''); // 去掉已有的 /page/N.html
           nextUrl = `${location.origin}${base}/page/${nextPageNum}.html`;
         } else {
-          // 默认板块模式
+          // 默认版块模式
           nextUrl = `${location.origin}${location.pathname}?page=${nextPageNum}`;
         }
         loading = true;
@@ -11340,7 +11368,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           const doc = startupPerfDebug.measure('seamless.loadNextBoard.parseHTML', () => new DOMParser().parseFromString(html, 'text/html'), { nextPageNum, htmlLength: html.length });
           const list = doc.querySelector('.h-threads-list');
           const pagination = doc.querySelector('ul.uk-pagination.uk-pagination-left.h-pagination');
-          // 板块页空页面检查（速报2）
+          // 版块页空页面检查（速报2）
           if (!list) {
             done = true;
             const now = Date.now();
@@ -11455,7 +11483,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           setTimeout(checkActiveImageAndToggleObserver, 0);
         }
       });
-      // Phase3-4：串内/板块自动观察器绑定（mode 策略表）
+      // Phase3-4：串内/版块自动观察器绑定（mode 策略表）
       // thread：保留末页缓冲 + 大图冻结；board：仅 done 门，不加串内专属能力
       function bindSeamlessAutoLoad(mode) {
         const placeSentinel = (mode === 'board') ? ensureSentinelPlacedBoard : ensureSentinelPlaced;
@@ -11501,7 +11529,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       // 兼容旧调用名
       function initObserver() { bindSeamlessAutoLoad('thread'); }
       function initObserverBoard() { bindSeamlessAutoLoad('board'); }
-      // Phase3-1：串内/板块手动按钮样式去重
+      // Phase3-1：串内/版块手动按钮样式去重
       function createSeamlessLoadMoreButton(onClick) {
         const btn = document.createElement('div');
         btn.className = 'xdex-placeholder';
@@ -11526,7 +11554,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           sentinel.parentNode.insertBefore(btn, sentinel);
         }
       }
-      // Phase3-4：串内/板块手动按钮绑定对称
+      // Phase3-4：串内/版块手动按钮绑定对称
       function bindSeamlessManualLoad(mode) {
         // 旧：initManualButton / initManualButtonBoard 两套平行实现
         const placeSentinel = (mode === 'board') ? ensureSentinelPlacedBoard : ensureSentinelPlaced;
@@ -12135,7 +12163,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         const width = el.clientWidth || el.offsetWidth || 0;
         return Math.max(0, Math.floor(width - paddingX));
       },
-      // ★ 新增：根据场景（板块页/串内页）计算消息容器最大允许宽度
+      // ★ 新增：根据场景（版块页/串内页）计算消息容器最大允许宽度
       getMaxMsgWidth(msgMain) {
         // ===== 新增：引用浮窗场景 =====
         const quoteBox = msgMain.closest('.qp-quote');
@@ -12146,14 +12174,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         const viewportLimit = window.innerWidth - 240; // 保留你的全局边距逻辑
         // 串内页默认上限
         const threadPageCap = 1200;
-        // 判断是否处于板块页的回复结构（存在 .h-threads-item-index）
+        // 判断是否处于版块页的回复结构（存在 .h-threads-item-index）
         const threadItem = msgMain.closest('.h-threads-item');
         const isBoardPage = threadItem && threadItem.classList.contains('h-threads-item-index');
         if (!isBoardPage) {
           // 串内页：使用原有逻辑（viewport 边缘 + 1200 上限）
           return Math.min(viewportLimit, threadPageCap);
         }
-        // 板块页：右侧区域限制
+        // 版块页：右侧区域限制
         // 右侧区域宽度 = 整个串容器宽度 - 左侧回复序号图标宽度 - 留边距40
         const iconEl = msgMain.previousElementSibling && msgMain.previousElementSibling.classList.contains('h-threads-item-reply-icon')
           ? msgMain.previousElementSibling
@@ -13097,7 +13125,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     });
     }, () => startupPerfDebug.summarizeRoot(root));
   }
-  // 板块页链接新标签页打开
+  // 版块页链接新标签页打开
   function runLinkBlank(root = document) {
     const selector = '#h-content .h-threads-list a, .margin-bottom a, .margin-top a, [style*="margin-top: -5px"] a, [style*="margin-top:-5px"] a, #h-menu-content a';
     root.querySelectorAll(selector).forEach(a => {
@@ -15360,6 +15388,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       ':root.xdex-custom-dark .kaomoji-panel *, :root.xdex-custom-dark .kaomoji-popup *, :root.xdex-custom-dark .kaomoji-dropdown * { color: ' + F('#800000') + ' !important; }',
       // 回复浮窗内的原生片段：默认白化，但功能性彩色（title/email/引用/链接/SAGE）保色相
       ':root.xdex-custom-dark .qp-body .h-threads-info, :root.xdex-custom-dark .qp-body .h-threads-info *, :root.xdex-custom-dark .qp-body .h-threads-content, :root.xdex-custom-dark .qp-body .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      // 红名（UID 里的 <font color="red">）保留红色：否则被上面那条 `*` 通配压平
+      ':root.xdex-custom-dark .qp-body .h-threads-info-uid font[color="red" i], :root.xdex-custom-dark .qp-body .h-threads-info-uid font[color="#ff0000" i] { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
       ':root.xdex-custom-dark .qp-body .h-threads-tips.uk-text-danger { color: ' + D('#cc1105') + ' !important; }',
@@ -15372,6 +15402,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-title { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info-email { color: ' + D('#117743') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info, :root.xdex-custom-dark .h-preview-box .h-threads-info *, :root.xdex-custom-dark .h-preview-box .h-threads-content, :root.xdex-custom-dark .h-preview-box .h-threads-content * { color: ' + F('#800000') + ' !important; }',
+      // 红名（UID 里的 <font color="red">）保留红色：否则被上面那条 `*` 通配压平
+      ':root.xdex-custom-dark .h-preview-box .h-threads-info-uid font[color="red" i], :root.xdex-custom-dark .h-preview-box .h-threads-info-uid font[color="#ff0000" i] { color: ' + D('#cc1105') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box font[color="#789922"] { color: ' + D('#789922') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .h-threads-info a, :root.xdex-custom-dark .h-preview-box .h-threads-content a { color: ' + D('#07d') + ' !important; }',
       ':root.xdex-custom-dark .h-preview-box .uk-text-primary { color: ' + D('#07d') + ' !important; }',
@@ -16353,7 +16385,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     function open() {
       let formEl = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]');
       let previewEl = document.querySelector('.h-preview-box');
-      // 如果串内没找到表单，尝试板块页发串表单
+      // 如果串内没找到表单，尝试版块页发串表单
       if (!formEl) {
           const postForm = document.querySelector('#h-post-form form[action="/Home/Forum/doPostThread.html"]');
           if (postForm) {
@@ -16407,7 +16439,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           $formEl.removeData('xdex-collapsed');
           formEl.classList.remove('xdex-generic-collapsed');
       }
-      // === 新增：给表单打标记，避免被板块页展开逻辑 / early collapse 误处理 ===
+      // === 新增：给表单打标记，避免被版块页展开逻辑 / early collapse 误处理 ===
       formEl.classList.add('qp-reply-form');
       // 包装容器，防止 UI 松散
       const wrap = document.createElement('div');
@@ -18582,7 +18614,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       }
       function runSuccessfulSubmitNavigation(confirmPromise) {
         if (isReply) {
-          // 板块页/时间线页：跳过全量刷新，由 handleBoardQuickReplyRefresh 做增量更新
+          // 版块页/时间线页：跳过全量刷新，由 handleBoardQuickReplyRefresh 做增量更新
           // 串内页：正常全量刷新
           const _isBoardOrTimeline = PageType.isBoardOrTimelinePage();
           if (!_isBoardOrTimeline) {
@@ -18625,7 +18657,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             toast('新串已发送，确认地址超时', 0, { type: 'error' });
           });
         } else if (postAction === 'refresh' && confirmPromise) {
-          // refresh 模式：等待发言历史确认后，跳转板块第一页顶部
+          // refresh 模式：等待发言历史确认后，跳转版块第一页顶部
           toast('新串发布成功，正在确认地址……');
           Promise.race([
             confirmPromise,
@@ -22203,8 +22235,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
   // 统一：草稿 key 生成
   // ★ 草稿键规范化：草稿是「串级」共享数据，同一串在任何页面/任何页码回复都读写同一槽。
   //   /t/{tid}、/t/{tid}/page/N、/Forum/po/id/{tid}/... → 统一为 '/t/{tid}'
-  //   非串内页（/f/xxx 板块页、时间线、搜索页等）→ 返回空串，草稿功能整体短路
-  //   （只有串内才有草稿：板块页发串表单不保存/不载入草稿）
+  //   非串内页（/f/xxx 版块页、时间线、搜索页等）→ 返回空串，草稿功能整体短路
+  //   （只有串内才有草稿：版块页发串表单不保存/不载入草稿）
   function getDraftKey() {
     return normalizeDraftKeyFromPath(window.location.pathname);
   }
@@ -22784,7 +22816,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (!isDraftEnabled()) return;
       if (!正文框.length) return;
       const key = getDraftKey();
-      if (!key) return; // 非串内页（板块页等）无草稿
+      if (!key) return; // 非串内页（版块页等）无草稿
       const migratedLegacy = migrateLegacyDraftIfNeeded(key);
       let draft = readDraftValue(key);
       if (!draft && migratedLegacy) draft = migratedLegacy;
@@ -23272,10 +23304,10 @@ function 注册自动保存编辑() {
   }
 
   /* --------------------------------------------------
-   * tag 15. 板块页快速回复入口（含时间线支持）
+   * tag 15. 版块页快速回复入口（含时间线支持）
    * -------------------------------------------------- */
   function replyQuicklyOnBoardPage() {
-    // 同时识别 /f/ 板块 和 /Forum/timeline/id/{id} 时间线
+    // 同时识别 /f/ 版块 和 /Forum/timeline/id/{id} 时间线
     const isBoardPage = PageType.isBoardPage();
     const timelineInfo = PageType.getTimelineInfo();
     const isTimeline = !!timelineInfo;
@@ -23291,7 +23323,7 @@ function 注册自动保存编辑() {
       '6': '游戏线',
       '7': '生活线'
     };
-    // boardBaseName：仅板块/时间线的基础名称（不包含后缀），显示文本按模式拼接后缀
+    // boardBaseName：仅版块/时间线的基础名称（不包含后缀），显示文本按模式拼接后缀
     const boardBaseName = isTimeline
       ? (timelineNameMap[timelineId] || '时间线')
       : decodeURIComponent((location.pathname || '').replace(/^\/f\//, '').split('/')[0] || '');
@@ -23506,11 +23538,11 @@ function 注册自动保存编辑() {
       document.dispatchEvent(new Event('timelineReplyFormInserted'));
     }
     // ---------- 根据页面场景获取或插入表单 ----------
-    let $formPost = $('form[action="/Home/Forum/doPostThread.html"]').first();   // 板块页发串表单
+    let $formPost = $('form[action="/Home/Forum/doPostThread.html"]').first();   // 版块页发串表单
     let $formReply = $('form[action="/Home/Forum/doReplyThread.html"]').first(); // 串内页回串表单
-    // TODO 值班室板块回复表单需要选择原因，无论在板块页快速回复还是串内回复
+    // TODO 值班室版块回复表单需要选择原因，无论在版块页快速回复还是串内回复
     if ($formPost.length) {
-        // 当前是板块页，直接使用发串表单
+        // 当前是版块页，直接使用发串表单
     } else if ($formReply.length) {
         // 当前是串内页，直接使用回串表单
     } else if (PageType.isTimelineLikePage()) {
@@ -23548,7 +23580,7 @@ function 注册自动保存编辑() {
             <div class="h-post-form-title">回应模式</div>
           </div>
           <div class="h-post-form-input uk-width-4-5" style="display:flex;align-items:center;justify-content:space-between;">
-            <span class="js-reply-mode-text">板块名或串号</span>
+            <span class="js-reply-mode-text">版块名或串号</span>
             <span class="xdex-cookie-check-area" style="display:flex;align-items:center;gap:4px;flex-shrink:0;"></span>
             <div class="reply-mode-toggle" style="display:flex;flex-direction:row;align-items:center;gap:6px;">
               <span class="js-reply-extra" style="display:none;display:inline-flex;align-items:center;"></span>
@@ -23588,7 +23620,7 @@ function 注册自动保存编辑() {
       if (mode === '发串') {
       $formPost.attr('action', '/Home/Forum/doPostThread.html');
       $row.find('.js-reply-extra').hide().empty();
-      $row.find('.js-reply-mode-text').text(boardBaseName ? (boardBaseName + '-发串') : '板块-发串');
+      $row.find('.js-reply-mode-text').text(boardBaseName ? (boardBaseName + '-发串') : '版块-发串');
         window.replyModeState = { mode: '发串', extra: null };
         // 发串模式不需要饼干偏好
         clearCookieCheckSwitch();
@@ -23634,7 +23666,7 @@ function 注册自动保存编辑() {
           $hash.val('cirns');
           // 对于时间线，默认显示的文本已经在插入表单时写成 `${timeline}-快速回复`，这里保持不变
           if (!isTimeline) {
-            $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
+            $row.find('.js-reply-mode-text').text((boardBaseName || '版块') + '-快速回复');
           }
           // 无串上下文（切回回复模式但未指定串）：开关同样不得残留上一串状态
           clearCookieCheckSwitch();
@@ -23656,7 +23688,7 @@ function 注册自动保存编辑() {
               const label = timelineNames[timelineId] || '时间线';
               $row.find('.js-reply-mode-text').text(label + '-快速回复');
             } else {
-              $row.find('.js-reply-mode-text').text((boardBaseName || '板块') + '-快速回复');
+              $row.find('.js-reply-mode-text').text((boardBaseName || '版块') + '-快速回复');
             }
             // 重置饼干偏好开关
             clearCookieCheckSwitch();
@@ -23783,7 +23815,7 @@ function 注册自动保存编辑() {
         $form.find('input[name="__hash__"]').val('cirns');
         const displayName = isTimeline
           ? (timelineNameMap[timelineId] || '时间线')
-          : (boardBaseName || '板块');
+          : (boardBaseName || '版块');
         $('.js-reply-mode-row .js-reply-mode-text').text(`${displayName}-快速回复`);
         // 串上下文已清除，饼干偏好开关必须一并清空：否则残留上一串的默认饼干状态与齿轮
         clearCookieCheckSwitch();
@@ -23891,8 +23923,8 @@ function 注册自动保存编辑() {
     //   if (typeof autoHideRefView === 'function') {try { autoHideRefView(root); } catch (e) {}}
     //   if (typeof enablePostExpand === 'function') {try { aenablePostExpand(); } catch (e) {}}
     // }
-    // ---------- 子函数3：板块/时间线快速回复刷新逻辑（已扩展以支持时间线） ----------
-    // done 将板块页快速回复-局部刷新修改为增量模式
+    // ---------- 子函数3：版块/时间线快速回复刷新逻辑（已扩展以支持时间线） ----------
+    // done 将版块页快速回复-局部刷新修改为增量模式
     function bindBoardQuickReplyRefresh() {
       document.addEventListener('tempReplySuccess', handleBoardQuickReplyRefresh);
       document.addEventListener('contReplySuccess', handleBoardQuickReplyRefresh);
@@ -23901,7 +23933,7 @@ function 注册自动保存编辑() {
       const _boardRefreshInflight = new Set();
       // === v3: API 拉取末页+倒数第二页，位置感知增量合并，滚动位置保持 ===
       function handleBoardQuickReplyRefresh(e) {
-        // 只在 板块页 或 时间线 页生效
+        // 只在 版块页 或 时间线 页生效
         if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
         const btn = (e.detail && e.detail.btn) || null;
         const fromButton = !!(e.detail && e.detail.fromButton);
@@ -23919,7 +23951,7 @@ function 注册自动保存编辑() {
           ? SettingPanel.state : null;
         const REPLY_PER_PAGE = 19;
         const API_BASE = 'https://api.nmb.best/api';
-        // ★ 整链计时：板块页/时间线发送后增量刷新（B 场景）。
+        // ★ 整链计时：版块页/时间线发送后增量刷新（B 场景）。
         // 注意用 begin/finish 而非 measure：本函数是 async，measure 只能量到首个 await 之前，
         // 真正的同步 DOM 工作（Step 5-8）在多个 await 之后的续体里。
         const __perfToken = startupPerfDebug.begin();
@@ -23956,7 +23988,7 @@ function 注册自动保存编辑() {
             const firstReplyEls = Array.from(firstNode.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
             const lastOldId = firstReplyEls.length ? Number(firstReplyEls[firstReplyEls.length - 1].getAttribute('data-threads-id')) : 0;
             // Step 4: 定位 lastOldId 并确定新回复范围
-            // 关键：板块页展示的最近5条回复可能跨页（如 [18,19] 在倒数第二页，[1,2,3] 在末页）
+            // 关键：版块页展示的最近5条回复可能跨页（如 [18,19] 在倒数第二页，[1,2,3] 在末页）
             // 如果 lastOldId 不在末页，必须同时拉取倒数第二页，避免漏掉中间的回复
             let newReplies = [];
             if (lastOldId > 0) {
@@ -24121,7 +24153,7 @@ function 注册自动保存编辑() {
             if (e.type === 'tempReplySuccess') currentReplyTid = null;
           } catch (err) {
             console.warn('[board-quick-reply] API refresh failed', err);
-            toast('刷新板块串失败');
+            toast('刷新版块串失败');
           }
         })().finally(() => {
           // ★ 整链收尾：含全部 await 等待与 Step 5-8 同步工作；与 LoAF 的 blockingDuration 对照
@@ -24200,7 +24232,7 @@ function 注册自动保存编辑() {
     bindBoardQuickReplyRefresh();
     bindBoardThreadRefreshButtons(document);
   }
-  // tag 15 子功能：板块页/时间线串卡片「获取最新回复」按钮
+  // tag 15 子功能：版块页/时间线串卡片「获取最新回复」按钮
   // 复用 handleBoardQuickReplyRefresh 的增量刷新；放在展开/收起按钮(.js-toggle-mode)之后
   function bindBoardThreadRefreshButtons(root) {
     if (!PageType.isBoardPage() && !PageType.isTimelinePage()) return;
@@ -24397,7 +24429,7 @@ function 注册自动保存编辑() {
   }
 
   /* --------------------------------------------------
-   * tag 16. 允许展开/收起被板块页折叠的长串
+   * tag 16. 允许展开/收起被版块页折叠的长串
    * -------------------------------------------------- */
   function enablePostExpand(root = document) {
     const scanRoot = root && typeof root.querySelectorAll === 'function' ? root : document;
@@ -24718,7 +24750,7 @@ function 注册自动保存编辑() {
   }
 
   /* --------------------------------------------------
-   * tag 19. 替换顶栏图片点击事件，串内刷新，板块页回到首页
+   * tag 19. 替换顶栏图片点击事件，串内刷新，版块页回到首页
    * -------------------------------------------------- */
   function overrideTopImageClick() {
     const topImgLink = document.querySelector('#h-menu-top-img');
@@ -24730,7 +24762,7 @@ function 注册自动保存编辑() {
     function isThreadPage(path) {
         return /\/t\/\d{4,}/.test(path) || /^\/Forum\/po\/id\/\d+/.test(path);
     }
-    // 判断是否是板块页
+    // 判断是否是版块页
     function isBoardPage(path) {
         return /^\/f\//.test(path) || /^\/Forum\/timeline\/id\/\d+/.test(path);
     }
@@ -24745,7 +24777,7 @@ function 注册自动保存编辑() {
             // 串内页：刷新当前页面
             location.reload();
         } else if (isBoardPage(path)) {
-            // 板块页：跳转到第一页
+            // 版块页：跳转到第一页
             if (/\/Forum\/timeline\/id\/\d+\/page\/\d+\.html/.test(url)) {
                 url = url.replace(/\/page\/\d+\.html/, '/page/1.html');
             } else if (/[?&]page=\d+/.test(url)) {
@@ -26939,7 +26971,7 @@ function 注册自动保存编辑() {
   });
   const THREAD_HISTORY_SEARCH_HELP_TEXT = '普通关键词：串号、标题、名称、饼干、正文\n高级检索：\nmode:po 只看 Po 串\nmode:normal 普通串\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\nhas:sage 被 SAGE 的串\n可组合：mode:po has:image has:sage 关键词';
   const postHistoryConfirmationMap = new Map(); // 等待发串确认后跳转的 Promise 存储器 { localId -> resolver }
-  const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、板块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定板块 ID\nforum:综合 模糊匹配板块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
+  const POST_HISTORY_SEARCH_HELP_TEXT = '普通关键词：发言 No、串号、版块、标题、名称、Email、正文、饼干、状态\n高级检索：\nstatus:confirmed 已确认\nstatus:pending 确认中\nstatus:failed 失败\nstatus:unconfirmed 未确认\nfid:98 指定版块 ID\nforum:综合 模糊匹配版块显示名/本名/分组名\nthread:64180270 指定串号\nid:68821620 指定发言 No\npage:203 指定页码\ncookie:abc123 指定饼干\nname:无名氏 指定名称\nemail:sage 指定 Email\nhas:image 带图\nhas:gif GIF\nhas:zwsp 或 has:zerowidth 含零宽字符\n可组合：forum:综合 has:image 关键词';
   const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/;
   const threadHistoryDebugState = {
     loadedAt: new Date().toISOString(),
@@ -32013,7 +32045,7 @@ function 注册自动保存编辑() {
         const updated = [];
         if (patch.resto) updated.push('串号');
         if (patch.page) updated.push('页码');
-        if (patch.fid) updated.push('板块');
+        if (patch.fid) updated.push('版块');
         if (patch.imageFile) updated.push('图片');
         toast('已更新 No.' + (replyId || postId) + '：' + (updated.join('、') || '无变化'));
       } else {
@@ -32828,7 +32860,7 @@ function 注册自动保存编辑() {
     const scope = root || document;
     const containers = scope.querySelectorAll ? scope.querySelectorAll('.h-threads-item[data-threads-id] > .h-threads-item-main') : [];
     containers.forEach((container) => {
-      // 找到 No.xxx 链接作为插入锚点（板块页和串内页都有）
+      // 找到 No.xxx 链接作为插入锚点（版块页和串内页都有）
       const anchor = container.querySelector('a.h-threads-info-id');
       if (!anchor || anchor.__xdexSubExBound) return;
       anchor.__xdexSubExBound = true;
@@ -33334,7 +33366,7 @@ function 注册自动保存编辑() {
     if (area) area.innerHTML = '';
   }
   function injectCookieCheckSwitch(threadId) {
-    // 注入到 .xdex-cookie-check-area（串内页和板块页共用）
+    // 注入到 .xdex-cookie-check-area（串内页和版块页共用）
     let area = document.querySelector('.xdex-cookie-check-area');
     // 串内页没有该区域时，在回应模式行的 uk-width-4-5 中创建
     if (!area) {
@@ -33346,7 +33378,7 @@ function 注册自动保存编辑() {
       area.className = 'xdex-cookie-check-area';
       area.style.cssText = 'display:inline-flex;align-items:center;gap:2px;flex-shrink:0;margin-left:auto;';
       // 让父容器成为 flex 使串号和开关同行，空间分布
-      // 扩展到 4/5 宽度，与板块页一致
+      // 扩展到 4/5 宽度，与版块页一致
       replyRow.classList.remove('uk-width-3-5');
       replyRow.classList.add('uk-width-4-5');
       replyRow.style.display = 'flex';
@@ -34631,15 +34663,21 @@ function 注册自动保存编辑() {
     const hrefMatch = href.match(/(?:[?&]r=|No\.)(\d{4,8})/i);
     return hrefMatch ? hrefMatch[1] : '';
   }
-  // ★ ?page=N&r=ID 链接定位：打开页面时滚动到 r= 对应回复并尽量在视野中居中。
+  // ★ ?r=ID 链接定位：打开页面时滚动到 r= 对应回复并尽量在视野中居中。
 // 独立于「关闭引用」开关（开关只控制剥引用，定位是浏览体验）。
+  // ★ 不再要求 URL 带 page=（原先的 `page === null → return` 会让 `/t/<tid>?r=<rid>` 这种
+//   无 page 的链接既不定位、又被历史恢复短路，最后停在页首）。现在带不带 page 走**同一条路径**：
+//   进入页面先查一次；命中 → `scrollIntoView({block:'center'})` + 800ms 后二次校准；
+//   未命中 → 每 300ms 重试一次，最多重试 20 次（合计 21 次查询、约 6 秒）后**静默放弃**：
+//   不提示、不跨页跳转、不留常驻定时器（与 initThreadHistoryReplyRestore 同策略；
+//   页码无法廉价解析：api/ref 只返回回复内容不含页码）。
 // 判定用 data-threads-id（r= 号即回复号），不依赖站点的 selected 标记时序；
 // 图片/相对时间等增强会改变高度，定位后二次校准。
 function initReplyParamScrollTo() {
     try {
       const params = new URLSearchParams(location.search);
       const rParam = params.get('r');
-      if (!rParam || params.get('page') === null || !/^\d{6,8}$/.test(rParam)) return;
+      if (!rParam || !/^\d{6,8}$/.test(rParam)) return;
       const scrollTarget = () => document.querySelector('[data-threads-id="' + rParam + '"]');
       let attempts = 0;
       const tryScroll = () => {
@@ -35907,26 +35945,26 @@ function initReplyParamScrollTo() {
   });
 
   /* --------------------------------------------------
-   * tag 30. 测试板块增强：侧边栏入口 + 主串列表恢复
+   * tag 30. 测试版块增强：侧边栏入口 + 主串列表恢复
    * -------------------------------------------------- */
   // 测试版（fid=122）不在站点公开的侧边栏列表里（与值班室同组但被隐藏），补一个入口。
   // 链接与样式与同组其他链接（值班室、三百人委员会等）完全一致。
-  // ★ 当前页/串来自测试板块时，同时展开「管理」分组（服务端不知道该板块属于侧边栏哪个分组，
-  //   不会加 uk-open；值班室等默认板块则会展开——这里补齐一致体验）。
+  // ★ 当前页/串来自测试版块时，同时展开「管理」分组（服务端不知道该版块属于侧边栏哪个分组，
+  //   不会加 uk-open；值班室等默认版块则会展开——这里补齐一致体验）。
   // 识别判据（覆盖版块页与串内页）：
   //   1) URL 路径以 /f/测试 开头（版块页；复用 PageType 统一解析）
   //   2) 发串表单隐藏域 input[name=fid][value=122]（版块页与串内页均有表单）
-  //   3) 面包屑中存在 /f/%E6%B5%8B%E8%AF%95 链接（版块页；串内页面包屑不含板块）
+  //   3) 面包屑中存在 /f/%E6%B5%8B%E8%AF%95 链接（版块页；串内页面包屑不含版块）
   //   4) forum-info 脚本的 forum.id === '122'（仅版块页）
   //   5) 串内页兜底：当前串号 ∈ 测试版串号集合（showf API 拉取，1h 缓存）
-  //      —— 串内页 URL/表单/面包屑/forum-info 均不含板块信息，只能靠串号归属判定
+  //      —— 串内页 URL/表单/面包屑/forum-info 均不含版块信息，只能靠串号归属判定
   function isTestBoardContext() {
     try {
-      // 仅 /f/测试（值班室虽同属特殊板块，但不是测试上下文）
+      // 仅 /f/测试（值班室虽同属特殊版块，但不是测试上下文）
       if (/^\/f\/%E6%B5%8B%E8%AF%95(?:\/|$)/i.test(location.pathname)
         || /^\/f\/测试(?:\/|$)/.test(decodeURIComponent(location.pathname))) return true;
       if (document.querySelector('#h-post-form input[name="fid"][value="122"], form input[name="fid"][value="122"]')) return true;
-      // ★ 串内页主判据：面包屑含板块链接（服务端会输出当前串所属板块）。
+      // ★ 串内页主判据：面包屑含版块链接（服务端会输出当前串所属版块）。
       //   href 可能是编码态（/f/%E6%B5%8B%E8%AF%95）或明文态（/f/测试），逐链接解码后比对
       const bc = document.querySelector('.uk-breadcrumb');
       if (bc) {
@@ -35943,7 +35981,7 @@ function initReplyParamScrollTo() {
     } catch (e) {}
     return false;
   }
-  // 展开「管理」分组（与站点服务端对默认板块的 uk-open 行为对齐）
+  // 展开「管理」分组（与站点服务端对默认版块的 uk-open 行为对齐）
   // ⚠️ UIkit 竞态：站点内联脚本 ready 时会初始化 nav 组件并按服务端初始状态重设高度——
   // 我们在 early pass 加的 uk-open/height 会被它覆盖（实测版块页 uk-open 丢失、串内页 height 归 0）。
   // 因此展开分两段：立即设一次；ready 后延迟（500ms/1200ms）再重申，并使用具体像素高度
@@ -35970,8 +36008,8 @@ function initReplyParamScrollTo() {
         wrap.style.height = h;
       }
       // 链接样式对齐原生当前版块：ultimate-bold-correct + li.h-active
-      // 判定用「测试板块上下文」整体（版块页与串内页均算——串内页面包屑指向测试板块，
-      // 原生对值班室串内页同样高亮其板块链接）
+      // 判定用「测试版块上下文」整体（版块页与串内页均算——串内页面包屑指向测试版块，
+      // 原生对值班室串内页同样高亮其版块链接）
       const link = groupLi.querySelector('a[data-xdex-test-board-link]');
       if (link) {
         const active = isTestBoardContext();
@@ -37358,7 +37396,7 @@ function initReplyParamScrollTo() {
     initReplyParamScrollTo();                                      //?page&r=链接定位到对应回复
     initThreadHistoryReplyRestore();                               //浏览历史/订阅流打开时恢复上次阅读位置
     initDisableAutoQuote(); //关闭引用：阻止URL中?r=参数自动插入引用号
-    replyQuicklyOnBoardPage();                                      //板块页快速回复模式切换
+    replyQuicklyOnBoardPage();                                      //版块页快速回复模式切换
     if (cfg.enableCookieSwitch)          createCookieSwitcherUI();  //快捷切换饼干
     // 串内饼干偏好初始化
     if (cfg.enableCookieSwitch && cfg.enableCookieConfirm) {

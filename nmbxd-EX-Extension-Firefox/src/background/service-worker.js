@@ -428,13 +428,70 @@ async function handleDnrCookieRule(message, sender) {
       resourceTypes: ['xmlhttprequest']
     }
   }));
+  // ★ 权限守卫：Firefox MV3 的站点访问权限默认可选，未授予时规则可能"加得上但不生效"
+  //   （about:debugging 临时安装尤其如此），宁可报错退回普通发送
+  await ensureXdexHostPermissionForRules();
   try {
     await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice(), addRules });
   } catch (err) {
     // 浏览器拒绝改写 cookie 头时，宁可报错也不要静默用错身份发帖
     throw new Error('浏览器拒绝改写发送请求的 Cookie 头：' + (err && err.message ? err.message : err));
   }
+  // ★ 落地校验：权限不足等场景 updateSessionRules 不抛错，用 getSessionRules 复核一次
+  await verifyXdexPostRulesApplied();
   return { ok: true };
+}
+
+// 规则生效依赖的站点访问权限（两个主域，含子域）：modifyHeaders 只有在拥有对应 host 权限时才生效。
+// Firefox 127+ 安装即授予，但 about:debugging 临时安装不会自动授予。
+// ★ 必须用**清单里声明的**模式去查：用 `*://*.domain/*` 查 contains() 会假阴性（http/https 各自授权），
+//   那样会把本来可用的 DNR 路径误判为不可用。
+async function ensureXdexHostPermissionForRules() {
+  if (!chrome.permissions || typeof chrome.permissions.contains !== 'function') return;
+  let declared = [];
+  try {
+    const manifest = typeof chrome.runtime.getManifest === 'function' ? chrome.runtime.getManifest() : null;
+    declared = ((manifest && manifest.host_permissions) || [])
+      .filter((pattern) => XDEX_POST_RULE_DOMAINS.some((domain) => String(pattern).includes(domain)));
+  } catch (err) {
+    declared = [];
+  }
+  if (!declared.length) return; // 拿不到声明：不阻塞
+  let granted = false;
+  try {
+    granted = await chrome.permissions.contains({ origins: declared });
+  } catch (err) {
+    return; // 权限查询不可用：不阻塞，交给落地校验
+  }
+  if (granted) return;
+  // contains 说没有时再用"已授予清单"复核一次（覆盖 `https://*/*` 这类宽泛授权，避免误判）
+  try {
+    if (typeof chrome.permissions.getAll === 'function') {
+      const all = await chrome.permissions.getAll();
+      const origins = (all && all.origins) || [];
+      const broad = origins.some((origin) => /^https?:\/\/\*\//.test(String(origin)));
+      const covered = broad || XDEX_POST_RULE_DOMAINS.every((domain) => origins.some((origin) => String(origin).includes(domain)));
+      if (covered) return;
+    }
+  } catch (err) {}
+  throw new Error('缺少站点访问权限（' + XDEX_POST_RULE_DOMAINS.join('、') + '），请求头规则不会生效（请点扩展图标选择"始终允许"，或在 about:addons → 权限里授予）');
+}
+
+// 规则落地校验：updateSessionRules 在权限不足等场景可能成功返回却不生效
+async function verifyXdexPostRulesApplied() {
+  const api = chrome.declarativeNetRequest;
+  if (!api || typeof api.getSessionRules !== 'function') return;
+  let rules = null;
+  try {
+    rules = await api.getSessionRules();
+  } catch (err) {
+    return; // 查不到就不做强校验
+  }
+  const ids = new Set((rules || []).map((rule) => rule && rule.id));
+  const missing = XDEX_POST_RULE_IDS.filter((id) => !ids.has(id));
+  if (!missing.length) return;
+  try { await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice() }); } catch (err) {}
+  throw new Error('发送规则未生效（规则 ' + missing.join('/') + ' 未落地），已退回普通发送方式');
 }
 
 async function handleCookieMessage(message, sender) {

@@ -9,7 +9,7 @@ const src = fs.readFileSync(path.join(root, 'src/content/nmbxd-EX-for-edit.user.
 function assert(condition, message) { if (!condition) throw new Error(message); }
 
 // ── 抽取 toast 基础设施（toastQueue..dismissOnNextInteraction）并在沙箱内执行 ──
-function loadToastModule() {
+function loadToastModule(consoleImpl) {
   const s0 = src.indexOf('const toastQueue = []');
   assert(s0 !== -1, 'toastQueue must exist');
   const s1 = src.indexOf('const Utils = {', s0);
@@ -23,7 +23,7 @@ function loadToastModule() {
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     window: { setTimeout: (fn, ms) => { sb.__timers.push({ fn, ms, cancelled: false }); return sb.__timers.length; },
               clearTimeout: (id) => { const t = sb.__timers[id - 1]; if (t) t.cancelled = true; } },
-    console: { log() {}, warn() {} },
+    console: consoleImpl || { log() {}, warn() {} },
     document: {
       body: { append() {}, remove() {} },
       addEventListener(ev, fn) { listeners[ev].push(fn); },
@@ -256,6 +256,56 @@ function testMigratedErrorCallSites() {
   assert(midPage.length === 4, `intermediate-page error branches must all use the error channel, got ${midPage.length}`);
 }
 
+// ── 控制台留痕契约：排队 / 快速(立即) / 错误 三条链路都必须打印 [toast]，且不重复 ──
+function testToastConsoleLogging() {
+  const logs = [];
+  const { sb } = loadToastModule({ log: (...args) => logs.push(args), warn: () => {} });
+  // 只统计 [toast] 前缀：错误链路被顶掉时还会打印 [xdex error toast] 关闭原因，不属本契约
+  const toastLogs = () => logs.filter((l) => l[0] === '[toast]');
+
+  sb.toast('排队消息', 1000);
+  assert(toastLogs().length === 1, '排队链路应打印 1 条 [toast]，实际 ' + toastLogs().length);
+  assert(toastLogs()[0][1] === '排队消息', '排队日志第二参数应为消息本身');
+  assert(toastLogs()[0][2] && toastLogs()[0][2].channel === 'queue', '排队日志需标明 channel=queue');
+
+  logs.length = 0;
+  sb.toast('快速消息', 900, { queue: false, key: 'k-quick' });
+  assert(toastLogs().length === 1, '快速（立即）链路应打印 1 条 [toast]，实际 ' + toastLogs().length);
+  assert(toastLogs()[0][2] && toastLogs()[0][2].channel === 'immediate' && toastLogs()[0][2].key === 'k-quick', '快速日志需标明 channel=immediate 与 key');
+
+  logs.length = 0;
+  sb.toast('错误消息', 1800, { type: 'error', key: 'k-err' });
+  assert(toastLogs().length === 1, '错误链路应打印 1 条 [toast]，实际 ' + toastLogs().length);
+  assert(toastLogs()[0][2] && toastLogs()[0][2].channel === 'error', '错误日志需标明 channel=error');
+
+  logs.length = 0;
+  sb.toast('保留消息', 1800, { type: 'hold', key: 'k-hold' });
+  assert(toastLogs().length === 1 && toastLogs()[0][2].channel === 'hold', 'hold 链路应打印 1 条 [toast] 且 channel=hold');
+
+  // refresh-status 曾是"立即链路里唯一会打印"的特例：改统一后不得出现双份日志
+  logs.length = 0;
+  sb.toast('刷新中', 900, { queue: false, key: 'refresh-status' });
+  assert(toastLogs().length === 1, 'refresh-status 必须恰好打印 1 条 [toast]（防止特例残留导致重复），实际 ' + toastLogs().length);
+
+  // 注意：本 harness 的 fadeOut 回调不会触发，队列不会自然排空（isShowing 停在 true）。
+  // 上面 immediate / error / hold 的断言正是在"上一条仍在显示"时取得的 —— 即同时证明了
+  // 「快速链路不排队也会打印」（这正是本次要修的点）。排队链路的"每条都打印"用新实例单独验证：
+  const freshLogs = [];
+  const fresh = loadToastModule({ log: (...args) => freshLogs.push(args), warn: () => {} }).sb;
+  fresh.toast('q1', 100);
+  assert(freshLogs.filter((l) => l[0] === '[toast]').length === 1, '排队链路首条必须打印 [toast]');
+}
+
+// ── 扩展侧 toast（gm-compat）同样要留痕 ──
+function testExtensionToastLogging() {
+  const compat = fs.readFileSync(path.join(root, 'src/content/gm-compat.js'), 'utf8');
+  assert(/function showExtensionToast\(/.test(compat), 'gm-compat must define showExtensionToast');
+  const i = compat.indexOf('function showExtensionToast(');
+  const body = compat.slice(i, i + 600);
+  assert(body.includes("console.log('[toast]'"), 'extension toast must log to console with [toast] prefix');
+  assert(body.includes("channel: 'extension'"), 'extension toast log must mark channel=extension');
+}
+
 const tests = [
   testErrorForcesImmediateChannel,
   testFocusinMustNotDismiss,
@@ -272,6 +322,8 @@ const tests = [
   testHoldSafetyCapExists,
   testExtensionSideSupportsErrorType,
   testMigratedErrorCallSites,
+  testToastConsoleLogging,
+  testExtensionToastLogging,
 ];
 for (const t of tests) t();
 console.log('toast error contract ok');

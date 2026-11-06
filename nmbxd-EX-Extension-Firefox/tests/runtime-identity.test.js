@@ -69,30 +69,58 @@ function loadRuntime(options) {
   return sandbox.__probe;
 }
 
-// 内容脚本可见的 chrome API：runtime.id 有、declarativeNetRequest 没有（Chrome 文档：内容脚本只能访问 dom/i18n/storage/runtime.*）
+// 内容脚本可见的 chrome API：runtime.id 有、declarativeNetRequest 没有
+// （Chrome 官方文档：内容脚本只能访问 dom/i18n/storage/runtime.*；实测 dnr === undefined）
 const chromeContentScriptApis = { runtime: { id: EXTENSION_ID } };
-// 假想的“内容脚本可见 DNR”宿主，用来验证 kind 命名成对覆盖
+// 假想的"内容脚本也能看见 DNR"宿主，用来验证 API 可见性这条判定仍然有效
 const chromeWithDnrApis = { runtime: { id: EXTENSION_ID }, declarativeNetRequest: { updateSessionRules() {} } };
+const DNR_PERMS = ['storage', 'contextMenus', 'cookies', 'downloads', 'offscreen', 'clipboardWrite', 'alarms', 'declarativeNetRequestWithHostAccess'];
+const NO_DNR_PERMS = ['storage', 'contextMenus', 'cookies', 'downloads'];
+function runtimeWithManifest(perms) {
+  return { runtime: { id: EXTENSION_ID, getManifest: () => ({ permissions: perms }) } };
+}
 
-function testChromeExtensionKind() {
-  const p = loadRuntime({ userAgent: CHROME_UA, chrome: chromeContentScriptApis, scriptHandler: 'extension' });
+function testChromeExtensionKindUsesDeclaredDnr() {
+  // 关键用例：内容脚本看不到 DNR，但清单声明了权限 → 必须报 chrome-extension（DNR 路径可用）
+  const p = loadRuntime({ userAgent: CHROME_UA, chrome: runtimeWithManifest(DNR_PERMS), scriptHandler: 'extension' });
   assert.strictEqual(p.family, 'chrome');
-  assert.strictEqual(p.runtime.kind, 'chrome-extension-limited', 'Chrome 扩展内容脚本（DNR 不可见）应为 chrome-extension-limited');
+  assert.strictEqual(p.runtime.kind, 'chrome-extension', '清单声明 DNR 时必须走 chrome-extension（规则由后台安装）');
+  assert.strictEqual(p.runtime.hasDnr, true);
+  assert.strictEqual(p.runtime.hasDnrDeclared, true);
+  assert.strictEqual(p.runtime.hasDnrApi, false, '内容脚本看不到 API 才是常态');
   assert.strictEqual(p.runtime.packaged, true);
   assert.strictEqual(p.runtime.browser, 'chrome');
+}
+
+function testChromeExtensionKindWithoutDeclaredDnr() {
+  // 清单没有 DNR 权限（旧版/精简构建）→ 保守回到 limited，走容器接口替换
+  const p = loadRuntime({ userAgent: CHROME_UA, chrome: runtimeWithManifest(NO_DNR_PERMS), scriptHandler: 'extension' });
+  assert.strictEqual(p.runtime.kind, 'chrome-extension-limited', '未声明 DNR 时必须退回 chrome-extension-limited');
+  assert.strictEqual(p.runtime.hasDnr, false);
+  assert.strictEqual(p.runtime.hasDnrDeclared, false);
 }
 
 function testFirefoxExtensionKind() {
   const p = loadRuntime({
     userAgent: FIREFOX_UA,
-    chrome: chromeContentScriptApis,
+    chrome: runtimeWithManifest(['storage', 'contextMenus', 'cookies', 'declarativeNetRequest']),
     browser: { runtime: { id: 'nmbxd-ex-firefox@saya-addon' } },
     scriptHandler: 'extension'
   });
   assert.strictEqual(p.family, 'firefox');
-  assert.strictEqual(p.runtime.kind, 'firefox-extension-limited', 'Firefox 扩展内容脚本必须报 firefox-extension-limited');
+  assert.strictEqual(p.runtime.kind, 'firefox-extension', 'Firefox 构建清单声明 declarativeNetRequest → firefox-extension');
   assert.strictEqual(p.runtime.packaged, true);
   assert.strictEqual(p.runtime.browser, 'firefox');
+}
+
+function testFirefoxLimitedWithoutDeclaredDnr() {
+  const p = loadRuntime({
+    userAgent: FIREFOX_UA,
+    chrome: runtimeWithManifest(NO_DNR_PERMS),
+    browser: { runtime: { id: 'nmbxd-ex-firefox@saya-addon' } },
+    scriptHandler: 'extension'
+  });
+  assert.strictEqual(p.runtime.kind, 'firefox-extension-limited', '未声明 DNR 的 Firefox 构建也应退回 limited');
 }
 
 function testFirefoxDetectedByBrowserApiWithoutFirefoxUa() {
@@ -196,9 +224,32 @@ function testGmCompatDeclaresBrowserFamily() {
   assert(compat.includes('/Firefox\\//i.test(ua)'), 'gm-compat 必须用 UA 识别 Firefox 宿主');
 }
 
+function testBackgroundGuardsDnrRules() {
+  const worker = fs.readFileSync(path.join(EXT_ROOT, 'src', 'background', 'service-worker.js'), 'utf8');
+  assert(worker.includes('function ensureXdexHostPermissionForRules('), '后台必须先用 permissions.contains 确认站点访问权限');
+  assert(worker.includes('chrome.runtime.getManifest();') || worker.includes('chrome.runtime.getManifest()'), '权限查询必须基于清单声明');
+  assert(worker.includes('.filter((pattern) => XDEX_POST_RULE_DOMAINS.some((domain) => String(pattern).includes(domain)))'), '权限查询必须挑出两个主域的清单模式');
+  assert(worker.includes('chrome.permissions.contains({ origins: declared })'), '必须用清单里声明的模式查询（用 *:// 会假阴性）');
+  assert(worker.includes('chrome.permissions.getAll()'), 'contains 为否时要用已授予清单复核，避免误判可用路径');
+  assert(!/contains\(\{ origins: XDEX_POST_RULE_DOMAINS\.map/.test(worker), '禁止自造 *:// 模式查询权限');
+  assert(worker.includes('function verifyXdexPostRulesApplied('), '后台必须用 getSessionRules 复核规则是否落地');
+  const handlerStart = worker.indexOf('async function handleDnrCookieRule(');
+  assert(handlerStart !== -1, 'handleDnrCookieRule 必须存在');
+  const handler = worker.slice(handlerStart, worker.indexOf('\n}\n', handlerStart));
+  const guardIndex = handler.indexOf('await ensureXdexHostPermissionForRules();');
+  const addIndex = handler.indexOf('await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice(), addRules });');
+  const verifyIndex = handler.indexOf('await verifyXdexPostRulesApplied();');
+  // 关闭规则的分支也有一次 return { ok: true }，这里取最后一次（即加规则后的成功返回）
+  const okIndex = handler.lastIndexOf('return { ok: true };');
+  assert(guardIndex !== -1 && addIndex !== -1 && verifyIndex !== -1, 'DNR 处理必须依次：权限守卫 → 加规则 → 落地校验');
+  assert(guardIndex < addIndex && addIndex < verifyIndex && verifyIndex < okIndex, '校验顺序必须阻止"加了却没生效"就回 ok:true');
+}
+
 const tests = [
-  testChromeExtensionKind,
+  testChromeExtensionKindUsesDeclaredDnr,
+  testChromeExtensionKindWithoutDeclaredDnr,
   testFirefoxExtensionKind,
+  testFirefoxLimitedWithoutDeclaredDnr,
   testFirefoxDetectedByBrowserApiWithoutFirefoxUa,
   testDnrVisibleKinds,
   testDeclaredFallbackUsesBrowserFamily,
@@ -206,7 +257,8 @@ const tests = [
   testKindPredicatesAreSymmetric,
   testSingletonSuppressionIsSymmetric,
   testBranchesNoLongerHardcodeChromeKind,
-  testGmCompatDeclaresBrowserFamily
+  testGmCompatDeclaresBrowserFamily,
+  testBackgroundGuardsDnrRules
 ];
 
 let failed = 0;
