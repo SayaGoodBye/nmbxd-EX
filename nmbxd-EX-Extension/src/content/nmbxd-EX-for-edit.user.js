@@ -15978,7 +15978,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       }
       // 页面内记住整窗位置/尺寸（不写 GM_setValue）
       // 仅手动四角拉伸过的尺寸需要保留；内容自然撑高的高度关闭后丢弃，下次快速回空高
-      if (overlay.__userSizedPanel) {
+      // ★ 视口从未就绪过（本次几何只是 CSS 默认值，不是真实布局结果）→ 不保存：
+      //   否则下次打开会沿用 top=0 之类的坏几何（宽度变化检测只看 winW，垂直位置会沿用），
+      //   表现为浮窗贴顶/贴左上。保留上一份有效几何（若有）。
+      if (overlay.__viewportWasInvalid) {
+        // 丢弃本次几何，不动 __savedPanelRect
+      } else if (overlay.__userSizedPanel) {
         saveReplyPanelRect(overlay);
       } else {
         const stack = overlay.querySelector('.qp-stack');
@@ -16007,6 +16012,19 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         window.removeEventListener('resize', overlay.__windowResizeHandler);
         overlay.__windowResizeHandler = null;
       }
+      if (overlay.__viewportWatchHandler) {
+        window.removeEventListener('resize', overlay.__viewportWatchHandler);
+        overlay.__viewportWatchHandler = null;
+        overlay.__viewportWatchBound = false;
+      }
+      if (overlay.__viewportWatchTimer) { clearTimeout(overlay.__viewportWatchTimer); overlay.__viewportWatchTimer = 0; }
+      // 取消「视口就绪重试」：移除其 resize 监听并复位武装标志（否则监听残留、后续不再自愈）
+      if (typeof overlay.__viewRetryCleanup === 'function') {
+        try { overlay.__viewRetryCleanup(); } catch (e) {}
+        overlay.__viewRetryCleanup = null;
+      }
+      if (overlay.__viewRetryTimer) { clearTimeout(overlay.__viewRetryTimer); overlay.__viewRetryTimer = 0; }
+      overlay.__viewRetryArmed = false;
       if (overlay.__formEl && overlay.__formEl.__placeholder) {
         overlay.__formEl.__placeholder.parentNode.insertBefore(overlay.__formEl, overlay.__formEl.__placeholder);
         // 移回后清除 textarea 的宽度样式，让它恢复原始状态
@@ -16104,6 +16122,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     }
     function fitReplyPanelToContent(ov, opts) {
       if (!ov || ov.__userSizedPanel || ov.__autoFitting) return;
+      // 视口未就绪时量高/夹取都无意义，等 scheduleReplyPanelViewportRetry 就绪后再补
+      if (!(window.innerWidth > 0) || !(window.innerHeight > 0)) return;
       const stack = ov.querySelector('.qp-stack');
       if (!stack || ov.style.display === 'none') return;
       const options = opts || {};
@@ -16216,6 +16236,17 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       const stack = ov && ov.querySelector('.qp-stack');
       const quote = ov && ov.querySelector('.qp-quote');
       if (!stack) return;
+      // ★ 视口未就绪（宿主尚未给视图下发尺寸时 innerWidth/innerHeight 为 0，QwQNT 的
+      //   WebContentsView 在激活/显示前即如此）：此时按视口算出的居中会退化成
+      //   left/top = -50px，且下面会写 transform:none 覆盖 CSS 的 translate(-50%,-50%)
+      //   居中兜底 → 浮窗粘在页面左上角。这里保持 CSS 居中、不写几何，等视口就绪后重试。
+      if (!(window.innerWidth > 0) || !(window.innerHeight > 0)) {
+        // 标记：当前几何不可信（此后若视口变化，按新视口重新居中而不是沿用旧几何）
+        ov.__viewportWasInvalid = true;
+        scheduleReplyPanelViewportRetry(ov, rect, opts);
+        return;
+      }
+      ov.__viewportWasInvalid = false;
       const options = opts || {};
       const base = getReplyPanelDefaults();
       const r = rect && typeof rect === 'object' ? rect : base;
@@ -16252,6 +16283,44 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         ov.__userSizedPanel = true;
         stack.classList.add('qp-user-sized');
       }
+    }
+    // 视口就绪后补一次布局：优先靠 window resize（视图拿到尺寸会触发一次），
+    // 并带定时兜底（隐藏视图里 rAF 可能不派发，故用 setTimeout）。
+    function scheduleReplyPanelViewportRetry(ov, rect, opts) {
+      if (!ov || ov.__viewRetryArmed) return;
+      ov.__viewRetryArmed = true;
+      let tries = 0;
+      const cleanup = () => {
+        ov.__viewRetryArmed = false;
+        try { window.removeEventListener('resize', onResize); } catch (e) {}
+        if (ov.__viewRetryTimer) { clearTimeout(ov.__viewRetryTimer); ov.__viewRetryTimer = 0; }
+        if (ov.__viewRetryCleanup === cleanup) ov.__viewRetryCleanup = null;
+      };
+      const ready = () => window.innerWidth > 0 && window.innerHeight > 0;
+      const run = () => {
+        if (!ov || !ov.isConnected) { cleanup(); return true; }
+        // 浮窗已关闭（closeOverlay 置 display:none）：停止等待，避免残留在关闭态上重排
+        if (ov.style.display === 'none') { cleanup(); return true; }
+        if (!ready()) return false;
+        cleanup();
+        // 传入的 rect 是在视口未就绪时算出来的（left=0/top=8 之类），必须丢弃并按当前视口重算，
+        // 否则重试会把「左上角」的旧几何又写回去（实测）。
+        applyReplyPanelLayout(ov, null, opts);
+        try { scheduleReplyPanelAutoFit(ov); } catch (e) {}
+        return true;
+      };
+      const onResize = () => { run(); };
+      window.addEventListener('resize', onResize);
+      // 把清理函数挂到浮窗上：closeOverlay 必须主动调用它，否则 resize 监听会残留、
+      // 且 __viewRetryArmed 永远为 true（后续再遇到 0 视口时不再武装重试）。
+      ov.__viewRetryCleanup = cleanup;
+      const tick = () => {
+        ov.__viewRetryTimer = 0;
+        if (run()) return;
+        if (++tries > 100) { cleanup(); return; }   // ≈3s 上限
+        ov.__viewRetryTimer = setTimeout(tick, 30);
+      };
+      ov.__viewRetryTimer = setTimeout(tick, 30);
     }
     function saveReplyPanelRect(ov) {
       const stack = ov && ov.querySelector('.qp-stack');
@@ -16382,6 +16451,41 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       });
     }
     // REPLY 按钮
+    // 打开期间监听视口变化：把浮窗夹回可视区；若当前几何落在可视区外（此前是在视口
+    // 未就绪/极小时布局的），按当前视口重新居中（等价归位）。
+    function bindReplyPanelViewportWatch(ov) {
+      if (!ov || ov.__viewportWatchBound) return;
+      ov.__viewportWatchBound = true;
+      let timer = 0;
+      ov.__viewportWatchHandler = () => {
+        if (timer) return;
+        timer = setTimeout(() => {
+          timer = 0;
+          ov.__viewportWatchTimer = 0;
+          if (!ov || !ov.isConnected || ov.style.display === 'none') return;
+          if (!(window.innerWidth > 0) || !(window.innerHeight > 0)) return;
+          const stack = ov.querySelector('.qp-stack');
+          if (!stack) return;
+          const r = stack.getBoundingClientRect();
+          // ① 此前是在视口未就绪/极小时布局的（几何不可信）→ 直接按当前视口归位；
+          // ② 否则仅当几何真的越出可视区时才归位，正常摆放不动（保留用户拖拽位置）
+          const outside = ov.__viewportWasInvalid
+            || r.left < 0 || r.top < 0
+            || r.left > window.innerWidth - 50 || r.top > window.innerHeight - 50;
+          if (outside) {
+            ov.__savedPanelRect = null;
+            ov.__userSizedPanel = false;
+            applyReplyPanelLayout(ov, null);
+            try { scheduleReplyPanelAutoFit(ov); } catch (e) {}
+            return;
+          }
+          applyReplyPanelLayout(ov, { width: r.width, height: r.height, left: r.left, top: r.top },
+            { preserveUserSized: true, fromAutoFit: true });
+        }, 16);
+        ov.__viewportWatchTimer = timer;
+      };
+      window.addEventListener('resize', ov.__viewportWatchHandler);
+    }
     function open() {
       let formEl = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]');
       let previewEl = document.querySelector('.h-preview-box');
@@ -16628,6 +16732,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       ov.style.display = 'block';
       applyReplyPanelLayout(ov, layoutRect);
       bindReplyPanelFrame(ov);
+      bindReplyPanelViewportWatch(ov);
       if (!ov.__userSizedPanel) {
         // 同步贴合：此时 form/preview 已在 DOM，且 display=block，可量到真实高度
         fitReplyPanelToContent(ov, { save: true });
@@ -30280,6 +30385,18 @@ function 注册自动保存编辑() {
       const prevVc = Math.max(Number(hotMap[key] && hotMap[key].vc) || 0, Number(item.visitCount) || 0);
       const nextVc = prevVc + (countVisit ? 1 : 0);
       if (countVisit) item.visitCount = nextVc;
+      // ★ 排序键同步：面板默认排序（last-desc）按 index[key].lastVisitedAt 计分，而上面的更新
+      //   只落在 items[key]（显示用的时间）。若不同步 index，刚访问过的串会「时间变新但停在
+      //   原位」；且写入方标签不会自愈——小键叠加的守卫是 entry.vat > item.lastVisitedAt，
+      //   这里已把 item.lastVisitedAt 置为 now，守卫不成立 → index/order 都不更新。
+      //   （其它标签的 item 仍是旧值，可由小键叠加修好，故问题只在访问发生的那一页可见。）
+      try {
+        if (store.index && store.index[key]) store.index[key].lastVisitedAt = Number(item.lastVisitedAt) || now;
+        if (Array.isArray(store.order) && store.order.length > 1) {
+          store.order.sort((a, b) => (Number(store.items[b] && store.items[b].lastVisitedAt) || 0)
+            - (Number(store.items[a] && store.items[a].lastVisitedAt) || 0));
+        }
+      } catch (e) { /* 排序同步失败不影响访问记录本身 */ }
       setThreadHistoryPosEntry(key, {
         p: item.page,
         u: item.url,
