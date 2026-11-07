@@ -1518,10 +1518,14 @@ function xdexEarlyDarkEnabled() {
                           color:#5b4636;
                      }
                   .xdex-history-tombstone-mark:hover,
-                  .xdex-post-history-tombstone-mark:hover {
-                          color:#EE0000;
-                          border-color:#EE0000;
-                     }
+                  .xdex-post-history-tombstone-mark:hover,
+                  /* 深色主题下有条 :root.xdex-darkreader-active …-tombstone-mark{color:var(--foreground)}（0,3,0）
+                     会压过上面的 hover（0,2,0）——只让圆周变红、图标不变；这里用同上下文 + !important 补齐 */
+                  :root.xdex-darkreader-active .xdex-history-tombstone-mark:hover,
+                  :root.xdex-darkreader-active .xdex-post-history-tombstone-mark:hover {
+                          color:#EE0000 !important;
+                          border-color:#EE0000 !important;
+                  }
                   .xdex-recycle-sort {
                           padding:4px 6px;
                           border:1px solid var(--xdex-sp-border);
@@ -27794,6 +27798,20 @@ function 注册自动保存编辑() {
       hasZeroWidth: ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))
     };
   }
+  // ★ 把"删除后新段"（影子条目 / 新写入）归并进墓碑快照：墓碑保留最新业务信息，避免归并时丢内容。
+  //   口径与回收站卡片的合成一致：**正文取入参（更新的一方）**，submittedAt 取更早、page 取更大。
+  function mergePostHistoryShadowIntoSnapshot(rec, shadow) {
+    const base = Object.assign({}, rec || {});
+    const sh = Object.assign({}, shadow || {});
+    const merged = Object.assign({}, base, sh);
+    merged.submittedAt = Math.min(Number(base.submittedAt) || Infinity, Number(sh.submittedAt) || Infinity);
+    if (!Number.isFinite(merged.submittedAt)) merged.submittedAt = Number(base.submittedAt) || Number(sh.submittedAt) || Date.now();
+    merged.page = Math.max(Number(base.page) || 0, Number(sh.page) || 0);
+    merged.contentText = String(sh.contentText || base.contentText || '');
+    merged.type = base.type || sh.type;
+    merged.localId = base.localId || sh.localId;
+    return merged;
+  }
   function normalizePostHistoryStore(rawStore) {
     const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
     store.version = POST_HISTORY_STORE_VERSION;
@@ -27803,6 +27821,17 @@ function 注册自动保存编辑() {
     store.index = store.index && typeof store.index === 'object' ? store.index : {};
     // 墓碑: 与浏览历史同构。TTL 到期降级 purged; purged 超安全期清除; revivedAt 标记超期清除
     store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
+    // ★ 发言历史语义：删除后**直接进回收站**，不在主列表保留"删除后新段"（那是浏览历史的行为）。
+    //   这里把历史遗留的影子条目（先前版本复活出来的）一次性归并回墓碑快照并从列表移除；
+    //   必须放在下面 TTL 降级之前，否则快照被降级后影子数据会连带丢失。
+    Object.keys(store.tombstones).forEach((tKey) => {
+      const t = store.tombstones[tKey];
+      if (!t || typeof t !== 'object' || t.purged || t.revivedAt) return;
+      const shadow = store.items[tKey];
+      if (!shadow) return;
+      t.record = mergePostHistoryShadowIntoSnapshot(t.record, shadow);
+      delete store.items[tKey];
+    });
     {
       const nowTs = Date.now();
       Object.keys(store.tombstones).forEach((tKey) => {
@@ -28156,6 +28185,16 @@ function 注册自动保存编辑() {
   function upsertPostHistoryRecord(record) {
     if (!record || !record.localId) return getPostHistoryStore();
     const store = getPostHistoryStore();
+    // ★ 发言历史语义：删除后**直接进回收站**，不得以"垃圾桶图标重新出现在列表里"。
+    //   只要该条存在未复活(非 purged/非 revived)的墓碑，就只把新信息并入墓碑快照，不再重建 items 影子条目。
+    //   （浏览历史保留"删除后新段"行为，用于区分"删除后继续浏览"；发言历史不需要此区分。）
+    const tomb = (store.tombstones || {})[record.localId];
+    if (tomb && !tomb.purged && !tomb.revivedAt) {
+      const incoming = Object.assign({}, record, { localId: record.localId });
+      tomb.record = mergePostHistoryShadowIntoSnapshot(tomb.record, incoming);
+      logPostHistory('store upsert skipped: 该条已在回收站，仅更新快照', { localId: record.localId });
+      return setPostHistoryStore(store);
+    }
     const old = store.items[record.localId] || {};
     const merged = Object.assign({}, old, record, {
       localId: record.localId,
