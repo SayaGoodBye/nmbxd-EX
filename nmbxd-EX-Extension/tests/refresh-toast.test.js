@@ -39,8 +39,12 @@ function testRefreshStatusUsesImmediateToastKey() {
 
   assert(refreshStatusCalls >= 1, 'refresh status channel should define the immediate refresh-status key');
 
-  // 8497 现形态：文本相同但以独立 duration 参数调用（1800，给足阅读时间）
-  assert(source.includes("showRefreshStatus(result.hasUpdate ? '已更新' : '无更新', 1800)"), 'manual/auto refresh result should use the dedicated refresh-status toast');
+  // 行为断言：刷新结果提示必须走 refresh-status 专用通道。
+  // 不钉死 duration/type —— 实现对「无更新」有意加了 hold 驻留（duration 0 + type:'hold'），
+  // 时长与类型属可演进细节；契约只要求「结果提示不落回普通队列 toast」。
+  // （原本按源码中的字面量整串匹配，实现演进后即失效，故改为语义匹配。）
+  assert(/showRefreshStatus\(\s*result\.hasUpdate\s*\?\s*['"]已更新['"]\s*:\s*['"]无更新['"]/.test(source),
+    'manual/auto refresh result should use the dedicated refresh-status toast');
 
 }
 

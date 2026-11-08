@@ -13249,6 +13249,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         .qp-overlay-quote .qp-quote.is-dragging,
         .qp-overlay-quote .qp-quote.is-resizing { cursor: grabbing !important; user-select: none !important; }
         /* 引用浮窗四角拉伸（与回复浮窗一致：角=缩放，边=拖动） */
+        /* ★ 引用弹窗的 edges/corners 同样挂在 .qp-stack 上 */
         .qp-overlay-quote .qp-resize-corner {
           position: absolute;
           width: 14px;
@@ -13269,7 +13270,10 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         #h-ref-view {
           z-index: 20000 !important; /* 保证原生引用框在浮窗之上 */
         }
-        /* 拖拽手柄：四边窄条，仅在手柄区域显示“移动”指针 */
+        /* 拖拽手柄：四边窄条，仅在手柄区域显示“移动”指针
+           ★ 宿主约束：这些元素必须是 .qp-quote 的**直接子元素**，且用 sticky 粘附——
+             .qp-quote 在滚动态是 overflow-y:auto 的滚动容器，absolute 子元素会随内容
+             一起滚动（拖拽带会跑到浮窗中间甚至跑出容器）；sticky 则固定于滚动视口。 */
         .qp-drag-edge {
           position: absolute;
           pointer-events: auto;
@@ -15694,6 +15698,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
             scrollbar-width: thin;
           }
+
           .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote::-webkit-scrollbar {
             width: 8px;
           }
@@ -15713,7 +15718,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
               box-sizing: border-box;
               flex: none !important;
           }
-          /* 四边中段：移动浮窗（角部留给缩放） */
+          /* 四边中段：移动浮窗（角部留给缩放）
+             ★ 宿主是 .qp-stack（非滚动），不可挂到 .qp-quote（滚动态会随内容滚走） */
           .qp-drag-edge {
             position: absolute;
             pointer-events: auto;
@@ -15897,17 +15903,22 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           overlay.className = 'qp-overlay';
           overlay.innerHTML = `
               <div class="qp-stack">
+                  <!-- ★ 边缘手柄挂在 .qp-stack 上（不是 .qp-quote）：
+                       .qp-quote 在滚动态是 overflow-y:auto 的滚动容器，其内部 absolute
+                       子元素会随内容滚动 → 拖拽带会跑到面板中间（用户实测复现）。
+                       .qp-stack 不滚动，且由 JS 写入显式 width/height、.qp-quote 为其
+                       100%/100% 子元素 → 两者盒模型完全相等，手柄定位零偏移。 -->
+                  <div class="qp-drag-edge top"></div>
+                  <div class="qp-drag-edge bottom"></div>
+                  <div class="qp-drag-edge left"></div>
+                  <div class="qp-drag-edge right"></div>
+                  <div class="qp-resize-corner nw" data-dir="nw"></div>
+                  <div class="qp-resize-corner ne" data-dir="ne"></div>
                   <div class="qp-quote">
-                      <div class="qp-drag-edge top"></div>
-                      <div class="qp-drag-edge bottom"></div>
-                      <div class="qp-drag-edge left"></div>
-                      <div class="qp-drag-edge right"></div>
-                      <div class="qp-resize-corner nw" data-dir="nw"></div>
-                      <div class="qp-resize-corner ne" data-dir="ne"></div>
               <div class="qp-reset-btn xdex-icon-btn" title="回复浮窗归位"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
-                      <div class="qp-resize-corner se" data-dir="se"></div>
                       <div class="qp-body"></div>
                   </div>
+                  <div class="qp-resize-corner se" data-dir="se"></div>
               </div>
               <div class="qp-reset-btn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
           `;
@@ -15920,9 +15931,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             // 冒泡途中若有控件替换了自身内容（如 .js-extra 切换图标），e.target 会脱离文档，
             // closest('.qp-quote') 随即失效、被误判成「点了遮罩」；改用派发时定格的 composedPath 判定
             const evPath = typeof e.composedPath === 'function' ? e.composedPath() : null;
+            // 手柄已移出 .qp-quote，需一并豁免，否则点手柄会被误判为"点遮罩"而关闭面板
+            const isPanelHit = (el) => !!(el && el.classList && (
+                el.classList.contains('qp-quote') ||
+                el.classList.contains('qp-drag-edge') ||
+                el.classList.contains('qp-resize-corner')));
             const inQuote = evPath
-                ? evPath.some(el => el && el.classList && el.classList.contains('qp-quote'))
-                : !!(e.target && e.target.closest && e.target.closest('.qp-quote'));
+                ? evPath.some(isPanelHit)
+                : !!(e.target && e.target.closest && e.target.closest('.qp-quote, .qp-drag-edge, .qp-resize-corner'));
             if (inQuote) {
                 return; // 点击在内容区：不关闭，也不阻止冒泡
             }
@@ -16447,10 +16463,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
       };
-      quote.querySelectorAll('.qp-drag-edge').forEach((el) => {
+      // ★ 边缘手柄挂在 .qp-stack 上（见模板注释）；用最近的 stack 作为查找宿主，
+      //   两种面板（回复浮窗 / 引用弹窗）都成立
+      const edgeHost = quote.closest('.qp-stack') || quote;
+      edgeHost.querySelectorAll('.qp-drag-edge').forEach((el) => {
         el.addEventListener('mousedown', onEdgeDown);
       });
-      quote.querySelectorAll('.qp-resize-corner').forEach((el) => {
+      edgeHost.querySelectorAll('.qp-resize-corner').forEach((el) => {
         el.addEventListener('mousedown', onCornerDown);
       });
     }
@@ -35611,7 +35630,18 @@ function initReplyParamScrollTo() {
       if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(rf.status) >= 0) {
         return { ok: true, message: '连接成功（目录 HTTP ' + r.status + '，同步文件 HTTP ' + rf.status + '）' };
       }
+      // ★ status 缺失（undefined/null）说明这次响应没有 HTTP 语义：多半是后台请求在
+      //   网络层失败后被当成成功回传（fetch 抛 NetworkError / 被拦截 / 被运营商阻断），
+      //   直接拼出 "HTTP undefined" 只会掩盖原因，这里给出可执行的判读方向。
+      if (!Number.isFinite(Number(rf.status))) {
+        return { ok: false, message: '同步文件请求未拿到 HTTP 状态：' + (rf.errorMessage || rf.callError || '响应无 status 字段')
+          + '（多为网络层失败：域名不可达 / 被拦截 / 未备案阻断；可在浏览器直接打开该 URL 复核）' };
+      }
       return { ok: false, message: '同步文件异常响应 HTTP ' + rf.status + (rf.statusText ? ' ' + rf.statusText : '') };
+    }
+    if (!Number.isFinite(Number(r.status))) {
+      return { ok: false, message: '目录请求未拿到 HTTP 状态：' + (r.errorMessage || r.callError || '响应无 status 字段')
+        + '（多为网络层失败：域名不可达 / 被拦截 / 未备案阻断；可在浏览器直接打开该 URL 复核）' };
     }
     return { ok: false, message: '异常响应 HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : '') };
   }
@@ -35702,6 +35732,7 @@ function initReplyParamScrollTo() {
     enableQuotePreview: '优化引用弹窗',
     enableUpdateCheck: '自动检查更新',
     enableImageContextMenu: '图片右键菜单',
+    enableQuickAddPostHistory: '快捷添加发言历史',
     enableImageHideMode: '图片显示模式',
     applyImageHideMode: '图片隐藏模式应用',
     imageViewerSeparators: '阅图模式分隔线',
@@ -37262,7 +37293,6 @@ function initReplyParamScrollTo() {
       box.appendChild(row);
     });
   }
-
 
   function xdexExportOpenDialog(prefillTid) {
     if (!xdexExportRuntimeAvailable()) {

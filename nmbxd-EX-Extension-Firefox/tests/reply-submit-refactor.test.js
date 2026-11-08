@@ -558,6 +558,9 @@ function testSuccessfulSubmitPreviewCleanupContract() {
   const helper = declarations[0];
   const context = {
     console: { warn(message) { context.trace.push(`warn:${message}`); } },
+    // 源码在清除成功预览时会调用 xdexDbg 做诊断；缺该全局会让 refreshCookies 分支抛错、
+    // 从而误走「刷新失败」告警路径（曾使本用例失败）。这里提供 no-op 桩。
+    xdexDbg() {},
     trace: [],
     document: {
       querySelector(selector) {
@@ -674,7 +677,14 @@ function testSubmitLockLifecycleContracts() {
   assert(intercept.includes('const resend = window.confirm('), 'unknown-outcome resubmit must ask the user to refresh/confirm first');
   assert(intercept.includes('看门狗与真实超时都由 doSubmit 在真正发请求时启动。'), 'lockSubmit must leave watchdog startup to doSubmit so dialog time is excluded');
   assert(doSubmit.includes('new AbortController()'), 'submit must use a real AbortController timeout');
-  assert(doSubmit.includes('signal: controller ? controller.signal : undefined'), 'submit fetch must pass the abort signal');
+  // 发送已抽取到 sendSubmitRequest：doSubmit 只负责创建 controller 并传入，
+  // AbortSignal 在该函数内解析后交给 fetch。断言跨两处，只钉「信号确实到达 fetch」这一行为，
+  // 不再钉具体字面量与所在函数（原断言随抽取迁移而失效）。
+  const sendSubmit = extractFunctionDeclarations(script, 'sendSubmitRequest')[0] || '';
+  assert(/sendSubmitRequest\(\s*form\s*,\s*fd\s*,\s*controller/.test(doSubmit),
+    'submit must hand the AbortController to the sender');
+  assert(sendSubmit.includes('const signal = controller ? controller.signal : undefined;') && /signal\s*[,}]/.test(sendSubmit),
+    'submit fetch must pass the abort signal');
   assert(doSubmit.includes("if (err && err.name === 'AbortError')"), 'abort-timeout must be distinguished from network failures');
   assert(doSubmit.includes('clearSubmitLockTimer(form);'), 'receiving a server response must cancel the watchdog');
   assert(intercept.includes('const mb = bytes > 0 ? Math.ceil(bytes / (1024 * 1024)) : 0;'), 'request timeout must scale with upload size');
@@ -695,10 +705,16 @@ function testSubmitLockLifecycleContracts() {
     'compressImageForRetry must retain static/HEIC compressImageToSize fallback with quality arg'
   );
   assert(compressRetry.includes('compressGifToSize') && compressRetry.includes('compressApngToSize'), 'compressImageForRetry must keep GIF/APNG specialized compressors');
-  const unknownToast = '提交结果未知：请求超过 15 秒未返回。请刷新页面确认是否已发出，避免重复提交。';
-  assert(script.split(unknownToast).length - 1 === 1, 'submit unknown-notice text must exist only in the watchdog path');
-  const abortToast = '提交超时：结果未知，请刷新页面确认是否已发出，避免重复提交。';
-  assert(script.split(abortToast).length - 1 === 1, 'abort-timeout text must exist only in the AbortError path');
+  // 提示文案本身可演进（看门狗阈值曾由 15s 调为 30s，属有意变更）；按仓库测试策略，
+  // 不钉死字面量与秒数，只保留两条维护性不变量：
+  //   ① 看门狗提示是**单一来源常量**且只被使用一次（防两处文案漂移）
+  //   ② AbortError 超时分支确实给出了提示
+  assert((script.match(/const SUBMIT_RESULT_UNKNOWN_MSG = /g) || []).length === 1,
+    'watchdog notice must be declared once as a named constant');
+  assert((script.match(/toast\(SUBMIT_RESULT_UNKNOWN_MSG\s*,/g) || []).length === 1,
+    'watchdog notice must be used exactly once (no duplicated wording)');
+  const abortBranch = doSubmit.match(/AbortError[\s\S]{0,600}/);
+  assert(abortBranch && /toast\(/.test(abortBranch[0]), 'abort-timeout path must surface a notice');
 }
 
 function createReplyRefreshHarness(options = {}) {

@@ -744,6 +744,30 @@
           return;
         }
 
+        // ★ 后台请求失败（网络层错误 / fetch 抛出）必须走 onerror / ontimeout，
+        //   绝不能落到 onload —— 后台的失败对象只有 { ok:false, error }，没有 status；
+        //   一旦当成功处理，响应里 status 就是 undefined，业务层会显示成
+        //   "异常响应 HTTP undefined"（WebDAV 联网检查曾如此），彻底掩盖真实原因。
+        //
+        // ★ 判据必须是「有没有 status」，不能只看 response.ok：
+        //   fetch 语义下 ok = status 在 200–299 之间，而 401/403/404/405 这些
+        //   对 WebDAV 而言**完全正常**（目录无 index、需认证、文件未创建），
+        //   GM_xmlhttpRequest 语义里它们同样必须走 onload 并带真实 status。
+        //   若按 ok 分流，401 会被误报成网络失败（本仓库真实踩过）。
+        const hasHttpStatus = response && typeof response.status === 'number' && Number.isFinite(response.status);
+        if (!hasHttpStatus) {
+          const reason = response.error
+            ? (typeof response.error === 'string' ? response.error : String(response.error.message || response.error))
+            : '请求失败（后台未返回 HTTP 状态）';
+          if (response.timeout === true) {
+            if (typeof details.ontimeout === 'function') details.ontimeout();
+            else if (typeof details.onerror === 'function') details.onerror(new Error('请求超时：' + reason));
+            return;
+          }
+          if (typeof details.onerror === 'function') details.onerror(new Error(reason));
+          return;
+        }
+
         let responseBody = response.response;
         if (details.responseType === 'blob' && response.base64) {
           const bytes = base64ToBytes(response.base64);

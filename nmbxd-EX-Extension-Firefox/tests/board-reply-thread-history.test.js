@@ -121,7 +121,8 @@ function pendingItem(over) {
   return Object.assign({ id: REPLY_ID, status: 'pending', type: 'reply', threadId: TID, submittedAt: Date.now() - 1000, contentText: '我的回复' }, over || {});
 }
 function existingItem(over) {
-  return Object.assign({ key: 'normal:' + TID, mode: 'normal', threadId: TID, page: 3, maxVisitedPage: 3, lastKnownPage: 3, lastVisitedAt: Date.now() - 86400000, visitCount: 4, contentText: 'old' }, over || {});
+  // ★ 基准时间必须确定（相对 SITE_MS 早一天），否则"今天越过 SITE_TIME"后 vat 断言会随日期漂移
+  return Object.assign({ key: 'normal:' + TID, mode: 'normal', threadId: TID, page: 3, maxVisitedPage: 3, lastKnownPage: 3, lastVisitedAt: SITE_MS - 86400000, visitCount: 4, contentText: 'old' }, over || {});
 }
 
 function testGuards() {

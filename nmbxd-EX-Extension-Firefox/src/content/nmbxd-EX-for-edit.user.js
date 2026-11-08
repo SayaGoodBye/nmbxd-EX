@@ -1518,10 +1518,14 @@ function xdexEarlyDarkEnabled() {
                           color:#5b4636;
                      }
                   .xdex-history-tombstone-mark:hover,
-                  .xdex-post-history-tombstone-mark:hover {
-                          color:#EE0000;
-                          border-color:#EE0000;
-                     }
+                  .xdex-post-history-tombstone-mark:hover,
+                  /* 深色主题下有条 :root.xdex-darkreader-active …-tombstone-mark{color:var(--foreground)}（0,3,0）
+                     会压过上面的 hover（0,2,0）——只让圆周变红、图标不变；这里用同上下文 + !important 补齐 */
+                  :root.xdex-darkreader-active .xdex-history-tombstone-mark:hover,
+                  :root.xdex-darkreader-active .xdex-post-history-tombstone-mark:hover {
+                          color:#EE0000 !important;
+                          border-color:#EE0000 !important;
+                  }
                   .xdex-recycle-sort {
                           padding:4px 6px;
                           border:1px solid var(--xdex-sp-border);
@@ -13245,6 +13249,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         .qp-overlay-quote .qp-quote.is-dragging,
         .qp-overlay-quote .qp-quote.is-resizing { cursor: grabbing !important; user-select: none !important; }
         /* 引用浮窗四角拉伸（与回复浮窗一致：角=缩放，边=拖动） */
+        /* ★ 引用弹窗的 edges/corners 同样挂在 .qp-stack 上 */
         .qp-overlay-quote .qp-resize-corner {
           position: absolute;
           width: 14px;
@@ -13265,7 +13270,10 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         #h-ref-view {
           z-index: 20000 !important; /* 保证原生引用框在浮窗之上 */
         }
-        /* 拖拽手柄：四边窄条，仅在手柄区域显示“移动”指针 */
+        /* 拖拽手柄：四边窄条，仅在手柄区域显示“移动”指针
+           ★ 宿主约束：这些元素必须是 .qp-quote 的**直接子元素**，且用 sticky 粘附——
+             .qp-quote 在滚动态是 overflow-y:auto 的滚动容器，absolute 子元素会随内容
+             一起滚动（拖拽带会跑到浮窗中间甚至跑出容器）；sticky 则固定于滚动视口。 */
         .qp-drag-edge {
           position: absolute;
           pointer-events: auto;
@@ -15690,6 +15698,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote {
             scrollbar-width: thin;
           }
+
           .qp-overlay > .qp-stack.qp-content-scroll > .qp-quote::-webkit-scrollbar {
             width: 8px;
           }
@@ -15709,7 +15718,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
               box-sizing: border-box;
               flex: none !important;
           }
-          /* 四边中段：移动浮窗（角部留给缩放） */
+          /* 四边中段：移动浮窗（角部留给缩放）
+             ★ 宿主是 .qp-stack（非滚动），不可挂到 .qp-quote（滚动态会随内容滚走） */
           .qp-drag-edge {
             position: absolute;
             pointer-events: auto;
@@ -15893,17 +15903,22 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           overlay.className = 'qp-overlay';
           overlay.innerHTML = `
               <div class="qp-stack">
+                  <!-- ★ 边缘手柄挂在 .qp-stack 上（不是 .qp-quote）：
+                       .qp-quote 在滚动态是 overflow-y:auto 的滚动容器，其内部 absolute
+                       子元素会随内容滚动 → 拖拽带会跑到面板中间（用户实测复现）。
+                       .qp-stack 不滚动，且由 JS 写入显式 width/height、.qp-quote 为其
+                       100%/100% 子元素 → 两者盒模型完全相等，手柄定位零偏移。 -->
+                  <div class="qp-drag-edge top"></div>
+                  <div class="qp-drag-edge bottom"></div>
+                  <div class="qp-drag-edge left"></div>
+                  <div class="qp-drag-edge right"></div>
+                  <div class="qp-resize-corner nw" data-dir="nw"></div>
+                  <div class="qp-resize-corner ne" data-dir="ne"></div>
                   <div class="qp-quote">
-                      <div class="qp-drag-edge top"></div>
-                      <div class="qp-drag-edge bottom"></div>
-                      <div class="qp-drag-edge left"></div>
-                      <div class="qp-drag-edge right"></div>
-                      <div class="qp-resize-corner nw" data-dir="nw"></div>
-                      <div class="qp-resize-corner ne" data-dir="ne"></div>
               <div class="qp-reset-btn xdex-icon-btn" title="回复浮窗归位"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
-                      <div class="qp-resize-corner se" data-dir="se"></div>
                       <div class="qp-body"></div>
                   </div>
+                  <div class="qp-resize-corner se" data-dir="se"></div>
               </div>
               <div class="qp-reset-btn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path style="fill:none" d="M18 18A8.5 8.5 0 1 1 18.5 6.5"/><path style="fill:none" d="M18.5 6.5l-1.3 3.6"/><path style="fill:none" d="M19.2 10.6L18.5 6.5l-3.2 2.7"/></svg></div>
           `;
@@ -15916,9 +15931,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             // 冒泡途中若有控件替换了自身内容（如 .js-extra 切换图标），e.target 会脱离文档，
             // closest('.qp-quote') 随即失效、被误判成「点了遮罩」；改用派发时定格的 composedPath 判定
             const evPath = typeof e.composedPath === 'function' ? e.composedPath() : null;
+            // 手柄已移出 .qp-quote，需一并豁免，否则点手柄会被误判为"点遮罩"而关闭面板
+            const isPanelHit = (el) => !!(el && el.classList && (
+                el.classList.contains('qp-quote') ||
+                el.classList.contains('qp-drag-edge') ||
+                el.classList.contains('qp-resize-corner')));
             const inQuote = evPath
-                ? evPath.some(el => el && el.classList && el.classList.contains('qp-quote'))
-                : !!(e.target && e.target.closest && e.target.closest('.qp-quote'));
+                ? evPath.some(isPanelHit)
+                : !!(e.target && e.target.closest && e.target.closest('.qp-quote, .qp-drag-edge, .qp-resize-corner'));
             if (inQuote) {
                 return; // 点击在内容区：不关闭，也不阻止冒泡
             }
@@ -15978,7 +15998,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       }
       // 页面内记住整窗位置/尺寸（不写 GM_setValue）
       // 仅手动四角拉伸过的尺寸需要保留；内容自然撑高的高度关闭后丢弃，下次快速回空高
-      if (overlay.__userSizedPanel) {
+      // ★ 视口从未就绪过（本次几何只是 CSS 默认值，不是真实布局结果）→ 不保存：
+      //   否则下次打开会沿用 top=0 之类的坏几何（宽度变化检测只看 winW，垂直位置会沿用），
+      //   表现为浮窗贴顶/贴左上。保留上一份有效几何（若有）。
+      if (overlay.__viewportWasInvalid) {
+        // 丢弃本次几何，不动 __savedPanelRect
+      } else if (overlay.__userSizedPanel) {
         saveReplyPanelRect(overlay);
       } else {
         const stack = overlay.querySelector('.qp-stack');
@@ -16007,6 +16032,19 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         window.removeEventListener('resize', overlay.__windowResizeHandler);
         overlay.__windowResizeHandler = null;
       }
+      if (overlay.__viewportWatchHandler) {
+        window.removeEventListener('resize', overlay.__viewportWatchHandler);
+        overlay.__viewportWatchHandler = null;
+        overlay.__viewportWatchBound = false;
+      }
+      if (overlay.__viewportWatchTimer) { clearTimeout(overlay.__viewportWatchTimer); overlay.__viewportWatchTimer = 0; }
+      // 取消「视口就绪重试」：移除其 resize 监听并复位武装标志（否则监听残留、后续不再自愈）
+      if (typeof overlay.__viewRetryCleanup === 'function') {
+        try { overlay.__viewRetryCleanup(); } catch (e) {}
+        overlay.__viewRetryCleanup = null;
+      }
+      if (overlay.__viewRetryTimer) { clearTimeout(overlay.__viewRetryTimer); overlay.__viewRetryTimer = 0; }
+      overlay.__viewRetryArmed = false;
       if (overlay.__formEl && overlay.__formEl.__placeholder) {
         overlay.__formEl.__placeholder.parentNode.insertBefore(overlay.__formEl, overlay.__formEl.__placeholder);
         // 移回后清除 textarea 的宽度样式，让它恢复原始状态
@@ -16104,6 +16142,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     }
     function fitReplyPanelToContent(ov, opts) {
       if (!ov || ov.__userSizedPanel || ov.__autoFitting) return;
+      // 视口未就绪时量高/夹取都无意义，等 scheduleReplyPanelViewportRetry 就绪后再补
+      if (!(window.innerWidth > 0) || !(window.innerHeight > 0)) return;
       const stack = ov.querySelector('.qp-stack');
       if (!stack || ov.style.display === 'none') return;
       const options = opts || {};
@@ -16216,6 +16256,17 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       const stack = ov && ov.querySelector('.qp-stack');
       const quote = ov && ov.querySelector('.qp-quote');
       if (!stack) return;
+      // ★ 视口未就绪（宿主尚未给视图下发尺寸时 innerWidth/innerHeight 为 0，QwQNT 的
+      //   WebContentsView 在激活/显示前即如此）：此时按视口算出的居中会退化成
+      //   left/top = -50px，且下面会写 transform:none 覆盖 CSS 的 translate(-50%,-50%)
+      //   居中兜底 → 浮窗粘在页面左上角。这里保持 CSS 居中、不写几何，等视口就绪后重试。
+      if (!(window.innerWidth > 0) || !(window.innerHeight > 0)) {
+        // 标记：当前几何不可信（此后若视口变化，按新视口重新居中而不是沿用旧几何）
+        ov.__viewportWasInvalid = true;
+        scheduleReplyPanelViewportRetry(ov, rect, opts);
+        return;
+      }
+      ov.__viewportWasInvalid = false;
       const options = opts || {};
       const base = getReplyPanelDefaults();
       const r = rect && typeof rect === 'object' ? rect : base;
@@ -16252,6 +16303,44 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         ov.__userSizedPanel = true;
         stack.classList.add('qp-user-sized');
       }
+    }
+    // 视口就绪后补一次布局：优先靠 window resize（视图拿到尺寸会触发一次），
+    // 并带定时兜底（隐藏视图里 rAF 可能不派发，故用 setTimeout）。
+    function scheduleReplyPanelViewportRetry(ov, rect, opts) {
+      if (!ov || ov.__viewRetryArmed) return;
+      ov.__viewRetryArmed = true;
+      let tries = 0;
+      const cleanup = () => {
+        ov.__viewRetryArmed = false;
+        try { window.removeEventListener('resize', onResize); } catch (e) {}
+        if (ov.__viewRetryTimer) { clearTimeout(ov.__viewRetryTimer); ov.__viewRetryTimer = 0; }
+        if (ov.__viewRetryCleanup === cleanup) ov.__viewRetryCleanup = null;
+      };
+      const ready = () => window.innerWidth > 0 && window.innerHeight > 0;
+      const run = () => {
+        if (!ov || !ov.isConnected) { cleanup(); return true; }
+        // 浮窗已关闭（closeOverlay 置 display:none）：停止等待，避免残留在关闭态上重排
+        if (ov.style.display === 'none') { cleanup(); return true; }
+        if (!ready()) return false;
+        cleanup();
+        // 传入的 rect 是在视口未就绪时算出来的（left=0/top=8 之类），必须丢弃并按当前视口重算，
+        // 否则重试会把「左上角」的旧几何又写回去（实测）。
+        applyReplyPanelLayout(ov, null, opts);
+        try { scheduleReplyPanelAutoFit(ov); } catch (e) {}
+        return true;
+      };
+      const onResize = () => { run(); };
+      window.addEventListener('resize', onResize);
+      // 把清理函数挂到浮窗上：closeOverlay 必须主动调用它，否则 resize 监听会残留、
+      // 且 __viewRetryArmed 永远为 true（后续再遇到 0 视口时不再武装重试）。
+      ov.__viewRetryCleanup = cleanup;
+      const tick = () => {
+        ov.__viewRetryTimer = 0;
+        if (run()) return;
+        if (++tries > 100) { cleanup(); return; }   // ≈3s 上限
+        ov.__viewRetryTimer = setTimeout(tick, 30);
+      };
+      ov.__viewRetryTimer = setTimeout(tick, 30);
     }
     function saveReplyPanelRect(ov) {
       const stack = ov && ov.querySelector('.qp-stack');
@@ -16374,14 +16463,52 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
       };
-      quote.querySelectorAll('.qp-drag-edge').forEach((el) => {
+      // ★ 边缘手柄挂在 .qp-stack 上（见模板注释）；用最近的 stack 作为查找宿主，
+      //   两种面板（回复浮窗 / 引用弹窗）都成立
+      const edgeHost = quote.closest('.qp-stack') || quote;
+      edgeHost.querySelectorAll('.qp-drag-edge').forEach((el) => {
         el.addEventListener('mousedown', onEdgeDown);
       });
-      quote.querySelectorAll('.qp-resize-corner').forEach((el) => {
+      edgeHost.querySelectorAll('.qp-resize-corner').forEach((el) => {
         el.addEventListener('mousedown', onCornerDown);
       });
     }
     // REPLY 按钮
+    // 打开期间监听视口变化：把浮窗夹回可视区；若当前几何落在可视区外（此前是在视口
+    // 未就绪/极小时布局的），按当前视口重新居中（等价归位）。
+    function bindReplyPanelViewportWatch(ov) {
+      if (!ov || ov.__viewportWatchBound) return;
+      ov.__viewportWatchBound = true;
+      let timer = 0;
+      ov.__viewportWatchHandler = () => {
+        if (timer) return;
+        timer = setTimeout(() => {
+          timer = 0;
+          ov.__viewportWatchTimer = 0;
+          if (!ov || !ov.isConnected || ov.style.display === 'none') return;
+          if (!(window.innerWidth > 0) || !(window.innerHeight > 0)) return;
+          const stack = ov.querySelector('.qp-stack');
+          if (!stack) return;
+          const r = stack.getBoundingClientRect();
+          // ① 此前是在视口未就绪/极小时布局的（几何不可信）→ 直接按当前视口归位；
+          // ② 否则仅当几何真的越出可视区时才归位，正常摆放不动（保留用户拖拽位置）
+          const outside = ov.__viewportWasInvalid
+            || r.left < 0 || r.top < 0
+            || r.left > window.innerWidth - 50 || r.top > window.innerHeight - 50;
+          if (outside) {
+            ov.__savedPanelRect = null;
+            ov.__userSizedPanel = false;
+            applyReplyPanelLayout(ov, null);
+            try { scheduleReplyPanelAutoFit(ov); } catch (e) {}
+            return;
+          }
+          applyReplyPanelLayout(ov, { width: r.width, height: r.height, left: r.left, top: r.top },
+            { preserveUserSized: true, fromAutoFit: true });
+        }, 16);
+        ov.__viewportWatchTimer = timer;
+      };
+      window.addEventListener('resize', ov.__viewportWatchHandler);
+    }
     function open() {
       let formEl = document.querySelector('form[action="/Home/Forum/doReplyThread.html"]');
       let previewEl = document.querySelector('.h-preview-box');
@@ -16628,6 +16755,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       ov.style.display = 'block';
       applyReplyPanelLayout(ov, layoutRect);
       bindReplyPanelFrame(ov);
+      bindReplyPanelViewportWatch(ov);
       if (!ov.__userSizedPanel) {
         // 同步贴合：此时 form/preview 已在 DOM，且 display=block，可量到真实高度
         fitReplyPanelToContent(ov, { save: true });
@@ -27689,6 +27817,20 @@ function 注册自动保存编辑() {
       hasZeroWidth: ZERO_WIDTH_RE.test(String(item.contentRaw || item.contentText || ''))
     };
   }
+  // ★ 把"删除后新段"（影子条目 / 新写入）归并进墓碑快照：墓碑保留最新业务信息，避免归并时丢内容。
+  //   口径与回收站卡片的合成一致：**正文取入参（更新的一方）**，submittedAt 取更早、page 取更大。
+  function mergePostHistoryShadowIntoSnapshot(rec, shadow) {
+    const base = Object.assign({}, rec || {});
+    const sh = Object.assign({}, shadow || {});
+    const merged = Object.assign({}, base, sh);
+    merged.submittedAt = Math.min(Number(base.submittedAt) || Infinity, Number(sh.submittedAt) || Infinity);
+    if (!Number.isFinite(merged.submittedAt)) merged.submittedAt = Number(base.submittedAt) || Number(sh.submittedAt) || Date.now();
+    merged.page = Math.max(Number(base.page) || 0, Number(sh.page) || 0);
+    merged.contentText = String(sh.contentText || base.contentText || '');
+    merged.type = base.type || sh.type;
+    merged.localId = base.localId || sh.localId;
+    return merged;
+  }
   function normalizePostHistoryStore(rawStore) {
     const store = Object.assign(createDefaultPostHistoryStore(), rawStore || {});
     store.version = POST_HISTORY_STORE_VERSION;
@@ -27698,6 +27840,17 @@ function 注册自动保存编辑() {
     store.index = store.index && typeof store.index === 'object' ? store.index : {};
     // 墓碑: 与浏览历史同构。TTL 到期降级 purged; purged 超安全期清除; revivedAt 标记超期清除
     store.tombstones = store.tombstones && typeof store.tombstones === 'object' ? store.tombstones : {};
+    // ★ 发言历史语义：删除后**直接进回收站**，不在主列表保留"删除后新段"（那是浏览历史的行为）。
+    //   这里把历史遗留的影子条目（先前版本复活出来的）一次性归并回墓碑快照并从列表移除；
+    //   必须放在下面 TTL 降级之前，否则快照被降级后影子数据会连带丢失。
+    Object.keys(store.tombstones).forEach((tKey) => {
+      const t = store.tombstones[tKey];
+      if (!t || typeof t !== 'object' || t.purged || t.revivedAt) return;
+      const shadow = store.items[tKey];
+      if (!shadow) return;
+      t.record = mergePostHistoryShadowIntoSnapshot(t.record, shadow);
+      delete store.items[tKey];
+    });
     {
       const nowTs = Date.now();
       Object.keys(store.tombstones).forEach((tKey) => {
@@ -28051,6 +28204,16 @@ function 注册自动保存编辑() {
   function upsertPostHistoryRecord(record) {
     if (!record || !record.localId) return getPostHistoryStore();
     const store = getPostHistoryStore();
+    // ★ 发言历史语义：删除后**直接进回收站**，不得以"垃圾桶图标重新出现在列表里"。
+    //   只要该条存在未复活(非 purged/非 revived)的墓碑，就只把新信息并入墓碑快照，不再重建 items 影子条目。
+    //   （浏览历史保留"删除后新段"行为，用于区分"删除后继续浏览"；发言历史不需要此区分。）
+    const tomb = (store.tombstones || {})[record.localId];
+    if (tomb && !tomb.purged && !tomb.revivedAt) {
+      const incoming = Object.assign({}, record, { localId: record.localId });
+      tomb.record = mergePostHistoryShadowIntoSnapshot(tomb.record, incoming);
+      logPostHistory('store upsert skipped: 该条已在回收站，仅更新快照', { localId: record.localId });
+      return setPostHistoryStore(store);
+    }
     const old = store.items[record.localId] || {};
     const merged = Object.assign({}, old, record, {
       localId: record.localId,
@@ -30280,6 +30443,18 @@ function 注册自动保存编辑() {
       const prevVc = Math.max(Number(hotMap[key] && hotMap[key].vc) || 0, Number(item.visitCount) || 0);
       const nextVc = prevVc + (countVisit ? 1 : 0);
       if (countVisit) item.visitCount = nextVc;
+      // ★ 排序键同步：面板默认排序（last-desc）按 index[key].lastVisitedAt 计分，而上面的更新
+      //   只落在 items[key]（显示用的时间）。若不同步 index，刚访问过的串会「时间变新但停在
+      //   原位」；且写入方标签不会自愈——小键叠加的守卫是 entry.vat > item.lastVisitedAt，
+      //   这里已把 item.lastVisitedAt 置为 now，守卫不成立 → index/order 都不更新。
+      //   （其它标签的 item 仍是旧值，可由小键叠加修好，故问题只在访问发生的那一页可见。）
+      try {
+        if (store.index && store.index[key]) store.index[key].lastVisitedAt = Number(item.lastVisitedAt) || now;
+        if (Array.isArray(store.order) && store.order.length > 1) {
+          store.order.sort((a, b) => (Number(store.items[b] && store.items[b].lastVisitedAt) || 0)
+            - (Number(store.items[a] && store.items[a].lastVisitedAt) || 0));
+        }
+      } catch (e) { /* 排序同步失败不影响访问记录本身 */ }
       setThreadHistoryPosEntry(key, {
         p: item.page,
         u: item.url,
@@ -35455,7 +35630,18 @@ function initReplyParamScrollTo() {
       if ([200, 201, 204, 207, 301, 302, 404, 405].indexOf(rf.status) >= 0) {
         return { ok: true, message: '连接成功（目录 HTTP ' + r.status + '，同步文件 HTTP ' + rf.status + '）' };
       }
+      // ★ status 缺失（undefined/null）说明这次响应没有 HTTP 语义：多半是后台请求在
+      //   网络层失败后被当成成功回传（fetch 抛 NetworkError / 被拦截 / 被运营商阻断），
+      //   直接拼出 "HTTP undefined" 只会掩盖原因，这里给出可执行的判读方向。
+      if (!Number.isFinite(Number(rf.status))) {
+        return { ok: false, message: '同步文件请求未拿到 HTTP 状态：' + (rf.errorMessage || rf.callError || '响应无 status 字段')
+          + '（多为网络层失败：域名不可达 / 被拦截 / 未备案阻断；可在浏览器直接打开该 URL 复核）' };
+      }
       return { ok: false, message: '同步文件异常响应 HTTP ' + rf.status + (rf.statusText ? ' ' + rf.statusText : '') };
+    }
+    if (!Number.isFinite(Number(r.status))) {
+      return { ok: false, message: '目录请求未拿到 HTTP 状态：' + (r.errorMessage || r.callError || '响应无 status 字段')
+        + '（多为网络层失败：域名不可达 / 被拦截 / 未备案阻断；可在浏览器直接打开该 URL 复核）' };
     }
     return { ok: false, message: '异常响应 HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : '') };
   }
@@ -35546,6 +35732,7 @@ function initReplyParamScrollTo() {
     enableQuotePreview: '优化引用弹窗',
     enableUpdateCheck: '自动检查更新',
     enableImageContextMenu: '图片右键菜单',
+    enableQuickAddPostHistory: '快捷添加发言历史',
     enableImageHideMode: '图片显示模式',
     applyImageHideMode: '图片隐藏模式应用',
     imageViewerSeparators: '阅图模式分隔线',
@@ -37106,7 +37293,6 @@ function initReplyParamScrollTo() {
       box.appendChild(row);
     });
   }
-
 
   function xdexExportOpenDialog(prefillTid) {
     if (!xdexExportRuntimeAvailable()) {
