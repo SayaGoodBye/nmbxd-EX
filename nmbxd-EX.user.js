@@ -1628,6 +1628,26 @@ function xdexEarlyDarkEnabled() {
                            white-space:pre-wrap;
                            overflow-wrap:anywhere;
                       }
+                    .xdex-feed-post-body {
+                           margin:15px 40px 6px;
+                      }
+                    .xdex-feed-post-preview > .h-threads-content {
+                           margin:0;
+                      }
+                    .xdex-feed-post-body.is-collapsed .xdex-feed-post-preview {
+                           max-height:${SUBSCRIPTION_FEED_PREVIEW_HEIGHT}px;
+                           overflow:clip;
+                      }
+                    .xdex-feed-post-toggle {
+                           margin-top:4px;
+                           padding:2px 8px;
+                           border:1px solid var(--xdex-sp-border);
+                           border-radius:6px;
+                           background:var(--xdex-sp-panel-bg);
+                           color:inherit;
+                           cursor:pointer;
+                           overflow-anchor:none;
+                      }
                     .xdex-history-item .h-threads-info {
                            display:flex;
                            align-items:flex-start;
@@ -2234,6 +2254,7 @@ function xdexEarlyDarkEnabled() {
             </div>
           </div>
         </div>`;
+      subscriptionFeedPostObserver?.disconnect();
       $('#sp_cover').remove();
       $('body').append(html);
       syncFavoriteThreadsLinks();
@@ -31615,6 +31636,8 @@ function 注册自动保存编辑() {
   const SUBSCRIPTION_FEED_SESSION_VERSION = 3;
   const SUBSCRIPTION_FEED_SESSION_TTL_MS = 2 * 60 * 1000;
   const SUBSCRIPTION_FEED_SESSION_MAX_COUNT = 5;
+  const SUBSCRIPTION_FEED_PREVIEW_HEIGHT = 160; // 正文行高 20px，默认预览约 8 行
+  let subscriptionFeedPostObserver;
   let subscriptionFeedCurrentPage = 1;
   let subscriptionFeedCurrentUuid = '';
   let subscriptionFeedLoading = false;
@@ -31879,19 +31902,36 @@ function 注册自动保存编辑() {
     $('#sp_feeds_page_label').text(`第${subscriptionFeedCurrentDisplayPage}页`);
   }
   function renderSubscriptionFeedRenderedPages(options = {}) {
-    const $results = $('#sp_feeds_results').empty();
+    const $results = $('#sp_feeds_results');
+    const results = $results[0];
+    if (!results) return;
+    const expandedPosts = new Set(Array.from(
+      results.querySelectorAll('.xdex-feed-post-body > .xdex-feed-post-toggle[aria-expanded="true"]'),
+      (button) => button.closest('.xdex-history-item').dataset.feedThreadId
+    ));
+    subscriptionFeedPostObserver?.disconnect();
+    $results.empty();
     const displayPage = Math.max(0, Number(options.displayPage) || 0) || subscriptionFeedCurrentDisplayPage || subscriptionFeedHighestRenderedPage || 0;
     if (subscriptionFeedHighestRenderedPage <= 0) {
       $results.html('<div style="text-align:center;color:#999;padding:40px 0;">暂无订阅内容</div>');
       $('#sp_feeds_page_label').text('第0页');
       return;
     }
+    // 观察未被裁剪的正文，面板宽度或正文内图片尺寸变化时重新判断是否需要按钮。
+    subscriptionFeedPostObserver = new ResizeObserver((entries) => {
+      entries.forEach(({ target, contentRect }) => {
+        const toggle = target.parentElement.nextElementSibling;
+        toggle.hidden = contentRect.height <= SUBSCRIPTION_FEED_PREVIEW_HEIGHT;
+      });
+    });
     for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
       const entry = subscriptionFeedRenderedPages[String(page)];
       if (!entry || !Array.isArray(entry.items)) break;
-      appendSubscriptionFeedPageSeparator($results[0], page);
-      entry.items.forEach((item) => {
-        $results[0].appendChild(buildSubscriptionFeedItemElement(item));
+      appendSubscriptionFeedPageSeparator(results, page);
+      entry.items.forEach((item, index) => {
+        const contentId = `xdex-feed-post-${page}-${index}`;
+        const expanded = expandedPosts.has(getSubscriptionFeedItemId(item));
+        results.appendChild(buildSubscriptionFeedItemElement(item, contentId, expanded));
       });
     }
     subscriptionFeedCurrentDisplayPage = Math.min(Math.max(1, displayPage), Math.max(1, subscriptionFeedHighestRenderedPage));
@@ -31950,7 +31990,7 @@ function 注册自动保存编辑() {
     $dropdown.find('.xdex-feed-option').removeClass('active').filter(`[data-uuid="${selected}"]`).addClass('active');
     return selected;
   }
-  function buildSubscriptionFeedItemElement(item) {
+  function buildSubscriptionFeedItemElement(item, contentId, expanded) {
     const threadId = Number(item.id) || 0;
     const wrapper = document.createElement('div');
     wrapper.className = 'xdex-history-item';
@@ -32045,10 +32085,47 @@ function 注册自动保存编辑() {
     const content = document.createElement('div');
     content.className = 'h-threads-content';
     const contentHtml = String(item.content || '');
-    if (contentHtml) content.innerHTML = contentHtml;
-    else content.textContent = '';
-    main.appendChild(content);
+    content.innerHTML = contentHtml;
+    // 订阅正文保留纯文本换行。接口同时给出 <br> 和换行字符时，只显示一次换行。
+    content.querySelectorAll('br').forEach((lineBreak) => {
+      const next = lineBreak.nextSibling;
+      if (next?.nodeType === Node.TEXT_NODE && next.data.startsWith('\n')) {
+        next.deleteData(0, 1);
+      }
+    });
+    const body = document.createElement('div');
+    body.className = 'xdex-feed-post-body';
+    const preview = document.createElement('div');
+    preview.className = 'xdex-feed-post-preview';
+    preview.id = contentId;
+    preview.appendChild(content);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'xdex-feed-post-toggle';
+    toggle.setAttribute('aria-controls', contentId);
+    const setExpanded = (isExpanded) => {
+      body.classList.toggle('is-collapsed', !isExpanded);
+      toggle.setAttribute('aria-expanded', String(isExpanded));
+      toggle.textContent = isExpanded ? '收起全文' : '展开全文';
+    };
+    setExpanded(expanded);
+    toggle.hidden = true;
+    toggle.addEventListener('click', () => {
+      const willExpand = body.classList.contains('is-collapsed');
+      setExpanded(willExpand);
+      if (!willExpand) toggle.scrollIntoView({ block: 'nearest' });
+    });
+    preview.addEventListener('focusin', (event) => {
+      if (!body.classList.contains('is-collapsed')) return;
+      if (event.target.getBoundingClientRect().bottom > preview.getBoundingClientRect().bottom) {
+        setExpanded(true);
+        event.target.scrollIntoView({ block: 'nearest' });
+      }
+    });
+    body.append(preview, toggle);
+    main.appendChild(body);
     enhanceHistoryRenderedContent(content);
+    subscriptionFeedPostObserver.observe(content);
     // 脚注
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -32070,6 +32147,7 @@ function 注册自动保存编辑() {
     try { return JSON.parse(typeof data === 'string' ? data : '[]'); } catch (e) { return []; }
   }
   function renderSubscriptionFeedModule() {
+    subscriptionFeedPostObserver?.disconnect();
     const $results = $('#sp_feeds_results').empty();
     pruneExpiredSubscriptionFeedSessions();
     const uuid = populateSubscriptionFeedSelector();
