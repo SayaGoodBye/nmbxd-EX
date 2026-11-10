@@ -83,17 +83,50 @@ function loadCore() {
   assert(!doc.startsWith('---'), 'markdown export must NOT use frontmatter');
   assert(doc.startsWith('# 吃饭睡觉碎碎念。\n'), 'markdown must start with # title');
   assert(doc.includes('[68707051](https://www.nmbxd1.com/t/68707051) | #J8fAQ0D (Po) | 吃饭睡觉碎碎念。 | 2026-05-24(日)22:58:42'), 'OP header must match reference');
-  assert(doc.includes('[68853812](https://www.nmbxd1.com/t/68707051/page/4) | #J8fAQ0D | 2026-06-15(一)01:00:11'), 'reply header must omit 无名氏/无标题');
+  // ★ 该回复与串首同饼干 → 必须标 (Po)（维护者诉求 2）
+  assert(doc.includes('[68853812](https://www.nmbxd1.com/t/68707051/page/4) | #J8fAQ0D (Po) | 2026-06-15(一)01:00:11'), 'same-cookie reply must be marked (Po) and omit 无名氏/无标题');
+  // 不同饼干的回复不得被标 Po
+  assert(doc.includes('#NMDJxCc |') && !doc.includes('#NMDJxCc (Po)'), 'different-cookie reply must NOT be marked (Po)');
   assert(doc.includes('![2026-06-15/6a2ede1c35b2a](https://image.nmb.best/image/2026-06-15/6a2ede1c35b2a.png)'), 'image line must use img path as alt');
   assert(doc.includes('69632244 | #NMDJxCc | 4.2.0 | 优化与修复 | 2026-10-16(五)09:35:11') === false || true, 'placeholder');
   assert(doc.includes('| 4.2.0 | 优化与修复 |'), 'named entry must include name and title fields');
   assert(doc.includes('\n\n---\n\n'), 'entries must be separated by ---');
 
   const txtDoc = api.xdexExportBuildDocument({ format: 'txt', tid: '68707051', title: '吃饭睡觉碎碎念。', entries: richEntries });
-  assert(txtDoc.includes('68853812 | #J8fAQ0D | 2026-06-15(一)01:00:11'), 'txt id line must be plain (no markdown link)');
+  assert(txtDoc.includes('68853812 | #J8fAQ0D (Po) | 2026-06-15(一)01:00:11'), 'txt id line must be plain (no markdown link) but keep (Po)');
   assert(!txtDoc.includes('[68853812]('), 'txt must not contain markdown links');
   assert(txtDoc.includes('![2026-06-15/6a2ede1c35b2a](https://image.nmb.best/image/2026-06-15/6a2ede1c35b2a.png)'), 'txt must keep image line');
   assert(txtDoc.startsWith('吃饭睡觉碎碎念。\n'), 'txt must start with plain title');
+
+  // ── 分页与串首不变量（维护者诉求 1 / 3）──
+  // 模拟「每页都带串首」的真实 API 形态：P344 / P345 各携带一份 isOp，另加真正的串首 opEntry
+  const op = { id: '64180270', userHash: '4toUqbm', name: '无名氏', title: '庄周串', now: '2024-10-24(四)23:32:31', content: '梦的记录', isOp: true, page: 1 };
+  const mkPage = (page, id) => ([
+    { id: '64180270', userHash: '4toUqbm', name: '无名氏', title: '庄周串', now: '2024-10-24(四)23:32:31', content: '梦的记录', isOp: true, page },
+    { id, userHash: '4toUqbm', name: '无名氏', title: '无标题', now: '2026-11-06(五)20:48:07', content: '正文' + page, isOp: false, page }
+  ]);
+  const pagesDoc = api.xdexExportBuildDocument({
+    format: 'md', tid: '64180270', title: '庄周串',
+    entries: [].concat(mkPage(344, '69746894'), mkPage(345, '69747601'), mkPage(346, '69748001')),
+    opEntry: op
+  });
+  const opHeader = '[64180270](https://www.nmbxd1.com/t/64180270) | #4toUqbm (Po) |';
+  assert(pagesDoc.split(opHeader).length - 1 === 1, 'OP must be rendered exactly once even when every page carries a copy');
+  assert(pagesDoc.indexOf('## P344') > pagesDoc.indexOf(opHeader), 'OP section must precede the first page section');
+  assert(pagesDoc.includes('## P344') && pagesDoc.includes('## P345') && pagesDoc.includes('## P346'), 'markdown must use actual site page numbers as H2 headings');
+  // 不再输出「页码导航」章节：跳页交给渲染器自己的大纲面板（标题即目录）
+  assert(!pagesDoc.includes('页码导航'), 'markdown must NOT contain an inline page navigation section');
+  // 页码标题与正文之间要有横线分隔
+  assert(pagesDoc.includes('## P344\n\n---\n'), 'page heading must be followed by a horizontal rule');
+  assert(!pagesDoc.includes('## P1\n'), 'OP must not be counted as page 1');
+  const txtPages = api.xdexExportBuildDocument({
+    format: 'txt', tid: '64180270', title: '庄周串',
+    entries: [].concat(mkPage(344, '69746894'), mkPage(345, '69747601')),
+    opEntry: op
+  });
+  assert(txtPages.includes('===== P344 =====') && txtPages.includes('===== P345 ====='), 'txt must mark pages with a separator line');
+  assert(txtPages.includes('===== P344 =====\n\n------------------------\n'), 'txt page marker must be followed by a separator line');
+  assert(!txtPages.includes('## '), 'txt must not contain markdown headings');
 
   assert(api.xdexExportBuildFileName('12345678', '标题/非法:字符', 1, 2, 'md') === '12345678_标题_非法_字符_1-2.md', 'file name must sanitize illegal chars');
   assert(api.xdexExportBuildFileName('12345678', '标题', 1, 3, 'txt') === '12345678_标题_1-3.txt', 'full range must still use real page numbers');

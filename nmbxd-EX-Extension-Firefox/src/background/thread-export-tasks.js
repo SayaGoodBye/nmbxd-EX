@@ -595,6 +595,9 @@ async function xdexExportRunTask(taskId) {
       totalReplies: firstPage.totalReplies,
       poOnly,
       entries: allEntries,
+      // ★ 串首取自**第 1 页**（firstPage 必定抓取，用于确定总页数）：
+      //   即使从 P344 开始下载，串首也是真正的 OP；各页携带的重复串首由构建层跳过。
+      opEntry: (firstPage && firstPage.entries && firstPage.entries[0]) || null,
       exportedAt: new Date()
     });
     // 文件名按「实际完成页」而非计划范围：取消时 1-300 抓到 20 页 → 记为 1-20
