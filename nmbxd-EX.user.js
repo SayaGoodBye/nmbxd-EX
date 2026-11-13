@@ -1106,6 +1106,10 @@ function xdexEarlyDarkEnabled() {
                       --xdex-sp-footer-bg: #FFFFEE;
                       --xdex-sp-border: #eee;
                       --xdex-sp-shadow: rgba(0,0,0,0.2);
+                      /* 订阅页「展开/收起」纯文字按钮配色：在 #FFFFEE 上对比度 6.75:1（AA 正文达标）。
+                         原有文字动作按钮用的 #07d 仅 4.44:1，故这里单列 token 而非沿用。 */
+                      --xdex-feed-toggle-color: #0059b3;
+                      --xdex-feed-toggle-hover: #004d99;
                   }
                   :root.xdex-darkreader-active {
                       --xdex-sp-panel-bg: #2b2c2d;
@@ -1113,6 +1117,9 @@ function xdexEarlyDarkEnabled() {
                       --xdex-sp-footer-bg: #2b2c2d;
                       --xdex-sp-border: #4b4d50;
                       --xdex-sp-shadow: rgba(0,0,0,0.55);
+                      /* 深色：沿用本站蓝 #66ccff，在 #2b2c2d 上对比度 7.76:1 */
+                      --xdex-feed-toggle-color: #66ccff;
+                      --xdex-feed-toggle-hover: #9ecbff;
                       /* shadcn 风格 token：脚本内从未定义，导致 42 处 var() 恒取 fallback。
                          深色下面板底色已是 #2b2c2d，而 fallback 的 #333/#666 深字压深底不可读；
                          仅在深色类下补定义，light 模式继续走原 fallback（行为零变化） */
@@ -1638,15 +1645,60 @@ function xdexEarlyDarkEnabled() {
                            max-height:${SUBSCRIPTION_FEED_PREVIEW_HEIGHT}px;
                            overflow:clip;
                       }
+                    /* 仅在真的被截断时淡出末行，提示"下面还有内容"（短贴不加，避免整段发虚） */
+                    .xdex-feed-post-body.is-collapsed.is-truncated .xdex-feed-post-preview {
+                           -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+                           mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+                      }
+                    /* 纯文字按钮：无边框无底色、整行可点、内容居中——与面板既有的
+                       .xdex-history-reply-action 同一范式，不另立"盒子按钮"外观 */
                     .xdex-feed-post-toggle {
-                           margin-top:4px;
-                           padding:2px 8px;
-                           border:1px solid var(--xdex-sp-border);
+                           display:flex;
+                           align-items:center;
+                           justify-content:center;
+                           gap:4px;
+                           width:100%;
+                           min-height:32px;
+                           margin:2px 0 0;
+                           padding:4px 0;
+                           border:0;
                            border-radius:6px;
-                           background:var(--xdex-sp-panel-bg);
-                           color:inherit;
+                           background:transparent;
+                           color:var(--xdex-feed-toggle-color, #0059b3);
+                           font:inherit;
+                           font-size:13px;
+                           line-height:1.6;
                            cursor:pointer;
                            overflow-anchor:none;
+                      }
+                    /* display:flex 会盖掉 UA 的 [hidden]{display:none}，必须显式兜回来 */
+                    .xdex-feed-post-toggle[hidden] {
+                           display:none;
+                      }
+                    .xdex-feed-post-toggle:hover {
+                           color:var(--xdex-feed-toggle-hover, #004d99);
+                           text-decoration:underline;
+                      }
+                    .xdex-feed-post-toggle:focus-visible {
+                           outline:2px solid var(--xdex-feed-toggle-color, #0059b3);
+                           outline-offset:-2px;
+                      }
+                    /* 方向指示（APG 披露模式）：收起时朝下、展开时翻转朝上 */
+                    .xdex-feed-post-toggle-icon {
+                           width:7px;
+                           height:7px;
+                           border-right:1.5px solid currentColor;
+                           border-bottom:1.5px solid currentColor;
+                           transform:rotate(45deg) translate(-1px, -1px);
+                           transition:transform .2s ease;
+                      }
+                    .xdex-feed-post-toggle[aria-expanded="true"] .xdex-feed-post-toggle-icon {
+                           transform:rotate(225deg) translate(-1px, -1px);
+                      }
+                    @media (prefers-reduced-motion: reduce) {
+                           .xdex-feed-post-toggle-icon {
+                                  transition:none;
+                           }
                       }
                     .xdex-history-item .h-threads-info {
                            display:flex;
@@ -31921,7 +31973,10 @@ function 注册自动保存编辑() {
     subscriptionFeedPostObserver = new ResizeObserver((entries) => {
       entries.forEach(({ target, contentRect }) => {
         const toggle = target.parentElement.nextElementSibling;
-        toggle.hidden = contentRect.height <= SUBSCRIPTION_FEED_PREVIEW_HEIGHT;
+        const isTruncated = contentRect.height > SUBSCRIPTION_FEED_PREVIEW_HEIGHT;
+        toggle.hidden = !isTruncated;
+        // 只有真被截断才给底部淡出遮罩（短贴整体发虚反而像加载失败）
+        target.parentElement.parentElement.classList.toggle('is-truncated', isTruncated);
       });
     });
     for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
@@ -32103,10 +32158,15 @@ function 注册自动保存编辑() {
     toggle.type = 'button';
     toggle.className = 'xdex-feed-post-toggle';
     toggle.setAttribute('aria-controls', contentId);
+    const toggleLabel = document.createElement('span');
+    const toggleIcon = document.createElement('span');
+    toggleIcon.className = 'xdex-feed-post-toggle-icon';
+    toggleIcon.setAttribute('aria-hidden', 'true');
+    toggle.append(toggleLabel, toggleIcon);
     const setExpanded = (isExpanded) => {
       body.classList.toggle('is-collapsed', !isExpanded);
       toggle.setAttribute('aria-expanded', String(isExpanded));
-      toggle.textContent = isExpanded ? '收起全文' : '展开全文';
+      toggleLabel.textContent = isExpanded ? '收起全文' : '展开全文';
     };
     setExpanded(expanded);
     toggle.hidden = true;
