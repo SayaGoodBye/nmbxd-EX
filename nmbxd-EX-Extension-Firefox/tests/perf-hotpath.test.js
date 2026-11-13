@@ -9,7 +9,10 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const src = fs.readFileSync(path.join(root, 'src/content/nmbxd-EX-for-edit.user.js'), 'utf8');
+// 行尾规范化：发布版 userscript 在 Windows 检出为 CRLF、开发源为 LF，而 CI（ubuntu）为 LF；
+// 本测试用多行正则匹配源码，不规范化会让 Windows 下从仓库根运行出现假失败（实测 2 项失败，LF 下通过）。
+const src = fs.readFileSync(path.join(root, 'src/content/nmbxd-EX-for-edit.user.js'), 'utf8')
+  .replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
