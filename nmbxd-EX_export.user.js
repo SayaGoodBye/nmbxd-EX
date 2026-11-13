@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX · 脚本猫后台导出
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      1.0.0
+// @version      1.1.0
 // @description  接收 X岛-EX 的导出指令，在后台抓取串内容并导出为 md/txt 落盘。页面关闭后任务继续。
 // @author       SayaGoodBye
 // @background
