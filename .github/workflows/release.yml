@@ -166,7 +166,10 @@ jobs:
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.version.outputs.tag }}
           name: X岛-EX v${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          # 正文取自仓库内维护的发布说明（每次发版前更新该文件，末尾附 Full Changelog 对比链接）。
+          # 原为 generate_release_notes: true（GitHub 自动生成提交列表），改用 body_path 后
+          # 正文就是人工整理过的「新增/优化/修复」，不再混入自动列表。
+          body_path: .github/release-notes.md
           files: |
             dist/nmbxd-EX.user.js
             dist/nmbxd-EX-v${{ steps.version.outputs.version }}.user.js

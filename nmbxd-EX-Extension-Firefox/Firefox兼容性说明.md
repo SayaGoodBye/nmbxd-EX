@@ -172,8 +172,8 @@ npx --yes web-ext lint --source-dir . --output=json
 | API 静态审计 | `node scripts/audit-firefox-apis.js` | **通过**（仅 1 条提示：`updateSessionRules` 需 ≥128，已由 strict_min_version 约束） |
 | 官方校验 | `npx web-ext lint --source-dir . --output=json` | **errors: 0** / warnings: 53 / notices: 1 |
 | 契约测试 | `node tests/*.test.js`（与 Chrome 版同一套） | **34 通过 / 5 失败**，5 个失败在 Chrome 版**同样失败**（既有问题，非移植引入）：`group-order-propagation`、`hot-path-guards`、`refresh-toast`、`reply-submit-refactor`、`submit-preflight`（详见下方说明） |
-| 内容副本字节一致 | `fc /b` / md5 | 与 `.temp\nmbxd-EX-for-edit.user.js`、Chrome 版内容副本、两处 QwQNT 副本**同一哈希** `ea7d540190b76d0da4f2a758e69d041f` |
-| 元数据链 | `node scripts/sync-userscript-meta.js` | 用户脚本 `@version` = manifest = update.json = gm-compat = **4.3.0** |
+| 内容副本字节一致 | `fc /b` / md5 | 与 `.temp\nmbxd-EX-for-edit.user.js`、Chrome 版内容副本、两处 QwQNT 副本**同一哈希** `568db6e78486727d51ecfdd319d07e9a` |
+| 元数据链 | `node scripts/sync-userscript-meta.js` | 用户脚本 `@version` = manifest = update.json = gm-compat |
 
 > 移植过程中**专门改造过**的两条测试（其余 27 条原样复用）：
 > - `tests/image-context-menu.test.js`：断言目标由 `offscreen/offscreen.js` 改为 `src/background/dom-jobs.js`，并新增"后台失败 → 内容脚本 `xdex:clipboard-write` 回退"的契约；
