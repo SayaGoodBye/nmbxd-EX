@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX · 脚本猫后台导出桥接
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      1.0.0
+// @version      1.1.0
 // @description  让 X岛-EX 在脚本猫环境下也能把串内容导出到本地：主脚本发 DOM 事件 → 本脚本转投后台脚本 → 后台抓取并落盘。主脚本无需改动存储。
 // @author       SayaGoodBye
 // @match        https://*.nmbxd1.com/*

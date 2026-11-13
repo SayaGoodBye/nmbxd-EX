@@ -125,8 +125,10 @@ test('M2: 几何未变时 positionPanel 不重复写入 style', () => {
     function getQuoteElement() { return null; }
     function getPanelAnchorRect() { return { left: 100 }; }
     function getPanelTargetWidth() { return 820; }
-    ${extractFunction('positionPanel')}
-    this.positionPanel = positionPanel;
+    // 几何护栏已下沉到 placeKaomojiFloatingPanel（positionPanel 现为薄包装，仅转发），
+    // 因此必须抽取真正持有护栏的函数，否则测的只是转发层（曾因未定义该函数而失败）
+    ${extractFunction('placeKaomojiFloatingPanel')}
+    this.positionPanel = () => placeKaomojiFloatingPanel(__panel);
     this.writeCount = () => __writes.length;
   `;
   const sandbox = {

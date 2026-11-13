@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>X岛-EX 导出任务</title>
+  <link rel="stylesheet" href="export.css">
+</head>
+<body>
+  <main class="page">
+    <header class="hero-panel">
+      <div class="hero-mark"><img src="../icons/YanHe_by_9Hr_128.png" alt="X岛-EX" draggable="false"></div>
+      <div class="hero-text">
+        <h1>串内容导出</h1>
+        <p>提交任务后可在后台继续处理，关闭页面不会中断。</p>
+      </div>
+    </header>
+
+    <section class="card" id="submit-card">
+      <h2>新建导出</h2>
+      <div class="field-row">
+        <label class="field grow">
+          <span>串号（留空使用当前页面）</span>
+          <input id="export-tid" type="text" placeholder="串号 / No.67024789 / 链接，可逗号批量">
+        </label>
+        <button id="export-probe" type="button" class="btn secondary">检索</button>
+      </div>
+      <div class="probe-info" id="export-probe-info"></div>
+
+      <div class="field-row">
+        <label class="field">
+          <span>总页码</span>
+          <input id="export-total-pages" type="text" readonly value="—">
+        </label>
+        <label class="field">
+          <span>格式</span>
+          <select id="export-format">
+            <option value="md">Markdown</option>
+            <option value="txt">TXT</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <span class="field-label">下载页码范围</span>
+        <input id="export-from" type="number" min="1" placeholder="起始" class="num">
+        <span class="dash">-</span>
+        <input id="export-to" type="number" min="1" placeholder="结束" class="num">
+        <button id="export-submit" type="button" class="btn primary">开始</button>
+        <label class="switch-row" for="export-po-only" title="只导出主串（PO）自己的发言">
+          <input id="export-po-only" type="checkbox" class="switch" role="switch">
+          <span>只看 PO</span>
+        </label>
+      </div>
+
+      <div class="submit-status" id="export-submit-status"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>进行中</h2>
+        <span class="muted" id="running-count">0</span>
+      </div>
+      <div id="running-list" class="task-list"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>历史任务</h2>
+        <button id="clear-history" type="button" class="btn tiny">清空记录</button>
+      </div>
+      <div id="history-list" class="task-list"></div>
+    </section>
+  </main>
+  <script src="export.js"></script>
+</body>
+</html>

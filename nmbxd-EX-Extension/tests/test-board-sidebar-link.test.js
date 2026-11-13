@@ -53,7 +53,7 @@ function buildSidebar({ withAdmin = true } = {}) {
 
 // tag 30 模块：从注释头到 tag -1 之间提取（独立模块，已不再挂在 PageType 上）
 function loadTag30(menu) {
-  const s0 = src.indexOf('tag 30. 测试板块增强');
+  const s0 = src.indexOf('tag 30. 测试版块增强');
   const s1 = src.indexOf('tag -1. 入口初始化');
   assert(s0 !== -1 && s1 !== -1, 'tag 30 block must exist between tag 29 and tag -1');
   const block = src.slice(src.lastIndexOf('/*', s0), src.lastIndexOf('/*', s1));
@@ -110,7 +110,7 @@ function testGracefulWhenAdminMissing() {
 function testWiredIntoRenderPipeline() {
   // 1) tag 30 必须位于 tag 29 与 tag -1 之间
   const i29 = src.indexOf('tag 29. WebDAV');
-  const i30 = src.indexOf('tag 30. 测试板块增强');
+  const i30 = src.indexOf('tag 30. 测试版块增强');
   const iMinus1 = src.indexOf('tag -1. 入口初始化');
   assert(i29 !== -1 && i30 !== -1 && iMinus1 !== -1, 'tag markers must all exist');
   assert(i29 < i30 && i30 < iMinus1, 'tag 30 must sit between tag 29 and tag -1');
@@ -124,7 +124,7 @@ function testWiredIntoRenderPipeline() {
   const pt = src.slice(src.indexOf('const PageType = {'), src.indexOf('const Utils = {'));
   assert(!pt.includes('ensureTestBoardSidebarLink'), 'helper must be extracted out of PageType');
   // 4) 含观察器兜底（侧边栏晚于脚本渲染时补挂）
-  const mod = src.slice(src.indexOf('tag 30. 测试板块增强'), src.indexOf('tag -1. 入口初始化'));
+  const mod = src.slice(src.indexOf('tag 30. 测试版块增强'), src.indexOf('tag -1. 入口初始化'));
   assert(mod.includes('MutationObserver'), 'tag 30 must install a fallback observer for late sidebar rendering');
   assert(mod.includes('restoreTestBoardThreadList'), 'tag 30 must include the thread list restore for the test board');
   // 无缝翻页双分页修复：守护放回的原生分页（列表紧邻前方）须同步最新页码

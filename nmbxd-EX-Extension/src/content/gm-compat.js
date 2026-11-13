@@ -27,8 +27,8 @@
     "// ==UserScript==",
     "// @name         X岛-EX",
     "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
-    "// @version      4.3.0",
-    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 板块页快速回复 / 展开板块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 。",
+    "// @version      4.5.0",
+    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 版块页快速回复 / 展开版块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 / WebDAV同步 / 导出串 / 导入饼干。",
     "// @author       XY",
     "// @match        https://*.nmbxd1.com/*",
     "// @match        https://*.nmbxd.com/*",
@@ -40,6 +40,7 @@
     "// @grant        GM_deleteValue",
     "// @grant        GM_listValues",
     "// @grant        GM_addStyle",
+    "// @grant        GM_download",
     "// @grant        unsafeWindow",
     "// @connect      nmbxd1.com",
     "// @connect      www.nmbxd1.com",
@@ -58,12 +59,13 @@
     "// @connect      *",
     "// 说明：* 通配允许 GM_xmlhttpRequest 访问任意域名，用于用户自定义 WebDAV 地址（无需手动逐域授权）",
     "// @require      https://code.jquery.com/jquery-3.6.0.min.js",
+    "// @require      https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
     "// @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js",
     "// @require      https://unpkg.com/upng-js@2.1.0/UPNG.js",
     "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
     "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
     "// @license      WTFPL",
-    "// @changelog    ### 新增\\n\\n- 新增导出功能，支持将串导出为Markdown/TXT文件\\n- 新增饼干计时器，发送回复后提示当前饼干冷却时间\\n- 新增被屏蔽串内的临时显示功能\\n\\n### 优化\\n\\n- 发送消息前对图像大小/格式进行预检，提前将图像压缩大小至2048KB以内或转化为合法格式之后再提交\\n- 打开浏览历史/发言历史面板时自动聚焦搜索\\n- 性能优化，减少在写入发言历史/发送消息后局部刷新的场景中发生的卡顿\\n- 正文/标题/名称/E-mai拼音组词过程中不计算字数\\n\\n### 修复\\n\\n- 修复在弹出二次确认饼干时弹出“可能提交失败”toast提示的问题\\n- 修复在部分场景下没有拓宽带图消息的问题\\n",
+    "// @changelog    ### 新增\\n\\n- 新增自定义颜文字，可新增自定义颜文字或隐藏当前面板中的颜文字\\n- 新增自定义饼干，可选择导入饼干 JSON/ 二维码图像 / 图像链接，仅发送时候可用\\n\\n### 优化\\n\\n- 版块页快捷回复后更新/添加对应串在浏览历史中的记录\\n- 右键含 ?page=&r= 的链接可直接将对应消息添加入发言历史\\n- 版块页/时间线中每个串的[回应]与浏览记录相关联而不是默认进入第一页\\n- 记忆浏览过的串的阅读进度，打开时定位到对应位置\\n\\n### 修复\\n\\n- 修复导出时只有串首Po主饼干标记为Po的问题\\n- 修复导出文件中每页都会包含串首的问题\\n- 修复预览中文本较多时回复浮窗的拖拽把手错位的问题\\n- 修复被删除的发言以墓碑形式出现在发言历史中的问题\\n- 修复打开回复浮窗时候可能出现在页面左上角而非居中的问题\\n- 修复深色模式下拓展引用浮窗中红名饼干不是红色的问题\\n- 修复版块页快捷回复后增量更新丢失“名称”、链接没有自动识别的问题\\n",
     "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
     "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
     "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
@@ -76,7 +78,7 @@
     "// @run-at       document-start",
     "// ==/UserScript=="
   ].join('\n');
-  const scriptMeta = { name: "X岛-EX", version: "4.3.0" };
+  const scriptMeta = { name: "X岛-EX", version: "4.5.0" };
   // END GENERATED USERSCRIPT META
 
   function normalizeKey(key) {
@@ -428,9 +430,24 @@
     scriptMetaStr
   };
 
+  // 扩展侧运行时声明：浏览器家族与存储命名空间随宿主自动识别，
+  // 脚本端的 kind 名（chrome-extension* / firefox-extension*）与此保持一致。
+  const isFirefoxHost = (function detectFirefoxHost() {
+    try {
+      const ua = String((typeof navigator !== 'undefined' && navigator && navigator.userAgent) || '');
+      if (/Firefox\//i.test(ua)) return true;
+      const hasBrowserApi = typeof browser !== 'undefined' && !!(browser && browser.runtime && browser.runtime.id);
+      const hasChromeApi = typeof chrome !== 'undefined' && !!(chrome && chrome.runtime && chrome.runtime.id);
+      return hasBrowserApi && !hasChromeApi;
+    } catch (err) {
+      return false;
+    }
+  }());
+
   root.__xdexRuntime = root.__xdexRuntime || {
     kind: 'extension',
-    storage: 'chrome.storage.local',
+    browser: isFirefoxHost ? 'firefox' : 'chrome',
+    storage: (isFirefoxHost ? 'browser' : 'chrome') + '.storage.local',
     gmCompat: true,
     cookieBridge: true,
     pageBridge: true,
@@ -528,7 +545,17 @@
   if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
     try {
       chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (!message || message.type !== 'xdex:image-menu-log') return false;
+        if (!message || typeof message.type !== 'string') return false;
+        // 扩展原生右键菜单「添加到发言历史」→ 事件总线交给 userscript（与 SW 解耦，且时序无关）
+        if (message.type === 'xdex:add-post-history') {
+          try {
+            document.dispatchEvent(new CustomEvent('xdex:add-post-history', {
+              detail: { url: String(message.url || '') }
+            }));
+          } catch (err) {}
+          return false;
+        }
+        if (message.type !== 'xdex:image-menu-log') return false;
       // if (!message || (message.type !== 'xdex:image-menu-log' && message.type !== 'xdex:copy-thread-link-from-image')) return false;
       // if (message.type === 'xdex:copy-thread-link-from-image') {
       //   handleCopyThreadLinkFromImage(message)
@@ -603,6 +630,8 @@
   }
 
   function showExtensionToast(text, duration = 1800, type = '') {
+    // ★ 扩展侧 toast 也留痕：与脚本端统一 [toast] 前缀，便于一并排查
+    try { console.log('[toast]', text, { channel: 'extension', type: type || 'default', duration }); } catch (e) {}
     const toast = document.createElement('div');
     toast.className = 'ae-toast';
     toast.textContent = text;
@@ -712,6 +741,30 @@
 
         if (!response) {
           if (typeof details.onerror === 'function') details.onerror(response && response.error ? response.error : response);
+          return;
+        }
+
+        // ★ 后台请求失败（网络层错误 / fetch 抛出）必须走 onerror / ontimeout，
+        //   绝不能落到 onload —— 后台的失败对象只有 { ok:false, error }，没有 status；
+        //   一旦当成功处理，响应里 status 就是 undefined，业务层会显示成
+        //   "异常响应 HTTP undefined"（WebDAV 联网检查曾如此），彻底掩盖真实原因。
+        //
+        // ★ 判据必须是「有没有 status」，不能只看 response.ok：
+        //   fetch 语义下 ok = status 在 200–299 之间，而 401/403/404/405 这些
+        //   对 WebDAV 而言**完全正常**（目录无 index、需认证、文件未创建），
+        //   GM_xmlhttpRequest 语义里它们同样必须走 onload 并带真实 status。
+        //   若按 ok 分流，401 会被误报成网络失败（本仓库真实踩过）。
+        const hasHttpStatus = response && typeof response.status === 'number' && Number.isFinite(response.status);
+        if (!hasHttpStatus) {
+          const reason = response.error
+            ? (typeof response.error === 'string' ? response.error : String(response.error.message || response.error))
+            : '请求失败（后台未返回 HTTP 状态）';
+          if (response.timeout === true) {
+            if (typeof details.ontimeout === 'function') details.ontimeout();
+            else if (typeof details.onerror === 'function') details.onerror(new Error('请求超时：' + reason));
+            return;
+          }
+          if (typeof details.onerror === 'function') details.onerror(new Error(reason));
           return;
         }
 

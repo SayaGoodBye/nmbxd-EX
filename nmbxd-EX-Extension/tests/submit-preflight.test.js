@@ -100,6 +100,16 @@ function loadHarness(file, options = {}) {
     toast: (msg, duration, toastOptions) => toasts.push({ msg, duration, options: toastOptions }),
     clearSubmitPreflightStatus: () => { calls.clears++; },
     computeSubmitRequestTimeoutMs: () => 1000,
+    // doSubmit 现已把实际发送委托给 sendSubmitRequest（真实实现含饼干分流/DNR/桥接）。
+    // 本用例只覆盖「发送前图片预检」，故给出最小等价桩：走一次 context.fetch 并回读文本。
+    // 必须引用 context.fetch（不能用外层 fetch），否则会绕过桩、丢掉 calls.fetch 计数。
+    sendSubmitRequest: async (formArg, fd, controller) => {
+      const res = await context.fetch(formArg.action, {
+        method: formArg.method, body: fd, credentials: 'include',
+        signal: controller ? controller.signal : undefined
+      });
+      return await res.text();
+    },
     refreshSubmitLockTimer: () => {},
     clearSubmitLockTimer: () => {},
     SUBMIT_NETWORK_UNKNOWN_MSG: '网络异常，结果未知：请刷新页面确认是否已发出，避免重复提交。',

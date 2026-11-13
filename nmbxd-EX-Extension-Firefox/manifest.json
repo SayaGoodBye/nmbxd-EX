@@ -1,0 +1,123 @@
+{
+  "manifest_version": 3,
+  "name": "X岛-EX",
+  "version": "4.5.0",
+  "description": "X岛揭示板网页端增强，移动端般的浏览体验。Icon by 9HrD12x（Firefox 128 及以上；115–127 请安装「115兼容版」）",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "nmbxd-ex-firefox@saya-addon",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "icons": {
+    "16": "icons/YanHe_by_9Hr_16.png",
+    "32": "icons/YanHe_by_9Hr_32.png",
+    "48": "icons/YanHe_by_9Hr_48.png",
+    "128": "icons/YanHe_by_9Hr_128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/YanHe_by_9Hr_16.png",
+      "32": "icons/YanHe_by_9Hr_32.png",
+      "48": "icons/YanHe_by_9Hr_48.png",
+      "128": "icons/YanHe_by_9Hr_128.png"
+    },
+    "default_title": "X岛-EX"
+  },
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "cookies",
+    "downloads",
+    "clipboardWrite",
+    "alarms",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://*.nmbxd1.com/*",
+    "https://*.nmbxd.com/*",
+    "https://nmb-search.166666666.xyz/*",
+    "https://api.nmb.best/*",
+    "https://image.nmb.best/*",
+    "https://raw.githubusercontent.com/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://fastly.jsdelivr.net/*",
+    "https://update.greasyfork.org/*",
+    "https://scriptcat.org/*",
+    "https://code.jquery.com/*",
+    "https://unpkg.com/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http: https: ws: wss:"
+  },
+  "background": {
+    "scripts": [
+      "src/background/thread-export.js",
+      "src/background/thread-export-tasks.js",
+      "src/background/dom-jobs.js",
+      "src/background/service-worker.js"
+    ]
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vendor/gifsicle/gifsicle.min.js",
+        "vendor/heic2any/heic2any.min.js",
+        "vendor/heic2any/heic2any-loader.js",
+        "vendor/nimingban/offline-viewer.html",
+        "export/export.html"
+      ],
+      "matches": [
+        "https://*.nmbxd1.com/*",
+        "https://*.nmbxd.com/*",
+        "https://nmb-search.166666666.xyz/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.nmbxd1.com/*",
+        "https://*.nmbxd.com/*",
+        "https://nmb-search.166666666.xyz/*"
+      ],
+      "js": [
+        "src/content/page-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.nmbxd1.com/*",
+        "https://*.nmbxd.com/*",
+        "https://nmb-search.166666666.xyz/*"
+      ],
+      "js": [
+        "src/content/theme-early.js",
+        "vendor/jquery-3.6.0.min.js",
+        "vendor/apng-js-1.1.5.js",
+        "vendor/pako-2.1.0.min.js",
+        "vendor/UPNG-2.1.0.js",
+        "vendor/jsqr-1.4.0.min.js",
+        "src/content/gm-compat.js",
+        "src/content/gifsicle-loader.js",
+        "src/content/clipboard-writer.js",
+        "src/content/userscript-bridge.js",
+        "src/content/nmbxd-EX-for-edit.user.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

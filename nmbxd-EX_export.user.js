@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X岛-EX · 脚本猫后台导出
 // @namespace    https://github.com/SayaGoodBye/nmbxd-EX
-// @version      1.0.0
+// @version      1.1.0
 // @description  接收 X岛-EX 的导出指令，在后台抓取串内容并导出为 md/txt 落盘。页面关闭后任务继续。
 // @author       SayaGoodBye
 // @background
@@ -108,6 +108,16 @@ function xdexExportShortHash(userHash) {
   return '#' + raw.slice(0, 7);
 }
 
+// 判定两条记录是否同一饼干（Po 识别用）：优先比较完整 user_hash，
+// 仅在某一侧缺失完整值时退回「7 位截断显示值」比较，避免不同饼干共享前 7 位时误判。
+function xdexExportIsSameCookie(a, b) {
+  const ra = String(a || '').trim();
+  const rb = String(b || '').trim();
+  if (!ra || !rb) return false;
+  if (ra === rb) return true;
+  return xdexExportShortHash(ra) === xdexExportShortHash(rb);
+}
+
 function xdexExportEntryUrl(tid, page, isOp) {
   const base = `${XDEX_EXPORT_SITE_BASE}/t/${tid}`;
   return isOp ? base : `${base}/page/${Math.max(1, Number(page) || 1)}`;
@@ -179,39 +189,80 @@ function xdexExportParseThreadResponse(raw, page) {
   };
 }
 
+// 渲染单个条目（头部行 + 图片行 + 正文 + 分隔线）；不负责页间分隔
+function xdexExportAppendEntry(lines, entry, ctx) {
+  const isMd = !!(ctx && ctx.isMd);
+  const tid = ctx && ctx.tid;
+  const isPo = !!(ctx && ctx.isPo);
+  const page = entry.page || 1;
+  const url = xdexExportEntryUrl(tid, page, entry.isOp);
+  const hash = xdexExportShortHash(entry.userHash);
+  const head = [];
+  head.push(isMd ? `[${entry.id}](${url})` : entry.id);
+  if (hash) head.push(isPo ? `${hash} (Po)` : hash);
+  const name = String(entry.name || '').trim();
+  const titleField = String(entry.title || '').trim();
+  if (name && name !== '无名氏') head.push(name);
+  if (titleField && titleField !== '无标题') head.push(titleField);
+  if (entry.now) head.push(entry.now);
+  lines.push(head.join(' | '));
+  lines.push('');
+  const imageUrl = xdexExportImageUrl(entry.img, entry.ext);
+  if (imageUrl) {
+    lines.push(`![${String(entry.img || '').trim()}](${imageUrl})`);
+    lines.push('');
+  }
+  const body = isMd ? xdexExportHtmlToMarkdown(entry.content) : xdexExportHtmlToText(entry.content);
+  if (body) {
+    lines.push(body);
+    lines.push('');
+  }
+  lines.push('---');
+  lines.push('');
+}
+
+// 拼装导出文档
+//
+// ★ 三条不变量（与扩展端 thread-export.js 保持一致）：
+//   1) 串首只出现一次：接口每页都返回同一份 threadObj（串首），逐页拼接会让每页开头重复一次。
+//   2) Po 主标记：以串首饼干为基准，后续回复饼干相同也标 (Po)。
+//   3) 分页可辨识：按**实际页码**（P344，而非下载序号）分节；标题下补一条横线分隔页码与正文。
 function xdexExportBuildDocument(options) {
-  const { format = 'md', tid = '', title = '', entries = [] } = options || {};
+  const { format = 'md', tid = '', title = '', entries = [], opEntry = null } = options || {};
   const isMd = format !== 'txt';
   const lines = [];
   lines.push(isMd ? `# ${title || `串 ${tid}`}` : (title || `串 ${tid}`));
   lines.push('');
+
+  // ── 串首：独立一节，位于所有分页之前，且只渲染一次 ──
+  const op = opEntry || entries.find((e) => e && e.isOp) || null;
+  const opHash = op ? xdexExportShortHash(op.userHash) : '';
+  if (op) {
+    xdexExportAppendEntry(lines, Object.assign({}, op, { isOp: true }), { tid, isMd, isPo: !!opHash });
+  }
+
+  // ── 按实际页码分组（串首不参与分页）──
+  const byPage = new Map();
   entries.forEach((entry) => {
-    const page = entry.page || 1;
-    const url = xdexExportEntryUrl(tid, page, entry.isOp);
-    const hash = xdexExportShortHash(entry.userHash);
-    const head = [];
-    head.push(isMd ? `[${entry.id}](${url})` : entry.id);
-    if (hash) head.push(entry.isOp ? `${hash} (Po)` : hash);
-    const name = String(entry.name || '').trim();
-    const titleField = String(entry.title || '').trim();
-    if (name && name !== '无名氏') head.push(name);
-    if (titleField && titleField !== '无标题') head.push(titleField);
-    if (entry.now) head.push(entry.now);
-    lines.push(head.join(' | '));
-    lines.push('');
-    const imageUrl = xdexExportImageUrl(entry.img, entry.ext);
-    if (imageUrl) {
-      lines.push(`![${String(entry.img || '').trim()}](${imageUrl})`);
-      lines.push('');
-    }
-    const body = isMd ? xdexExportHtmlToMarkdown(entry.content) : xdexExportHtmlToText(entry.content);
-    if (body) {
-      lines.push(body);
-      lines.push('');
-    }
-    lines.push('---');
-    lines.push('');
+    if (!entry || entry.isOp) return;
+    const p = Math.max(1, Number(entry.page) || 1);
+    if (!byPage.has(p)) byPage.set(p, []);
+    byPage.get(p).push(entry);
   });
+  const pages = Array.from(byPage.keys()).sort((a, b) => a - b);
+
+  pages.forEach((p) => {
+    lines.push(isMd ? `## P${p}` : `===== P${p} =====`);
+    lines.push('');
+    // 页码与正文之间加一条横线
+    lines.push(isMd ? '---' : '-'.repeat(24));
+    lines.push('');
+    byPage.get(p).forEach((entry) => {
+      const isPo = !!opHash && xdexExportIsSameCookie(entry.userHash, op.userHash);
+      xdexExportAppendEntry(lines, entry, { tid, isMd, isPo });
+    });
+  });
+
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 }
 
@@ -959,7 +1010,10 @@ async function runExport(details, taskId) {
   if (!title) title = `串${tid}`;
 
   const doc = xdexExportBuildDocument({
-    format, tid, title, entries: finalEntries
+    format, tid, title, entries: finalEntries,
+    // ★ 串首取自**第 1 页**（first 为探测页，必定抓取）：即使从 P344 开始下载，
+    //   串首也是真正的 OP；各页携带的重复串首由构建层跳过。
+    opEntry: (first && first.entries && first.entries.find((e) => e && e.isOp)) || op || null
   });
   // 文件名按「实际完成页」而非计划范围
   const doneFrom = donePages.length ? donePages[0] : startPage;

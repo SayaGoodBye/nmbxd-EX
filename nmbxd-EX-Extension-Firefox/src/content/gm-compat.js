@@ -1,0 +1,890 @@
+(function () {
+  'use strict';
+
+  const root = globalThis;
+  const storagePrefix = 'xdex-Extension:';
+  const localStoragePrefix = 'xdex-Extension-local:';
+  const syncStoragePrefix = 'xdex-Extension-sync:';
+  const syncTtlMs = 30 * 60 * 1000;
+  const syncKeys = new Set([
+    'myScriptSettings',
+    'cookies',
+    'now-cookie',
+    'xdex-last-used-cookie',
+    'xdex-cookie-userhash-digests',
+    'loginPromptSuppressAuto',
+    'xdex_update_check_state',
+    'xdex_extension_update_check_state'
+  ]);
+  const instanceId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const listeners = new Map();
+  const memoryStore = new Map();
+  const syncVersions = new Map();
+  let syncSeq = 0;
+
+  // BEGIN GENERATED USERSCRIPT META
+  const scriptMetaStr = [
+    "// ==UserScript==",
+    "// @name         X岛-EX",
+    "// @namespace    https://github.com/SayaGoodBye/nmbxd-EX",
+    "// @version      4.5.0",
+    "// @description  X岛-EX 网页端增强，移动端般的浏览体验：快捷切换饼干-发送前二次确认 / 添加页首页码 / 关闭图片水印 / 预览真实饼干 / 隐藏无标题-无名氏-版规 / 显示外部图床 / 自动刷新饼干 toast提示 / 无缝翻页-自动翻页 / 默认原图+控件 / 新标签打开串 / 优化引用弹窗 / 拓展引用格式 / 当页回复编号 / 扩展坞增强 / 拦截回复中间页 / 颜文字拓展 / 高亮PO主 / 发串UI调整 / 『分组标记饼干』 / 『屏蔽饼干』 / 『只看饼干』 / 『屏蔽关键词』- 隐藏-折叠 / 增强X岛匿名版 / 版块页快速回复 / 展开版块页长串 / 野生搜索酱 / unvcode-零宽空格模式 / 侧边栏收起 / 图片显示模式 / 图片自动压缩-非法图像格式（无GCT）GIF重编码 / 链接自动识别 / 使用数据-设置项-导入导出-剪贴板文件 / 常用串 / 浏览历史 / 发言历史 / 移动端订阅 / 阅图模式 / WebDAV同步 / 导出串 / 导入饼干。",
+    "// @author       XY",
+    "// @match        https://*.nmbxd1.com/*",
+    "// @match        https://*.nmbxd.com/*",
+    "// @match        https://nmb-search.166666666.xyz/*",
+    "// @grant        GM_getValue",
+    "// @grant        GM_setValue",
+    "// @grant        GM_addValueChangeListener",
+    "// @grant        GM_xmlhttpRequest",
+    "// @grant        GM_deleteValue",
+    "// @grant        GM_listValues",
+    "// @grant        GM_addStyle",
+    "// @grant        GM_download",
+    "// @grant        unsafeWindow",
+    "// @connect      nmbxd1.com",
+    "// @connect      www.nmbxd1.com",
+    "// @connect      nmbxd.com",
+    "// @connect      www.nmbxd.com",
+    "// @connect      nmb-search.166666666.xyz",
+    "// @connect      image.nmb.best",
+    "// @connect      api.nmb.best",
+    "// @connect      raw.githubusercontent.com",
+    "// @connect      cdn.jsdelivr.net",
+    "// @connect      fastly.jsdelivr.net",
+    "// @connect      update.greasyfork.org",
+    "// @connect      scriptcat.org",
+    "// @connect      code.jquery.com",
+    "// @connect      unpkg.com",
+    "// @connect      *",
+    "// 说明：* 通配允许 GM_xmlhttpRequest 访问任意域名，用于用户自定义 WebDAV 地址（无需手动逐域授权）",
+    "// @require      https://code.jquery.com/jquery-3.6.0.min.js",
+    "// @require      https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
+    "// @require      https://cdn.jsdelivr.net/npm/apng-js@1.1.5/lib/index.js",
+    "// @require      https://unpkg.com/upng-js@2.1.0/UPNG.js",
+    "// @icon         https://image.nmb.best/image/2026-06-03/6a1fcea41fad3.png",
+    "// @icon64       https://image.nmb.best/image/2026-06-03/6a1fced8e0e64.png",
+    "// @license      WTFPL",
+    "// @changelog    ### 新增\\n\\n- 新增自定义颜文字，可新增自定义颜文字或隐藏当前面板中的颜文字\\n- 新增自定义饼干，可选择导入饼干 JSON/ 二维码图像 / 图像链接，仅发送时候可用\\n\\n### 优化\\n\\n- 版块页快捷回复后更新/添加对应串在浏览历史中的记录\\n- 右键含 ?page=&r= 的链接可直接将对应消息添加入发言历史\\n- 版块页/时间线中每个串的[回应]与浏览记录相关联而不是默认进入第一页\\n- 记忆浏览过的串的阅读进度，打开时定位到对应位置\\n\\n### 修复\\n\\n- 修复导出时只有串首Po主饼干标记为Po的问题\\n- 修复导出文件中每页都会包含串首的问题\\n- 修复预览中文本较多时回复浮窗的拖拽把手错位的问题\\n- 修复被删除的发言以墓碑形式出现在发言历史中的问题\\n- 修复打开回复浮窗时候可能出现在页面左上角而非居中的问题\\n- 修复深色模式下拓展引用浮窗中红名饼干不是红色的问题\\n- 修复版块页快捷回复后增量更新丢失“名称”、链接没有自动识别的问题\\n",
+    "// @note         特别感谢：icon由9HrD12x设计并绘制 >>No.68765505",
+    "// @note         致谢：切饼代码移植自[XD-Enhance](https://greasyfork.org/zh-CN/scripts/438164-xd-enhance)",
+    "// @note         致谢：外部图床代码二改自[显示x岛图片链接指向的图片](https://greasyfork.org/zh-CN/scripts/546024-%E6%98%BE%E7%A4%BAx%E5%B2%9B%E5%9B%BE%E7%89%87%E9%93%BE%E6%8E%A5%E6%8C%87%E5%90%91%E7%9A%84%E5%9B%BE%E7%89%87)",
+    "// @note         致谢：完整移植[增强x岛匿名版](https://greasyfork.org/zh-CN/scripts/513156-%E5%A2%9E%E5%BC%BAx%E5%B2%9B%E5%8C%BF%E5%90%8D%E7%89%88)",
+    "// @note         致谢：部分功能移植自[X岛-揭示板的增强型体验](https://greasyfork.org/zh-CN/scripts/497875-x%E5%B2%9B-%E6%8F%AD%E7%A4%BA%E6%9D%BF%E7%9A%84%E5%A2%9E%E5%BC%BA%E5%9E%8B%E4%BD%93%E9%AA%8C#%E8%BF%9E%E6%8E%A5%E7%9B%B4%E6%8E%A5%E8%B7%B3%E8%BD%AC)",
+    "// @note         致谢：来自4sYbzEX的搜索服务[野生搜索酱](https://www.nmbxd.com/t/64792841)",
+    "// @note         致谢：来自acVMxuv的[侧边栏优化](https://greasyfork.org/zh-CN/scripts/553143-x%E5%B2%9B%E4%BC%98%E5%8C%96%E5%B2%9B-%E4%BE%A7%E8%BE%B9%E6%A0%8F%E4%BC%98%E5%8C%96%E7%89%88)",
+    "// @downloadURL  https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.user.js",
+    "// @updateURL    https://update.greasyfork.org/scripts/531005/X%E5%B2%9B-EX.meta.js",
+    "// @run-at       document-start",
+    "// ==/UserScript=="
+  ].join('\n');
+  const scriptMeta = { name: "X岛-EX", version: "4.5.0" };
+  // END GENERATED USERSCRIPT META
+
+  function normalizeKey(key) {
+    return storagePrefix + String(key);
+  }
+
+  function cloneValue(value) {
+    if (value == null) return value;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+      return value;
+    }
+  }
+
+  // 大值判定：有界探测（最多 512 个节点 / 累计 256KB 字符串），避免为了判断大小先全量序列化。
+  // 预算耗尽即保守地按大值处理：大值只会跳过镜像/克隆/深比较，不会丢数据。
+  const LARGE_VALUE_BYTES = 256 * 1024;
+  const SIZE_PROBE_NODES = 512;
+  function isLargeValue(value) {
+    if (typeof value === 'string') return value.length > LARGE_VALUE_BYTES;
+    if (value == null || typeof value !== 'object') return false;
+    const stack = [value];
+    let nodes = 0;
+    let bytes = 0;
+    while (stack.length > 0) {
+      const node = stack.pop();
+      nodes += 1;
+      if (nodes > SIZE_PROBE_NODES) return true;
+      if (typeof node === 'string') {
+        bytes += node.length;
+        if (bytes > LARGE_VALUE_BYTES) return true;
+        continue;
+      }
+      if (node && typeof node === 'object') {
+        for (const key in node) stack.push(node[key]);
+      }
+    }
+    return bytes > LARGE_VALUE_BYTES;
+  }
+
+  function valuesEqual(left, right) {
+    if (left === right) return true;
+    // 大值不深比较：两次 3–4MB stringify 的代价远高于直接按引用判断
+    if (isLargeValue(left) || isLargeValue(right)) return false;
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch (_) {
+      return left === right;
+    }
+  }
+
+  function isSyncKey(key) {
+    return syncKeys.has(String(key));
+  }
+
+  function compareSyncVersion(left, right) {
+    const leftTs = Number(left && left.ts) || 0;
+    const rightTs = Number(right && right.ts) || 0;
+    if (leftTs !== rightTs) return leftTs - rightTs;
+    const leftSeq = Number(left && left.seq) || 0;
+    const rightSeq = Number(right && right.seq) || 0;
+    if (leftSeq !== rightSeq) return leftSeq - rightSeq;
+    return String(left && left.instanceId || '').localeCompare(String(right && right.instanceId || ''));
+  }
+
+  function rememberSyncVersion(key, version) {
+    if (!isSyncKey(key) || !version) return;
+    const normalizedKey = String(key);
+    const current = syncVersions.get(normalizedKey);
+    if (!current || compareSyncVersion(current, version) <= 0) {
+      syncVersions.set(normalizedKey, {
+        ts: Number(version.ts) || Date.now(),
+        seq: Number(version.seq) || 0,
+        instanceId: String(version.instanceId || '')
+      });
+    }
+  }
+
+  function createSyncEnvelope(key, value, deleted) {
+    return {
+      protocol: 1,
+      key: String(key),
+      value: cloneValue(value),
+      deleted: !!deleted,
+      ts: Date.now(),
+      seq: ++syncSeq,
+      instanceId,
+      version: scriptMeta.version
+    };
+  }
+
+  function publishLocalStorageSync(key, value, deleted) {
+    if (!isSyncKey(key)) return;
+    try {
+      const envelope = createSyncEnvelope(key, value, deleted);
+      rememberSyncVersion(key, envelope);
+      localStorage.setItem(syncStoragePrefix + String(key), JSON.stringify(envelope));
+    } catch (err) {
+      console.warn('[X岛-EX Extension] localStorage sync publish failed', err);
+    }
+  }
+
+  function applyLocalStorageSyncEnvelope(envelope) {
+    if (!envelope || envelope.protocol !== 1 || !isSyncKey(envelope.key)) return false;
+    if (String(envelope.instanceId || '') === instanceId) return false;
+    if (Date.now() - (Number(envelope.ts) || 0) > syncTtlMs) return false;
+
+    const normalizedKey = String(envelope.key);
+    const current = syncVersions.get(normalizedKey);
+    if (current && compareSyncVersion(current, envelope) >= 0) return false;
+
+    const oldValue = memoryStore.get(normalizedKey);
+    if (envelope.deleted) {
+      memoryStore.delete(normalizedKey);
+      removeLocalStorageMirror(normalizedKey, { publish: false });
+      rememberSyncVersion(normalizedKey, envelope);
+      if (typeof oldValue !== 'undefined') emitValueChange(normalizedKey, oldValue, undefined, true);
+      return true;
+    }
+
+    const nextValue = cloneValue(envelope.value);
+    memoryStore.set(normalizedKey, nextValue);
+    writeLocalStorageMirror(normalizedKey, nextValue, { publish: false });
+    rememberSyncVersion(normalizedKey, envelope);
+    if (!valuesEqual(oldValue, nextValue)) emitValueChange(normalizedKey, oldValue, nextValue, true);
+    return true;
+  }
+
+  function applyLocalStorageMirrorChange(key, rawValue) {
+    if (!key || !key.startsWith(localStoragePrefix)) return false;
+    const rawKey = key.slice(localStoragePrefix.length);
+    if (!isSyncKey(rawKey)) return false;
+    const oldValue = memoryStore.get(rawKey);
+    if (rawValue == null) {
+      memoryStore.delete(rawKey);
+      if (typeof oldValue !== 'undefined') emitValueChange(rawKey, oldValue, undefined, true);
+      return true;
+    }
+    try {
+      const nextValue = JSON.parse(rawValue);
+      memoryStore.set(rawKey, nextValue);
+      if (!valuesEqual(oldValue, nextValue)) emitValueChange(rawKey, oldValue, nextValue, true);
+      return true;
+    } catch (err) {
+      console.warn('[X岛-EX Extension] localStorage mirror sync parse failed', err);
+      return false;
+    }
+  }
+
+  function emitValueChange(key, oldValue, newValue, remote) {
+    const callbacks = listeners.get(String(key));
+    if (!callbacks) return;
+    // 大值按引用投递（与 QwQNT 宿主一致），避免每个监听者再克隆两份 MB 级对象
+    const large = isLargeValue(oldValue) || isLargeValue(newValue);
+    callbacks.forEach((callback) => {
+      try {
+        callback(
+          String(key),
+          large ? oldValue : cloneValue(oldValue),
+          large ? newValue : cloneValue(newValue),
+          !!remote
+        );
+      } catch (err) {
+        console.warn('[X岛-EX Extension] GM_addValueChangeListener callback failed', err);
+      }
+    });
+  }
+
+  let extensionContextInvalidated = false;
+  let extensionContextReminderShown = false;
+
+  function isExtensionContextError(error) {
+    const message = String(error && (error.message || error) || '');
+    return /Extension context invalidated|context invalidated|Receiving end does not exist/i.test(message);
+  }
+
+  function markExtensionContextInvalidated(error) {
+    if (!isExtensionContextError(error) && root.chrome && chrome.runtime && chrome.runtime.id) return false;
+    extensionContextInvalidated = true;
+    if (root.__xdexRuntime) root.__xdexRuntime.extensionContextInvalidated = true;
+    if (!extensionContextReminderShown) {
+      extensionContextReminderShown = true;
+      console.warn('[X岛-EX Extension] extension context invalidated; refresh this page to reconnect', error);
+      showExtensionToast('扩展已更新，刷新页面可恢复完整同步', 0, 'error');
+    }
+    return true;
+  }
+
+  function isRuntimeAvailable() {
+    return !!(root.chrome && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage && !extensionContextInvalidated);
+  }
+
+  function getRuntimeLastError() {
+    return root.chrome && chrome.runtime ? chrome.runtime.lastError : null;
+  }
+
+  function canUsePageFetchFallback(url) {
+    try {
+      const target = new URL(String(url || ''), location.href);
+      return target.origin === location.origin;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function createHeadersObject(headers) {
+    if (!headers) return {};
+    if (typeof headers === 'string') {
+      return headers.split(/\r?\n/).reduce((acc, line) => {
+        const index = line.indexOf(':');
+        if (index > 0) acc[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+        return acc;
+      }, {});
+    }
+    return headers;
+  }
+
+  function formatResponseHeaders(headers) {
+    if (!headers || typeof headers.forEach !== 'function') return '';
+    const lines = [];
+    headers.forEach((value, key) => lines.push(`${key}: ${value}`));
+    return lines.join('\r\n');
+  }
+
+  function runPageFetchRequest(details) {
+    if (typeof fetch !== 'function' || !canUsePageFetchFallback(details.url)) return false;
+    fetch(details.url, {
+      method: details.method || 'GET',
+      headers: createHeadersObject(details.headers),
+      body: details.data || null,
+      credentials: 'include'
+    }).then(async (response) => {
+      let responseBody;
+      if (details.responseType === 'blob') {
+        responseBody = await response.blob();
+      } else if (details.responseType === 'arraybuffer') {
+        responseBody = await response.arrayBuffer();
+      } else if (details.responseType === 'json') {
+        responseBody = await response.json();
+      } else {
+        responseBody = await response.text();
+      }
+      if (typeof details.onload === 'function') {
+        details.onload({
+          status: response.status,
+          statusText: response.statusText,
+          responseHeaders: formatResponseHeaders(response.headers),
+          responseText: typeof responseBody === 'string' ? responseBody : '',
+          response: responseBody,
+          finalUrl: response.url || details.url
+        });
+      }
+    }).catch((err) => {
+      if (typeof details.onerror === 'function') details.onerror(err);
+    });
+    return true;
+  }
+
+  function syncFromChromeStorage() {
+    if (!root.chrome || !chrome.storage || !chrome.storage.local) {
+      return Promise.resolve(false);
+    }
+
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(null, (items) => {
+          const lastError = getRuntimeLastError();
+          if (lastError) {
+            markExtensionContextInvalidated(lastError);
+            console.warn('[X岛-EX Extension] storage preload failed', lastError.message);
+            resolve(false);
+            return;
+          }
+
+          Object.entries(items || {}).forEach(([key, value]) => {
+            if (!key.startsWith(storagePrefix)) return;
+            const rawKey = key.slice(storagePrefix.length);
+            const oldValue = memoryStore.get(rawKey);
+            // 大值由 chrome.storage 返回，已是本上下文独占的新对象，直接持有可省一次 3–4MB 克隆
+            const nextValue = isLargeValue(value) ? value : cloneValue(value);
+            memoryStore.set(rawKey, nextValue);
+            // 回写 localStorage 镜像：theme-early.js（先于 gm-compat 执行）只能同步读镜像，
+            // 不回写则它永远读不到 chrome.storage 里的深色开关 → 首帧无法注入
+            writeLocalStorageMirror(rawKey, nextValue, { publish: false });
+                        if (!valuesEqual(oldValue, nextValue)) {
+              emitValueChange(rawKey, oldValue, nextValue, true);
+            }
+          });
+
+          resolve(true);
+        });
+      } catch (err) {
+        markExtensionContextInvalidated(err);
+        console.warn('[X岛-EX Extension] storage preload failed', err);
+        resolve(false);
+      }
+    });
+  }
+
+  function syncFromLocalStorage() {
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith(localStoragePrefix)) continue;
+        const rawKey = key.slice(localStoragePrefix.length);
+        const raw = localStorage.getItem(key);
+        // 旧版本可能把大历史镜像进 localStorage；按字符串长度直接丢弃，避免启动时解析 4MB
+        if (raw && raw.length > LARGE_VALUE_BYTES) {
+          try { localStorage.removeItem(key); } catch (_) {}
+          continue;
+        }
+        memoryStore.set(rawKey, JSON.parse(raw));
+      }
+    } catch (err) {
+      console.warn('[X岛-EX Extension] localStorage preload failed', err);
+    }
+  }
+
+  function writeLocalStorageMirror(key, value, options) {
+    if (isLargeValue(value)) {
+      // 大值不写镜像：localStorage 配额会直接抛错，且 stringify 本身是同步大开销。
+      // 顺手清掉旧版本可能留下的镜像，避免下次启动解析 4MB。
+      try { localStorage.removeItem(localStoragePrefix + String(key)); } catch (_) {}
+      return;
+    }
+    try {
+      localStorage.setItem(localStoragePrefix + String(key), JSON.stringify(value));
+      if (!options || options.publish !== false) publishLocalStorageSync(key, value, false);
+    } catch (err) {
+      console.warn('[X岛-EX Extension] localStorage mirror write failed', err);
+    }
+  }
+
+  function removeLocalStorageMirror(key, options) {
+    try {
+      localStorage.removeItem(localStoragePrefix + String(key));
+      if (!options || options.publish !== false) publishLocalStorageSync(key, undefined, true);
+    } catch (err) {
+      console.warn('[X岛-EX Extension] localStorage mirror remove failed', err);
+    }
+  }
+
+  root.GM_info = root.GM_info || {
+    script: {
+      name: scriptMeta.name,
+      version: scriptMeta.version
+    },
+    scriptMetaStr
+  };
+
+  // 扩展侧运行时声明：浏览器家族与存储命名空间随宿主自动识别，
+  // 脚本端的 kind 名（chrome-extension* / firefox-extension*）与此保持一致。
+  const isFirefoxHost = (function detectFirefoxHost() {
+    try {
+      const ua = String((typeof navigator !== 'undefined' && navigator && navigator.userAgent) || '');
+      if (/Firefox\//i.test(ua)) return true;
+      const hasBrowserApi = typeof browser !== 'undefined' && !!(browser && browser.runtime && browser.runtime.id);
+      const hasChromeApi = typeof chrome !== 'undefined' && !!(chrome && chrome.runtime && chrome.runtime.id);
+      return hasBrowserApi && !hasChromeApi;
+    } catch (err) {
+      return false;
+    }
+  }());
+
+  root.__xdexRuntime = root.__xdexRuntime || {
+    kind: 'extension',
+    browser: isFirefoxHost ? 'firefox' : 'chrome',
+    storage: (isFirefoxHost ? 'browser' : 'chrome') + '.storage.local',
+    gmCompat: true,
+    cookieBridge: true,
+    pageBridge: true,
+    packagedGifsicle: true
+  };
+
+  root.unsafeWindow = root.unsafeWindow || window;
+
+  root.GM_getValue = function GM_getValue(key, defaultValue) {
+    return memoryStore.has(String(key)) ? cloneValue(memoryStore.get(String(key))) : defaultValue;
+  };
+
+  root.GM_setValue = function GM_setValue(key, value) {
+    const normalizedKey = String(key);
+    const oldValue = memoryStore.get(normalizedKey);
+    // 保留写入时的快照语义（调用方可能在落盘前继续修改历史 store）；
+    // 大值优化放在镜像、变更投递和等值比较，避免为了省一次克隆而引入别名竞态。
+    const nextValue = cloneValue(value);
+    memoryStore.set(normalizedKey, nextValue);
+    writeLocalStorageMirror(normalizedKey, nextValue);
+
+    if (root.chrome && chrome.storage && chrome.storage.local) {
+      if (!root.chrome.runtime || !chrome.runtime.id || extensionContextInvalidated) {
+        markExtensionContextInvalidated(new Error('Extension context invalidated'));
+      } else {
+        try {
+          chrome.storage.local.set({ [normalizeKey(normalizedKey)]: nextValue }, () => {
+            const lastError = getRuntimeLastError();
+            if (lastError) {
+              markExtensionContextInvalidated(lastError);
+              console.warn('[X岛-EX Extension] GM_setValue storage write failed', lastError.message);
+            }
+          });
+        } catch (err) {
+          markExtensionContextInvalidated(err);
+          console.warn('[X岛-EX Extension] GM_setValue storage write failed', err);
+        }
+      }
+    }
+
+    emitValueChange(normalizedKey, oldValue, nextValue, false);
+  };
+
+  root.GM_deleteValue = function GM_deleteValue(key) {
+    const normalizedKey = String(key);
+    const oldValue = memoryStore.get(normalizedKey);
+    memoryStore.delete(normalizedKey);
+    removeLocalStorageMirror(normalizedKey);
+
+    if (root.chrome && chrome.storage && chrome.storage.local) {
+      if (!root.chrome.runtime || !chrome.runtime.id || extensionContextInvalidated) {
+        markExtensionContextInvalidated(new Error('Extension context invalidated'));
+      } else {
+        try {
+          chrome.storage.local.remove(normalizeKey(normalizedKey), () => {
+            const lastError = getRuntimeLastError();
+            if (lastError) {
+              markExtensionContextInvalidated(lastError);
+              console.warn('[X岛-EX Extension] GM_deleteValue storage remove failed', lastError.message);
+            }
+          });
+        } catch (err) {
+          markExtensionContextInvalidated(err);
+          console.warn('[X岛-EX Extension] GM_deleteValue storage remove failed', err);
+        }
+      }
+    }
+
+    emitValueChange(normalizedKey, oldValue, undefined, false);
+  };
+
+  root.GM_listValues = function GM_listValues() {
+    return Array.from(memoryStore.keys());
+  };
+
+  root.GM_addValueChangeListener = function GM_addValueChangeListener(key, callback) {
+    const normalizedKey = String(key);
+    if (!listeners.has(normalizedKey)) listeners.set(normalizedKey, new Map());
+    const id = Math.random().toString(36).slice(2);
+    listeners.get(normalizedKey).set(id, callback);
+    return id;
+  };
+
+  root.GM_removeValueChangeListener = function GM_removeValueChangeListener(id) {
+    listeners.forEach((callbacks) => callbacks.delete(id));
+  };
+
+  root.GM_addStyle = function GM_addStyle(css) {
+    const style = document.createElement('style');
+    style.textContent = String(css || '');
+    (document.head || document.documentElement).appendChild(style);
+    return style;
+  };
+
+  if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
+    try {
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (!message || typeof message.type !== 'string') return false;
+        // 扩展原生右键菜单「添加到发言历史」→ 事件总线交给 userscript（与 SW 解耦，且时序无关）
+        if (message.type === 'xdex:add-post-history') {
+          try {
+            document.dispatchEvent(new CustomEvent('xdex:add-post-history', {
+              detail: { url: String(message.url || '') }
+            }));
+          } catch (err) {}
+          return false;
+        }
+        if (message.type !== 'xdex:image-menu-log') return false;
+      // if (!message || (message.type !== 'xdex:image-menu-log' && message.type !== 'xdex:copy-thread-link-from-image')) return false;
+      // if (message.type === 'xdex:copy-thread-link-from-image') {
+      //   handleCopyThreadLinkFromImage(message)
+      //     .then((result) => sendResponse(result))
+      //     .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+      //   return true;
+      // }
+        console.log('[X岛-EX Extension 图片菜单]', message.stage, message.detail || {});
+        showImageMenuToast(message.stage, message.detail || {});
+        return false;
+      });
+    } catch (err) {
+      markExtensionContextInvalidated(err);
+    }
+  }
+
+  // async function handleCopyThreadLinkFromImage(message) {
+  //   const threadUrl = resolveThreadLinkFromImageUrl(message && message.imageUrl);
+  //   if (!threadUrl) throw new Error('未找到图片所属串链接');
+  //   return { ok: true, threadUrl };
+  // }
+
+  // function resolveThreadLinkFromImageUrl(imageUrl) {
+  //   const anchor = findImageAnchorByUrl(imageUrl);
+  //   if (!anchor) return location.href;
+  //   const root = anchor.closest('.h-threads-img-a, .h-threads-img-box, .h-threads-item-reply, .h-threads-item-reply-main, .h-threads-item, .h-threads-item-index') || anchor;
+  //   const index = root.closest && root.closest('.h-threads-item-index[data-threads-id]');
+  //   const indexTid = index && index.getAttribute('data-threads-id');
+  //   if (isThreadId(indexTid)) return `${location.origin}/t/${indexTid.slice(0, 8)}`;
+  //   const pathMatch = location.pathname.match(/\/t\/(\d{8,})/);
+  //   if (pathMatch) return `${location.origin}/t/${pathMatch[1].slice(0, 8)}`;
+  //   const infoLink = root.closest('.h-threads-item-index, .h-threads-item, .h-threads-item-reply, .h-threads-item-reply-main')?.querySelector('.h-threads-info-id[href*="/t/"]');
+  //   const hrefMatch = String(infoLink && infoLink.getAttribute('href') || '').match(/\/t\/(\d{8,})/);
+  //   return hrefMatch ? `${location.origin}/t/${hrefMatch[1].slice(0, 8)}` : location.href;
+  // }
+
+  // function findImageAnchorByUrl(imageUrl) {
+  //   const target = normalizeImageLookupUrl(imageUrl);
+  //   return Array.from(document.querySelectorAll('.h-threads-img-a')).find((anchor) => {
+  //     const img = anchor.querySelector('.h-threads-img');
+  //     return normalizeImageLookupUrl(anchor.href) === target
+  //       || normalizeImageLookupUrl(anchor.getAttribute('href')) === target
+  //       || normalizeImageLookupUrl(img && (img.currentSrc || img.src)) === target
+  //       || normalizeImageLookupUrl(img && img.getAttribute('src')) === target;
+  //   }) || null;
+  // }
+
+  // function normalizeImageLookupUrl(url) {
+  //   try {
+  //     return new URL(String(url || '').replace('/thumb/', '/image/'), location.href).href;
+  //   } catch (_) {
+  //     return '';
+  //   }
+  // }
+
+  // function isThreadId(value) {
+  //   return /^\d{8,}$/.test(String(value || '').trim());
+  // }
+
+  function showImageMenuToast(stage, detail) {
+    if (stage !== 'copy-succeeded' && stage !== 'copy-failed' && stage !== 'skipped-static') return;
+    // if (stage !== 'copy-succeeded' && stage !== 'copy-failed' && stage !== 'skipped-static' && stage !== 'thread-link-succeeded' && stage !== 'thread-link-failed') return;
+    const text = stage === 'copy-succeeded'
+      ? getImageMenuSuccessToast(detail)
+      : (stage === 'skipped-static' ? '静态图片请使用浏览器原生复制图像' : `复制失败：${detail.error || '未知错误'}`);
+    // const text = stage === 'thread-link-succeeded'
+    //   ? '串链接已复制'
+    //   : (stage === 'copy-succeeded'
+    //   ? getImageMenuSuccessToast(detail)
+    //   : (stage === 'skipped-static' ? '静态图片请使用浏览器原生复制图像' : `复制失败：${detail.error || '未知错误'}`));
+    showExtensionToast(text);
+  }
+
+  function showExtensionToast(text, duration = 1800, type = '') {
+    // ★ 扩展侧 toast 也留痕：与脚本端统一 [toast] 前缀，便于一并排查
+    try { console.log('[toast]', text, { channel: 'extension', type: type || 'default', duration }); } catch (e) {}
+    const toast = document.createElement('div');
+    toast.className = 'ae-toast';
+    toast.textContent = text;
+    toast.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483647;background:rgba(0,0,0,.75);color:#fff;padding:8px 18px;border-radius:5px;font-size:14px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.25);';
+    if (type === 'error') {
+      // ★ 扩展侧错误 toast：红框 + 醒目样式（与 userscript error 同语义）
+      toast.style.border = '1px solid #e74c3c';
+      toast.style.boxShadow = '0 0 0 1px rgba(231,76,60,.4), 0 2px 8px rgba(0,0,0,.25)';
+      toast.style.fontWeight = 'bold';
+    } else if (type === 'hold') {
+      // ★ 长驻提示：与 error 相同的驻留语义，但不加红框
+      toast.style.fontWeight = 'bold';
+    }
+    document.documentElement.appendChild(toast);
+    if (type === 'error' || type === 'hold') {
+      // ★ 扩展侧长驻 toast 与 userscript 同语义：
+      // 无操作驻留 30s；挂载后 1s 武装期内忽略交互；操作后进入 5s 渐隐宽限
+      let holdTimer = 0;
+      let graceTimer = 0;
+      let armed = false;
+      let armTimer = 0;
+      let interacted = false;
+      const clearAll = () => {
+        document.removeEventListener('pointerdown', onPointer, true);
+        document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('wheel', onWheel, true);
+        window.clearTimeout(holdTimer);
+        window.clearTimeout(graceTimer);
+        window.clearTimeout(armTimer);
+      };
+      const dismiss = () => { clearAll(); toast.remove(); };
+      const startGrace = () => {
+        document.removeEventListener('pointerdown', onPointer, true);
+        document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('wheel', onWheel, true);
+        window.clearTimeout(holdTimer);
+        graceTimer = window.setTimeout(dismiss, 5000);
+      };
+      const onPointer = (e) => {
+        if (!armed || interacted) return;
+        // 左键(0)/中键(1)/右键(2)按下都算对本页操作；侧键等其余键值不计
+        if (e && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+        interacted = true;
+        startGrace();
+      };
+      const onWheel = () => {
+        // 滚轮滚动也算对本页操作（与 userscript 侧同语义）
+        if (!armed || interacted) return;
+        interacted = true;
+        startGrace();
+      };
+      const onKey = () => {
+        if (!armed || interacted) return;
+        interacted = true;
+        startGrace();
+      };
+      document.addEventListener('pointerdown', onPointer, true);
+      document.addEventListener('keydown', onKey, true);
+      document.addEventListener('wheel', onWheel, true);
+      armTimer = window.setTimeout(() => { armed = true; }, 1000);
+      holdTimer = window.setTimeout(dismiss, 30000);
+      return toast;
+    }
+    const ms = Number(duration);
+    setTimeout(() => toast.remove(), Number.isFinite(ms) && ms > 0 ? ms : 1800);
+  }
+
+  function getImageMenuSuccessToast(detail) {
+    const method = detail && detail.method ? detail.method : '';
+    if (method === 'image/gif') return 'GIF 已原样复制到剪贴板';
+    if (method.indexOf('web image/gif') !== -1 || method.indexOf('html') !== -1 && detail.format === 'gif') return 'GIF 已按富文本图片复制到剪贴板';
+    if (method.indexOf('web image/png') !== -1 || method.indexOf('html') !== -1 && detail.format === 'apng') return 'APNG 已按富文本图片复制到剪贴板';
+    if (method.indexOf('html') !== -1) return '已按富文本图片复制到剪贴板';
+    return '当前环境无法复制动图二进制，已复制图片地址';
+  }
+
+  root.GM_xmlhttpRequest = function GM_xmlhttpRequest(details) {
+    if (!details || !details.url) throw new Error('GM_xmlhttpRequest requires url');
+    if (!isRuntimeAvailable()) {
+      const err = new Error('Extension context invalidated');
+      markExtensionContextInvalidated(err);
+      if (runPageFetchRequest(details)) return;
+      if (typeof details.onerror === 'function') details.onerror(err);
+      return;
+    }
+
+    try {
+      chrome.runtime.sendMessage({
+        type: 'xdex:gm-request',
+        details: {
+          method: details.method || 'GET',
+          url: details.url,
+          headers: details.headers || {},
+          data: details.data || null,
+          responseType: details.responseType || 'text',
+          // 必须把超时透传给 SW：否则服务器不响应时 fetch 会永久挂起，
+          // 调用方只能等到自己的兜底计时器（表现为「未触发回调」）
+          timeout: typeof details.timeout === 'number' ? details.timeout : undefined
+        }
+      }, (response) => {
+        const lastError = getRuntimeLastError();
+        if (lastError) {
+          markExtensionContextInvalidated(lastError);
+          if (typeof details.onerror === 'function') details.onerror(lastError);
+          return;
+        }
+
+        if (!response) {
+          if (typeof details.onerror === 'function') details.onerror(response && response.error ? response.error : response);
+          return;
+        }
+
+        // ★ 后台请求失败（网络层错误 / fetch 抛出）必须走 onerror / ontimeout，
+        //   绝不能落到 onload —— 后台的失败对象只有 { ok:false, error }，没有 status；
+        //   一旦当成功处理，响应里 status 就是 undefined，业务层会显示成
+        //   "异常响应 HTTP undefined"（WebDAV 联网检查曾如此），彻底掩盖真实原因。
+        //
+        // ★ 判据必须是「有没有 status」，不能只看 response.ok：
+        //   fetch 语义下 ok = status 在 200–299 之间，而 401/403/404/405 这些
+        //   对 WebDAV 而言**完全正常**（目录无 index、需认证、文件未创建），
+        //   GM_xmlhttpRequest 语义里它们同样必须走 onload 并带真实 status。
+        //   若按 ok 分流，401 会被误报成网络失败（本仓库真实踩过）。
+        const hasHttpStatus = response && typeof response.status === 'number' && Number.isFinite(response.status);
+        if (!hasHttpStatus) {
+          const reason = response.error
+            ? (typeof response.error === 'string' ? response.error : String(response.error.message || response.error))
+            : '请求失败（后台未返回 HTTP 状态）';
+          if (response.timeout === true) {
+            if (typeof details.ontimeout === 'function') details.ontimeout();
+            else if (typeof details.onerror === 'function') details.onerror(new Error('请求超时：' + reason));
+            return;
+          }
+          if (typeof details.onerror === 'function') details.onerror(new Error(reason));
+          return;
+        }
+
+        let responseBody = response.response;
+        if (details.responseType === 'blob' && response.base64) {
+          const bytes = base64ToBytes(response.base64);
+          responseBody = new Blob([bytes], { type: response.contentType || 'application/octet-stream' });
+        } else if (details.responseType === 'arraybuffer' && response.base64) {
+          const bytes = base64ToBytes(response.base64);
+          responseBody = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        }
+
+        // 收到 HTTP 响应（含 4xx/5xx）即按 XHR 语义走 onload 并携带 status：
+        // 业务层需要区分 401/404 等状态码（如 WebDAV 远端文件不存在=404，应触发上传而非网络错误）
+        if (typeof details.onload === 'function') {
+          details.onload({
+            status: response.status,
+            statusText: response.statusText,
+            responseHeaders: response.responseHeaders || '',
+            responseText: typeof responseBody === 'string' ? responseBody : '',
+            response: responseBody,
+            finalUrl: response.finalUrl || details.url
+          });
+        }
+      });
+    } catch (err) {
+      markExtensionContextInvalidated(err);
+      if (runPageFetchRequest(details)) return;
+      if (typeof details.onerror === 'function') details.onerror(err);
+    }
+  };
+
+  function requestCookieOperation(type, details) {
+    return new Promise((resolve, reject) => {
+      if (!isRuntimeAvailable()) {
+        const err = new Error('Extension context invalidated');
+        markExtensionContextInvalidated(err);
+        reject(err);
+        return;
+      }
+      try {
+        chrome.runtime.sendMessage({ type, details: details || {} }, (response) => {
+          const lastError = getRuntimeLastError();
+          if (lastError) {
+            markExtensionContextInvalidated(lastError);
+            reject(new Error(lastError.message));
+            return;
+          }
+          if (!response || !response.ok) {
+            reject(new Error(response && response.error ? response.error : 'Cookie operation failed'));
+            return;
+          }
+          resolve(response);
+        });
+      } catch (err) {
+        markExtensionContextInvalidated(err);
+        reject(err);
+      }
+    });
+  }
+
+  root.__xdexCookies = root.__xdexCookies || {
+    getUserhash() {
+      return requestCookieOperation('xdex:cookies:getUserhash').then((response) => response.value || '');
+    },
+    getAll(details) {
+      return requestCookieOperation('xdex:cookies:getAll', details).then((response) => response.cookies || []);
+    },
+    set(details) {
+      return requestCookieOperation('xdex:cookies:set', details).then((response) => response.cookie || null);
+    },
+    remove(details) {
+      return requestCookieOperation('xdex:cookies:remove', details).then((response) => response.result || null);
+    }
+  };
+
+  function base64ToBytes(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  if (root.chrome && chrome.storage && chrome.storage.onChanged) {
+    try {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== 'local') return;
+        Object.entries(changes || {}).forEach(([key, change]) => {
+          if (!key.startsWith(storagePrefix)) return;
+          const rawKey = key.slice(storagePrefix.length);
+          if (typeof change.newValue === 'undefined') {
+            memoryStore.delete(rawKey);
+            removeLocalStorageMirror(rawKey);
+          } else {
+            memoryStore.set(rawKey, change.newValue);
+            writeLocalStorageMirror(rawKey, change.newValue);
+          }
+          emitValueChange(rawKey, change.oldValue, change.newValue, true);
+        });
+      });
+    } catch (err) {
+      markExtensionContextInvalidated(err);
+    }
+  }
+
+  if (typeof root.addEventListener === 'function') {
+    root.addEventListener('storage', (event) => {
+      if (!event || !event.key) return;
+      if (event.key.startsWith(syncStoragePrefix)) {
+        try {
+          applyLocalStorageSyncEnvelope(JSON.parse(event.newValue || 'null'));
+        } catch (err) {
+          console.warn('[X岛-EX Extension] localStorage sync event failed', err);
+        }
+        return;
+      }
+      applyLocalStorageMirrorChange(event.key, event.newValue);
+    });
+  }
+
+  root.__xdexGmStorageReady = syncFromChromeStorage();
+  syncFromLocalStorage();
+})();

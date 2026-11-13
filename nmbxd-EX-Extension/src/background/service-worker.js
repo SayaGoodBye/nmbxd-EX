@@ -6,17 +6,40 @@ if (typeof importScripts === 'function') {
 }
 
 const IMAGE_MENU_COPY_ANIMATED = 'xdex-copy-gif-apng';
+// 串链接菜单项：仅在开关开启时可见（contexts:link + targetUrlPatterns 精确收敛到 /t/ 串链接）
+const POST_HISTORY_MENU_ID = 'xdex-add-post-history';
+// 与 gm-compat 的存储约定一致：chrome.storage.local 的 'xdex-Extension:<key>'
+const STORAGE_PREFIX = 'xdex-Extension:';
+const SETTINGS_STORAGE_KEY = 'myScriptSettings';
+// 命中串链接的 href 才显示菜单项（img/audio/video 的 src 与 a 的 href 共用同一组模式）
+const POST_HISTORY_TARGET_PATTERNS = [
+  'https://*.nmbxd1.com/t/*',
+  'https://*.nmbxd.com/t/*'
+];
+const POST_HISTORY_DOCUMENT_PATTERNS = ['https://*.nmbxd1.com/*', 'https://*.nmbxd.com/*'];
 // const IMAGE_MENU_COPY_THREAD_LINK = 'xdex-copy-thread-link';
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen/offscreen.html';
 
 chrome.runtime.onInstalled.addListener((details) => {
   console.info('[X岛-EX Extension] installed', details.reason);
   createImageContextMenus();
+  syncPostHistoryContextMenu();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   createImageContextMenus();
+  syncPostHistoryContextMenu();
 });
+
+// 设置跨页同步 + 即时生效：设置面板改动写入 chrome.storage.local 后，立刻增删该菜单项。
+// 监听器零常驻开销（事件驱动），且只关心设置键。
+if (chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (!changes || !changes[STORAGE_PREFIX + SETTINGS_STORAGE_KEY]) return;
+    syncPostHistoryContextMenu(changes[STORAGE_PREFIX + SETTINGS_STORAGE_KEY].newValue);
+  });
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== 'string') return false;
@@ -28,6 +51,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
       });
 
+    return true;
+  }
+
+  if (message.type === 'xdex:dnr:cookie-rule') {
+    handleDnrCookieRule(message, sender)
+      .then(sendResponse)
+      .catch((err) => {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      });
     return true;
   }
 
@@ -90,7 +122,14 @@ if (chrome.action && chrome.action.onClicked) {
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (!info || !info.srcUrl) return;
+  if (!info || !info.menuItemId) return;
+
+  if (info.menuItemId === POST_HISTORY_MENU_ID) {
+    addPostHistoryFromLink(info, tab);
+    return;
+  }
+
+  if (!info.srcUrl) return;
 
   if (info.menuItemId === IMAGE_MENU_COPY_ANIMATED) {
     copyGifOrApngToClipboard(info, tab);
@@ -106,8 +145,17 @@ function createImageContextMenus() {
       id: IMAGE_MENU_COPY_ANIMATED,
       title: 'X岛-EX：复制GIF/APNG',
       contexts: ['image'],
-      documentUrlPatterns: ['https://*.nmbxd1.com/*', 'https://*.nmbxd.com/*']
+      documentUrlPatterns: POST_HISTORY_DOCUMENT_PATTERNS
     });
+    // 串链接项：先建为隐藏，再由 syncPostHistoryContextMenu() 按开关切换 visible（避免重建菜单）
+    chrome.contextMenus.create({
+      id: POST_HISTORY_MENU_ID,
+      title: 'X岛-EX：添加到发言历史',
+      contexts: ['link'],
+      targetUrlPatterns: POST_HISTORY_TARGET_PATTERNS,
+      documentUrlPatterns: POST_HISTORY_DOCUMENT_PATTERNS,
+      visible: false
+    }, () => { void (chrome.runtime && chrome.runtime.lastError); });
     // chrome.contextMenus.create({
     //   id: IMAGE_MENU_COPY_THREAD_LINK,
     //   title: 'X岛-EX：复制串链接',
@@ -178,6 +226,40 @@ async function copyGifOrApngToClipboard(info, tab) {
 //       });
 //   });
 // }
+
+// 读取设置（默认开启）并切换串链接菜单项的可见性。
+// settingsSnapshot 可传入（来自 storage.onChanged），避免重复读存储。
+function syncPostHistoryContextMenu(settingsSnapshot) {
+  const apply = (enabled) => {
+    chrome.contextMenus.update(POST_HISTORY_MENU_ID, { visible: enabled }, () => {
+      void (chrome.runtime && chrome.runtime.lastError);
+    });
+  };
+  if (settingsSnapshot && typeof settingsSnapshot === 'object') {
+    apply(settingsSnapshot.enableQuickAddPostHistory !== false);
+    return;
+  }
+  try {
+    chrome.storage.local.get(STORAGE_PREFIX + SETTINGS_STORAGE_KEY, (items) => {
+      void (chrome.runtime && chrome.runtime.lastError);
+      const settings = (items && items[STORAGE_PREFIX + SETTINGS_STORAGE_KEY]) || {};
+      apply(settings.enableQuickAddPostHistory !== false);
+    });
+  } catch (err) {
+    apply(true); // 读不到设置时按默认开启处理
+  }
+}
+
+// 串链接菜单点击 → 交给页面脚本执行（解析/查重/写入都复用设置面板「手动添加」链路）
+function addPostHistoryFromLink(info, tab) {
+  const url = String(info && info.linkUrl || '');
+  if (!url) return;
+  const tabId = tab && tab.id;
+  if (!tabId || !chrome.tabs || !chrome.tabs.sendMessage) return;
+  chrome.tabs.sendMessage(tabId, { type: 'xdex:add-post-history', url }, () => {
+    void (chrome.runtime && chrome.runtime.lastError);
+  });
+}
 
 function logImageMenuStage(stage, detail, tabId) {
   const payload = { type: 'xdex:image-menu-log', stage, detail: detail || {} };
@@ -288,6 +370,108 @@ async function getUserhashForSender(sender) {
 
 async function syncApiUserhashCookie(userhash) {
   await setCookie({ url: 'https://api.nmb.best/', name: 'userhash', value: userhash });
+}
+
+// 自定义饼干发送：只在“发帖 POST”上改写 Cookie 头，其它请求完全不受影响。
+// 会话规则（session rules）随浏览器重启失效，且用完立即移除，避免长期存在。
+const XDEX_POST_RULE_IDS = [9101, 9102];
+const XDEX_POST_RULE_TARGETS = ['doReplyThread.html', 'doPostThread.html'];
+// 只对 X岛 两个主域生效（含子域），避免误伤其它站点同名路径的请求
+const XDEX_POST_RULE_DOMAINS = ['nmbxd1.com', 'nmbxd.com'];
+
+async function handleDnrCookieRule(message, sender) {
+  const api = chrome.declarativeNetRequest;
+  if (!api || typeof api.updateSessionRules !== 'function') {
+    throw new Error('当前浏览器不支持请求头规则，无法用自定义饼干发送');
+  }
+  const pageUrl = getSenderPageUrl(sender);
+  if (!isAllowedXdaoUrl(pageUrl)) throw new Error('规则请求不是来自 X岛 页面');
+
+  if (!message.enable) {
+    await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice() });
+    return { ok: true };
+  }
+
+  const cookie = String(message.cookie || '');
+  if (!/^userhash=[\x21-\x7e]+$/.test(cookie) || cookie.includes(';') || cookie.length > 8192) {
+    throw new Error('饼干格式无效');
+  }
+  const addRules = XDEX_POST_RULE_TARGETS.map((file, index) => ({
+    id: XDEX_POST_RULE_IDS[index],
+    priority: 1,
+    action: {
+      type: 'modifyHeaders',
+      requestHeaders: [{ header: 'cookie', operation: 'set', value: cookie }]
+    },
+    condition: {
+      urlFilter: `/Home/Forum/${file}`,
+      requestDomains: XDEX_POST_RULE_DOMAINS,
+      requestMethods: ['post'],
+      resourceTypes: ['xmlhttprequest']
+    }
+  }));
+  // ★ 权限守卫：没有站点访问权限时规则可能"加得上但不生效"，宁可报错退回普通发送
+  await ensureXdexHostPermissionForRules();
+  try {
+    await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice(), addRules });
+  } catch (err) {
+    // 浏览器拒绝改写 cookie 头时，宁可报错也不要静默用错身份发帖
+    throw new Error('浏览器拒绝改写发送请求的 Cookie 头：' + (err && err.message ? err.message : err));
+  }
+  // ★ 落地校验：权限不足等场景 updateSessionRules 不抛错，用 getSessionRules 复核一次
+  await verifyXdexPostRulesApplied();
+  return { ok: true };
+}
+
+// 规则生效依赖的站点访问权限（两个主域，含子域）：modifyHeaders 只有在拥有对应 host 权限时才生效。
+// ★ 必须用**清单里声明的**模式去查：实测用 `*://*.domain/*` 查 contains() 会假阴性
+//   （http/https 各自授权，`*://` 不是 `https://` 的子集），那样会把本来可用的 DNR 路径误判为不可用。
+async function ensureXdexHostPermissionForRules() {
+  if (!chrome.permissions || typeof chrome.permissions.contains !== 'function') return;
+  let declared = [];
+  try {
+    const manifest = typeof chrome.runtime.getManifest === 'function' ? chrome.runtime.getManifest() : null;
+    declared = ((manifest && manifest.host_permissions) || [])
+      .filter((pattern) => XDEX_POST_RULE_DOMAINS.some((domain) => String(pattern).includes(domain)));
+  } catch (err) {
+    declared = [];
+  }
+  if (!declared.length) return; // 拿不到声明：不阻塞
+  let granted = false;
+  try {
+    granted = await chrome.permissions.contains({ origins: declared });
+  } catch (err) {
+    return; // 权限查询不可用：不阻塞，交给落地校验
+  }
+  if (granted) return;
+  // contains 说没有时再用"已授予清单"复核一次（覆盖 `https://*/*` 这类宽泛授权，避免误判）
+  try {
+    if (typeof chrome.permissions.getAll === 'function') {
+      const all = await chrome.permissions.getAll();
+      const origins = (all && all.origins) || [];
+      const broad = origins.some((origin) => /^https?:\/\/\*\//.test(String(origin)));
+      const covered = broad || XDEX_POST_RULE_DOMAINS.every((domain) => origins.some((origin) => String(origin).includes(domain)));
+      if (covered) return;
+    }
+  } catch (err) {}
+  throw new Error('缺少站点访问权限（' + XDEX_POST_RULE_DOMAINS.join('、') + '），请求头规则不会生效（请在扩展图标处选择"始终允许"，或在扩展管理页的权限里授予）');
+}
+
+// 规则落地校验：updateSessionRules 在权限不足等场景可能成功返回却不生效
+async function verifyXdexPostRulesApplied() {
+  const api = chrome.declarativeNetRequest;
+  if (!api || typeof api.getSessionRules !== 'function') return;
+  let rules = null;
+  try {
+    rules = await api.getSessionRules();
+  } catch (err) {
+    return; // 查不到就不做强校验
+  }
+  const ids = new Set((rules || []).map((rule) => rule && rule.id));
+  const missing = XDEX_POST_RULE_IDS.filter((id) => !ids.has(id));
+  if (!missing.length) return;
+  try { await api.updateSessionRules({ removeRuleIds: XDEX_POST_RULE_IDS.slice() }); } catch (err) {}
+  throw new Error('发送规则未生效（规则 ' + missing.join('/') + ' 未落地），已退回普通发送方式');
 }
 
 async function handleCookieMessage(message, sender) {
