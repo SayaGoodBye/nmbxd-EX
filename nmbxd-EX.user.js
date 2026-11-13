@@ -32170,6 +32170,9 @@ function 注册自动保存编辑() {
     const $results = $('#sp_feeds_results');
     if (replace && subscriptionFeedHighestRenderedPage <= 0) {
       resetSubscriptionFeedRuntimeState(uuid);
+      // 清空容器前必须先断开观察器：该分支后续有提前 return（页序/seq/uuid 守卫、catch），
+      // 不走 renderSubscriptionFeedRenderedPages 时，观察器会继续持有已脱离文档的正文节点。
+      subscriptionFeedPostObserver?.disconnect();
       if ($results.length) $results.empty();
     }
     const expectedPage = getSubscriptionFeedNextRenderPage();
