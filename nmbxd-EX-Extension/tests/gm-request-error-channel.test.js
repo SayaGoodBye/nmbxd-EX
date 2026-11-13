@@ -128,14 +128,18 @@ test('源码契约：ok===false 判定必须出现在 onload 调用之前', () =
 });
 
 // ---------- 三构建共享同一份 gm-compat ----------
-test('三扩展构建的 gm-compat.js 字节一致（改一处即三处生效）', () => {
-  const hashes = builds.map((b) => {
-    const p = path.join(repoRoot, b, 'src/content/gm-compat.js');
-    assert(fs.existsSync(p), `缺少 ${b}/src/content/gm-compat.js`);
-    return fs.readFileSync(p, 'utf8');
+test('各扩展构建的 gm-compat.js 字节一致（改一处即各处生效）', () => {
+  // Chrome 与 Firefox(128+) 必然存在（开发源与发布物都有）；115 构建只在 .temp 下存在，
+  // 未发布时缺失属正常布局，不算缺陷 —— 否则在仓库根目录就地运行时必然假失败。
+  const mustExist = ['nmbxd-EX-Extension', 'nmbxd-EX-Extension-Firefox'];
+  const present = builds.filter((b) => {
+    const ok = fs.existsSync(path.join(repoRoot, b, 'src/content/gm-compat.js'));
+    if (!ok && mustExist.indexOf(b) >= 0) assert(false, `缺少 ${b}/src/content/gm-compat.js`);
+    return ok;
   });
-  assert(hashes[0] === hashes[1], 'Chrome 与 Firefox(128+) 的 gm-compat 不一致');
-  assert(hashes[0] === hashes[2], 'Chrome 与 Firefox(115) 的 gm-compat 不一致');
+  const contents = present.map((b) => fs.readFileSync(path.join(repoRoot, b, 'src/content/gm-compat.js'), 'utf8'));
+  assert(contents.length >= 2, '至少应有 Chrome 与 Firefox 两个构建可供比对');
+  assert(contents.every((c) => c === contents[0]), '各构建的 gm-compat.js 必须字节一致');
 });
 
 // ---------- 业务层：status 缺失时必须给可判读原因，而不是 "HTTP undefined" ----------

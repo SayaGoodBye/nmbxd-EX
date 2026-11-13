@@ -4,8 +4,17 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 
+// 被断言的是"脚本内容与结构"，行尾与 BOM 属形态差异，一律先规范化：
+//   开发源 = LF(±BOM)；发布版 nmbxd-EX.user.js = CRLF+BOM；CI 的 dist 里是发布版副本。
+// 不规范化会让同一份代码在不同目录/不同行尾下得出不同结论（曾误报
+// "pagehide must still flush field patches before persist" 与 "byte-for-byte replaceable"）。
+function normalizeScriptText(text) {
+  return String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+}
+
+
 function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), 'utf8');
+  return normalizeScriptText(fs.readFileSync(path.join(root, relativePath), 'utf8'));
 }
 
 function assert(condition, message) {
@@ -45,10 +54,15 @@ function resolveUpstreamUserscriptPath() {
   return upstreamPath;
 }
 
+function readUpstreamUserscript() {
+  return normalizeScriptText(fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8'));
+}
+
+
 function testDirectUserscriptCopy() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const extensionCopy = read('src/content/nmbxd-EX-for-edit.user.js');
-  assert(extensionCopy === upstream, 'Extension userscript copy must be byte-for-byte replaceable from upstream');
+  assert(extensionCopy === upstream, 'Extension userscript copy must match upstream（已忽略行尾/BOM）');
 }
 
 async function testGifsiclePreload() {
@@ -233,7 +247,7 @@ function testExtensionUpdateHostPermissions() {
 }
 
 function testRuntimeSpecificUpdateSources() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('UPDATE_EXTENSION_GITHUB_JSON_URL'), 'userscript must define an Extension GitHub update.json source');
   assert(upstream.includes('https://raw.githubusercontent.com/SayaGoodBye/nmbxd-EX/main/nmbxd-EX-Extension/update.json'), 'Extension update source must use GitHub raw update.json, not the GitHub blob page');
   assert(upstream.includes('UPDATE_EXTENSION_JSDELIVR_JSON_URL'), 'userscript must define an Extension jsDelivr update.json fallback source');
@@ -254,7 +268,7 @@ function testGeneratedUpdateJsonContract() {
 }
 
 function testGithubUpdateFooterHighlight() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('xdex-update-source-github'), 'footer highlight cleanup must know the GitHub update source class');
   assert(upstream.includes('github: {'), 'footer highlight map must include a GitHub source entry');
   assert(upstream.includes("primary: 'github'"), 'GitHub update source must highlight GitHub as primary');
@@ -264,13 +278,13 @@ function testGithubUpdateFooterHighlight() {
 }
 
 function testSettingsPanelReleaseAndDevLinks() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('<a data-update-channel="release" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@latest/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新发布版用户脚本镜像">Release</a>'), 'settings footer Release link must provide the latest release mirror title tooltip');
   assert(upstream.includes('<a data-update-channel="dev" href="https://fastly.jsdelivr.net/gh/SayaGoodBye/nmbxd-EX@dev/nmbxd-EX.user.js" target="_blank" rel="noopener" title="最新开发版用户脚本镜像">Dev</a>'), 'settings footer Dev link must provide the latest development mirror title tooltip');
 }
 
 function testRunLinkBlankContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function runLinkBlank(root = document)'), 'userscript must keep runLinkBlank for board/sidebar/footer links');
   assert(upstream.includes("const selector = '#h-content .h-threads-list a, .margin-bottom a, .margin-top a, [style*=\"margin-top: -5px\"] a, [style*=\"margin-top:-5px\"] a, #h-menu-content a'"), 'runLinkBlank must include class-based footer/sidebar links and inline margin-top:-5px link containers');
   assert(upstream.includes("if (a.closest('.uk-parent')) return;"), 'runLinkBlank must not force .uk-parent links into new tabs');
@@ -280,7 +294,7 @@ function testRunLinkBlankContract() {
 }
 
 function testSettingsPanelModuleShellContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const tabSlotCss = extractCssRule(upstream, '#sp_panel_tab_slot');
   const tabCss = extractCssRule(upstream, '#sp_panel_tab_slot .sp_panel_tab');
   const settingsTabCss = extractCssRule(upstream, '#sp_panel_tab_slot .sp_panel_tab[data-sp-module="settings"]');
@@ -335,7 +349,7 @@ function testSettingsPanelModuleShellContract() {
 }
 
 function testSettingsPanelSaveAndReloadContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('<button id="sp_apply" style="padding:6px 10px;">保存并刷新</button>'), 'settings apply button must be labeled 保存并刷新');
   assert(upstream.includes('const reloadRequiredSettingKeys = ['), 'settings panel must keep a shared list of reload-required checkbox keys');
   assert(upstream.includes("'enableCookieSwitch'"), 'reload-required setting list must include regular checkbox settings');
@@ -351,7 +365,7 @@ function testSettingsPanelSaveAndReloadContract() {
 }
 
 function testBrowsingHistoryStorageContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes("const THREAD_HISTORY_STORAGE_KEY = 'xdex_thread_history'"), 'userscript must define local-only xdex_thread_history GM key');
   assert(upstream.includes("const THREAD_HISTORY_SYNC_EVENT = 'xdex:thread-history-changed'"), 'history updates must have a same-page sync event for open panels');
   assert(upstream.includes('THREAD_HISTORY_LIVE_RENDER_DEBOUNCE_DELAY = 300'), 'history live sync must debounce restore storms before re-rendering');
@@ -411,7 +425,7 @@ function testBrowsingHistoryStorageContract() {
 }
 
 function testPostHistoryStorageAndCompletionContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes("const POST_HISTORY_STORAGE_KEY = 'xdex_post_history'"), 'userscript must define local-only xdex_post_history GM key');
   assert(upstream.includes('function createDefaultPostHistoryStore()'), 'post history must define a default store factory');
   assert(upstream.includes('version: POST_HISTORY_STORE_VERSION') && upstream.includes('items: {}') && upstream.includes('order: []'), 'post history store shape must be { version, items, order } (limit removed, per-type limits used instead)');
@@ -493,7 +507,7 @@ function testPostHistoryStorageAndCompletionContract() {
 }
 
 function testPostHistoryServerContentWinsContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const matchStart = upstream.indexOf('function postHistoryMatchesSnapshot(post, snapshot, usedIds)');
   const matchBody = upstream.slice(matchStart, upstream.indexOf('function confirmPostHistorySnapshot', matchStart));
   assert(matchBody.includes("logPostHistory('server content differs'"), 'post-history matching must log when confirmed server content differs from submitted content');
@@ -514,7 +528,7 @@ function testPostHistoryServerContentWinsContract() {
 }
 
 function testPostHistoryForumNameContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   // 契约以脚本内嵌映射为准；根目录 forum-fid-map.json 若存在仅作可选一致性抽检，不强制
   const mapPathCandidates = [
     path.resolve(root, '..', '..', 'forum-fid-map.json'),
@@ -567,7 +581,7 @@ function testPostHistoryForumNameContract() {
 }
 
 function testPostHistoryPanelContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const postsTabCss = extractCssRule(upstream, '#sp_panel_tab_slot .sp_panel_tab[data-sp-module="posts"]');
   const moduleStart = upstream.indexOf('<div id="sp_module_posts"');
   const moduleEnd = upstream.indexOf('<div id="sp_panel_footer"', moduleStart);
@@ -594,7 +608,7 @@ function testPostHistoryPanelContract() {
 }
 
 function testHistorySearchHelpContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const historyModuleStart = upstream.indexOf('<div id="sp_module_history"');
   const postsModuleStart = upstream.indexOf('<div id="sp_module_posts"');
   const historyModuleBody = upstream.slice(historyModuleStart, postsModuleStart);
@@ -611,7 +625,7 @@ function testHistorySearchHelpContract() {
 }
 
 function testPostHistoryAdvancedSearchContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const parserStart = upstream.indexOf('function parsePostHistorySearchQuery(query)');
   const parserBody = upstream.slice(parserStart, upstream.indexOf('function parseLastPostResponse', parserStart));
   const searchStart = upstream.indexOf('function searchPostHistory(query, type)');
@@ -636,7 +650,7 @@ function testPostHistoryAdvancedSearchContract() {
 }
 
 function testHistoryAndPostCanonicalReplyLinksContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function buildCanonicalReplyUrl(threadId, replyId)'), 'userscript must centralize canonical /t/{threadId}?r={replyId} link construction');
   assert(upstream.includes('return `${location.origin}/t/${tid}?r=${rid}`'), 'canonical reply URLs must use ?r= instead of #r anchors');
   assert(upstream.includes('function buildPostHistoryReplyActionUrl(type, id, resto, page)'), 'post-history must centralize [回应] page-link construction separately from No. links');
@@ -670,7 +684,7 @@ function testHistoryAndPostCanonicalReplyLinksContract() {
 }
 
 function testHistoryRevisionSyncBehavior() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const start = upstream.indexOf("  const THREAD_HISTORY_REV_KEY = 'xdex_thread_history_rev';");
   const end = upstream.indexOf('  const POST_HISTORY_API_BASE', start);
   assert(start !== -1 && end !== -1, 'history revision-key block must exist');
@@ -733,7 +747,7 @@ function testHistoryRevisionSyncBehavior() {
 }
 
 function testPostHistoryLiveSyncContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('let postHistoryLiveRenderTimer = 0') && upstream.includes('let postHistoryLiveRenderPendingCount = 0') && upstream.includes('let postHistoryLiveRenderDirty = false'), 'post history live sync must keep its own render timer, pending counter, and dirty state');
   assert(upstream.includes('function schedulePostHistoryLiveRender(source, remote)'), 'post history live sync must have a dedicated render scheduler');
   const notifyStart = upstream.indexOf('function notifyPostHistoryStoreChanged(source, remote)');
@@ -777,7 +791,7 @@ function testPostHistoryLiveSyncContract() {
 }
 
 function testPostHistoryRefImageContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function buildPostHistoryImageFile(img, ext)'), 'post history must normalize /ref img/ext into one imageFile field');
   assert(upstream.includes("const suffix = extValue ? (extValue[0] === '.' ? extValue : `.${extValue}`) : ''"), 'post history imageFile builder must normalize ext with one leading dot');
   assert(upstream.includes('base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : base + suffix'), 'post history imageFile builder must avoid double-appending extensions');
@@ -818,7 +832,7 @@ function testPostHistoryRefImageContract() {
 
 
 function testSeamlessAppendedHDImageContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const applyStart = upstream.indexOf('function applyPageEnhancements(root, cfg, hotNodes)');
   const applyBody = upstream.slice(applyStart, upstream.indexOf('\n  function ', applyStart + 10));
   assert(applyBody.includes("liveCfg.enableHDImageAndLayoutFix") && applyBody.includes('enableHDImageAndLayoutFix(root)'), 'applyPageEnhancements must prepare HD image URLs and bindings');
@@ -834,7 +848,7 @@ function testSeamlessAppendedHDImageContract() {
 }
 
 function testHistoryAndPostImageQuotePreviewContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function isSettingsPanelImageEnhancementRoot(root)'), 'HD image enhancement must centralize settings-panel exclusion');
   assert(upstream.includes("return !!(node && node.closest && node.closest('#sp_panel'));"), 'settings-panel exclusion must cover the whole settings panel instead of individual image classes');
   const hdStart = upstream.indexOf('function enableHDImageAndLayoutFix(root = document)');
@@ -867,7 +881,7 @@ function testHistoryAndPostImageQuotePreviewContract() {
 }
 
 function testHistoryAndPostContentEnhancementContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function enhanceHistoryRenderedContent(root)'), 'history/post rendered content must use one shared enhancement helper');
   const helperStart = upstream.indexOf('function enhanceHistoryRenderedContent(root)');
   const helperEnd = upstream.indexOf('function buildThreadHistoryItemElement', helperStart);
@@ -887,7 +901,7 @@ function testHistoryAndPostContentEnhancementContract() {
 }
 
 function testHistoryAndPostDeleteConfirmContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const historyDeleteStart = upstream.indexOf("off('click.xdex-history-delete', '.xdex-history-delete')");
   const historyClearStart = upstream.indexOf("$('#sp_history_clear').off('click.xdex-history')");
   const postsDeleteStart = upstream.indexOf("off('click.xdex-post-history-delete', '.xdex-post-history-delete')");
@@ -906,7 +920,7 @@ function testHistoryAndPostDeleteConfirmContract() {
 }
 
 function testBrowsingHistoryUrlParsingContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function parseThreadHistoryUrl'), 'userscript must expose a history URL parser');
   assert(upstream.includes('/\\/t\\/(\\d{6,8})(?:\\/page\\/(\\d+))?/'), 'history URL parser must support /t/{id} and /t/{id}/page/{page}');
   assert(upstream.includes('/\\/Forum\\/po\\/id\\/(\\d{6,8})(?:\\/page\\/(\\d+)\\.html)?/'), 'history URL parser must support PO id page paths');
@@ -915,7 +929,7 @@ function testBrowsingHistoryUrlParsingContract() {
 }
 
 function testKaomojiContextCopyContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   // 复制动作抽到 copyKaomojiValue：右键菜单与键盘 C 共用
   const copyFnIndex = upstream.indexOf('function copyKaomojiValue(value)');
   assert(copyFnIndex !== -1, 'kaomoji panel must share one copy helper for right-click and keyboard C');
@@ -953,7 +967,7 @@ function testKaomojiContextCopyContract() {
 }
 
 function testBrowsingHistoryIndexContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const fields = [
     'searchText', 'threadIdText', 'titleText', 'authorText', 'cookieIdText', 'excerptText',
     'mode', 'hasImage', 'isGif', 'hasZeroWidth', 'hasVisibleText', 'hasWhitespaceOnly', 'lastVisitedAt'
@@ -971,7 +985,7 @@ function testBrowsingHistoryIndexContract() {
 }
 
 function testBrowsingHistoryExtractionAndRenderingContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function extractThreadHistoryRecord'), 'userscript must extract current thread history from DOM');
   assert(upstream.includes('function findThreadHistoryMainElement'), 'history extraction must use a helper to find the real thread main container');
   assert(upstream.includes(".h-threads-list .h-threads-item-main"), 'history extraction must prefer main thread containers inside .h-threads-list');
@@ -1060,7 +1074,7 @@ function testBrowsingHistoryExtractionAndRenderingContract() {
 }
 
 function testRelativeTimeIdempotenceContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes("const timeStr = target.attr('data-xdex-original-time') || target.attr('title') || target.text().trim()"), 'Relative time formatter must always prefer the stable original timestamp');
   assert(upstream.includes('if (Number.isNaN(date.getTime())) return;'), 'Relative time formatter must ignore invalid/non-machine time strings to avoid NaN prefixes');
   assert(upstream.includes("target.attr('data-xdex-original-time', timeStr)"), 'Relative time formatter must bind the original timestamp for future refreshes');
@@ -1076,7 +1090,7 @@ function testRelativeTimeIdempotenceContract() {
 }
 
 function testBrowsingHistoryPanelBodyContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const panelViewsCss = extractCssRule(upstream, '#sp_panel_views');
   const panelContentCss = extractCssRule(upstream, '.sp_panel_content');
   const settingsStart = upstream.indexOf('<div id="sp_module_settings"');
@@ -1264,7 +1278,7 @@ async function testGmCompatSameOriginFetchFallback() {
 }
 
 function testGifCompressionDiagnosticsContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const compressStart = upstream.indexOf('async function compressGifToSize(file, options = {})');
   const compressEnd = upstream.indexOf('// ✅ APNG 压缩', compressStart);
   const retryStart = upstream.indexOf('async function compressImageForRetry(');
@@ -1301,7 +1315,7 @@ function testGifCompressionDiagnosticsContract() {
 }
 
 function testUserscriptRuntimeLogHelper() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('function getXDexRuntimeInfo()'), 'upstream userscript must include runtime detection helper');
   assert(upstream.includes("declared.kind === 'extension'"), 'runtime helper must honor the Extension declared runtime');
   assert(upstream.includes("kind: 'userscript'"), 'runtime helper must fall back to userscript runtime');
@@ -1309,7 +1323,7 @@ function testUserscriptRuntimeLogHelper() {
 }
 
 function testSingletonStartupGuard() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   const runtimeIndex = upstream.indexOf('const XDEX_RUNTIME = getXDexRuntimeInfo();');
   const guardIndex = upstream.indexOf('shouldExitForXDexSingleton(XDEX_RUNTIME)');
   const waitIndex = upstream.indexOf('const XDEX_SINGLETON_WAIT_MS = 100;');
@@ -1749,7 +1763,7 @@ async function testServiceWorkerInjectsApiUserhashCookie() {
   await testServiceWorkerInjectsApiUserhashCookie();
   
 function testQuoteAvailabilityContract() {
-  const upstream = fs.readFileSync(resolveUpstreamUserscriptPath(), 'utf8');
+  const upstream = readUpstreamUserscript();
   assert(upstream.includes('extendQuoteAvailabilityDetection: true'), 'quote availability sub-switch must default enabled');
   assert(upstream.includes('id="sp_extendQuoteAvailability"'), 'settings panel must expose the availability sub-switch');
   assert(upstream.includes('sp_extendQuoteAvailability:'), 'settings panel must document the availability sub-switch');
