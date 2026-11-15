@@ -1106,10 +1106,11 @@ function xdexEarlyDarkEnabled() {
                       --xdex-sp-footer-bg: #FFFFEE;
                       --xdex-sp-border: #eee;
                       --xdex-sp-shadow: rgba(0,0,0,0.2);
-                      /* 订阅页「展开/收起」纯文字按钮配色：在 #FFFFEE 上对比度 6.75:1（AA 正文达标）。
-                         原有文字动作按钮用的 #07d 仅 4.44:1，故这里单列 token 而非沿用。 */
-                      --xdex-feed-toggle-color: #0059b3;
-                      --xdex-feed-toggle-hover: #004d99;
+                      /* 通用折叠组件「展开/收起」按钮配色（订阅页/浏览历史/发言历史共用）：
+                         在 #FFFFEE 上对比度 6.75:1（AA 正文达标）。原有文字动作按钮用的 #07d
+                         仅 4.44:1，故这里单列 token 而非沿用。 */
+                      --xdex-collapse-toggle-color: #0059b3;
+                      --xdex-collapse-toggle-hover: #004d99;
                   }
                   :root.xdex-darkreader-active {
                       --xdex-sp-panel-bg: #2b2c2d;
@@ -1118,8 +1119,8 @@ function xdexEarlyDarkEnabled() {
                       --xdex-sp-border: #4b4d50;
                       --xdex-sp-shadow: rgba(0,0,0,0.55);
                       /* 深色：沿用本站蓝 #66ccff，在 #2b2c2d 上对比度 7.76:1 */
-                      --xdex-feed-toggle-color: #66ccff;
-                      --xdex-feed-toggle-hover: #9ecbff;
+                      --xdex-collapse-toggle-color: #66ccff;
+                      --xdex-collapse-toggle-hover: #9ecbff;
                       /* shadcn 风格 token：脚本内从未定义，导致 42 处 var() 恒取 fallback。
                          深色下面板底色已是 #2b2c2d，而 fallback 的 #333/#666 深字压深底不可读；
                          仅在深色类下补定义，light 模式继续走原 fallback（行为零变化） */
@@ -1635,24 +1636,26 @@ function xdexEarlyDarkEnabled() {
                            white-space:pre-wrap;
                            overflow-wrap:anywhere;
                       }
-                    .xdex-feed-post-body {
+                    .xdex-collapsible {
                            margin:15px 40px 6px;
                       }
-                    .xdex-feed-post-preview > .h-threads-content {
+                    /* 组件内的正文交给 .xdex-collapsible 承担外边距；这里提高一级权重，
+                       以覆盖 .xdex-history-item .h-threads-content 的同名外边距（同权重时靠先后顺序，太脆） */
+                    .xdex-collapsible > .xdex-collapsible-preview > .h-threads-content {
                            margin:0;
                       }
-                    .xdex-feed-post-body.is-collapsed .xdex-feed-post-preview {
-                           max-height:${SUBSCRIPTION_FEED_PREVIEW_HEIGHT}px;
+                    .xdex-collapsible.is-collapsed .xdex-collapsible-preview {
+                           max-height:${COLLAPSE_PREVIEW_HEIGHT}px;
                            overflow:clip;
                       }
                     /* 仅在真的被截断时淡出末行，提示"下面还有内容"（短贴不加，避免整段发虚） */
-                    .xdex-feed-post-body.is-collapsed.is-truncated .xdex-feed-post-preview {
+                    .xdex-collapsible.is-collapsed.is-truncated .xdex-collapsible-preview {
                            -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
                            mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
                       }
                     /* 纯文字按钮：无边框无底色、整行可点、内容居中——与面板既有的
                        .xdex-history-reply-action 同一范式，不另立"盒子按钮"外观 */
-                    .xdex-feed-post-toggle {
+                    .xdex-collapsible-toggle {
                            display:flex;
                            align-items:center;
                            justify-content:center;
@@ -1664,7 +1667,7 @@ function xdexEarlyDarkEnabled() {
                            border:0;
                            border-radius:6px;
                            background:transparent;
-                           color:var(--xdex-feed-toggle-color, #0059b3);
+                           color:var(--xdex-collapse-toggle-color, #0059b3);
                            font:inherit;
                            font-size:13px;
                            line-height:1.6;
@@ -1672,19 +1675,19 @@ function xdexEarlyDarkEnabled() {
                            overflow-anchor:none;
                       }
                     /* display:flex 会盖掉 UA 的 [hidden]{display:none}，必须显式兜回来 */
-                    .xdex-feed-post-toggle[hidden] {
+                    .xdex-collapsible-toggle[hidden] {
                            display:none;
                       }
-                    .xdex-feed-post-toggle:hover {
-                           color:var(--xdex-feed-toggle-hover, #004d99);
+                    .xdex-collapsible-toggle:hover {
+                           color:var(--xdex-collapse-toggle-hover, #004d99);
                            text-decoration:underline;
                       }
-                    .xdex-feed-post-toggle:focus-visible {
-                           outline:2px solid var(--xdex-feed-toggle-color, #0059b3);
+                    .xdex-collapsible-toggle:focus-visible {
+                           outline:2px solid var(--xdex-collapse-toggle-color, #0059b3);
                            outline-offset:-2px;
                       }
                     /* 方向指示（APG 披露模式）：收起时朝下、展开时翻转朝上 */
-                    .xdex-feed-post-toggle-icon {
+                    .xdex-collapsible-toggle-icon {
                            width:7px;
                            height:7px;
                            border-right:1.5px solid currentColor;
@@ -1692,11 +1695,11 @@ function xdexEarlyDarkEnabled() {
                            transform:rotate(45deg) translate(-1px, -1px);
                            transition:transform .2s ease;
                       }
-                    .xdex-feed-post-toggle[aria-expanded="true"] .xdex-feed-post-toggle-icon {
+                    .xdex-collapsible-toggle[aria-expanded="true"] .xdex-collapsible-toggle-icon {
                            transform:rotate(225deg) translate(-1px, -1px);
                       }
                     @media (prefers-reduced-motion: reduce) {
-                           .xdex-feed-post-toggle-icon {
+                           .xdex-collapsible-toggle-icon {
                                   transition:none;
                            }
                       }
@@ -2306,7 +2309,7 @@ function xdexEarlyDarkEnabled() {
             </div>
           </div>
         </div>`;
-      subscriptionFeedPostObserver?.disconnect();
+      releaseCollapseObserver('subscriptionFeed');
       $('#sp_cover').remove();
       $('body').append(html);
       syncFavoriteThreadsLinks();
@@ -12021,9 +12024,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             noteLoadEnd(k);
             scheduleProcessQueue();
           };
-          img.addEventListener('load', finish, { once: true });
-          img.addEventListener('error', finish, { once: true });
-          load(img, hdSrc);
+          // 槽位覆盖**整条加载链**（含退避重试）：由 load() 在链结束时回调归还，而不是在第一个
+          // load/error 事件就归还——否则重试会在 MAX_CONCURRENT 预算之外并发，弱网下把带宽打满。
+          load(img, hdSrc, { onSettled: finish });
           if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading !== '1') finish();
           started = true;
           break;
@@ -12062,7 +12065,69 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         io.observe(img);
       });
     }
-    function load(img, hdUrl) {
+    // 原图加载的重试策略：失败不再"一次即弃"（弱网/图床中途断连时会把能加载出来的图误判为坏图）。
+    //   · 每次尝试带看门狗（半开连接不会永远挂着，也不会接管太久）；
+    //   · 失败按 HD_RETRY_DELAYS 退避重试，重试 URL 带 xdexHdRetry 参数强制新请求（同一 URL 重复赋值可能命中失败结果）；
+    //   · 全部失败才回退缩略图，且**不置** xdexHdLoaded —— 否则回退后缩略图的 load 会被当成原图成功，该图本次会话永不重试；
+    //   · 失败后进入冷却，避免滚动热路径反复重试同一张坏图。
+    const HD_RETRY_DELAYS = [800, 2000];
+    const HD_ATTEMPT_TIMEOUT_MS = 30000;
+    const HD_RETRY_COOLDOWN_MS = 30000;
+    const hdFailedCooldown = new WeakMap(); // img → 冷却截止时间戳
+    function withHdRetryBuster(url, attempt) {
+      return url + (url.includes('?') ? '&' : '?') + 'xdexHdRetry=' + attempt;
+    }
+    // 必须按"解析后的绝对地址"比较：调用方可能传相对地址（"/image/x.png"），
+    // 而 img.src 读回来永远是绝对地址；直接字符串比较会永远不相等，导致本次尝试不 settle、loading 卡死。
+    function isCurrentHdAttempt(img, hdUrl) {
+      try {
+        return (img.currentSrc || img.src) === new URL(hdUrl, location.href).href;
+      } catch (e) {
+        return false;
+      }
+    }
+    function startHdAttempt(img, hdUrl, attempt, onSettled, baseHdUrl) {
+      const rawHdUrl = baseHdUrl || hdUrl;   // 重试参数始终基于原始地址构造，避免 ?xdexHdRetry=1&xdexHdRetry=2 累积
+      const thumbSrc = img.dataset.xdexThumbSrc || '';
+      img.dataset.xdexHdLoading = '1';
+      let settled = false;
+      let watchdogId = 0;
+      // 整条链（可能含多次退避重试）结束才清 xdexHdLoading / 通知调度器归还槽位。
+      // 退避期间必须保持 loading：否则 enqueue/observe 的判据看到"未加载"，会再入队开出第二条并行链。
+      const settleChain = (ok) => {
+        delete img.dataset.xdexHdLoading;
+        if (ok) {
+          img.dataset.xdexHdLoaded = '1';
+          hdFailedCooldown.delete(img);
+        } else {
+          hdFailedCooldown.set(img, nowTs() + HD_RETRY_COOLDOWN_MS);
+          if (thumbSrc) img.src = thumbSrc;
+        }
+        if (typeof onSettled === 'function') { try { onSettled(ok); } catch (e) {} }
+      };
+      const finishAttempt = (ok) => {
+        if (settled) return;
+        settled = true;
+        if (watchdogId) { clearTimeout(watchdogId); watchdogId = 0; }
+        img.removeEventListener('load', onLoad);
+        img.removeEventListener('error', onError);
+        if (ok) { settleChain(true); return; }
+        const nextDelay = HD_RETRY_DELAYS[attempt];
+        if (nextDelay == null) { settleChain(false); return; }
+        setTimeout(() => {
+          if (!img || !img.isConnected) { settleChain(false); return; }
+          startHdAttempt(img, withHdRetryBuster(rawHdUrl, attempt + 1), attempt + 1, onSettled, rawHdUrl);
+        }, nextDelay);
+      };
+      // 只认"当前加载的就是本次尝试的地址"：回退后的缩略图 load/error 都不属于本次尝试
+      const onLoad = () => { if (isCurrentHdAttempt(img, hdUrl)) finishAttempt(true); };
+      const onError = () => { if (isCurrentHdAttempt(img, hdUrl)) finishAttempt(false); };
+      img.addEventListener('load', onLoad);
+      img.addEventListener('error', onError);
+      if (HD_ATTEMPT_TIMEOUT_MS > 0) watchdogId = setTimeout(() => finishAttempt(false), HD_ATTEMPT_TIMEOUT_MS);
+      img.src = hdUrl;
+    }
+    function load(img, hdUrl, options) {
       if (!img) return;
       const finalHdUrl = prepare(img, hdUrl);
       if (!finalHdUrl) return;
@@ -12072,19 +12137,11 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         return;
       }
       if (img.dataset.xdexHdLoading === '1') return;
-      img.dataset.xdexHdLoading = '1';
-      const thumbSrc = img.dataset.xdexThumbSrc || '';
-      const onLoad = () => {
-        img.dataset.xdexHdLoaded = '1';
-        delete img.dataset.xdexHdLoading;
-      };
-      const onError = () => {
-        delete img.dataset.xdexHdLoading;
-        if (thumbSrc && (img.currentSrc || img.src) === finalHdUrl) img.src = thumbSrc;
-      };
-      img.addEventListener('load', onLoad, { once: true });
-      img.addEventListener('error', onError, { once: true });
-      img.src = finalHdUrl;
+      // 刚失败过的图在冷却期内不再**自动**重试（滚动热路径会反复入队同一批图）；
+      // 用户显式点击（options.force）不受冷却限制——否则点了没反应。
+      const forced = !!(options && options.force);
+      if (!forced && (hdFailedCooldown.get(img) || 0) > nowTs()) return;
+      startHdAttempt(img, finalHdUrl, 0, options && options.onSettled);
     }
     function getStats() {
       return {
@@ -12761,14 +12818,10 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             if (shouldOpen) {
               // 展开
               box.classList.add('h-active');
-              hdImageLazyLoader.load(img, anchor.href);
+              hdImageLazyLoader.load(img, anchor.href, { force: true });
               img.dataset.rotateIndex = '0'; // 重置旋转索引
-              // ★ 新增：加载失败兜底
-              img.onerror = () => {
-                console.warn('[图片加载失败，回退到缩略图]', img.src);
-                const fallback = img.dataset.xdexThumbSrc || img.getAttribute('data-src') || anchor.href;
-                img.src = fallback;
-              };
+              // 失败回退由 hdImageLazyLoader 统一处理（含退避重试），这里不再另挂 onerror——
+              // 双份回退会重复赋值同一地址，缩略图也失败时还会形成 error→赋值 的无限重试风暴。
               // 触发布局计算
               handleImageLayout.handleActiveImageBox(box);
             } else {
@@ -13090,7 +13143,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         clickCountMap.set(this, count);
         if (count % 2 === 1) {
           box.classList.add('h-active');
-          hdImageLazyLoader.load(img, this.href);
+          hdImageLazyLoader.load(img, this.href, { force: true });
           updatePreviewImageLayout(box);
         } else {
           box.classList.remove('h-active');
@@ -13145,7 +13198,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (!img || !imgA) return;
       if (!box.classList.contains('h-active')) {
         box.classList.add('h-active');
-        hdImageLazyLoader.load(img, imgA.getAttribute('href') || img.src || '');
+        hdImageLazyLoader.load(img, imgA.getAttribute('href') || img.src || '', { force: true });
       }
       const current = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
       const next = (current + delta + rotateArray.length) % rotateArray.length;
@@ -29372,72 +29425,6 @@ function 注册自动保存编辑() {
     });
     cleanThreadHistoryContentWhitespace(root);
   }
-  function removeThreadHistoryTrailingBreaks(root) {
-    while (root && root.lastChild) {
-      const node = root.lastChild;
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        removeThreadHistoryTrailingBreaks(node);
-      }
-      if (node.nodeType === Node.TEXT_NODE && !String(node.nodeValue || '').trim()) {
-        node.remove();
-        continue;
-      }
-      if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
-        node.remove();
-        continue;
-      }
-      if (isEmptyThreadHistoryInlineElement(node)) {
-        node.remove();
-        continue;
-      }
-      break;
-    }
-  }
-  function isEmptyThreadHistoryInlineElement(node) {
-    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-    if (!/^(A|SPAN|FONT|B|STRONG|I|EM|U|S|DEL|CODE|SUB|SUP)$/.test(node.tagName)) return false;
-    return !String(node.textContent || '').trim() && !node.querySelector('img, video, audio, canvas, svg');
-  }
-  function limitThreadHistoryContentText(root, limit) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    let remaining = Math.max(0, Number(limit) || 0);
-    let truncated = false;
-    for (const node of nodes) {
-      if (truncated || remaining <= 0) {
-        node.nodeValue = '';
-        continue;
-      }
-      const value = String(node.nodeValue || '');
-      if (value.length > remaining) {
-        node.nodeValue = value.slice(0, remaining).replace(/\s+$/, '');
-        pruneAfterThreadHistoryTextNode(root, node);
-        truncated = true;
-        remaining = 0;
-      } else {
-        remaining -= value.length;
-      }
-    }
-    cleanThreadHistoryContentWhitespace(root);
-    removeThreadHistoryTrailingBreaks(root);
-  }
-  function pruneAfterThreadHistoryTextNode(root, textNode) {
-    let current = textNode;
-    while (current && current.parentNode && current !== root) {
-      while (current.nextSibling) current.nextSibling.remove();
-      current = current.parentNode;
-    }
-    if (current === root) removeThreadHistoryTrailingBreaks(root);
-  }
-  function isThreadHistoryContentTruncated(text) {
-    return String(text || '').length > THREAD_HISTORY_EXCERPT_LIMIT;
-  }
-  function appendThreadHistoryTruncationMarker(contentEl) {
-    if (!contentEl) return;
-    removeThreadHistoryTrailingBreaks(contentEl);
-    contentEl.appendChild(document.createTextNode('……'));
-  }
   function sanitizeThreadHistoryInlineHtml(sourceEl) {
     if (!sourceEl) return '';
     const clone = sourceEl.cloneNode(true);
@@ -29595,7 +29582,6 @@ function 注册自动保存编辑() {
     const contentEl = mainEl.querySelector('.h-threads-content');
     const rawContent = getElementTextPreserveZeroWidth(contentEl);
     const contentText = trimThreadHistoryContentText(rawContent);
-    const contentTruncated = isThreadHistoryContentTruncated(contentText);
     const contentHtml = sanitizeThreadHistoryContentHtml(contentEl);
     const hasZeroWidth = ZERO_WIDTH_RE.test(rawContent);
     const hasVisibleText = !!getVisibleTextForHistory(rawContent);
@@ -29626,7 +29612,6 @@ function 注册自动保存编辑() {
       createdAt,
       contentText,
       contentHtml,
-      contentTruncated,
       excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
       imageFile,
       contentFlags: { hasVisibleText, hasWhitespaceOnly, hasZeroWidth },
@@ -29859,7 +29844,6 @@ function 注册自动保存编辑() {
     return {
       contentText,
       contentHtml: sanitizeThreadHistoryContentHtml(el),
-      contentTruncated: isThreadHistoryContentTruncated(contentText),
       excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
       contentFlags: {
         hasZeroWidth: ZERO_WIDTH_RE.test(rawContent),
@@ -29943,13 +29927,12 @@ function 注册自动保存编辑() {
         fields = {
           contentText: fromDom.contentText || '',
           contentHtml: fromDom.contentHtml || '',
-          contentTruncated: !!fromDom.contentTruncated,
           excerpt: fromDom.excerpt || '',
           contentFlags: fromDom.contentFlags || {}
         };
       }
     }
-    if (!fields) fields = { contentText: '', contentHtml: '', contentTruncated: false, excerpt: '', contentFlags: {} };
+    if (!fields) fields = { contentText: '', contentHtml: '', excerpt: '', contentFlags: {} };
     return {
       key: getThreadHistoryKey(mode, threadId),
       mode,
@@ -29964,7 +29947,6 @@ function 注册自动保存编辑() {
       imageFile: imageFile || '',
       contentText: fields.contentText || '',
       contentHtml: fields.contentHtml || '',
-      contentTruncated: !!fields.contentTruncated,
       excerpt: fields.excerpt || String(fields.contentText || '').slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
       contentFlags: fields.contentFlags || {},
       lastReadReplyId: String(opts.replyId || ''),
@@ -30879,11 +30861,9 @@ function 注册自动保存编辑() {
     content.className = 'h-threads-content';
     if (item.contentHtml) content.innerHTML = item.contentHtml;
     else content.textContent = item.contentText || item.excerpt || '';
-    if (item.contentTruncated) {
-      limitThreadHistoryContentText(content, THREAD_HISTORY_EXCERPT_LIMIT);
-      appendThreadHistoryTruncationMarker(content);
-    }
-    main.appendChild(content);
+    // 全文完整保留在 DOM（浏览器查找可用、可展开），超长默认折叠；
+    // 不再做 250 字字符级截断（旧实现会把超出部分从 DOM 删掉，导致无法展开）
+    main.appendChild(buildCollapsibleContent(content, 'threadHistory', {}).body);
     enhanceHistoryRenderedContent(content);
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -31042,6 +31022,7 @@ function 注册自动保存编辑() {
     if (barCount) barCount.textContent = `${list.length} 条`;
     const emptyBtn = document.getElementById('sp_history_recycle_empty');
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    releaseCollapseObserver('threadHistory');
     root.textContent = '';
     const now = Date.now();
     const liveStore = getThreadHistoryStore();
@@ -31139,6 +31120,7 @@ function 注册自动保存编辑() {
       count.textContent = `${results.length} 条 `;
       count.appendChild(buildHistorySearchHelpMark(THREAD_HISTORY_SEARCH_HELP_TEXT));
     }
+    releaseCollapseObserver('threadHistory');
     root.textContent = '';
     if (!results.length) {
       const empty = document.createElement('div');
@@ -31499,7 +31481,8 @@ function 注册自动保存编辑() {
     content.className = 'h-threads-content';
     if (item.contentHtml) content.innerHTML = item.contentHtml;
     else content.textContent = item.contentText || item.contentRaw || '';
-    main.appendChild(content);
+    // 与浏览历史同一套折叠组件：全文保留在 DOM，超长默认折叠可展开
+    main.appendChild(buildCollapsibleContent(content, 'postHistory', {}).body);
     enhanceHistoryRenderedContent(content);
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer xdex-post-history-footer';
@@ -31575,6 +31558,7 @@ function 注册自动保存编辑() {
     if (barCount) barCount.textContent = `${list.length} 条`;
     const emptyBtn = document.getElementById('sp_posts_recycle_empty');
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    releaseCollapseObserver('postHistory');
     root.textContent = '';
     const now = Date.now();
     const liveStore = getPostHistoryStore();
@@ -31664,6 +31648,7 @@ function 注册自动保存编辑() {
       count.textContent = `${results.length} 条 `;
       count.appendChild(buildHistorySearchHelpMark(POST_HISTORY_SEARCH_HELP_TEXT));
     }
+    releaseCollapseObserver('postHistory');
     root.textContent = '';
     if (!results.length) {
       const empty = document.createElement('div');
@@ -31688,8 +31673,74 @@ function 注册自动保存编辑() {
   const SUBSCRIPTION_FEED_SESSION_VERSION = 3;
   const SUBSCRIPTION_FEED_SESSION_TTL_MS = 2 * 60 * 1000;
   const SUBSCRIPTION_FEED_SESSION_MAX_COUNT = 5;
-  const SUBSCRIPTION_FEED_PREVIEW_HEIGHT = 160; // 正文行高 20px，默认预览约 8 行
-  let subscriptionFeedPostObserver;
+  // ===== 通用折叠组件（订阅页 / 浏览历史 / 发言历史共用）=====
+  // 语义遵循 W3C ARIA APG「Disclosure (Show/Hide)」：button + aria-expanded + aria-controls，
+  // 方向指示随状态翻转、键盘聚焦有可见描边；正文始终完整保留在 DOM（浏览器查找可用、可展开），
+  // 折叠只做 CSS 裁剪 + 末行渐隐，不做字符级删除或替换。
+  const COLLAPSE_PREVIEW_HEIGHT = 160; // 正文行高 20px，默认预览约 8 行
+  let collapseContentIdSeq = 0;
+  const collapseObservers = Object.create(null);
+  // 每个列表各持一个观察器：列表清空时必须释放，否则观察器会继续持有已脱离文档的节点
+  function getCollapseObserver(listKey) {
+    if (!collapseObservers[listKey]) {
+      collapseObservers[listKey] = new ResizeObserver((entries) => {
+        entries.forEach(({ target, contentRect }) => {
+          const preview = target.parentElement;
+          const body = preview.parentElement;
+          const toggle = preview.nextElementSibling;
+          const isTruncated = contentRect.height > COLLAPSE_PREVIEW_HEIGHT;
+          toggle.hidden = !isTruncated;
+          // 只有真被截断才给底部淡出遮罩（短内容整体发虚反而像加载失败）
+          body.classList.toggle('is-truncated', isTruncated);
+        });
+      });
+    }
+    return collapseObservers[listKey];
+  }
+  function releaseCollapseObserver(listKey) {
+    if (collapseObservers[listKey]) collapseObservers[listKey].disconnect();
+  }
+  // 把已构建好的正文元素包成可折叠体：.xdex-collapsible > .xdex-collapsible-preview > 正文 + 按钮
+  function buildCollapsibleContent(content, listKey, options) {
+    const opts = options || {};
+    const body = document.createElement('div');
+    body.className = 'xdex-collapsible';
+    const preview = document.createElement('div');
+    preview.className = 'xdex-collapsible-preview';
+    preview.id = opts.contentId || `xdex-collapse-${++collapseContentIdSeq}`;
+    preview.appendChild(content);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'xdex-collapsible-toggle';
+    toggle.setAttribute('aria-controls', preview.id);
+    const toggleLabel = document.createElement('span');
+    const toggleIcon = document.createElement('span');
+    toggleIcon.className = 'xdex-collapsible-toggle-icon';
+    toggleIcon.setAttribute('aria-hidden', 'true');
+    toggle.append(toggleLabel, toggleIcon);
+    const setExpanded = (isExpanded) => {
+      body.classList.toggle('is-collapsed', !isExpanded);
+      toggle.setAttribute('aria-expanded', String(isExpanded));
+      toggleLabel.textContent = isExpanded ? '收起全文' : '展开全文';
+    };
+    setExpanded(!!opts.expanded);
+    toggle.hidden = true;
+    toggle.addEventListener('click', () => {
+      const willExpand = body.classList.contains('is-collapsed');
+      setExpanded(willExpand);
+      if (!willExpand) toggle.scrollIntoView({ block: 'nearest' });
+    });
+    preview.addEventListener('focusin', (event) => {
+      if (!body.classList.contains('is-collapsed')) return;
+      if (event.target.getBoundingClientRect().bottom > preview.getBoundingClientRect().bottom) {
+        setExpanded(true);
+        event.target.scrollIntoView({ block: 'nearest' });
+      }
+    });
+    body.append(preview, toggle);
+    getCollapseObserver(listKey).observe(content);
+    return { body, preview, toggle, setExpanded };
+  }
   let subscriptionFeedCurrentPage = 1;
   let subscriptionFeedCurrentUuid = '';
   let subscriptionFeedLoading = false;
@@ -31958,7 +32009,7 @@ function 注册自动保存编辑() {
     const results = $results[0];
     if (!results) return;
     const expandedPosts = new Set(Array.from(
-      results.querySelectorAll('.xdex-feed-post-body > .xdex-feed-post-toggle[aria-expanded="true"]'),
+      results.querySelectorAll('.xdex-collapsible > .xdex-collapsible-toggle[aria-expanded="true"]'),
       (button) => button.closest('.xdex-history-item').dataset.feedThreadId
     ));
     subscriptionFeedPostObserver?.disconnect();
@@ -31969,16 +32020,7 @@ function 注册自动保存编辑() {
       $('#sp_feeds_page_label').text('第0页');
       return;
     }
-    // 观察未被裁剪的正文，面板宽度或正文内图片尺寸变化时重新判断是否需要按钮。
-    subscriptionFeedPostObserver = new ResizeObserver((entries) => {
-      entries.forEach(({ target, contentRect }) => {
-        const toggle = target.parentElement.nextElementSibling;
-        const isTruncated = contentRect.height > SUBSCRIPTION_FEED_PREVIEW_HEIGHT;
-        toggle.hidden = !isTruncated;
-        // 只有真被截断才给底部淡出遮罩（短贴整体发虚反而像加载失败）
-        target.parentElement.parentElement.classList.toggle('is-truncated', isTruncated);
-      });
-    });
+    // 折叠判定与按钮显隐由共用折叠组件的观察器负责（见 buildCollapsibleContent）
     for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
       const entry = subscriptionFeedRenderedPages[String(page)];
       if (!entry || !Array.isArray(entry.items)) break;
@@ -32148,44 +32190,8 @@ function 注册自动保存编辑() {
         next.deleteData(0, 1);
       }
     });
-    const body = document.createElement('div');
-    body.className = 'xdex-feed-post-body';
-    const preview = document.createElement('div');
-    preview.className = 'xdex-feed-post-preview';
-    preview.id = contentId;
-    preview.appendChild(content);
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'xdex-feed-post-toggle';
-    toggle.setAttribute('aria-controls', contentId);
-    const toggleLabel = document.createElement('span');
-    const toggleIcon = document.createElement('span');
-    toggleIcon.className = 'xdex-feed-post-toggle-icon';
-    toggleIcon.setAttribute('aria-hidden', 'true');
-    toggle.append(toggleLabel, toggleIcon);
-    const setExpanded = (isExpanded) => {
-      body.classList.toggle('is-collapsed', !isExpanded);
-      toggle.setAttribute('aria-expanded', String(isExpanded));
-      toggleLabel.textContent = isExpanded ? '收起全文' : '展开全文';
-    };
-    setExpanded(expanded);
-    toggle.hidden = true;
-    toggle.addEventListener('click', () => {
-      const willExpand = body.classList.contains('is-collapsed');
-      setExpanded(willExpand);
-      if (!willExpand) toggle.scrollIntoView({ block: 'nearest' });
-    });
-    preview.addEventListener('focusin', (event) => {
-      if (!body.classList.contains('is-collapsed')) return;
-      if (event.target.getBoundingClientRect().bottom > preview.getBoundingClientRect().bottom) {
-        setExpanded(true);
-        event.target.scrollIntoView({ block: 'nearest' });
-      }
-    });
-    body.append(preview, toggle);
-    main.appendChild(body);
+    main.appendChild(buildCollapsibleContent(content, 'subscriptionFeed', { contentId, expanded }).body);
     enhanceHistoryRenderedContent(content);
-    subscriptionFeedPostObserver.observe(content);
     // 脚注
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -32232,7 +32238,7 @@ function 注册自动保存编辑() {
       resetSubscriptionFeedRuntimeState(uuid);
       // 清空容器前必须先断开观察器：该分支后续有提前 return（页序/seq/uuid 守卫、catch），
       // 不走 renderSubscriptionFeedRenderedPages 时，观察器会继续持有已脱离文档的正文节点。
-      subscriptionFeedPostObserver?.disconnect();
+      releaseCollapseObserver('subscriptionFeed');
       if ($results.length) $results.empty();
     }
     const expectedPage = getSubscriptionFeedNextRenderPage();
