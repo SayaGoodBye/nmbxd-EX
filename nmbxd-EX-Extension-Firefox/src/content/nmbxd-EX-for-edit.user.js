@@ -1106,6 +1106,11 @@ function xdexEarlyDarkEnabled() {
                       --xdex-sp-footer-bg: #FFFFEE;
                       --xdex-sp-border: #eee;
                       --xdex-sp-shadow: rgba(0,0,0,0.2);
+                      /* 通用折叠组件「展开/收起」按钮配色（订阅页/浏览历史/发言历史共用）：
+                         在 #FFFFEE 上对比度 6.75:1（AA 正文达标）。原有文字动作按钮用的 #07d
+                         仅 4.44:1，故这里单列 token 而非沿用。 */
+                      --xdex-collapse-toggle-color: #0059b3;
+                      --xdex-collapse-toggle-hover: #004d99;
                   }
                   :root.xdex-darkreader-active {
                       --xdex-sp-panel-bg: #2b2c2d;
@@ -1113,6 +1118,9 @@ function xdexEarlyDarkEnabled() {
                       --xdex-sp-footer-bg: #2b2c2d;
                       --xdex-sp-border: #4b4d50;
                       --xdex-sp-shadow: rgba(0,0,0,0.55);
+                      /* 深色：沿用本站蓝 #66ccff，在 #2b2c2d 上对比度 7.76:1 */
+                      --xdex-collapse-toggle-color: #66ccff;
+                      --xdex-collapse-toggle-hover: #9ecbff;
                       /* shadcn 风格 token：脚本内从未定义，导致 42 处 var() 恒取 fallback。
                          深色下面板底色已是 #2b2c2d，而 fallback 的 #333/#666 深字压深底不可读；
                          仅在深色类下补定义，light 模式继续走原 fallback（行为零变化） */
@@ -1628,25 +1636,72 @@ function xdexEarlyDarkEnabled() {
                            white-space:pre-wrap;
                            overflow-wrap:anywhere;
                       }
-                    .xdex-feed-post-body {
+                    .xdex-collapsible {
                            margin:15px 40px 6px;
                       }
-                    .xdex-feed-post-preview > .h-threads-content {
+                    /* 组件内的正文交给 .xdex-collapsible 承担外边距；这里提高一级权重，
+                       以覆盖 .xdex-history-item .h-threads-content 的同名外边距（同权重时靠先后顺序，太脆） */
+                    .xdex-collapsible > .xdex-collapsible-preview > .h-threads-content {
                            margin:0;
                       }
-                    .xdex-feed-post-body.is-collapsed .xdex-feed-post-preview {
-                           max-height:${SUBSCRIPTION_FEED_PREVIEW_HEIGHT}px;
+                    .xdex-collapsible.is-collapsed .xdex-collapsible-preview {
+                           max-height:${COLLAPSE_PREVIEW_HEIGHT}px;
                            overflow:clip;
                       }
-                    .xdex-feed-post-toggle {
-                           margin-top:4px;
-                           padding:2px 8px;
-                           border:1px solid var(--xdex-sp-border);
+                    /* 仅在真的被截断时淡出末行，提示"下面还有内容"（短贴不加，避免整段发虚） */
+                    .xdex-collapsible.is-collapsed.is-truncated .xdex-collapsible-preview {
+                           -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+                           mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+                      }
+                    /* 纯文字按钮：无边框无底色、整行可点、内容居中——与面板既有的
+                       .xdex-history-reply-action 同一范式，不另立"盒子按钮"外观 */
+                    .xdex-collapsible-toggle {
+                           display:flex;
+                           align-items:center;
+                           justify-content:center;
+                           gap:4px;
+                           width:100%;
+                           min-height:32px;
+                           margin:2px 0 0;
+                           padding:4px 0;
+                           border:0;
                            border-radius:6px;
-                           background:var(--xdex-sp-panel-bg);
-                           color:inherit;
+                           background:transparent;
+                           color:var(--xdex-collapse-toggle-color, #0059b3);
+                           font:inherit;
+                           font-size:13px;
+                           line-height:1.6;
                            cursor:pointer;
                            overflow-anchor:none;
+                      }
+                    /* display:flex 会盖掉 UA 的 [hidden]{display:none}，必须显式兜回来 */
+                    .xdex-collapsible-toggle[hidden] {
+                           display:none;
+                      }
+                    .xdex-collapsible-toggle:hover {
+                           color:var(--xdex-collapse-toggle-hover, #004d99);
+                           text-decoration:underline;
+                      }
+                    .xdex-collapsible-toggle:focus-visible {
+                           outline:2px solid var(--xdex-collapse-toggle-color, #0059b3);
+                           outline-offset:-2px;
+                      }
+                    /* 方向指示（APG 披露模式）：收起时朝下、展开时翻转朝上 */
+                    .xdex-collapsible-toggle-icon {
+                           width:7px;
+                           height:7px;
+                           border-right:1.5px solid currentColor;
+                           border-bottom:1.5px solid currentColor;
+                           transform:rotate(45deg) translate(-1px, -1px);
+                           transition:transform .2s ease;
+                      }
+                    .xdex-collapsible-toggle[aria-expanded="true"] .xdex-collapsible-toggle-icon {
+                           transform:rotate(225deg) translate(-1px, -1px);
+                      }
+                    @media (prefers-reduced-motion: reduce) {
+                           .xdex-collapsible-toggle-icon {
+                                  transition:none;
+                           }
                       }
                     .xdex-history-item .h-threads-info {
                            display:flex;
@@ -1943,7 +1998,7 @@ function xdexEarlyDarkEnabled() {
                   </div>
                   <div class="sp_fold_body" style="display:none;padding:8px 10px;background:#F0E0D6;">
                     <div style="font-size:12px;color:#666;margin-bottom:6px;line-height:1.5;">
-                      粘贴二维码链接、二维码图片链接或 饼干JSON（{"cookie":"***","name":"***"}），或直接选择二维码图片。自定义饼干<b>只用于发送</b>，不改变页面登录状态，也不会附加到其它请求中。
+                      粘贴二维码链接、二维码图片链接或 饼干JSON（{"cookie":"***","name":"***"}），或直接选择二维码图片。选中后会把会话切换为该饼干身份（可访问需登录的版块，发送也用它）；用户脚本环境无法改写站点 Cookie，该环境下仅发送时携带。
                     </div>
                     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                       <input id="sp_custom_cookie_input" type="text" placeholder="二维码链接 / 图片链接 / JSON" class="uk-input" style="flex:1 1 240px;min-width:0;height:28px;box-sizing:border-box;padding:0 8px;font-size:13px;">
@@ -2254,7 +2309,7 @@ function xdexEarlyDarkEnabled() {
             </div>
           </div>
         </div>`;
-      subscriptionFeedPostObserver?.disconnect();
+      releaseCollapseObserver('subscriptionFeed');
       $('#sp_cover').remove();
       $('body').append(html);
       syncFavoriteThreadsLinks();
@@ -6664,7 +6719,7 @@ ${markedSwatchHtml}
   }
 
   /* --------------------------------------------------
-   * 自定义饼干：链接 / 二维码图片 / JSON 导入，仅用于发送链路
+   * 自定义饼干：链接 / 二维码图片 / JSON 导入；切换后作为会话身份（受限版块可读、发送即用）
    * -------------------------------------------------- */
   const CUSTOM_COOKIE_KEY = 'xdex_custom_cookies';
   const CUSTOM_COOKIE_MAX_BYTES = 8192;
@@ -6719,17 +6774,54 @@ ${markedSwatchHtml}
   const isCustomCookieMarkedInvalid = (name) => getCustomCookieState(name) === 'invalid';
 
   /* ===== [TEMP-DBG] 饼干状态诊断探针 —— 测试完整体删除 =====
-   * 为什么用 localStorage 而不是 console：
-   *   扩展 content script 跑在 ISOLATED world，DevTools 默认上下文读不到这里的变量；
-   *   而 localStorage 与页面共用，同源导航也不清空，页面 console 里可直接取。
-   * 读取：localStorage.getItem('xdex-dbg-log')
-   * 清空：localStorage.removeItem('xdex-dbg-log')
-   */
-  const XDEX_DBG_KEY = 'xdex-dbg-log';
-  const XDEX_DBG_MAX = 600;
+   * 仅控制台输出（不落 localStorage：避免污染站点存储、且各平台一致）===== */
+  // 自定义饼干 → 站点饼干编号（即"饼干列表"里那条的编号，形如 123456）—— 仅供调试日志。
+  // 依据：站点编号只存在于"本账号的饼干列表"里 → 只有该饼干本身就在自己列表里时才匹配得上；
+  // 别的账号的饼干不在自己列表里 → 只能给 userhash 缩写，拿不到这种编号（数据源里就没有，与算法无关）。
+  // digestUserhash 是异步的（crypto.subtle），而 xdexDbgCookieTag 是同步的 → 结果存 Map 供同步读取。
+  const customCookieSiteIdCache = new Map();   // userhash 值 → { id, name, desc } | null
+  function clearCustomCookieSiteIdCache() { try { customCookieSiteIdCache.clear(); } catch (e) {} }
+  async function resolveCustomCookieSiteId(rawValue) {
+    const raw = String(rawValue || '');
+    if (!raw) return null;
+    if (customCookieSiteIdCache.has(raw)) return customCookieSiteIdCache.get(raw);
+    let hit = null;
+    try {
+      const digest = await digestUserhash(raw);
+      if (digest) {
+        const cache = getCookieUserhashDigestCache();
+        const entry = Object.values(cache).find(item => item && item.digest === digest);
+        if (entry) hit = { id: entry.id, name: entry.name, desc: entry.desc };
+      }
+    } catch (e) {}
+    customCookieSiteIdCache.set(raw, hit);
+    try {
+      xdexDbg('cookieSiteId:custom', {
+        abbrev: abbreviateName(raw),
+        siteId: hit ? hit.id : null,
+        siteName: hit ? abbreviateName(hit.name || '') : null,
+        reason: hit ? 'matched-own-cookie-list' : 'not-in-own-cookie-list'
+      });
+    } catch (e) {}
+    return hit;
+  }
+  // 同步读取：undefined = 尚未解析；null = 已解析但不在自己列表里；其它 = 站点编号
+  function getCustomCookieSiteIdTag(rawValue) {
+    try {
+      if (!customCookieSiteIdCache.has(rawValue)) return undefined;
+      const hit = customCookieSiteIdCache.get(rawValue);
+      return hit && hit.id != null ? hit.id : null;
+    } catch (e) { return undefined; }
+  }
   function xdexDbgCookieTag(c) {
     if (!c) return null;
-    if (c.custom) return 'custom:' + abbreviateName(c.name || '');
+    if (c.custom) {
+      const tag = 'custom:' + abbreviateName(c.name || '');
+      let raw = '';
+      try { raw = String(getCustomCookieValue(c.name) || ''); } catch (e) {}
+      const siteId = raw ? getCustomCookieSiteIdTag(raw) : undefined;
+      return siteId != null ? tag + '→' + siteId : tag;
+    }
     return 'site:' + c.id + '/' + abbreviateName(c.name || '');
   }
   function xdexDbgDocUserhash() {
@@ -6740,30 +6832,26 @@ ${markedSwatchHtml}
   }
   function xdexDbg(tag, data) {
     try {
-      const uh = xdexDbgDocUserhash();
       const entry = {
         t: new Date().toISOString().slice(11, 23),
         tag: String(tag),
         page: (location.pathname + location.search).slice(0, 90),
         host: location.hostname,
-        docUH: uh.count,
+        docUH: xdexDbgDocUserhash().count,
         cur: xdexDbgCookieTag(getCurrentCookie()),
         lastUsed: xdexDbgCookieTag(getLastUsedCookie()),
         data: data || null
       };
-      console.log('[xdex-dbg] ' + entry.tag, data || '', '| cur=' + entry.cur, '| lastUsed=' + entry.lastUsed, '| docUH=' + entry.docUH);
-      let arr = [];
-      try { arr = JSON.parse(localStorage.getItem(XDEX_DBG_KEY) || '[]'); } catch (e) { arr = []; }
-      if (!Array.isArray(arr)) arr = [];
-      arr.push(entry);
-      while (arr.length > XDEX_DBG_MAX) arr.shift();
-      localStorage.setItem(XDEX_DBG_KEY, JSON.stringify(arr));
+      // 结构化对象作为独立参数：控制台可直接展开/右键复制对象，全平台行为一致。
+      console.log('[xdex-dbg] ' + entry.tag + ' | cur=' + entry.cur + ' | lastUsed=' + entry.lastUsed + ' | docUH=' + entry.docUH, data || '', entry);
     } catch (e) {}
   }
   /* ===== [TEMP-DBG] end ===== */
 // ===== 自定义饼干发送：只影响这一次 POST =====
+// 说明：本段讲的是"这一次 POST 怎么带身份"；**会话本身**的对齐（可访问受限版块）另见
+// alignSessionToCookie / ensureSessionAlignedOnLoad —— 脚本端现在也会写 jar（document.cookie）。
 // 发送链路按 getXDexRuntimeInfo().kind 分流（chrome-* 与 firefox-* 完全等价，见 isXDex*Kind）：
-//  - userscript：GM_xmlhttpRequest + 显式 Cookie 头（不触碰 cookie jar，严格隔离）
+//  - userscript：GM_xmlhttpRequest + 显式 Cookie 头（本次 POST 不依赖 jar 内容）
 //  - <browser>-extension：DNR 会话规则只改发帖 POST（严格隔离），被拒则退回临时切换
 //  - <browser>-extension-limited：没有 DNR，退回 cookie 容器接口替换（再退回临时切换）
 //  - qwqnt：Electron 客户端，GM 请求走 IPC 无法携带 FormData → 临时切换 document.cookie
@@ -6796,10 +6884,7 @@ function readAllUserhashCookieValues() {
   return out;
 }
 function userhashApexDomain() {
-  const host = location.hostname;
-  if (/(^|\.)nmbxd1\.com$/i.test(host)) return '.nmbxd1.com';
-  if (/(^|\.)nmbxd\.com$/i.test(host)) return '.nmbxd.com';
-  return '';
+  return xdexApexOfHost(location.hostname);
 }
 function writeUserhashCookie(value, options) {
   const opts = options || {};
@@ -6921,7 +7006,8 @@ function getJarCookieApi() {
 async function jarGetAllCookies(url) {
   const api = getJarCookieApi();
   if (api === 'qwqnt') {
-    const res = await window.QwQNTNmbxd.xdexCookies('getAll', {});
+    // 显式作用域：新客户端按白名单采纳（支持四域同写）；老客户端忽略该字段 → 仍按发送方页面取数
+    const res = await window.QwQNTNmbxd.xdexCookies('getAll', { url });
     if (!res || res.ok !== true) throw new Error((res && res.error) || '饼干接口不可用');
     return res.cookies || [];
   }
@@ -6934,7 +7020,7 @@ async function jarGetAllCookies(url) {
 async function jarSetCookie(details, url) {
   const api = getJarCookieApi();
   if (api === 'qwqnt') {
-    const res = await window.QwQNTNmbxd.xdexCookies('set', details);
+    const res = await window.QwQNTNmbxd.xdexCookies('set', Object.assign({ url }, details));
     if (!res || res.ok !== true) throw new Error((res && res.error) || '饼干接口不可用');
     return;
   }
@@ -6953,7 +7039,7 @@ async function jarSetCookie(details, url) {
 async function jarRemoveCookie(name, url) {
   const api = getJarCookieApi();
   if (api === 'qwqnt') {
-    const res = await window.QwQNTNmbxd.xdexCookies('remove', { name });
+    const res = await window.QwQNTNmbxd.xdexCookies('remove', { name, url });
     if (!res || res.ok !== true) throw new Error((res && res.error) || '饼干接口不可用');
     return;
   }
@@ -6978,14 +7064,47 @@ function xdexCookieUrlOf(c) {
     return 'https://' + host + path;
   } catch (e) { return location.origin + '/'; }
 }
-function xdexDbgJarBrief(cookies) {
+// 诊断用：把 jar 里的 userhash 变体逐枚摊开，并标出"当前页面 host 会命中哪一枚"。
+// 目的：定位「自定义饼干发送偶发被判未应用」——需要看清 ① 有几枚 ② 各在哪个域/路径
+// ③ 哪一枚会被当前 host 命中（带出去的那枚）④ 与我们想写的值是否同一个。
+// 只输出值的头尾指纹，不泄露完整 userhash。
+function xdexDbgCookieHostMatch(cookieHost, pageHost) {
   try {
-    return (cookies || []).filter(c => c && c.name === 'userhash').map(c => ({
-      v: String(c.value || '').slice(0, 6) + '..' + String(c.value || '').slice(-4),
-      d: c.domain || '(host-only)',
-      p: c.path,
-      h: !!c.httpOnly
-    }));
+    let d = String(cookieHost || '').replace(/^\./, '');
+    if (!d) return { match: false, hostOnly: true, why: 'no-domain' };
+    const hostOnly = !String(cookieHost || '').startsWith('.');
+    if (hostOnly) return { match: pageHost === d, hostOnly: true, why: hostOnly ? 'host-only:需完全相等' : '' };
+    // domain cookie：pageHost 等于 d 或以 .d 结尾
+    const match = pageHost === d || pageHost.endsWith('.' + d);
+    return { match, hostOnly: false, why: match ? 'domain 后缀匹配' : 'domain 不匹配当前 host' };
+  } catch (e) {
+    return { match: false, hostOnly: false, why: 'err' };
+  }
+}
+function xdexDbgJarBrief(cookies, refValue) {
+  try {
+    const pageHost = location.hostname;
+    const ref = String(refValue || '');
+    const refTag = ref ? String(ref).slice(0, 6) + '..' + String(ref).slice(-4) : null;
+    return (cookies || []).filter(c => c && c.name === 'userhash').map(c => {
+      const hm = xdexDbgCookieHostMatch(c.domain, pageHost);
+      const val = String(c.value || '');
+      return {
+        v: val.slice(0, 6) + '..' + val.slice(-4),
+        len: val.length,
+        d: c.domain || '(host-only)',
+        p: c.path,
+        hO: !!xdexCookieIsHostOnly(c),
+        sec: !!c.secure,
+        http: !!c.httpOnly,
+        ss: c.sameSite || '-',
+        // ★ 关键：这一枚是否会被当前页面 host 命中（会被带出去的就是它）
+        hit: hm.match,
+        why: hm.why,
+        // ★ 关键：这一枚与"我们想写的值"是否同一个
+        sameAsWant: refTag ? (val === ref) : null
+      };
+    });
   } catch (e) { return 'err'; }
 }
 async function withJarSwappedUserhash(cookieValue, task, url) {
@@ -7006,9 +7125,44 @@ async function withJarSwappedUserhash(cookieValue, task, url) {
     }
     try { await jarRemoveCookie('userhash', url); } catch (e) {}
   };
-  xdexDbg('jar:IN', { api: getJarCookieApi(), want: String(cookieValue || '').slice(0,6) + '..' + String(cookieValue || '').slice(-4), before: xdexDbgJarBrief(targets), templateDomain: template ? (template.domain || '(host-only)') : null, templateHttpOnly: template ? !!template.httpOnly : null });
+  // 诊断：除当前 URL 能看到的变体，再对站点两个主域分别枚举一次，
+  // 以便看清"另一域里是否残留一枚旧的 userhash"（跨域残留是偶发错身份的候选来源）。
+  const allUserhashVariants = async () => {
+    const out = [];
+    const seen = new Set();
+    const push = (list, src) => (list || []).forEach((c) => {
+      if (!c || c.name !== 'userhash') return;
+      const k = (c.domain || '') + '|' + (c.path || '') + '|' + String(c.value || '');
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(Object.assign({ src }, c));
+    });
+    try { push(await jarGetAllCookies(url), 'url'); } catch (e) {}
+    for (const probe of ['https://www.nmbxd1.com/', 'https://www.nmbxd.com/', 'https://nmbxd.com/', 'https://nmbxd1.com/']) {
+      try { push(await jarGetAllCookies(probe), probe.replace('https://', '').replace(/\/$/, '')); } catch (e) {}
+    }
+    return xdexDbgJarBrief(out, cookieValue);
+  };
+  let _allIn = null;
+  try { _allIn = await allUserhashVariants(); } catch (e) { _allIn = 'err'; }
+  xdexDbg('jar:IN', {
+    api: getJarCookieApi(),
+    pageHost: location.hostname,
+    want: String(cookieValue || '').slice(0, 6) + '..' + String(cookieValue || '').slice(-4),
+    wantLen: String(cookieValue || '').length,
+    before: xdexDbgJarBrief(targets, cookieValue),
+    allVariants: _allIn,
+    templateDomain: template ? (template.domain || '(host-only)') : null,
+    templateHostOnly: template ? !!template.hostOnly : null,
+    templateHttpOnly: template ? !!template.httpOnly : null,
+    templatePath: template ? template.path : null,
+    templateSameSite: template ? (template.sameSite || '-') : null
+  });
   const restore = async () => {
     try {
+      // ★ 若当前所选是自定义饼干且会话已对齐（userhash 已是该饼干的值），**不要把旧值还原回来**。
+      //   还原会把手动对齐的结果冲掉，并重新制造"两枚并存 + 部分请求带旧身份 → 未应用饼干"。
+      if (isSessionAlignedToCurrentCustomCookie()) return;
       await removeAllUserhash();
       for (const c of snapshot) {
         // 用该 cookie 自身的 host+path 作 url，保证还原到原位而非扩散到父域
@@ -7028,7 +7182,7 @@ async function withJarSwappedUserhash(cookieValue, task, url) {
   try {
     await removeAllUserhash();
     let _afterRemove = null;
-    try { _afterRemove = xdexDbgJarBrief(await jarGetAllCookies(url)); } catch (e) { _afterRemove = 'err'; }
+    try { _afterRemove = xdexDbgJarBrief(await jarGetAllCookies(url), cookieValue); } catch (e) { _afterRemove = 'err'; }
     xdexDbg('jar:afterRemove', { remain: _afterRemove });
     const _tplHostOnly = template ? !!template.hostOnly : true;
     await jarSetCookie({
@@ -7043,9 +7197,49 @@ async function withJarSwappedUserhash(cookieValue, task, url) {
       expirationDate: template && !template.session ? template.expirationDate : undefined
     }, url);
     swapped = true;
+    // ★ 自校验：写入后重新枚举"当前 URL 能看到的 + 两个主域的残留"，
+    //   直接给出三个判据：① 当前 URL 现在有几枚 ② 被当前 host 命中的那枚是否等于想要的值
+    //   ③ 别的域是否还残留旧值（会导致旁路请求用错身份）。
     let _afterSet = null;
-    try { _afterSet = xdexDbgJarBrief(await jarGetAllCookies(url)); } catch (e) { _afterSet = 'err'; }
-    xdexDbg('jar:afterSet', { now: _afterSet });
+    let _verify = null;
+    try {
+      const _now = await jarGetAllCookies(url);
+      _afterSet = xdexDbgJarBrief(_now, cookieValue);
+      const mine = (_now || []).filter(c => c && c.name === 'userhash');
+      const hit = mine.find(c => xdexDbgCookieHostMatch(c.domain, location.hostname).match) || null;
+      let _residual = null;
+      try { _residual = await allUserhashVariants(); } catch (e) { _residual = 'err'; }
+      _verify = {
+        count: mine.length,
+        hitValueMatchesWant: hit ? (String(hit.value || '') === String(cookieValue || '')) : null,
+        hitDomain: hit ? (hit.domain || '(host-only)') : null,
+        residualOtherDomains: Array.isArray(_residual) ? _residual.filter(r => r && r.hit === false) : _residual,
+        VERDICT: hit
+          ? (String(hit.value || '') === String(cookieValue || '') ? 'ok:会话将带出正确值' : 'MISMATCH:当前 host 命中的不是想要的值')
+          : 'NO-HIT:当前 host 命中的 userhash 已不存在（写入落在了别的域/路径）'
+      };
+    } catch (e) { _afterSet = 'err'; _verify = 'err'; }
+    xdexDbg('jar:afterSet', { now: _afterSet, verify: _verify });
+    // ★ 一句话结论：不需要展开对象，看这一行即可判断"身份是否已正确布置"
+    try {
+      const _v = _verify && typeof _verify === 'object' ? _verify : null;
+      if (_v) {
+        const _residual = Array.isArray(_v.residualOtherDomains) ? _v.residualOtherDomains.length : -1;
+        const _ok = _v.VERDICT === 'ok:会话将带出正确值' && _v.count === 1 && _residual === 0;
+        console.log(
+          '[xdex-dbg] ★ 饼干身份自检 → ' + (_ok ? '正常' : '异常') +
+          ' ｜ VERDICT=' + _v.VERDICT +
+          ' ｜ 当前URL可见枚数=' + _v.count +
+          ' ｜ 命中域=' + (_v.hitDomain || '-') +
+          ' ｜ 命中值=想要的值?' + (_v.hitValueMatchesWant === true ? '是' : '否') +
+          ' ｜ 其它域残留=' + (_residual < 0 ? 'unknown' : _residual + ' 枚') +
+          ' ｜ pageHost=' + location.hostname
+        );
+        if (!_ok && _v.hitDomain) {
+          console.warn('[xdex-dbg] ★ 注意：本次发送的身份布置与当前页 host 不匹配（模板域/残留导致），这正是「偶发未应用饼干」的候选机制。');
+        }
+      }
+    } catch (e) {}
     return await task();
   } catch (err) {
     if (!swapped) err.xdexCookieApiFailed = true;
@@ -7064,6 +7258,337 @@ async function sendWithCookieSwap(form, fd, cookieValue, controller) {
     });
     return res.text();
   });
+}
+// 当前所选饼干是否就是"已被对齐进会话"的那个自定义饼干。
+// 用于 withJarSwappedUserhash 的 restore()：已对齐时不能再还原旧 userhash。
+// 当前"已对齐进会话"的自定义饼干值（内存标记）。
+// 为什么不用 document.cookie 判断：userhash 可能是 httpOnly（站点各异），那时 JS 读不到，
+// 判定会假阴性 → restore() 会把旧 userhash 还原回来、把对齐结果冲掉（退回到"未应用饼干"）。
+let sessionAlignedValue = '';
+function isSessionAlignedToCurrentCustomCookie() {
+  try {
+    const cur = getCurrentCookie();
+    if (!cur || !cur.custom || !cur.name) return false;
+    const want = getCustomCookieValue(cur.name);
+    if (!want) return false;
+    // 主判据：内存标记（不依赖 cookie 可读性）
+    if (sessionAlignedValue && String(sessionAlignedValue) === String(want)) return true;
+    // 兜底：document.cookie 可读时再比一次（例如页面刷新后内存标记已丢失）
+    const m = String(document.cookie || '').match(/(?:^|;\s*)userhash=([^;]*)/);
+    return !!m && String(m[1] || '') === String(want);
+  } catch (e) {
+    return false;
+  }
+}
+// ===== 会话对齐的共享工具：四域探针 / 变体读取 / 可注册域（对齐与交还共用）=====
+// 目标探针 = 当前页 + 四个主域（按 host 去重）。QwQNT 的主进程 cookie 接口恒以 senderUrl 为作用域
+// （get/set/remove 全部如此），跨域既看不到也写不进，因此它只保留"当前页"这一枚。
+const SESSION_ALIGN_BEFORE_KEY = 'xdex_session_align_before';
+function xdexApexOfHost(host) {
+  const h = String(host || '').toLowerCase();
+  if (/(^|\.)nmbxd1\.com$/.test(h)) return '.nmbxd1.com';
+  if (/(^|\.)nmbxd\.com$/.test(h)) return '.nmbxd.com';
+  return '';
+}
+// QwQNT：能力协商。老客户端没有 caps（返回 {ok:false}）或忽略显式 url → 只能操作当前域。
+// 结果缓存，避免每次对齐都多一次 IPC 往返。
+let xdexQwqntCrossDomainCache = null;
+async function xdexQwqntSupportsCrossDomainCookies() {
+  if (xdexQwqntCrossDomainCache !== null) return xdexQwqntCrossDomainCache;
+  try {
+    const bridge = (typeof window !== 'undefined' && window.QwQNTNmbxd) ? window.QwQNTNmbxd : null;
+    const res = (bridge && typeof bridge.xdexCookies === 'function') ? await bridge.xdexCookies('caps', {}) : null;
+    xdexQwqntCrossDomainCache = !!(res && res.ok === true && res.crossDomain === true);
+  } catch (e) {
+    xdexQwqntCrossDomainCache = false;
+  }
+  return xdexQwqntCrossDomainCache;
+}
+// 目标探针 = 当前页 + 四个主域（按 host 去重）。
+// QwQNT 仅在"客户端支持显式作用域"时才加入四域：否则多探针只会重复返回同一批（当前域），
+// 写入也会因 url/domain 不同域被 Electron 拒绝 —— 表现为"只写当前域"，白跑几轮。
+async function xdexSessionAlignProbes() {
+  const out = [];
+  const add = (u) => {
+    let h = '';
+    try { h = new URL(u, location.href).hostname; } catch (e) { return; }
+    if (!h || out.some(p => p.host === h)) return;
+    out.push({ url: u, host: h, apex: xdexApexOfHost(h) });
+  };
+  add(location.href);
+  const api = getJarCookieApi();
+  const allowCross = api === 'qwqnt' ? await xdexQwqntSupportsCrossDomainCookies() : true;
+  if (api && allowCross) {
+    ['https://www.nmbxd1.com/', 'https://www.nmbxd.com/', 'https://nmbxd1.com/', 'https://nmbxd.com/'].forEach(add);
+  }
+  return out;
+}
+async function xdexReadUserhashVariants(probe) {
+  try { return ((await jarGetAllCookies(probe.url)) || []).filter(c => c && c.name === 'userhash'); }
+  catch (e) { return null; }
+}
+function xdexUserhashAttrs(c, fallback) {
+  const f = fallback || null;
+  return {
+    path: (c && c.path) || (f && f.path) || '/',
+    secure: c ? !!c.secure : (f ? !!f.secure : true),
+    httpOnly: c ? !!c.httpOnly : !!(f && f.httpOnly),
+    sameSite: (c && c.sameSite) || (f && f.sameSite) || 'lax',
+    expirationDate: c && !c.session ? c.expirationDate : undefined
+  };
+}
+// ===== 自定义饼干：把站点会话对齐到所选饼干（等价于原生 switchTo 之后的最终状态）=====
+// 背景：自定义饼干来自其它账号，站点没有 switchTo 入口可用，因此由客户端自己把 userhash
+// 落成"该账号那一枚"。关键点是**不还原**——只有这样，无论请求走 XHR / 表单 / 页面跳转，
+// 带出去的身份都是正确的，不再出现"部分请求用了旧身份 → 服务器回未应用饼干"。
+// 在能读写 cookie 容器的运行时（扩展 chrome.cookies / QwQNT IPC）用它精确清理各作用域变体；
+// 脚本端没有容器接口，退化为 document.cookie 写入（见 alignSessionToCookieViaDocument）。
+let sessionAlignSeq = 0;          // 互斥：重复点击/快速切换时只让最后一次生效
+let sessionAlignChain = Promise.resolve();
+async function alignSessionToCookie(cookieValue) {
+  const value = String(cookieValue || '');
+  if (!value) return { ok: false, reason: 'empty' };
+  // 脚本端没有 cookie 容器接口：改用 document.cookie 直接写入（实测服务端接受 JS 写入的 userhash），
+  // 只覆盖当前可注册域的作用域，跨域残留清不掉。
+  if (!getJarCookieApi()) return alignSessionToCookieViaDocument(value);
+  // 互斥且"只让最后一次生效"：重复点击/快速切换时，旧任务结束后若已有更新的请求，
+  // 直接放弃本任务（避免两次对齐交错写入，最终落到旧值）。
+  const mySeq = ++sessionAlignSeq;
+  const run = async () => {
+  if (mySeq !== sessionAlignSeq) return { ok: false, reason: 'superseded' };
+  const pageHost = location.hostname;
+  try {
+    // 1) 目标探针：当前页 + 四个主域（QwQNT 视客户端能力而定，见 xdexSessionAlignProbes）
+    const probes = await xdexSessionAlignProbes();
+    const probe0 = probes[0];
+    // 2) 认准站点自身的作用域"方言"：当前页命中那枚是不是 host-only。
+    //    照抄它，四域写法才与站点一致：host-only 方言 → 每个 host 各一枚；
+    //    domain 方言 → 每个可注册域一枚（一枚即覆盖该域下所有 host，天然同步）。
+    const isHostOnly = (c) => xdexCookieIsHostOnly(c);
+    const hostMatches = (c, host) => {
+      const d = String((c && c.domain) || '').replace(/^\./, '');
+      if (!d) return false;
+      const h = String(host || pageHost);
+      return h === d || h.endsWith('.' + d);
+    };
+    const pageVariants = (await xdexReadUserhashVariants(probe0)) || [];
+    const pageTpl = pageVariants.find(c => hostMatches(c, pageHost)) || null;
+    const preferHostOnly = pageTpl ? isHostOnly(pageTpl) : false;
+    const targets = [];
+    for (const p of probes) {
+      const list = (await xdexReadUserhashVariants(p)) || [];
+      const tpl = list.find(c => hostMatches(c, p.host)) || null;
+      const scope = preferHostOnly ? undefined : ((tpl && !isHostOnly(tpl) ? tpl.domain : '') || p.apex || undefined);
+      const key = (scope || p.host) + '|' + ((tpl && tpl.path) || '/');
+      if (targets.some(t => t.key === key)) continue;   // 同一作用域只写一次
+      targets.push({ key, domain: scope, writeUrl: tpl ? xdexCookieUrlOf(tpl) : p.url, attrs: xdexUserhashAttrs(tpl, pageTpl) });
+    }
+    // 3) 快照"对齐之前"的身份，供交还时原样写回。
+    //    已存在快照就不覆盖——A→B 二次切换时仍要能还原到最初的站点身份。
+    let snapshot = null;
+    try { snapshot = GM_getValue(SESSION_ALIGN_BEFORE_KEY, null); } catch (e) {}
+    if (!snapshot || !Array.isArray(snapshot.domains)) {
+      const domains = [];
+      for (const p of probes) {
+        const list = await xdexReadUserhashVariants(p);
+        domains.push({
+          host: p.host,
+          cookies: (list || []).map(c => Object.assign({ domain: c.domain || null, value: String(c.value || '') }, xdexUserhashAttrs(c, pageTpl)))
+        });
+      }
+      snapshot = { at: Date.now(), value, domains };
+      try { GM_setValue(SESSION_ALIGN_BEFORE_KEY, snapshot); } catch (e) {}
+    }
+    // 4) 写优先，四域同步的关键：**先把目标身份写到全部探针作用域**，再清理异值残留。
+    //    这个顺序保证任何时刻都不存在"某个域还没有正确身份"的中间态。
+    const writeTargets = async () => {
+      for (const t of targets) {
+        try { await jarSetCookie(Object.assign({ name: 'userhash', value, domain: t.domain }, t.attrs), t.writeUrl); } catch (e) {}
+      }
+    };
+    const deleteNonTarget = async () => {
+      let removed = 0;
+      for (const p of probes) {
+        const list = await xdexReadUserhashVariants(p);
+        if (!list) continue;
+        for (const c of list) {
+          if (String(c.value || '') === value) continue;   // 同值即同身份，多枚亦无害
+          try { await jarRemoveCookie('userhash', xdexCookieUrlOf(c)); removed += 1; } catch (e) {}
+        }
+      }
+      return removed;
+    };
+    // 5) 收敛：写全部 → 删异值 → 逐探针校验"能看到且值正确"（最多 3 轮）
+    const MAX_ROUNDS = 3;
+    let rounds = 0;
+    let removedTotal = 0;
+    let domainReport = [];
+    for (rounds = 1; rounds <= MAX_ROUNDS; rounds += 1) {
+      await writeTargets();
+      removedTotal += await deleteNonTarget();
+      domainReport = [];
+      for (const p of probes) {
+        const list = await xdexReadUserhashVariants(p);
+        const valuesOk = !!list && list.length > 0 && list.every(c => String(c.value || '') === value);
+        domainReport.push({ host: p.host, count: list ? list.length : -1, valuesOk });
+      }
+      if (domainReport.every(d => d.valuesOk)) break;
+      // 无进展（一枚都没删掉且各探针都 ≤1 枚）→ 停，避免空转
+      if (removedTotal === 0 && domainReport.every(d => d.count <= 1)) break;
+    }
+    const ok = domainReport.length > 0 && domainReport.every(d => d.valuesOk);
+    const hit = ((await xdexReadUserhashVariants(probe0)) || [])[0] || null;
+    const result = {
+      ok,
+      value,
+      count: domainReport[0] ? domainReport[0].count : 0,
+      hitDomain: hit ? (hit.domain || '(host-only)') : null,
+      valueMatches: !!(domainReport[0] && domainReport[0].valuesOk),
+      removed: removedTotal,
+      rounds,
+      templateDomain: targets[0] ? (targets[0].domain || '(host-only)') : '(host-only)',
+      via: getJarCookieApi() === 'qwqnt' ? 'qwqnt' : 'jar',
+      domains: domainReport
+    };
+    // 记录"会话已被对齐到该值"（供发送/交还判断，不依赖 cookie 是否 httpOnly）
+    if (result.ok) sessionAlignedValue = value;
+    try {
+      console.log('[xdex] ★ 会话对齐到所选饼干 → ' + (result.ok ? '成功' : '异常') +
+        ' ｜ 探针=' + domainReport.map(d => d.host + ':' + (d.count < 0 ? 'read-fail' : d.count) + (d.valuesOk ? '✓' : '✗')).join(' ') +
+        ' ｜ 清理变体=' + removedTotal + ' ｜ 轮次=' + rounds +
+        ' ｜ 写入作用域=' + result.templateDomain +
+        ' ｜ 快照域数=' + ((snapshot && snapshot.domains) ? snapshot.domains.length : 0));
+    } catch (e) {}
+    return result;
+  } catch (err) {
+    try { console.warn('[xdex] 会话对齐失败：', err && err.message ? err.message : err); } catch (e) {}
+    return { ok: false, reason: 'error', error: err && err.message ? err.message : String(err) };
+  }
+  };
+  // 串行执行：前一次对齐（含清删旧变体）必须结束，后一次才开始，避免交错写入
+  const chained = sessionAlignChain.then(run, run);
+  sessionAlignChain = chained.catch(() => {});
+  return chained;
+}
+// ===== 脚本端（无 cookie 容器接口）：用 document.cookie 做**持有型**对齐 =====
+// 为什么可行：站点鉴权只认 userhash（实测：单写一枚即可读受限版块、可发言），且服务端接受 JS
+// 写入的 cookie。与扩展/QwQNT 的差别只在"清理能力"——document.cookie 处理不了**其它可注册域**
+// 的残留，只能管当前域（.nmbxd1.com / .nmbxd.com）。
+// 复用发送链路原语：探测原作用域（host-only / domain）→ 清两种作用域 → 按原作用域写入 → 读回校验。
+// 整个流程都是同步的（document.cookie 读写不产生异步间隙），因此不会出现"无 userhash 空窗"。
+function alignSessionToCookieViaDocument(cookieValue) {
+  const value = String(cookieValue || '');
+  if (!value) return { ok: false, reason: 'empty', via: 'document' };
+  if (!userhashApexDomain()) return { ok: false, reason: 'not-site', via: 'document' };
+  let installed = null;
+  try {
+    installed = installUserhashCookieForSend(value);
+  } catch (err) {
+    return { ok: false, reason: 'error', error: err && err.message ? err.message : String(err), via: 'document' };
+  }
+  const scopes = (installed && installed.scopes) || {};
+  const usingDomainScope = !!(scopes.apex && scopes.domain !== null && scopes.domain !== undefined);
+  if (!installed.ok) {
+    // 未收敛：把探测前的作用域还原，避免把会话留在错身份上
+    try { restoreUserhashCookieScopes(scopes); } catch (e) {}
+    return { ok: false, reason: 'document-write-failed', via: 'document' };
+  }
+  const values = readAllUserhashCookieValues();
+  const valueMatches = values.length === 1 && String(values[0]) === String(value);
+  if (valueMatches) sessionAlignedValue = value;
+  const hitDomain = usingDomainScope ? scopes.apex : '(host-only)';
+  try {
+    console.log('[xdex] ★ 会话对齐到所选饼干（document.cookie）→ ' + (valueMatches ? '成功' : '异常') +
+      ' ｜ 现有枚数=' + values.length + ' ｜ 写入作用域=' + hitDomain);
+  } catch (e) {}
+  return {
+    ok: valueMatches,
+    count: values.length,
+    hitDomain,
+    templateDomain: hitDomain,
+    valueMatches,
+    removed: 0,
+    rounds: 1,
+    via: 'document'
+  };
+}
+// ===== 载入时自我修复：当前域若不是所选自定义饼干身份，就地补对齐 =====
+// 背景：JS 无法跨注册域写 cookie（nmbxd1.com 与 nmbxd.com 互不可见）。扩展端切换时已"四域同写"，
+// 这里只是兜底（站点重置过 cookie、或对齐曾部分失败）；脚本端跨域做不到，全靠这一步"到哪修哪"。
+// 幂等且便宜：非自定义饼干 / 饼干已删除 / 已对齐 → 读两次 cookie 即返回，不写任何东西。
+// 注意：**不提示刷新**——这次已渲染完的页面属于旧身份，但后续一切导航与发送都已是新身份，
+// 刷新只影响"那一张页面显示什么"，不影响正确性（用户已确认）。
+function ensureSessionAlignedOnLoad() {
+  try {
+    const sel = getCurrentCookie();
+    if (!isCustomCookie(sel)) return null;
+    const want = getCustomCookieValue(sel.name);
+    if (!want) return null;
+    if (isSessionAlignedToCurrentCustomCookie()) return null;
+    return alignSessionToCookie(want);
+  } catch (e) {
+    return null;
+  }
+}
+// 切回站点饼干 / 退出自定义饼干时调用：把会话交还给站点自身。
+// 注意：**不预先清空当前域**——清空后到站点写入之间有"无 userhash"的空窗，期间请求会变成未登录。
+// 当前域由站点 switchTo 覆盖；**其它主域按快照原样还原**（与四域同写对称，避免留下自定义身份）。
+async function releaseSessionAlignment() {
+  const jarApi = getJarCookieApi();
+  if (!jarApi) return { ok: false, reason: 'unsupported' };
+  try {
+    // 与"四域同写"对称：把**其它主域**恢复成对齐之前的样子（当前域交给站点 switchTo 覆盖，
+    // 预清空会制造"无身份空窗"）。没有快照 = 从来没对齐过 → 什么都不动（绝不误删站点自己的身份）。
+    let snapshot = null;
+    try { snapshot = GM_getValue(SESSION_ALIGN_BEFORE_KEY, null); } catch (e) {}
+    if (!snapshot || !Array.isArray(snapshot.domains)) {
+      return { ok: true, skipped: 'no-snapshot' };
+    }
+    const pageHost = location.hostname;
+    const probes = await xdexSessionAlignProbes();
+    const report = [];
+    for (const p of probes) {
+      if (p.host === pageHost) continue;          // 当前域：交给站点 switchTo
+      const before = snapshot.domains.find(d => d.host === p.host);
+      const restore = (before && Array.isArray(before.cookies)) ? before.cookies : [];
+      let wrote = 0;
+      // 先按快照写回原身份（写优先：任何时刻都有身份，不留空窗）
+      for (const c of restore) {
+        try {
+          await jarSetCookie(Object.assign({
+            name: 'userhash',
+            value: String(c.value || ''),
+            domain: c.domain || undefined
+          }, xdexUserhashAttrs(c, null)), p.url);
+          wrote += 1;
+        } catch (e) {}
+      }
+      // 再删掉"不属于快照"的残留（含本次对齐写入的那枚）
+      let removed = 0;
+      const list = await xdexReadUserhashVariants(p);
+      for (const c of (list || [])) {
+        const isRestored = restore.some(rc => String(rc.value || '') === String(c.value || '')
+          && String(rc.domain || '') === String(c.domain || ''));
+        if (isRestored) continue;
+        try { await jarRemoveCookie('userhash', xdexCookieUrlOf(c)); removed += 1; } catch (e) {}
+      }
+      report.push({ host: p.host, wrote, removed });
+    }
+    // 快照用掉即清，下次对齐重新取（保证记录的是"真正的对齐前状态"）
+    try { GM_deleteValue(SESSION_ALIGN_BEFORE_KEY); } catch (e) {}
+    sessionAlignedValue = '';
+    try {
+      console.log('[xdex] ★ 会话交还站点 → 恢复其它域 ' +
+        (report.length ? report.map(r => r.host + '(写' + r.wrote + '/删' + r.removed + ')').join(' ') : '(无可操作域)'));
+    } catch (e) {}
+    return { ok: true, restored: report, alignedValue: snapshot.value || null };
+  } catch (err) {
+    return { ok: false, reason: 'error', error: err && err.message ? err.message : String(err) };
+  }
+}
+// 交还会话后清掉对齐标记（此后 restore() 恢复正常还原语义）
+function clearSessionAlignedMark() {
+  sessionAlignedValue = '';
 }
 // 自定义饼干发送前校验：用该饼干取一次饼干管理页，明确是登录墙就阻止发送。
 // 网络异常时不阻断（交给服务端判定），结果按 10 分钟缓存，避免每次发送都多一次请求。
@@ -7210,9 +7735,20 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
   const signal = controller ? controller.signal : undefined;
   const customSelected = isCustomCookie(selectedCookie);
   let cookieValue = '';
+  // 自定义饼干：先等"会话对齐"落定，再决定发送方式。
+  //   对齐是异步的（枚举/清理/写入若干次 cookie API）；若用户选完饼干立刻发帖，
+  //   发送路径的 jar 临时交换会与对齐**互相覆盖**（交换在 finally 里还原旧值 → 把对齐结果冲掉）。
+  //   等待链结束即可消除这个竞态；对齐本身不会失败到 reject（内部已 catch）。
+  if (customSelected) {
+    try { await sessionAlignChain.catch(() => {}); } catch (e) {}
+  }
+  // 会话已对齐到该饼干时，发送**不再做 jar 临时交换**：会话身份本来就是它，
+  // 交换反而会在结束时还原旧值（且多一轮无谓的 cookie 读写）。
+  let sessionAlreadyAligned = false;
   if (customSelected) {
     cookieValue = getCustomCookieValue(selectedCookie.name);
     if (!cookieValue) throw new Error('自定义饼干内容缺失，请删除后重新导入（已阻止用站点饼干发送）');
+    try { sessionAlreadyAligned = isSessionAlignedToCurrentCustomCookie(); } catch (e) {}
   } else if (selectedCookie && selectedCookie.id) {
     // 站点饼干：解析出它的真实 userhash，发送时显式携带。
     // 不再依赖“服务器会话当前是谁”，从根上避免“界面显示 B、实际用 A 发送”。
@@ -7238,9 +7774,45 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     console.info('[xdex] 发送使用饼干：', (selectedCookie && (selectedCookie.name || selectedCookie.id)) || '未知',
       '| source:', customSelected ? 'custom' : 'site-export', '| runtime:', runtime.kind);
   } catch (e) {}
+  // 发送前一刻的"会话身份快照"：判断浏览器当前会带出去的是哪一枚 userhash。
+  // 与 send:USE 的 want 值对照，即可判定"显式头身份"与"会话身份"是否一致。
+  try {
+    const _docUH = xdexDbgDocUserhash();
+    let _jarNow = null;
+    try { _jarNow = typeof getJarCookieApi() === 'function' && getJarCookieApi() ? xdexDbgJarBrief(await jarGetAllCookies(location.href), cookieValue) : null; } catch (e) { _jarNow = 'err'; }
+    xdexDbg('send:PRE', {
+      pageHost: location.hostname,
+      docUH: _docUH,
+      jarUserhash: _jarNow,
+      // document.cookie 里能读到的值（HttpOnly 读不到，属预期）
+      docValue: (() => {
+        try {
+          const m = String(document.cookie || '').match(/(?:^|;\s*)userhash=([^;]*)/);
+          return m ? m[1].slice(0, 6) + '..' + m[1].slice(-4) : null;
+        } catch (e) { return null; }
+      })()
+    });
+    // ★ 一句话结论：发送瞬间，会话会带出去的那枚 userhash 是否就是我们所选的身份
+    try {
+      const _want = String(cookieValue || '');
+      const _list = Array.isArray(_jarNow) ? _jarNow : [];
+      const _hit = _list.find(x => x && x.hit === true) || null;
+      const _same = _hit ? (_hit.sameAsWant === true) : null;
+      console.log(
+        '[xdex-dbg] ★ 发送前身份快照 → ' +
+        (_hit ? (_same ? '一致' : '不一致') : '当前 host 无命中') +
+        ' ｜ pageHost=' + location.hostname +
+        ' ｜ 会话可见枚数=' + _list.length +
+        ' ｜ 命中域=' + (_hit ? _hit.d : '-') +
+        ' ｜ 命中值=所选身份?' + (_same === null ? 'unknown' : (_same ? '是' : '否')) +
+        ' ｜ docUH=' + (_docUH && _docUH.count) +
+        ' ｜ 走的是=' + (typeof getJarCookieApi() === 'function' && getJarCookieApi() ? 'jar 替换' : '显式 Cookie/DNR')
+      );
+    } catch (e) {}
+  } catch (e) {}
   xdexDbg('send:USE', { source: customSelected ? 'custom' : 'site-export', runtime: runtime.kind, len: String(cookieValue || '').length, head: String(cookieValue || '').slice(0,6) + '..' + String(cookieValue || '').slice(-4), cookieName: selectedCookie ? abbreviateName(selectedCookie.name || '') : null });
   if (runtime.kind === 'userscript' && typeof GM_xmlhttpRequest === 'function') {
-    // 脚本：显式 Cookie 头，完全不触碰 document.cookie
+    // 脚本：本次 POST 用显式 Cookie 头（不依赖 jar 内容；会话身份由对齐另行写入 jar）
     return new Promise((resolve, reject) => {
       let settled = false;
       const request = GM_xmlhttpRequest({
@@ -7282,6 +7854,11 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     }
   }
   if (runtime.kind === 'qwqnt') {
+    if (sessionAlreadyAligned) {
+      // 会话身份已是所选饼干：直接发（不要再交换 jar，否则结束时会把旧值还原回来）
+      const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
+      return res.text();
+    }
     if (getJarCookieApi()) {
       // 主进程 cookie 接口可读写 HttpOnly：精确替换后由页面 fetch 发送，发送完按原属性还原
       try {
@@ -7301,6 +7878,11 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     }
   }
   if (isXDexLimitedExtensionKind(runtime.kind) && getJarCookieApi()) {
+    if (sessionAlreadyAligned) {
+      // 同上：会话已是所选身份，直接发
+      const res = await fetch(form.action, { method: form.method, body: fd, credentials: 'include', signal });
+      return res.text();
+    }
     // 扩展有 chrome.cookies 权限（Firefox 同样提供 chrome.cookies）：用容器接口精确替换（可读写 HttpOnly）
     try {
       return await withJarSwappedUserhash(cookieValue, async () => {
@@ -7677,7 +8259,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
 
   // ---- 饼干发送冷却（服务端 15s 限制）----
   // 只有「服务器明确回执成功」才记录计时起点：失败提交不消耗冷却，因此不进入冷却态。
-  // 切换饼干后按各自的起点独立显示；15s 走完提示自动消失。
+  // 计时按**身份（userhash）**而非条目 id：站点那枚与"同一 userhash 的自定义饼干"其实是同一个账号，
+  // 服务端的 15s 也是按账号判的 —— 按条目记会出现"切到另一条目显示 0s、服务器却仍拒绝"的错位。
+  // 口径与二次确认弹窗的使用次数一致（那里的 stats 也按同一形式聚合），避免两处各自表达"身份"而漂移。
+  function cookieIdentityKey(cookie) {
+    if (!cookie) return '';
+    const nm = abbreviateName(String(cookie.name || '')).replace(/ - 0000-00-00 00:00:00$/, '').trim();
+    return nm || String(cookie.id || '');   // 名称为空/异常 → 回退条目 id（退化为按条目计时）
+  }
   const COOKIE_SUBMIT_COOLDOWN_MS = 15000;
   const COOKIE_COOLDOWN_STORE_KEY = 'xdex-cookie-cooldowns';
   const COOKIE_COOLDOWN_TICK_MS = 500;
@@ -7686,8 +8275,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     const store = GM_getValue(COOKIE_COOLDOWN_STORE_KEY, {});
     return store && typeof store === 'object' ? store : {};
   }
-  function setCookieCooldownAt(cookieId, atMs) {
-    const id = String(cookieId || '');
+  function setCookieCooldownAt(identityKey, atMs) {
+    const id = String(identityKey || '');
     if (!id) return;
     const store = getCookieCooldownStore();
     if (Number(atMs) > 0) store[id] = Number(atMs);
@@ -7701,17 +8290,18 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
   }
   function getCookieCooldownRemainMs(cookie) {
     const cur = cookie || getCurrentCookie();
-    if (!cur || !cur.id) return 0;
-    const at = Number(getCookieCooldownStore()[String(cur.id)] || 0);
+    if (!cur) return 0;
+    const at = Number(getCookieCooldownStore()[cookieIdentityKey(cur)] || 0);
     if (!at) return 0;
     const remain = at + COOKIE_SUBMIT_COOLDOWN_MS - Date.now();
     return remain > 0 ? remain : 0;
   }
-  // 提交成功：从此刻开始计时
-  function startCookieCooldown(cookieId) {
-    const id = String(cookieId || (getCurrentCookie() || {}).id || '');
-    if (!id) return;
-    setCookieCooldownAt(id, Date.now());
+  // 提交成功：从此刻开始计时（按身份，站点/自定义同身份共享）
+  function startCookieCooldown(cookie) {
+    const cur = cookie || getCurrentCookie();
+    const key = cookieIdentityKey(cur);
+    if (!key) return;
+    setCookieCooldownAt(key, Date.now());
     renderCookieCooldown();
   }
   // 服务端回执里带「冷却时间[N]s」→ 用它校准剩余（仅在本饼干已有成功计时记录时生效，
@@ -7720,11 +8310,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     const m = String(msg == null ? '' : msg).match(/冷却时间\s*[[［]\s*(\d+)\s*[\]］]/);
     if (!m) return false;
     const cur = getCurrentCookie();
-    if (!cur || !cur.id) return false;
+    if (!cur) return false;
+    const key = cookieIdentityKey(cur);
+    if (!key) return false;
     const store = getCookieCooldownStore();
-    if (!store[String(cur.id)]) return false;
+    if (!store[key]) return false;
     const remainMs = Math.max(0, Number(m[1]) || 0) * 1000;
-    setCookieCooldownAt(cur.id, Date.now() + remainMs - COOKIE_SUBMIT_COOLDOWN_MS);
+    setCookieCooldownAt(key, Date.now() + remainMs - COOKIE_SUBMIT_COOLDOWN_MS);
     renderCookieCooldown();
     return true;
   }
@@ -7986,9 +8578,10 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       return;
     }
     xdexDbg('switch_cookie:IN', { kind: isCustomCookie(cookie) ? 'custom' : 'site', name: abbreviateName(cookie.name || ''), id: cookie.id });
-    // 自定义饼干：只影响发送链路，绝不触碰站点会话 / document.cookie
+    // 自定义饼干：本地状态 + 把站点会话对齐到该饼干（等价原生 switchTo，且不还原）
     if (isCustomCookie(cookie)) {
-      if (!getCustomCookieValue(cookie.name)) {
+      const customValue = getCustomCookieValue(cookie.name);
+      if (!customValue) {
         if (!silent) toast('该自定义饼干已被删除，请重新导入', 0, { type: 'error' });
         onFail && onFail();
         return;
@@ -8002,16 +8595,51 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       updateDropdownUI(getCookiesList());
       removeDateString();
       updatePreviewCookieId();
-      if (!silent) toast('已选择自定义饼干 ' + abbreviateName(cookie.name) + '（仅用于发送）');
+      if (!silent) toast('切换成功! 当前饼干为 ' + abbreviateName(cookie.name) + '「自定义」');
       onDone && onDone(cookie);
+      // 自定义饼干 → 站点编号（仅日志）：命中后，后续日志形如 custom:<饼干缩写>→<编号>
+      try { resolveCustomCookieSiteId(customValue).catch(() => null); } catch (e) {}
+      // ★ 会话对齐（异步，不阻塞选择）：
+      //   自定义饼干来自其它账号，站点没有 switchTo 入口，因此由客户端把 userhash 落成该饼干的
+      //   那一枚并**保持**（不还原）。否则会话里会残留上一枚（含"部分请求带旧身份 → 未应用饼干"）。
+      //   扩展/QwQNT 走 cookie 容器接口（能清跨域残留）；脚本端走 document.cookie（只处理当前域）。
+      try {
+        if (typeof alignSessionToCookie === 'function') {
+          alignSessionToCookie(customValue).catch(() => null).then((res) => {
+            try {
+              if (res && res.ok) {
+                // 「会话已切换为该饼干身份」不再弹 toast（控制台已有 ★ 会话对齐到所选饼干 的日志）
+                // if (!silent) toast('会话已切换为该饼干身份', 1000, { queue: false, key: 'cookie-align-ok' });
+              } else if (res && res.reason !== 'unsupported') {
+                if (!silent) toast('会话切换未完全成功（不影响发送）：' + (res.reason || '未知'), 2200, { queue: false, key: 'cookie-align-warn' });
+              }
+              // 对齐后刷新页面内所有依赖会话身份的显示（饼干预览 / 只看饼干标记等）
+              try { updateCurrentCookieDisplay(getCurrentCookie()); updateDropdownUI(getCookiesList()); } catch (e) {}
+            } catch (e) {}
+          });
+        }
+      } catch (e) {}
       return;
     }
     // ★ 选择即回归焦点：不等网络往返，避免换饼期间（网络延迟时）阻塞用户输入
     if (opts.focusBackNow) restorePostTextareaFocus();
     // 必须同源：在 nmbxd.com 页面里请求 nmbxd1.com 的切换接口只会改动另一个域的 cookie
     xdexDbg('switchTo:REQ', { id: cookie.id, name: abbreviateName(cookie.name || ''), origin: location.origin });
-    $.get(`${location.origin}/Member/User/Cookie/switchTo/id/${cookie.id}.html`)
-      .done(()=>{
+    // ★ 从自定义饼干切回站点饼干：**先**交还会话（清掉客户端写入的那枚），**再**让站点 switchTo 写回自己的 cookie。
+    //   两者必须串行——并发会先写后清，把刚拿到的身份删掉，导致会话无 userhash。
+    //   ⚠ 串行化后拿到的可能是**原生 Promise**（release 分支）或 **jQuery Deferred**（直接 switchRequest），
+    //     两者的回调方法不同（.then vs .done/.fail），因此统一收敛成 Promise 再处理——
+    //     早先在这里直接链 .done/.fail 会抛 `runSwitch.done is not a function`，导致切回站点饼干整个中断。
+    const hasJarApi = (typeof getJarCookieApi === 'function') && !!getJarCookieApi();
+    const switchRequest = () => $.get(`${location.origin}/Member/User/Cookie/switchTo/id/${cookie.id}.html`);
+    const runSwitch = (hasJarApi && typeof releaseSessionAlignment === 'function')
+      ? releaseSessionAlignment().then(switchRequest, switchRequest)
+      : switchRequest();
+    // ⚠ 必须用 .then(onOk, onErr) 而不是 .then(onOk).catch(onErr)：
+    //   后者会把 onOk 内部的异常（如 onDone 抛错、UI 更新抛错）也当成"切换失败"，
+    //   从而弹出假失败提示并调用 onFail；jQuery 时代的 .done/.fail 不会这样串。
+    const onSwitchOk = () => {
+      try {
         if (!silent) toast('切换成功! 当前饼干为 '+abbreviateName(cookie.name));
         xdexDbg('LAST_USED:write', { kind: 'site', id: cookie.id, name: abbreviateName(cookie.name || '') });
         GM_setValue('now-cookie',cookie);
@@ -8021,15 +8649,22 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         updateDropdownUI(getCookiesList());
         removeDateString();
         updatePreviewCookieId();
+        // 已切回站点饼干：清掉对齐标记，让后续 restore() 恢复正常还原语义
+        try { if (typeof clearSessionAlignedMark === 'function') clearSessionAlignedMark(); } catch (e) {}
         // 切换成功后，将焦点移回到 textarea（兜底：即时恢复可能被后续 UI 更新打断）
         setTimeout(() => { restorePostTextareaFocus(); }, 100);
         onDone && onDone(cookie);
-      })
-      .fail(()=>{
-        if (!silent) toast('切换失败，请重试', 0, { type: 'error' });
-        xdexDbg('switchTo:FAIL', { id: cookie.id, name: abbreviateName(cookie.name || '') });
-        onFail && onFail();
-      });
+      } catch (e) {
+        // 切换本身已成功；这里只记录后处理异常，绝不改判为"切换失败"
+        try { console.warn('[xdex] switch_cookie 成功后处理异常（切换本身已成功）：', e && e.message ? e.message : e); } catch (e2) {}
+      }
+    };
+    const onSwitchFail = () => {
+      if (!silent) toast('切换失败，请重试', 0, { type: 'error' });
+      xdexDbg('switchTo:FAIL', { id: cookie.id, name: abbreviateName(cookie.name || '') });
+      onFail && onFail();
+    };
+    Promise.resolve(runSwitch).then(onSwitchOk, onSwitchFail);
   }
   function autoApplyFirstCookieIfNeeded(list, opts = {}) {
       const ids = Object.keys(list || {});
@@ -8085,6 +8720,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         if (!cookieListUnavailableState) {
           try { actualCookieBeforeSync = await getCookieMatchedByCurrentUserhash(); } catch (e) {}
           try { await syncCookieUserhashDigestCache(list); } catch (e) {}
+          // 摘要缓存刚更新 → 重算"当前自定义饼干对应哪个站点编号"（仅日志用；失败无所谓）
+          try {
+            clearCustomCookieSiteIdCache();
+            const curForSiteId = getCurrentCookie();
+            if (isCustomCookie(curForSiteId)) {
+              const rawForSiteId = getCustomCookieValue(curForSiteId.name);
+              if (rawForSiteId) resolveCustomCookieSiteId(rawForSiteId).catch(() => null);
+            }
+          } catch (e) {}
         }
         updateDropdownUI(list);
         if (showToast) {
@@ -11969,9 +12613,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             noteLoadEnd(k);
             scheduleProcessQueue();
           };
-          img.addEventListener('load', finish, { once: true });
-          img.addEventListener('error', finish, { once: true });
-          load(img, hdSrc);
+          // 槽位覆盖**整条加载链**（含退避重试）：由 load() 在链结束时回调归还，而不是在第一个
+          // load/error 事件就归还——否则重试会在 MAX_CONCURRENT 预算之外并发，弱网下把带宽打满。
+          try {
+            load(img, hdSrc, { onSettled: finish });
+          } catch (e) {
+            // load() 同步抛错（理论上不该发生）也必须归还槽位，否则会永久占用
+            finish();
+          }
           if (img.dataset.xdexHdLoaded === '1' || img.dataset.xdexHdLoading !== '1') finish();
           started = true;
           break;
@@ -12010,29 +12659,127 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         io.observe(img);
       });
     }
-    function load(img, hdUrl) {
+    // 原图加载的重试策略：失败不再"一次即弃"（弱网/图床中途断连时会把能加载出来的图误判为坏图）。
+    //   · 失败按 HD_RETRY_DELAYS 退避重试，重试 URL 带 xdexHdRetry 参数强制新请求（同一 URL 重复赋值可能命中失败结果）；
+    //   · 全部失败才回退缩略图，且**不置** xdexHdLoaded —— 否则回退后缩略图的 load 会被当成原图成功，该图本次会话永不重试；
+    //   · 失败后进入冷却，避免滚动热路径反复重试同一张坏图。
+    const HD_RETRY_DELAYS = [800, 2000];
+    // ★ 刻意**没有**"单次尝试超时"（看门狗）。
+    //   历史缺陷：曾设 30s，结果大图在慢网络下（3MB @ 20KB/s ≈ 150s）会在传到一半时被判成失败，
+    //   而重试会换新 URL **从头下载**（<img> 无法续传）→ 进度全丢 → 三次都下不完 → 永远退回缩略图，
+    //   用户看到的就是"一直在缓慢加载，却始终好不了"。
+    //   <img> 没有进度事件，客户端无法区分"慢但在收数据"与"真的卡住"，任何墙钟阈值都会误杀慢下载。
+    //   因此这里只依赖浏览器自己派发的 error（连接被重置 / 404 / 解码失败 / 网络栈自身超时）来触发重试。
+    const HD_RETRY_COOLDOWN_MS = 30000;
+    const hdFailedCooldown = new WeakMap(); // img → 冷却截止时间戳
+    // 某张图"已在加载中"时，后来者（如调度器）无法再启动一条链，但**仍然需要**在链结束时收到通知，
+    // 否则它的槽位会永久占用（activeLoads 只增不减 → 累积到 MAX_CONCURRENT 后懒加载彻底停摆）。
+    const hdSettleWaiters = new WeakMap();  // img → [onSettled, ...]
+    function flushHdSettleWaiters(img, ok) {
+      const arr = hdSettleWaiters.get(img);
+      if (!arr || !arr.length) return;
+      hdSettleWaiters.delete(img);
+      arr.forEach((fn) => { try { fn(ok); } catch (e) {} });
+    }
+    function withHdRetryBuster(url, attempt) {
+      return url + (url.includes('?') ? '&' : '?') + 'xdexHdRetry=' + attempt;
+    }
+    function startHdAttempt(img, hdUrl, attempt, onSettled, baseHdUrl) {
+      const rawHdUrl = baseHdUrl || hdUrl;   // 重试参数始终基于原始地址构造，避免 ?xdexHdRetry=1&xdexHdRetry=2 累积
+      const thumbSrc = img.dataset.xdexThumbSrc || '';
+      img.dataset.xdexHdLoading = '1';
+      let settled = false;
+      // 整条链（可能含多次退避重试）结束才清 xdexHdLoading / 通知调度器归还槽位。
+      // 退避期间必须保持 loading：否则 enqueue/observe 的判据看到"未加载"，会再入队开出第二条并行链。
+      const settleChain = (ok) => {
+        delete img.dataset.xdexHdLoading;
+        if (ok) {
+          img.dataset.xdexHdLoaded = '1';
+          hdFailedCooldown.delete(img);
+        } else {
+          hdFailedCooldown.set(img, nowTs() + HD_RETRY_COOLDOWN_MS);
+          if (thumbSrc) img.src = thumbSrc;
+        }
+        if (typeof onSettled === 'function') { try { onSettled(ok); } catch (e) {} }
+        // 唤醒"等这条链结束"的后来者（它们的槽位也要归还）
+        flushHdSettleWaiters(img, ok);
+      };
+      const finishAttempt = (ok) => {
+        if (settled) return;
+        settled = true;
+        if (probe) { try { probe.onload = null; probe.onerror = null; } catch (e) {} }
+        if (ok) { settleChain(true); return; }
+        const nextDelay = HD_RETRY_DELAYS[attempt];
+        if (nextDelay == null) { settleChain(false); return; }
+        setTimeout(() => {
+          if (!img || !img.isConnected) { settleChain(false); return; }
+          startHdAttempt(img, withHdRetryBuster(rawHdUrl, attempt + 1), attempt + 1, onSettled, rawHdUrl);
+        }, nextDelay);
+      };
+      // ★ 先把原图**预载到游离的 Image()**，下载成功后才替换活元素的 src。
+      //   直接给活元素换 src 时浏览器会"边下边画"：弱网/图床中途抖断时，用户先看到半条图像，
+      //   失败后再重试又从零开始（截图里的"半条图 + 大片空白"正是这个）。
+      //   预载把"下载 / 重试 / 失败"全放在游离元素上——活元素在整个过程中**继续显示缩略图**，
+      //   只有拿到完整可解码的原图后才切换（命中缓存，近乎瞬时）。
+      //   代价：慢网络下原图出现更晚（但看到的是干净的缩略图，而不是半张破图）。
+      let probe = null;
+      try {
+        if (typeof Image === 'function') probe = new Image();
+      } catch (e) { probe = null; }
+      if (probe) {
+        probe.onload = () => {
+          try { img.src = hdUrl; } catch (e) {}
+          finishAttempt(true);
+        };
+        probe.onerror = () => finishAttempt(false);
+      } else {
+        // 极端环境没有 Image()：退回旧行为（直接换 src，接受"边下边画"）
+        const onLoad = () => finishAttempt(true);
+        const onError = () => finishAttempt(false);
+        img.addEventListener('load', onLoad);
+        img.addEventListener('error', onError);
+      }
+      // 注意：不设超时（见 HD_ENABLE_ATTEMPT_TIMEOUT 的说明）——慢下载必须允许它下完
+      if (probe) probe.src = hdUrl;
+      else img.src = hdUrl;
+    }
+    function load(img, hdUrl, options) {
       if (!img) return;
       const finalHdUrl = prepare(img, hdUrl);
       if (!finalHdUrl) return;
-      if ((img.currentSrc || img.src) === finalHdUrl) {
-        img.dataset.xdexHdLoaded = '1';
-        delete img.dataset.xdexHdLoading;
+      // ⓪ 已完成：直接返回。
+      //    注意不能靠"src === 干净原图地址"来判断是否已加载 —— 重试成功的图，其 src 会是
+      //    带 ?xdexHdRetry=N 的地址（缓存键不同），字符串比较不相等，于是会被当成"还没加载"
+      //    而**重新完整下载一次**（点击/再次入队时都会发生）。
+      if (img.dataset.xdexHdLoaded === '1') return;
+      // ① 已在加载中：**必须先判**。
+      //    否则会掉进下面的"src 已是原图"分支——因为链在发起请求前就把 src 设成了原图地址，
+      //    于是被误判为"已加载完成"，提前置 xdexHdLoaded 并清掉 loading：
+      //    一旦那次请求其实失败，图就永久停留在缩略图（旧 bug 的同类）。
+      //    这里只登记结算回调（调用方的槽位仍要归还），不重复启动。
+      if (img.dataset.xdexHdLoading === '1') {
+        if (options && typeof options.onSettled === 'function') {
+          const arr = hdSettleWaiters.get(img);
+          if (arr) arr.push(options.onSettled);
+          else hdSettleWaiters.set(img, [options.onSettled]);
+        }
         return;
       }
-      if (img.dataset.xdexHdLoading === '1') return;
-      img.dataset.xdexHdLoading = '1';
-      const thumbSrc = img.dataset.xdexThumbSrc || '';
-      const onLoad = () => {
-        img.dataset.xdexHdLoaded = '1';
-        delete img.dataset.xdexHdLoading;
-      };
-      const onError = () => {
-        delete img.dataset.xdexHdLoading;
-        if (thumbSrc && (img.currentSrc || img.src) === finalHdUrl) img.src = thumbSrc;
-      };
-      img.addEventListener('load', onLoad, { once: true });
-      img.addEventListener('error', onError, { once: true });
-      img.src = finalHdUrl;
+      // ② 确实已是原图且**真的解码完成**才算加载好（不能只看 src 字符串）
+      if ((img.currentSrc || img.src) === finalHdUrl) {
+        if (img.complete && (img.naturalWidth | 0) > 0) {
+          img.dataset.xdexHdLoaded = '1';
+          return;
+        }
+        // ③ src 已是该地址但未完成、且没有在途链：同 URL 重复赋值不会重新请求，强制一次新请求
+        startHdAttempt(img, withHdRetryBuster(finalHdUrl, 1), 0, options && options.onSettled, finalHdUrl);
+        return;
+      }
+      // 刚失败过的图在冷却期内不再**自动**重试（滚动热路径会反复入队同一批图）；
+      // 用户显式点击（options.force）不受冷却限制——否则点了没反应。
+      const forced = !!(options && options.force);
+      if (!forced && (hdFailedCooldown.get(img) || 0) > nowTs()) return;
+      startHdAttempt(img, finalHdUrl, 0, options && options.onSettled);
     }
     function getStats() {
       return {
@@ -12709,14 +13456,10 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             if (shouldOpen) {
               // 展开
               box.classList.add('h-active');
-              hdImageLazyLoader.load(img, anchor.href);
+              hdImageLazyLoader.load(img, anchor.href, { force: true });
               img.dataset.rotateIndex = '0'; // 重置旋转索引
-              // ★ 新增：加载失败兜底
-              img.onerror = () => {
-                console.warn('[图片加载失败，回退到缩略图]', img.src);
-                const fallback = img.dataset.xdexThumbSrc || img.getAttribute('data-src') || anchor.href;
-                img.src = fallback;
-              };
+              // 失败回退由 hdImageLazyLoader 统一处理（含退避重试），这里不再另挂 onerror——
+              // 双份回退会重复赋值同一地址，缩略图也失败时还会形成 error→赋值 的无限重试风暴。
               // 触发布局计算
               handleImageLayout.handleActiveImageBox(box);
             } else {
@@ -13038,7 +13781,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         clickCountMap.set(this, count);
         if (count % 2 === 1) {
           box.classList.add('h-active');
-          hdImageLazyLoader.load(img, this.href);
+          hdImageLazyLoader.load(img, this.href, { force: true });
           updatePreviewImageLayout(box);
         } else {
           box.classList.remove('h-active');
@@ -13093,7 +13836,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (!img || !imgA) return;
       if (!box.classList.contains('h-active')) {
         box.classList.add('h-active');
-        hdImageLazyLoader.load(img, imgA.getAttribute('href') || img.src || '');
+        hdImageLazyLoader.load(img, imgA.getAttribute('href') || img.src || '', { force: true });
       }
       const current = Number.parseInt(img.dataset.rotateIndex || '0', 10) || 0;
       const next = (current + delta + rotateArray.length) % rotateArray.length;
@@ -19180,6 +19923,25 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             const msg = errorMsg.textContent.trim() || '提交失败';
             let displayMsg = msg;
             let cookieInvalid = false;
+            // ★ 诊断：失败回执一定要留全量证据——这条日志是"未应用饼干"唯一可回收的现场。
+            // 记下：服务器原话、本次发送用的身份、发送后会话里实际剩哪几枚。
+            try {
+              const _sc = getCurrentCookie();
+              let _jarAfter = null;
+              try { _jarAfter = (typeof getJarCookieApi === 'function' && getJarCookieApi()) ? xdexDbgJarBrief(await jarGetAllCookies(location.href), getCustomCookieValue(_sc && _sc.name) || '') : null; } catch (e) { _jarAfter = 'err'; }
+              xdexDbg('send:FAIL', {
+                serverMsg: msg,
+                rawErrorHtml: String(html || '').slice(0, 400),
+                pageHost: location.hostname,
+                kind: isCustomCookie(_sc) ? 'custom' : 'site',
+                cookieName: _sc ? abbreviateName(_sc.name || _sc.id || '') : null,
+                isCustomMarkedInvalid: isCustomCookie(_sc) && _sc.name ? isCustomCookieMarkedInvalid(_sc.name) : null,
+                docUH: xdexDbgDocUserhash(),
+                jarUserhash: _jarAfter,
+                looksNotApplied: /未应用饼干|用户中心应用饼干/.test(msg),
+                looksLoginWall: /并没有权限|已失效|饼干无效|请先登录|未登录/.test(msg)
+              });
+            } catch (e) {}
             // 「未应用饼干」不等于饼干失效：有效饼干只要没在所属账号的用户中心应用过，
             // 服务器也会这样回执。因此这里不写死失效标记，只提示用户去账号侧确认；
             // 若确认已应用后重试仍失败，则判定为失效；一旦发送成功会清除标记。
@@ -29320,72 +30082,6 @@ function 注册自动保存编辑() {
     });
     cleanThreadHistoryContentWhitespace(root);
   }
-  function removeThreadHistoryTrailingBreaks(root) {
-    while (root && root.lastChild) {
-      const node = root.lastChild;
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        removeThreadHistoryTrailingBreaks(node);
-      }
-      if (node.nodeType === Node.TEXT_NODE && !String(node.nodeValue || '').trim()) {
-        node.remove();
-        continue;
-      }
-      if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
-        node.remove();
-        continue;
-      }
-      if (isEmptyThreadHistoryInlineElement(node)) {
-        node.remove();
-        continue;
-      }
-      break;
-    }
-  }
-  function isEmptyThreadHistoryInlineElement(node) {
-    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-    if (!/^(A|SPAN|FONT|B|STRONG|I|EM|U|S|DEL|CODE|SUB|SUP)$/.test(node.tagName)) return false;
-    return !String(node.textContent || '').trim() && !node.querySelector('img, video, audio, canvas, svg');
-  }
-  function limitThreadHistoryContentText(root, limit) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    let remaining = Math.max(0, Number(limit) || 0);
-    let truncated = false;
-    for (const node of nodes) {
-      if (truncated || remaining <= 0) {
-        node.nodeValue = '';
-        continue;
-      }
-      const value = String(node.nodeValue || '');
-      if (value.length > remaining) {
-        node.nodeValue = value.slice(0, remaining).replace(/\s+$/, '');
-        pruneAfterThreadHistoryTextNode(root, node);
-        truncated = true;
-        remaining = 0;
-      } else {
-        remaining -= value.length;
-      }
-    }
-    cleanThreadHistoryContentWhitespace(root);
-    removeThreadHistoryTrailingBreaks(root);
-  }
-  function pruneAfterThreadHistoryTextNode(root, textNode) {
-    let current = textNode;
-    while (current && current.parentNode && current !== root) {
-      while (current.nextSibling) current.nextSibling.remove();
-      current = current.parentNode;
-    }
-    if (current === root) removeThreadHistoryTrailingBreaks(root);
-  }
-  function isThreadHistoryContentTruncated(text) {
-    return String(text || '').length > THREAD_HISTORY_EXCERPT_LIMIT;
-  }
-  function appendThreadHistoryTruncationMarker(contentEl) {
-    if (!contentEl) return;
-    removeThreadHistoryTrailingBreaks(contentEl);
-    contentEl.appendChild(document.createTextNode('……'));
-  }
   function sanitizeThreadHistoryInlineHtml(sourceEl) {
     if (!sourceEl) return '';
     const clone = sourceEl.cloneNode(true);
@@ -29543,7 +30239,6 @@ function 注册自动保存编辑() {
     const contentEl = mainEl.querySelector('.h-threads-content');
     const rawContent = getElementTextPreserveZeroWidth(contentEl);
     const contentText = trimThreadHistoryContentText(rawContent);
-    const contentTruncated = isThreadHistoryContentTruncated(contentText);
     const contentHtml = sanitizeThreadHistoryContentHtml(contentEl);
     const hasZeroWidth = ZERO_WIDTH_RE.test(rawContent);
     const hasVisibleText = !!getVisibleTextForHistory(rawContent);
@@ -29574,7 +30269,6 @@ function 注册自动保存编辑() {
       createdAt,
       contentText,
       contentHtml,
-      contentTruncated,
       excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
       imageFile,
       contentFlags: { hasVisibleText, hasWhitespaceOnly, hasZeroWidth },
@@ -29807,7 +30501,6 @@ function 注册自动保存编辑() {
     return {
       contentText,
       contentHtml: sanitizeThreadHistoryContentHtml(el),
-      contentTruncated: isThreadHistoryContentTruncated(contentText),
       excerpt: contentText.slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
       contentFlags: {
         hasZeroWidth: ZERO_WIDTH_RE.test(rawContent),
@@ -29891,13 +30584,12 @@ function 注册自动保存编辑() {
         fields = {
           contentText: fromDom.contentText || '',
           contentHtml: fromDom.contentHtml || '',
-          contentTruncated: !!fromDom.contentTruncated,
           excerpt: fromDom.excerpt || '',
           contentFlags: fromDom.contentFlags || {}
         };
       }
     }
-    if (!fields) fields = { contentText: '', contentHtml: '', contentTruncated: false, excerpt: '', contentFlags: {} };
+    if (!fields) fields = { contentText: '', contentHtml: '', excerpt: '', contentFlags: {} };
     return {
       key: getThreadHistoryKey(mode, threadId),
       mode,
@@ -29912,7 +30604,6 @@ function 注册自动保存编辑() {
       imageFile: imageFile || '',
       contentText: fields.contentText || '',
       contentHtml: fields.contentHtml || '',
-      contentTruncated: !!fields.contentTruncated,
       excerpt: fields.excerpt || String(fields.contentText || '').slice(0, THREAD_HISTORY_EXCERPT_LIMIT),
       contentFlags: fields.contentFlags || {},
       lastReadReplyId: String(opts.replyId || ''),
@@ -30827,11 +31518,9 @@ function 注册自动保存编辑() {
     content.className = 'h-threads-content';
     if (item.contentHtml) content.innerHTML = item.contentHtml;
     else content.textContent = item.contentText || item.excerpt || '';
-    if (item.contentTruncated) {
-      limitThreadHistoryContentText(content, THREAD_HISTORY_EXCERPT_LIMIT);
-      appendThreadHistoryTruncationMarker(content);
-    }
-    main.appendChild(content);
+    // 全文完整保留在 DOM（浏览器查找可用、可展开），超长默认折叠；
+    // 不再做 250 字字符级截断（旧实现会把超出部分从 DOM 删掉，导致无法展开）
+    main.appendChild(buildCollapsibleContent(content, 'threadHistory', {}).body);
     enhanceHistoryRenderedContent(content);
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -30990,6 +31679,7 @@ function 注册自动保存编辑() {
     if (barCount) barCount.textContent = `${list.length} 条`;
     const emptyBtn = document.getElementById('sp_history_recycle_empty');
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    releaseCollapseObserver('threadHistory');
     root.textContent = '';
     const now = Date.now();
     const liveStore = getThreadHistoryStore();
@@ -31087,6 +31777,7 @@ function 注册自动保存编辑() {
       count.textContent = `${results.length} 条 `;
       count.appendChild(buildHistorySearchHelpMark(THREAD_HISTORY_SEARCH_HELP_TEXT));
     }
+    releaseCollapseObserver('threadHistory');
     root.textContent = '';
     if (!results.length) {
       const empty = document.createElement('div');
@@ -31447,7 +32138,8 @@ function 注册自动保存编辑() {
     content.className = 'h-threads-content';
     if (item.contentHtml) content.innerHTML = item.contentHtml;
     else content.textContent = item.contentText || item.contentRaw || '';
-    main.appendChild(content);
+    // 与浏览历史同一套折叠组件：全文保留在 DOM，超长默认折叠可展开
+    main.appendChild(buildCollapsibleContent(content, 'postHistory', {}).body);
     enhanceHistoryRenderedContent(content);
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer xdex-post-history-footer';
@@ -31523,6 +32215,7 @@ function 注册自动保存编辑() {
     if (barCount) barCount.textContent = `${list.length} 条`;
     const emptyBtn = document.getElementById('sp_posts_recycle_empty');
     if (emptyBtn) emptyBtn.disabled = list.length === 0;
+    releaseCollapseObserver('postHistory');
     root.textContent = '';
     const now = Date.now();
     const liveStore = getPostHistoryStore();
@@ -31612,6 +32305,7 @@ function 注册自动保存编辑() {
       count.textContent = `${results.length} 条 `;
       count.appendChild(buildHistorySearchHelpMark(POST_HISTORY_SEARCH_HELP_TEXT));
     }
+    releaseCollapseObserver('postHistory');
     root.textContent = '';
     if (!results.length) {
       const empty = document.createElement('div');
@@ -31636,8 +32330,79 @@ function 注册自动保存编辑() {
   const SUBSCRIPTION_FEED_SESSION_VERSION = 3;
   const SUBSCRIPTION_FEED_SESSION_TTL_MS = 2 * 60 * 1000;
   const SUBSCRIPTION_FEED_SESSION_MAX_COUNT = 5;
-  const SUBSCRIPTION_FEED_PREVIEW_HEIGHT = 160; // 正文行高 20px，默认预览约 8 行
-  let subscriptionFeedPostObserver;
+  // ===== 通用折叠组件（订阅页 / 浏览历史 / 发言历史共用）=====
+  // 语义遵循 W3C ARIA APG「Disclosure (Show/Hide)」：button + aria-expanded + aria-controls，
+  // 方向指示随状态翻转、键盘聚焦有可见描边；正文始终完整保留在 DOM（浏览器查找可用、可展开），
+  // 折叠只做 CSS 裁剪 + 末行渐隐，不做字符级删除或替换。
+  const COLLAPSE_PREVIEW_HEIGHT = 160; // 正文行高 20px，默认预览约 8 行
+  let collapseContentIdSeq = 0;
+  const collapseObservers = Object.create(null);
+  // 每个列表各持一个观察器：列表清空时必须释放，否则观察器会继续持有已脱离文档的节点
+  function getCollapseObserver(listKey) {
+    // 与仓库既有约定一致（见 handleImageLayout / 面板自动适配处）：ResizeObserver 缺失时
+    // 不抛错、降级为"不做折叠判定"——按钮保持初始 hidden，正文完整显示，页面不会被打断。
+    if (typeof ResizeObserver !== 'function') return null;
+    if (!collapseObservers[listKey]) {
+      collapseObservers[listKey] = new ResizeObserver((entries) => {
+        entries.forEach(({ target, contentRect }) => {
+          const preview = target.parentElement;
+          const body = preview.parentElement;
+          const toggle = preview.nextElementSibling;
+          const isTruncated = contentRect.height > COLLAPSE_PREVIEW_HEIGHT;
+          toggle.hidden = !isTruncated;
+          // 只有真被截断才给底部淡出遮罩（短内容整体发虚反而像加载失败）
+          body.classList.toggle('is-truncated', isTruncated);
+        });
+      });
+    }
+    return collapseObservers[listKey];
+  }
+  function releaseCollapseObserver(listKey) {
+    if (collapseObservers[listKey]) collapseObservers[listKey].disconnect();
+  }
+  // 把已构建好的正文元素包成可折叠体：.xdex-collapsible > .xdex-collapsible-preview > 正文 + 按钮
+  function buildCollapsibleContent(content, listKey, options) {
+    const opts = options || {};
+    const body = document.createElement('div');
+    body.className = 'xdex-collapsible';
+    const preview = document.createElement('div');
+    preview.className = 'xdex-collapsible-preview';
+    preview.id = opts.contentId || `xdex-collapse-${++collapseContentIdSeq}`;
+    preview.appendChild(content);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'xdex-collapsible-toggle';
+    toggle.setAttribute('aria-controls', preview.id);
+    const toggleLabel = document.createElement('span');
+    const toggleIcon = document.createElement('span');
+    toggleIcon.className = 'xdex-collapsible-toggle-icon';
+    toggleIcon.setAttribute('aria-hidden', 'true');
+    toggle.append(toggleLabel, toggleIcon);
+    const setExpanded = (isExpanded) => {
+      body.classList.toggle('is-collapsed', !isExpanded);
+      toggle.setAttribute('aria-expanded', String(isExpanded));
+      toggleLabel.textContent = isExpanded ? '收起全文' : '展开全文';
+    };
+    setExpanded(!!opts.expanded);
+    toggle.hidden = true;
+    toggle.addEventListener('click', () => {
+      const willExpand = body.classList.contains('is-collapsed');
+      setExpanded(willExpand);
+      if (!willExpand) toggle.scrollIntoView({ block: 'nearest' });
+    });
+    preview.addEventListener('focusin', (event) => {
+      if (!body.classList.contains('is-collapsed')) return;
+      if (event.target.getBoundingClientRect().bottom > preview.getBoundingClientRect().bottom) {
+        setExpanded(true);
+        event.target.scrollIntoView({ block: 'nearest' });
+      }
+    });
+    body.append(preview, toggle);
+    // ResizeObserver 不可用时 getCollapseObserver 返回 null：跳过观察（按钮保持初始 hidden，正文完整显示）
+    const collapseObserver = getCollapseObserver(listKey);
+    if (collapseObserver) collapseObserver.observe(content);
+    return { body, preview, toggle, setExpanded };
+  }
   let subscriptionFeedCurrentPage = 1;
   let subscriptionFeedCurrentUuid = '';
   let subscriptionFeedLoading = false;
@@ -31906,10 +32671,10 @@ function 注册自动保存编辑() {
     const results = $results[0];
     if (!results) return;
     const expandedPosts = new Set(Array.from(
-      results.querySelectorAll('.xdex-feed-post-body > .xdex-feed-post-toggle[aria-expanded="true"]'),
+      results.querySelectorAll('.xdex-collapsible > .xdex-collapsible-toggle[aria-expanded="true"]'),
       (button) => button.closest('.xdex-history-item').dataset.feedThreadId
     ));
-    subscriptionFeedPostObserver?.disconnect();
+    releaseCollapseObserver('subscriptionFeed');
     $results.empty();
     const displayPage = Math.max(0, Number(options.displayPage) || 0) || subscriptionFeedCurrentDisplayPage || subscriptionFeedHighestRenderedPage || 0;
     if (subscriptionFeedHighestRenderedPage <= 0) {
@@ -31917,13 +32682,7 @@ function 注册自动保存编辑() {
       $('#sp_feeds_page_label').text('第0页');
       return;
     }
-    // 观察未被裁剪的正文，面板宽度或正文内图片尺寸变化时重新判断是否需要按钮。
-    subscriptionFeedPostObserver = new ResizeObserver((entries) => {
-      entries.forEach(({ target, contentRect }) => {
-        const toggle = target.parentElement.nextElementSibling;
-        toggle.hidden = contentRect.height <= SUBSCRIPTION_FEED_PREVIEW_HEIGHT;
-      });
-    });
+    // 折叠判定与按钮显隐由共用折叠组件的观察器负责（见 buildCollapsibleContent）
     for (let page = 1; page <= subscriptionFeedHighestRenderedPage; page++) {
       const entry = subscriptionFeedRenderedPages[String(page)];
       if (!entry || !Array.isArray(entry.items)) break;
@@ -32093,39 +32852,8 @@ function 注册自动保存编辑() {
         next.deleteData(0, 1);
       }
     });
-    const body = document.createElement('div');
-    body.className = 'xdex-feed-post-body';
-    const preview = document.createElement('div');
-    preview.className = 'xdex-feed-post-preview';
-    preview.id = contentId;
-    preview.appendChild(content);
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'xdex-feed-post-toggle';
-    toggle.setAttribute('aria-controls', contentId);
-    const setExpanded = (isExpanded) => {
-      body.classList.toggle('is-collapsed', !isExpanded);
-      toggle.setAttribute('aria-expanded', String(isExpanded));
-      toggle.textContent = isExpanded ? '收起全文' : '展开全文';
-    };
-    setExpanded(expanded);
-    toggle.hidden = true;
-    toggle.addEventListener('click', () => {
-      const willExpand = body.classList.contains('is-collapsed');
-      setExpanded(willExpand);
-      if (!willExpand) toggle.scrollIntoView({ block: 'nearest' });
-    });
-    preview.addEventListener('focusin', (event) => {
-      if (!body.classList.contains('is-collapsed')) return;
-      if (event.target.getBoundingClientRect().bottom > preview.getBoundingClientRect().bottom) {
-        setExpanded(true);
-        event.target.scrollIntoView({ block: 'nearest' });
-      }
-    });
-    body.append(preview, toggle);
-    main.appendChild(body);
+    main.appendChild(buildCollapsibleContent(content, 'subscriptionFeed', { contentId, expanded }).body);
     enhanceHistoryRenderedContent(content);
-    subscriptionFeedPostObserver.observe(content);
     // 脚注
     const footer = document.createElement('div');
     footer.className = 'xdex-history-footer';
@@ -32147,7 +32875,7 @@ function 注册自动保存编辑() {
     try { return JSON.parse(typeof data === 'string' ? data : '[]'); } catch (e) { return []; }
   }
   function renderSubscriptionFeedModule() {
-    subscriptionFeedPostObserver?.disconnect();
+    releaseCollapseObserver('subscriptionFeed');
     const $results = $('#sp_feeds_results').empty();
     pruneExpiredSubscriptionFeedSessions();
     const uuid = populateSubscriptionFeedSelector();
@@ -32172,7 +32900,7 @@ function 注册自动保存编辑() {
       resetSubscriptionFeedRuntimeState(uuid);
       // 清空容器前必须先断开观察器：该分支后续有提前 return（页序/seq/uuid 守卫、catch），
       // 不走 renderSubscriptionFeedRenderedPages 时，观察器会继续持有已脱离文档的正文节点。
-      subscriptionFeedPostObserver?.disconnect();
+      releaseCollapseObserver('subscriptionFeed');
       if ($results.length) $results.empty();
     }
     const expectedPage = getSubscriptionFeedNextRenderPage();
@@ -38024,6 +38752,8 @@ function initReplyParamScrollTo() {
         if (root) initExtendedContent(root);
     };
     deferStartupSteps([
+      // 切换自定义饼干时只在"当前域"对齐；跨域（nmbxd1.com ↔ nmbxd.com）由这里在载入时就地补上
+      { label: 'startup.batch1.sessionAlign', run: () => ensureSessionAlignedOnLoad(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.enableHDImageAndLayoutFix', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImageAndLayoutFix(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.enableHDImage', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImage(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.applyImageHideMode', run: () => { if (cfg.enableImageHideMode) applyImageHideMode(cfg.applyImageHideMode || 'default', document); }, meta: () => startupPerfDebug.summarizeRoot(document) },

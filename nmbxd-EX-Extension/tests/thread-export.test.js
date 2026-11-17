@@ -77,7 +77,7 @@ function loadCore() {
   const richEntries = [
     { id: '68707051', userHash: 'J8fAQ0D', name: '无名氏', title: '吃饭睡觉碎碎念。', now: '2026-05-24(日)22:58:42', content: '吃饭睡觉碎碎念。', isOp: true, page: 1 },
     { id: '68853812', userHash: 'J8fAQ0D', name: '无名氏', title: '无标题', now: '2026-06-15(一)01:00:11', content: 'Procreate的水印还挺有意思的。', img: '2026-06-15/6a2ede1c35b2a', ext: '.png', isOp: false, page: 4 },
-    { id: '69632244', userHash: 'NMDJxCc', name: '4.2.0', title: '优化与修复', now: '2026-10-16(五)09:35:11', content: '更新内容', isOp: false, page: 9 }
+    { id: '69632244', userHash: 'DEMOc0d', name: '4.2.0', title: '优化与修复', now: '2026-10-16(五)09:35:11', content: '更新内容', isOp: false, page: 9 }
   ];
   const doc = api.xdexExportBuildDocument({ format: 'md', tid: '68707051', title: '吃饭睡觉碎碎念。', entries: richEntries });
   assert(!doc.startsWith('---'), 'markdown export must NOT use frontmatter');
@@ -86,9 +86,9 @@ function loadCore() {
   // ★ 该回复与串首同饼干 → 必须标 (Po)（维护者诉求 2）
   assert(doc.includes('[68853812](https://www.nmbxd1.com/t/68707051/page/4) | #J8fAQ0D (Po) | 2026-06-15(一)01:00:11'), 'same-cookie reply must be marked (Po) and omit 无名氏/无标题');
   // 不同饼干的回复不得被标 Po
-  assert(doc.includes('#NMDJxCc |') && !doc.includes('#NMDJxCc (Po)'), 'different-cookie reply must NOT be marked (Po)');
+  assert(doc.includes('#DEMOc0d |') && !doc.includes('#DEMOc0d (Po)'), 'different-cookie reply must NOT be marked (Po)');
   assert(doc.includes('![2026-06-15/6a2ede1c35b2a](https://image.nmb.best/image/2026-06-15/6a2ede1c35b2a.png)'), 'image line must use img path as alt');
-  assert(doc.includes('69632244 | #NMDJxCc | 4.2.0 | 优化与修复 | 2026-10-16(五)09:35:11') === false || true, 'placeholder');
+  assert(doc.includes('69632244 | #DEMOc0d | 4.2.0 | 优化与修复 | 2026-10-16(五)09:35:11') === false || true, 'placeholder');
   assert(doc.includes('| 4.2.0 | 优化与修复 |'), 'named entry must include name and title fields');
   assert(doc.includes('\n\n---\n\n'), 'entries must be separated by ---');
 

@@ -407,7 +407,9 @@ async function handleDnrCookieRule(message, sender) {
       urlFilter: `/Home/Forum/${file}`,
       requestDomains: XDEX_POST_RULE_DOMAINS,
       requestMethods: ['post'],
-      resourceTypes: ['xmlhttprequest']
+      // 覆盖 fetch/XHR 之外的表单导航式提交：只匹配 xmlhttprequest 时，任何由页面跳转/表单
+      // 直接提交触发的 POST 不会被改写，会带着会话里残留的旧 userhash 出去 → 服务器回"未应用饼干"。
+      resourceTypes: ['xmlhttprequest', 'main_frame', 'sub_frame']
     }
   }));
   // ★ 权限守卫：没有站点访问权限时规则可能"加得上但不生效"，宁可报错退回普通发送

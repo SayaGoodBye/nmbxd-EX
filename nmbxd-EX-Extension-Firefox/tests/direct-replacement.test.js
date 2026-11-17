@@ -17,6 +17,12 @@ function read(relativePath) {
   return normalizeScriptText(fs.readFileSync(path.join(root, relativePath), 'utf8'));
 }
 
+// 本测试文件在**三类构建里同源**（Chrome/Edge MV3、Firefox 128+ MV3、Firefox 115 MV2），
+// 构建固有差异（清单形态、page-bridge 的跨世界约束）按 manifest_version **自动适配**。
+// 这样就不必维护一份"MV2 变体"——历史上多次因为拿 Chrome 版覆盖 FF115 版而误报失败。
+const MANIFEST = (() => { try { return JSON.parse(read('manifest.json')); } catch (e) { return {}; } })();
+const IS_MV2 = MANIFEST.manifest_version === 2;
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -62,7 +68,25 @@ function readUpstreamUserscript() {
 function testDirectUserscriptCopy() {
   const upstream = readUpstreamUserscript();
   const extensionCopy = read('src/content/nmbxd-EX-for-edit.user.js');
-  assert(extensionCopy === upstream, 'Extension userscript copy must match upstream（已忽略行尾/BOM）');
+  if (!IS_MV2) {
+    assert(extensionCopy === upstream, 'Extension userscript copy must match upstream（已忽略行尾/BOM）');
+    return;
+  }
+  // MV2（Firefox 115）构建的副本相对开发源带**一处必需差异**：hasHeaderRewriteDeclared 判定
+  // （见该构建的 Firefox115兼容说明.md §5）。按"逐行多重集比对 + 只允许该差别"校验：
+  //   多出的行 → 只能是注释行 / 含 hasHeaderRewriteDeclared 的行 / 该判定的续行；
+  //   缺失的行 → 只能是被替换掉的旧 hasDnr 行（以及空行）。任何其它差异仍然失败。
+  const multiset = (lines) => { const m = new Map(); for (const l of lines) m.set(l, (m.get(l) || 0) + 1); return m; };
+  const onlyIn = (a, b) => { const rest = multiset(b); const out = []; for (const l of a) { const n = rest.get(l) || 0; if (n > 0) rest.set(l, n - 1); else out.push(l); } return out; };
+  const extraInCopy = onlyIn(extensionCopy.split('\n'), upstream.split('\n'));
+  const missingInCopy = onlyIn(upstream.split('\n'), extensionCopy.split('\n'));
+  const allowedExtra = (line) => /^\s*\/\//.test(line) || /hasHeaderRewriteDeclared/.test(line) || /^\s*&& declaredPermissions\.indexOf\('webRequest'\) >= 0;$/.test(line);
+  const allowedMissing = (line) => line.trim() === '' || /const hasDnr = hasDnrApi \|\| hasDnrDeclared;$/.test(line.trim());
+  const badExtra = extraInCopy.filter((line) => !allowedExtra(line));
+  const badMissing = missingInCopy.filter((line) => !allowedMissing(line));
+  assert(badExtra.length === 0, 'MV2 copy must not add lines beyond the documented patch: ' + JSON.stringify(badExtra.slice(0, 5)));
+  assert(badMissing.length === 0, 'MV2 copy must not drop lines beyond the documented patch: ' + JSON.stringify(badMissing.slice(0, 5)));
+  assert(extraInCopy.some((line) => /hasHeaderRewriteDeclared/.test(line)), 'MV2 copy must carry the documented hasHeaderRewriteDeclared patch');
 }
 
 async function testGifsiclePreload() {
@@ -216,7 +240,8 @@ function testManifestVersionMatchesUserscriptHeader() {
 function testExtensionUpdateHostPermissions() {
   const manifest = JSON.parse(read('manifest.json'));
   const userscriptHeader = normalizeLineEndings(extractUserscriptHeader(read('src/content/nmbxd-EX-for-edit.user.js')));
-  const hostPermissions = manifest.host_permissions || [];
+  // MV2（Firefox 115）把主机权限写在 permissions 里，没有 host_permissions 键，两种形态都接受
+  const hostPermissions = manifest.host_permissions || manifest.permissions || [];
   assert(hostPermissions.includes('https://raw.githubusercontent.com/*'), 'manifest must allow Extension update checks against GitHub raw content');
   assert(hostPermissions.includes('https://cdn.jsdelivr.net/*'), 'manifest must allow Extension update checks against jsDelivr fallback');
   assert(hostPermissions.includes('https://fastly.jsdelivr.net/*'), 'manifest must allow Extension update checks against fastly jsDelivr fallback');
@@ -1009,11 +1034,32 @@ function testBrowsingHistoryExtractionAndRenderingContract() {
   assert(upstream.includes('data-xdex-cookie-id'), 'history rendering must expose the pure cookie id without flattening the visible cookie HTML');
   assert(upstream.includes("cookieSpan.setAttribute('data-xdex-cookie-id', cookieMarkId)"), 'history fallback cookie rendering must expose data-xdex-cookie-id for old records too');
   assert(upstream.includes('SUB') && upstream.includes('SUP'), 'history sanitizers must preserve sub/sup tags used by special cookie badges');
-  assert(upstream.includes('THREAD_HISTORY_EXCERPT_LIMIT = 250'), 'history content preview limit must be 250 characters');
-  assert(upstream.includes('contentTruncated'), 'history records must store whether display content was truncated');
-  assert(upstream.includes('appendThreadHistoryTruncationMarker'), 'history rendering must append truncation marker only in the visible DOM');
-  assert(upstream.includes('isEmptyThreadHistoryInlineElement'), 'history truncation must remove trailing empty inline nodes before the visible truncation marker');
-  assert(upstream.includes('removeThreadHistoryTrailingBreaks(node)'), 'history truncation must recursively prune nested trailing blank nodes before the visible marker');
+  assert(upstream.includes('THREAD_HISTORY_EXCERPT_LIMIT = 250'), 'history excerpt length limit must stay 250 characters (search fallback)');
+  // 展示层不得再做字符级截断：浏览历史 / 发言历史与订阅页共用折叠组件，
+  // 全文保留在 DOM（可展开、可被浏览器查找），超长内容默认折叠。
+  assert(!upstream.includes('limitThreadHistoryContentText'), 'history rendering must not truncate content to a character budget');
+  assert(!upstream.includes('appendThreadHistoryTruncationMarker'), 'history rendering must not append a text truncation marker');
+  assert(!upstream.includes('contentTruncated'), 'history records must no longer carry a display-truncation flag');
+  assert(upstream.includes("buildCollapsibleContent(content, 'threadHistory', {})"), 'History must render its content through the shared collapsible component');
+  assert(upstream.includes("buildCollapsibleContent(content, 'postHistory', {})"), 'My-posts history must render its content through the shared collapsible component');
+  assert(upstream.includes("buildCollapsibleContent(content, 'subscriptionFeed', { contentId, expanded })"), 'Subscription feed must use the same shared collapsible component');
+  assert(upstream.includes("releaseCollapseObserver('threadHistory')") && upstream.includes("releaseCollapseObserver('postHistory')") && upstream.includes("releaseCollapseObserver('subscriptionFeed')"), 'every collapsible list must release its observer when its container is cleared');
+  // ★ 重构遗留守卫：改名/删除后**不得**再引用旧符号。
+  //   可选链（foo?.bar）不能保护"未声明的标识符"——引用它仍会抛 ReferenceError，
+  //   而且一旦不在 try/catch 内会直接中断所在函数（真机踩过：订阅页渲染整体中断）。
+  //   历史教训：批量替换时缩进不同（6 空格 vs 4 空格）会漏掉一部分引用。
+  [
+    'subscriptionFeedPostObserver',      // 已由 releaseCollapseObserver('subscriptionFeed') 取代
+    'SUBSCRIPTION_FEED_PREVIEW_HEIGHT',  // 已改名 COLLAPSE_PREVIEW_HEIGHT
+    'xdex-feed-post-body',               // 已改名 xdex-collapsible
+    'xdex-feed-post-preview',
+    'xdex-feed-post-toggle',
+    'limitThreadHistoryContentText',     // 字符级截断已整体移除
+    'appendThreadHistoryTruncationMarker',
+    'contentTruncated',
+  ].forEach((dead) => {
+    assert(!upstream.includes(dead), `重构遗留：源码中不应再出现 ${dead}（改名/删除后必须同步全部引用，含缩进不同的那些）`);
+  });
   assert(upstream.includes('item.contentText || item.excerpt'), 'history search must remain compatible with old excerpt-only records');
   assert(upstream.includes('sanitizeThreadHistoryContentHtml'), 'history extraction must sanitize rich content before storing it');
   assert(!upstream.includes("+ '…'"), 'history extraction must not store display ellipsis in contentHtml or excerpt');
@@ -1418,7 +1464,9 @@ function testPageBridgeBehavior() {
   const code = read('src/content/page-bridge.js');
   const document = createSharedDocument();
   const context = createBridgeContext(document);
-  const rootNode = { id: 'root' };
+  // MV2（Firefox 115）的桥接是 Xray 安全变体：跨世界事件不携带 DOM 对象，root 恒为本地 document；
+  // MV3 用哨兵对象以验证"原样转发的是同一个 root"。
+  const rootNode = IS_MV2 ? document : { id: 'root' };
   let firstNativeCount = 0;
   let secondNativeCount = 0;
   let pageDoneCount = 0;
@@ -1428,7 +1476,9 @@ function testPageBridgeBehavior() {
     firstNativeCount += 1;
   };
   document.addEventListener('xdex:page-init-content', (event) => {
-    assert(event.detail.root === rootNode, 'page bridge must emit the original root after page initContent');
+    // MV2 的载荷不含 DOM 对象（Firefox Xray），只带 rootMarker；MV3 原样携带 root
+    if (IS_MV2) assert(event.detail.rootMarker === 'explicit', 'MV2 page bridge must emit a DOM-free payload after page initContent');
+    else assert(event.detail.root === rootNode, 'page bridge must emit the original root after page initContent');
     pageDoneCount += 1;
   });
 
@@ -1454,7 +1504,9 @@ function testUserscriptBridgeSuppressesSelfOriginatedPageDone() {
   const code = read('src/content/userscript-bridge.js');
   const document = createSharedDocument();
   const context = createBridgeContext(document);
-  const rootNode = { id: 'root' };
+  // MV2（Firefox 115）的桥接是 Xray 安全变体：跨世界事件不携带 DOM 对象，root 恒为本地 document；
+  // MV3 用哨兵对象以验证"原样转发的是同一个 root"。
+  const rootNode = IS_MV2 ? document : { id: 'root' };
   let userscriptInitCount = 0;
 
   document.addEventListener('xdex:call-page-init-content', (event) => {
@@ -1480,7 +1532,9 @@ function testIntegratedInitContentBridgeDedupesSelfCall() {
   const document = createSharedDocument();
   const pageContext = createBridgeContext(document);
   const userscriptContext = createBridgeContext(document);
-  const rootNode = { id: 'root' };
+  // MV2（Firefox 115）的桥接是 Xray 安全变体：跨世界事件不携带 DOM 对象，root 恒为本地 document；
+  // MV3 用哨兵对象以验证"原样转发的是同一个 root"。
+  const rootNode = IS_MV2 ? document : { id: 'root' };
   let pageNativeCount = 0;
   let userscriptInitCount = 0;
   let pageDoneCount = 0;

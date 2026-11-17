@@ -61,6 +61,7 @@ test('请求挂起时焦点已回归（模拟网络延迟）', () => {
   const vm = require('vm');
   let focused = 0;
   let pending = null;                       // 捕获未 resolve 的请求
+  let requested = 0;                       // 已发出的请求次数（同步可见）
   const sandbox = {
     console: { log: () => {}, warn: () => {} },
     GM_setValue: () => {},
@@ -81,17 +82,31 @@ test('请求挂起时焦点已回归（模拟网络延迟）', () => {
     setTimeout: () => 0,                    // 兜底恢复不执行，确保只测即时恢复
     document: { querySelector: () => ({ focus: () => { focused++; } }) },
     location: { origin: 'https://www.nmbxd1.com', hostname: 'www.nmbxd1.com', pathname: '/t/1', search: '' },
-    $: { get: () => { const o = { done: (cb) => { pending = cb; return o; }, fail: () => o }; return o; } },
+    // 桩：模拟 jQuery jqXHR —— 它本身是 thenable（Promise.resolve 会认），同时保留 done/fail。
+    // ⚠ Promise.resolve(thenable) 会在**微任务**里调用 then，而本用例是同步断言，
+    //   因此这里用 requested 同步记录"请求已发出"，pending 只用于模拟网络成功回调。
+    $: {
+      get: () => {
+        requested += 1;
+        const o = {
+          done: (cb) => { pending = cb; return o; },
+          fail: () => o,
+          then: (onOk) => { pending = onOk; return o; },
+          catch: () => o,
+        };
+        return o;
+      },
+    },
   };
   vm.createContext(sandbox);
   vm.runInContext(rfSrc + '\n' + fnSrc + '\nthis.switch_cookie = switch_cookie;', sandbox);
 
   sandbox.switch_cookie({ id: 'abc', name: 'X' }, { silent: true, focusBackNow: true });
   assert(focused === 1, `发起请求后焦点应已回归 1 次，实际 ${focused}（请求尚未完成）`);
-  assert(typeof pending === 'function', '请求应处于挂起状态（模拟延迟）');
+  assert(requested === 1, `应已发出 1 次切换请求（挂起中），实际 ${requested}`);
 
   // 模拟网络成功：兜底恢复被 setTimeout 吞掉，焦点次数不应变化
-  pending();
+  if (typeof pending === 'function') pending();
   assert(focused === 1, `成功回调不应重复聚焦（兜底走 setTimeout），实际 ${focused}`);
 });
 
@@ -128,6 +143,92 @@ test('快捷菜单与原生下拉两条路径都启用即时恢复', () => {
     '原生下拉 change 应传 focusBackNow: true');
 });
 
+// ─────────── ⑤ 切回站点饼干：串行化后不得因回调形态不同而中断 ───────────
+// 回归：曾经把 release 的 Promise 结果直接链 .done()/.fail()（那是 jQuery 的方法），
+// 在 QwQNT/扩展端会抛 `runSwitch.done is not a function`，导致"从自定义饼干切不回站点饼干"。
+test('切回站点饼干：串行化结果统一按 Promise 处理（不直接链 .done/.fail）', () => {
+  // 必须把串行化结果先收敛成 Promise
+  assert(/Promise\.resolve\(runSwitch\)/.test(fnSrc),
+    'switch_cookie 必须用 Promise.resolve(runSwitch) 兼容 Promise 与 jQuery Deferred 两种形态');
+  // 不得对 runSwitch 直接调用 jQuery 专有方法
+  assert(!/runSwitch\s*\n?\s*\.done\(/.test(fnSrc) && !/runSwitch\.done\(/.test(fnSrc),
+    'switch_cookie 不得对 runSwitch 直接链 .done()（原生 Promise 没有该方法）');
+  assert(!/runSwitch\.fail\(/.test(fnSrc),
+    'switch_cookie 不得对 runSwitch 直接链 .fail()');
+});
+
+test('切回站点饼干：失败判定只来源于请求本身，成功后处理抛错不得改判为失败', () => {
+  // 必须两参 then：onOk 抛错不能进 onErr（用 .then().catch() 会把"成功后处理异常"误报成切换失败）
+  assert(/Promise\.resolve\(runSwitch\)\.then\(onSwitchOk,\s*onSwitchFail\)/.test(fnSrc),
+    '切回站点饼干必须用 .then(onSwitchOk, onSwitchFail)（两参形态）');
+  assert(!/Promise\.resolve\(runSwitch\)[\s\S]{0,40}\.catch\(/.test(fnSrc),
+    '不得用 .then().catch() 承接失败——onOk 内部异常会被误判为切换失败');
+  // 成功处理体自身必须 try/catch，避免抛出未处理 rejection
+  const okBody = fnSrc.slice(fnSrc.indexOf('const onSwitchOk'), fnSrc.indexOf('const onSwitchFail'));
+  assert(/try\s*\{/.test(okBody) && /catch\s*\(/.test(okBody),
+    'onSwitchOk 必须自带 try/catch（切换已成功，后处理异常不得外泄）');
+  assert(/onDone && onDone\(cookie\)/.test(okBody), '切回成功必须调用 onDone');
+  const failBody = fnSrc.slice(fnSrc.indexOf('const onSwitchFail'));
+  assert(/onFail && onFail\(\)/.test(failBody), '切回失败必须调用 onFail');
+});
+
+test('会话对齐判定不依赖 document.cookie（httpOnly 场景必须仍能识别）', () => {
+  // 主判据必须是内存标记；否则 httpOnly 的 userhash 读不到 → 判定假阴性 → restore() 冲掉对齐结果
+  assert(/let sessionAlignedValue/.test(src), '必须存在 sessionAlignedValue 内存标记');
+  const guard = src.slice(src.indexOf('function isSessionAlignedToCurrentCustomCookie'), src.indexOf('function isSessionAlignedToCurrentCustomCookie') + 900);
+  assert(/sessionAlignedValue/.test(guard), '对齐判定必须先看内存标记');
+  assert(/document\.cookie/.test(guard), 'document.cookie 只能作为兜底');
+  // 「对齐成功后写入标记」的覆盖已改为**行为断言**，见 cookie-session-align-four-domains.test.js
+  // （在那里跑真实 alignSessionToCookie，断言 sessionAlignedValue 变为目标值）——
+  // 原先在此处钉死具体表达式（`sessionAlignedValue = result.ok`）属实现细节，已删除。
+  // 切回站点饼干后必须清标记
+  assert(/clearSessionAlignedMark\(\)/.test(src), '切回站点饼干必须清除对齐标记');
+});
+
+test('会话对齐判定：行为验证（document.cookie 为空时仍返回 true）', () => {
+  const vm = require('vm');
+  const CUSTOM = '%99xABCDEFGHIJ';
+  const sandbox = {
+    console: { log: () => {}, warn: () => {} },
+    document: { cookie: '' },          // 模拟 httpOnly：JS 读不到 userhash
+    getCurrentCookie: () => ({ custom: true, name: 'NMB' }),
+    getCustomCookieValue: () => CUSTOM,
+    location: { hostname: 'www.nmbxd1.com', href: 'https://www.nmbxd1.com/', origin: 'https://www.nmbxd1.com' },
+  };
+  vm.createContext(sandbox);
+  // 只取"标记 + 判定函数"两段，避免引入整份脚本的依赖
+  const markDecl = 'let sessionAlignedValue = ' + JSON.stringify(CUSTOM) + ';';
+  const guardFn = src.slice(src.indexOf('function isSessionAlignedToCurrentCustomCookie'),
+    src.indexOf('function isSessionAlignedToCurrentCustomCookie') + src.slice(src.indexOf('function isSessionAlignedToCurrentCustomCookie')).indexOf('\n}') + 2);
+  vm.runInContext(markDecl + '\n' + guardFn + '\nthis.isAligned = isSessionAlignedToCurrentCustomCookie;', sandbox);
+  assert(sandbox.isAligned() === true,
+    'document.cookie 读不到时（httpOnly），只要内存标记匹配就必须判定为已对齐');
+  // 标记为空时必须返回 false（防止误判导致 restore 被跳过）
+  const sandbox2 = Object.assign({}, sandbox);
+  vm.createContext(sandbox2);
+  vm.runInContext('let sessionAlignedValue = "";\n' + guardFn + '\nthis.isAligned = isSessionAlignedToCurrentCustomCookie;', sandbox2);
+  assert(sandbox2.isAligned() === false,
+    '内存标记为空且 cookie 不可读时必须返回 false');
+});
+
+test('切回站点饼干：release 只调用一次（不得重复清会话）', () => {
+  // 先清再切必须串行且只做一次；曾经的重复调用会让"切回后又被清掉"
+  const calls = (fnSrc.match(/releaseSessionAlignment\(\)/g) || []).length;
+  assert(calls === 1, `releaseSessionAlignment 在 switch_cookie 内应只调用 1 次，实际 ${calls}`);
+});
+
+test('自定义饼干发送：必须先等对齐链落定，且已对齐时不再做 jar 交换（避免互相覆盖）', () => {
+  // 对齐与发送的 jar 临时交换都会改 userhash；交换结束时会"还原旧值"，
+  // 若与对齐并发就会把对齐结果冲掉 → 会话回到旧身份（又是"未应用饼干"的土壤）。
+  const fn = extractFn('sendSubmitRequest');
+  assert(/await sessionAlignChain/.test(fn),
+    'sendSubmitRequest 必须在选择发送通道前 await sessionAlignChain（消除与对齐的竞态）');
+  assert(/sessionAlreadyAligned/.test(fn),
+    'sendSubmitRequest 必须识别"会话已对齐"，并在已对齐时跳过 jar 临时交换');
+  // 两个会改 jar 的通道都要有跳过分支
+  const skips = (fn.match(/if \(sessionAlreadyAligned\)/g) || []).length;
+  assert(skips >= 2, `qwqnt 与受限扩展两条通道都应跳过交换，实际 ${skips} 处`);
+});
 let failed = 0;
 for (const [name, fn] of tests) {
   try { fn(); console.log(`ok - ${name}`); }
