@@ -12090,8 +12090,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       }
       // Phase3-3：刷新按钮旁路（显示/overlay/分页监听与 loadNext 主路径分离）
       function getSeamlessBottomPagination() {
-        const allPaginations = document.querySelectorAll('ul.uk-pagination');
-        return allPaginations.length ? allPaginations[allPaginations.length - 1] : null;
+        // ⚠ 必须排除浮窗内的分页条：引用浮窗（.qp-overlay-quote / .qp-quote）与原生引用浮窗
+        //   （#h-ref-view）会渲染"被引用的串"的内容，其中可能自带 uk-pagination。
+        //   不排除就会取到浮窗那条 —— 实测症状：末页且浮窗打开时被判成"非末页"，
+        //   F5 退回整页刷新、按钮也一直不出现。
+        const EXCLUDE = '.qp-overlay-quote, .qp-overlay, .qp-quote, #h-ref-view';
+        const all = Array.from(document.querySelectorAll('ul.uk-pagination'))
+          .filter((p) => !(p.closest && p.closest(EXCLUDE)));
+        return all.length ? all[all.length - 1] : null;
       }
       function updateSeamlessRefreshBtnDisplay(btn, pag) {
         if (!btn) return;
@@ -12152,7 +12158,75 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             console.warn('刷新按钮触发失败:', e);
           }
         });
+        bindF5ToSeamlessRefresh();
         return btn;
+      }
+      // 判定"是否末页"：只看底部翻页条里有没有"下一页"链接。
+      // ⚠ 不能用按钮的 display 判定——浮窗打开时按钮会被隐藏，而 F5 仍需接管。
+      function isSeamlessThreadLastPage() {
+        try {
+          const pag = getSeamlessBottomPagination();
+          if (!pag) return false;                          // 无翻页条 → 不接管（非串内页/未知）
+          return !pag.querySelector('li:last-child a');     // 末页 = 没有下一页链接
+        } catch (e) { return false; }
+      }
+      function bindF5ToSeamlessRefresh() {
+        if (bindF5ToSeamlessRefresh.__bound) return;
+        bindF5ToSeamlessRefresh.__bound = true;
+        document.addEventListener('keydown', (e) => {
+          if (e.key !== 'F5' && e.keyCode !== 116) return;
+          if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+          try {
+            const t = e.target;
+            const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+            // 浮窗优先于"输入中"判定：拓展引用浮窗（.qp-overlay-quote）里带 qp-reply-form
+            // （含 textarea[name="content"]），在浮窗里按 F5 时 target 落在该 textarea，
+            // 若仍按"输入中"返回，就会被判成不接管 → 实测症状：浮窗打开后 F5 变成整页刷新。
+            // 口径：只要焦点在浮窗内，就按"浮窗态"处理（走末页判定），不因输入框而放弃。
+            const inOverlay = (() => {
+              try {
+                const el = t && t.nodeType === 3 ? t.parentElement : t;
+                return !!(el && el.closest && el.closest('.qp-overlay, .qp-overlay-quote, #h-ref-view'));
+              } catch (err) { return false; }
+            })();
+            const isEditable = !inOverlay && !!(
+              tag === 'input' || tag === 'textarea' || tag === 'select' || (t && t.isContentEditable)
+            );
+            // QwQNT 端：主进程已不再处理**普通** F5（只保留 Ctrl/Cmd+F5 强制热载），
+            // 而 Electron 没有浏览器默认的 F5 刷新 → 由页面补一次整页重载，
+            // 保留"刷新页面加载最新脚本改动"的热载语义。
+            // 扩展 / 用户脚本端不这么做：浏览器自带 F5，不接管即保持原生行为。
+            const reloadForQwqnt = () => {
+              try {
+                const kind = (typeof getXDexRuntimeInfo === 'function') ? getXDexRuntimeInfo().kind : '';
+                if (kind !== 'qwqnt') return false;
+                e.preventDefault();
+                e.stopPropagation();
+                if (!bindF5ToSeamlessRefresh.__reloading) {
+                  bindF5ToSeamlessRefresh.__reloading = true;
+                  location.reload();
+                }
+                return true;
+              } catch (err) { return false; }
+            };
+            // 输入中：不接管局部刷新（避免打断输入），但热载语义必须保留
+            if (isEditable) { reloadForQwqnt(); return; }
+            // 仅串内末页接管；浮窗打开也算（按钮此时被隐藏，故必须独立判定末页）
+            if (!isSeamlessThreadLastPage()) { reloadForQwqnt(); return; }
+            const btn = document.getElementById('seamless-refresh-btn');
+            if (!btn) { reloadForQwqnt(); return; }
+            const style = window.getComputedStyle(btn);
+            if (style.visibility === 'hidden') { reloadForQwqnt(); return; }
+            // 节流：按钮点击链本身**不防重入**（refreshRepliesAndCheckNext 每次都发起 fetch），
+            // 连按 F5 会造成重复请求。按住过久被系统连发的 F5 同样被这里吸收。
+            const now = Date.now();
+            if (now - (bindF5ToSeamlessRefresh.__lastAt || 0) < 1200) { e.preventDefault(); e.stopPropagation(); return; }
+            bindF5ToSeamlessRefresh.__lastAt = now;
+            e.preventDefault();
+            e.stopPropagation();
+            btn.click();                                     // 与单击按钮完全等价
+          } catch (err) {}
+        }, true);
       }
       function observeSeamlessRefreshOverlays(btn) {
         const overlays = [document.querySelector('.qp-overlay'), document.querySelector('.qp-overlay-quote')];
