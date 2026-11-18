@@ -257,6 +257,7 @@ function xdexEarlyDarkEnabled() {
         '@keyframes xdex-icon-sync-spin{to{transform:rotate(360deg)}}' +
         '.xdex-icon-loading .xdex-icon-sync{animation:xdex-icon-sync-spin .8s linear infinite}' +
         '.xdex-board-refresh-btn:disabled{opacity:.55;cursor:default}' +
+        '.xdex-board-history-btn.xdex-history-added{color:#0a8a0a}' +
         '.xdex-edit-default-btn{display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:none;cursor:pointer;color:inherit;flex-shrink:0;vertical-align:middle;margin-right:2px;}' +
         '.xdex-edit-default-btn:hover{color:#00ffcc !important;}' +
         '#xdex-image-viewer.xdex-iv-no-sep .xv-page-separator{display:none !important;}' +
@@ -700,6 +701,7 @@ function xdexEarlyDarkEnabled() {
   // WebDAV 连接检查（插头）/ 手动同步（双向循环箭头）
   const XDEX_ICON_PLUG = '<svg class="xdex-icon-plug" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5z"/><path d="M12 16v5"/></svg>';
   const XDEX_ICON_SYNC = '<svg class="xdex-icon-sync" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3"/><path d="M5.1 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3"/><path d="M18.9 20v-4h-4"/></svg>';
+  const XDEX_ICON_HISTORY = '<svg class="xdex-icon-history" width="16" height="16" viewBox="-1 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"></path><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path><path d="M12 7v5l4 2"></path></svg>';
   const XDEX_ICON_GEAR = '<svg class="xdex-icon-gear" viewBox="0 0 24 24" style="display:block;width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
   // 颜文字编辑模式三按钮专用图标（统一 16px、currentColor、stroke-width 2、圆角端点）
   // 编辑：铅笔 + 底线（Feather edit-3），语义“编辑列表”
@@ -25340,6 +25342,19 @@ function 注册自动保存编辑() {
                 isReplySuccess: e.type !== 'xdexBoardThreadRefresh'
               });
             } catch (e) {}
+            // ★「获取最新回复」按钮（不是发帖）走独立路径：
+            //   已有条目 → 位置层更新（最远页/最近页/最近回复）+ 访问次数 +1；无条目 → 用本次 page=1 响应新建。
+            //   数据同样来自本次已取到的 tailPage + tailReplies（零新增请求）。
+            try {
+              if (e.type === 'xdexBoardThreadRefresh') {
+                syncThreadHistoryFromBoardRefresh({
+                  threadId: tid,
+                  page: tailPage,
+                  threadObj: p1,
+                  replies: tailReplies
+                });
+              }
+            } catch (e) {}
             // Step 3: 定位页面上**所有**该串节点（无缝翻页后同一串可能出现在多个 .h-threads-list 中）
             const allOldNodes = Array.from(document.querySelectorAll('.h-threads-list div[data-threads-id="' + tid + '"]'));
             if (!allOldNodes.length) return;
@@ -25632,7 +25647,281 @@ function 注册自动保存编辑() {
       // 定位到展开/收起按钮之前（本按钮加载更快，置于左侧；enablePostExpand 可能晚于本函数执行，故每次重排）
       const toggle = infoBar.querySelector(':scope > .js-toggle-mode');
       if (toggle && toggle.previousElementSibling !== btn) toggle.insertAdjacentElement('beforebegin', btn);
+      syncBoardThreadHistoryButton(item, infoBar, tid, btn);
     });
+  }
+  // 版块页/时间线串卡片「加入浏览历史」按钮：置于「获取最新回复」按钮**之前**
+  // 语义：把该串计入浏览历史（已存在 → 只更新位置层；不存在 → 用卡片正文新建）。
+  // 页数按"发言后定位所在页"的同一套算法：REPLY_PER_PAGE = 19 → 末页 = ceil(ReplyCount / 19)；
+  // 卡片上没有 ReplyCount 时，用版块页展示的回复数退化估算（至少 1 页）。
+  // 最近阅读位置 = 该串在版块页显示的**最近一条回复**（.h-threads-item-reply 的 data-threads-id）。
+  const BOARD_HISTORY_REPLIES_PER_PAGE = 19;
+  function syncBoardThreadHistoryButton(item, infoBar, tid, refreshBtn) {
+    try {
+      let histBtn = infoBar.querySelector(':scope > .xdex-board-history-btn');
+      if (!histBtn) {
+        histBtn = document.createElement('button');
+        histBtn.type = 'button';
+        histBtn.className = 'xdex-icon-btn xdex-board-history-btn';
+        histBtn.title = '加入浏览历史';
+        histBtn.style.cssText = 'min-width:1em;text-align:center;margin-left:4px;vertical-align:middle;';
+        histBtn.innerHTML = XDEX_ICON_HISTORY;
+        histBtn.addEventListener('click', function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          const t = histBtn.getAttribute('data-tid');
+          const row = histBtn.closest('.h-threads-item-index');
+          if (!t || !row) return;
+          if (histBtn.__xdexBusy) return;
+          histBtn.__xdexBusy = true;
+          histBtn.classList.add('xdex-icon-loading');
+          Promise.resolve(addBoardThreadToHistory(row, t, { fromButton: true }))
+            .then((ok) => {
+              histBtn.classList.toggle('xdex-history-added', !!ok);
+              histBtn.title = ok ? '更新浏览历史' : '加入浏览历史';
+            })
+            .catch(() => {})
+            .then(() => { histBtn.__xdexBusy = false; histBtn.classList.remove('xdex-icon-loading'); });
+        });
+      }
+      histBtn.setAttribute('data-tid', tid);
+      // 位置：紧跟「获取最新回复」按钮**之前**（刷新按钮缺失时挂在展开/收起之前）
+      if (refreshBtn && refreshBtn.parentElement === infoBar) {
+        if (refreshBtn.previousElementSibling !== histBtn) refreshBtn.insertAdjacentElement('beforebegin', histBtn);
+      } else {
+        const toggle = infoBar.querySelector(':scope > .js-toggle-mode');
+        if (toggle && toggle.previousElementSibling !== histBtn) toggle.insertAdjacentElement('beforebegin', histBtn);
+      }
+    } catch (e) {}
+  }
+  // 从卡片取"该串当前展示的最近一条回复 id / 时间"，以及可用的正文与元信息
+  function readBoardThreadRowSnapshot(row, tid) {
+    const threadId = String(tid || '');
+    let lastReplyId = '';
+    let lastReplyTime = 0;
+    try {
+      const replyEls = Array.from(row.querySelectorAll('.h-threads-item-reply[data-threads-id]'));
+      for (let i = replyEls.length - 1; i >= 0; i -= 1) {
+        const rid = String(replyEls[i].getAttribute('data-threads-id') || '');
+        if (/^\d+$/.test(rid)) {
+          lastReplyId = rid;
+          const timeEl = replyEls[i].querySelector('.h-threads-info-createdat');
+          lastReplyTime = parseThreadHistorySiteTime(timeEl && timeEl.getAttribute('data-xdex-original-time'));
+          break;
+        }
+      }
+    } catch (e) {}
+    // ★ 总回复数判定（优先本地，零请求）：
+    //   回复多于默认展示条数时，卡片里会出现
+    //     <div class="h-threads-tips"><span class="warn_txt2">回应有 N 篇被省略。要阅读所有回应请按下回应链接。</span></div>
+    //   N = **未展示的**条数（不含当前已在卡片里的那些），因此
+    //     总回复数 = N + 当前卡片实际展示的回复条数。
+    //   ⚠ 不能把加数写死成 5：默认展示 5 条，但点过「获取最新回复」后卡片里会**多于 5 条**
+    //     （新回复被插入），此时再 +5 会少算。这里用**实测展示条数**做加数（防御）。
+    //   ⚠ 没有 tips 时不能断定"总数 ≤ 展示条数"：可能是 flush 后的完整列表。
+    //     因此 replyCountKnown = false，交由调用方决定（必要时用 API 复核）。
+    let omitted = 0;
+    let replyCountKnown = false;
+    let shownReplies = 0;
+    try {
+      shownReplies = row.querySelectorAll('.h-threads-item-reply[data-threads-id]').length;
+    } catch (e) {}
+    try {
+      const tipsEl = row.querySelector('.h-threads-tips');
+      const tipsText = tipsEl ? String(tipsEl.textContent || '') : '';
+      const m = tipsText.match(/回应有\s*(\d+)\s*篇被省略/);
+      if (m) {
+        omitted = Number(m[1]) || 0;
+        replyCountKnown = true;
+      }
+    } catch (e) {}
+    const replyCount = replyCountKnown ? (omitted + shownReplies) : 0;
+    const page = replyCountKnown
+      ? Math.max(1, Math.ceil(replyCount / BOARD_HISTORY_REPLIES_PER_PAGE))
+      : 1;
+    return { threadId, lastReplyId, lastReplyTime, page, replyCount, replyCountKnown, omitted, shownReplies };
+  }
+  // ===== 用官方接口取"总回复数 → 最大页码"（本地未知时的兜底路径）=====
+  // 接口与「获取最新回复」/ 版块快捷回复**同一个**：GET api.nmb.best/api/thread?id=<tid>&page=1
+  //   返回体字段：ReplyCount（也兼容 reply_count）。每页条数与站点一致：19 条/页。
+  //   最大页码 = ceil(ReplyCount / 19)；取末页内容可再请求一次 &page=<最大页码>。
+  // 何时调用：仅当卡片上**读不到** total（无 .h-threads-tips 且无其它计数来源）时，
+  //   由 addBoardThreadToHistory 的 `!snap.replyCountKnown && opts.allowApi !== false` 分支触发；
+  //   正常（有 tips）情况零新增请求。
+  // 失败语义：返回 null（网络/解析失败）或 replyCountKnown=false（ReplyCount 缺失），
+  //   调用方据此**退回**"本地未知 → 页数记 1"，绝不因网络问题阻断写入。
+  // 说明：目前**默认启用**为兜底；若要去掉网络依赖，把 addBoardThreadToHistory 里的
+  //   API 复核段删掉（或传 { allowApi: false }）即可完全回到纯本地判定。
+  async function fetchBoardThreadReplyCount(tid) {
+    try {
+      const API_BASE = 'https://api.nmb.best/api';
+      const resp = await gmRequest(API_BASE + '/thread?id=' + encodeURIComponent(tid) + '&page=1', 'json');
+      const raw = resp && (resp.response || resp.responseText);
+      const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!data || data.success === false) return null;
+      const count = Number(data.ReplyCount || data.reply_count || 0);
+      if (!count) return { replyCount: 0, replyCountKnown: false, page: 1 };
+      const maxPage = Math.max(1, Math.ceil(count / BOARD_HISTORY_REPLIES_PER_PAGE));
+      return {
+        replyCount: count,
+        replyCountKnown: true,
+        page: maxPage,
+        maxPage,                 // 明确暴露"最大页码"，便于将来直接写入 maxVisitedPage
+        threadObj: data          // page=1 的响应：含 OP 正文/标题/作者/饼干，可直接用于新建条目
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+  // 把版块页/时间线的某个串写入浏览历史。返回 true＝已写入（更新或新建）
+  async function addBoardThreadToHistory(row, tid, options) {
+    const opts = options || {};
+    try {
+      if (typeof isThreadHistoryEnabledNow === 'function' && !isThreadHistoryEnabledNow()) {
+        if (opts.fromButton) toast('浏览历史未开启', 2000, { queue: false, key: 'board-history-off' });
+        return false;
+      }
+      const threadId = String(tid || row.getAttribute('data-threads-id') || '');
+      if (!/^\d{6,8}$/.test(threadId)) return false;
+      const mode = 'normal';
+      const key = getThreadHistoryKey(mode, threadId);
+      let snap = readBoardThreadRowSnapshot(row, threadId);
+      // 本地拿不到总回复数（卡片既无 tips 也无计数）→ 用一次 API 复核：
+      // 与「获取最新回复」/版块快捷回复同一接口与算法（page=1 取 ReplyCount → ceil(/19)）。
+      // 仅在"需要页数且本地未知"时发生，正常情况零新增请求。
+      if (!snap.replyCountKnown && opts.allowApi !== false) {
+        try {
+          const apiSnap = await fetchBoardThreadReplyCount(threadId);
+          if (apiSnap && apiSnap.replyCountKnown) {
+            snap = Object.assign({}, snap, apiSnap);
+          }
+        } catch (e) {}
+      }
+      const store = getThreadHistoryStore();
+      // 墓碑守卫：用户删掉的串不复活
+      const tomb = (store.tombstones || {})[key];
+      if (tomb && !store.items[key]) {
+        if (opts.fromButton) toast('该串已在回收站，未加入浏览历史', 2400, { queue: false, key: 'board-history-tomb' });
+        return false;
+      }
+      const page = Math.max(1, Number(snap.page) || 1);
+      const url = buildThreadHistoryPageUrl(mode, threadId, page);
+      // 浏览时间 = **点击按钮的时刻**（用户实际"最近阅读"的时间点）；
+      // 最近回复的发布时间只用于决定"读到了哪条回复"，不能当作阅读时间。
+      const visitedAt = Date.now();
+      const old = store.items[key];
+      if (old) {
+        // 已有条目：只更新位置层（与"快捷回复后同步历史"同一口径：不整库写）
+        const prev = readThreadHistoryPosHotMap()[key] || getThreadHistoryStore().items[key] || {};
+        setThreadHistoryPosEntry(key, {
+          p: Math.max(Number(old.page) || 1, Number(prev.p) || 1, page),
+          u: url,
+          mv: Math.max(Number(old.maxVisitedPage) || 1, Number(prev.mv) || 1, page),
+          lk: Math.max(Number(old.lastKnownPage) || 0, Number(prev.lk) || 0, page),
+          rid: snap.lastReplyId || prev.rid || old.lastReadReplyId || '',
+          rp: snap.lastReplyId ? page : (Number(prev.rp) || Number(old.lastReadReplyPage) || page),
+          vat: Math.max(Number(prev.vat) || 0, Number(old.lastVisitedAt) || 0, visitedAt),
+          vc: Math.max(Number(prev.vc) || 0, Number(old.visitCount) || 0)
+        }, Date.now());
+        invalidateThreadHistoryPosCache();
+        if (threadHistoryStoreCache) threadHistoryStoreNeedsPosOverlay = true;
+        if (!document.hidden) {
+          try { scheduleThreadHistoryLiveRender('board-history', false); } catch (e) {}
+          try { syncFavoriteThreadsLinks(); } catch (e) {}
+        }
+        if (opts.fromButton) toast('浏览历史已更新', 1600, { queue: false, key: 'board-history-ok' });
+        return true;
+      }
+      // 新建：用卡片正文（复用与串页提取同源的清洗），正文为空则不建（避免空条目）
+      const record = buildThreadHistoryRecordFromApiThread({
+        mode, threadId, page, url,
+        threadObj: null,          // 卡片没有 API threadObj → 走行级 DOM 兜底
+        replyId: snap.lastReplyId || ''
+      });
+      if (!record || (!record.contentHtml && !record.contentText)) {
+        if (opts.fromButton) toast('未取到正文，未加入浏览历史', 2400, { queue: false, key: 'board-history-empty' });
+        return false;
+      }
+      record.lastReadReplyId = snap.lastReplyId || '';
+      record.lastReadReplyPage = page;
+      upsertThreadHistoryRecord(record, { reason: 'board-history-button', visitedAt, countVisit: true });
+      if (opts.fromButton) toast('已加入浏览历史', 1600, { queue: false, key: 'board-history-ok' });
+      return true;
+    } catch (e) {
+      try { logThreadHistory('board history button failed', { tid: String(tid || ''), error: String(e && e.message || e) }); } catch (err) {}
+      return false;
+    }
+  }
+  // 「获取最新回复」成功后同步浏览历史（与版块快回复同口径，但不发明细语义错误）：
+  //   · 已有条目 → 只写位置层：页数/最远页/最近页取 max(现有, 本次末页)，最近阅读位置=最新回复，访问次数 +1
+  //   · 无条目   → 用本次已取到的 page=1 响应（threadObj）新建，正文与串页提取同源
+  //   · 数据全部来自刷新链路**已经取到**的 tailPage / tailReplies / p1（零新增请求）
+  function syncThreadHistoryFromBoardRefresh(payload) {
+    try {
+      if (typeof isThreadHistoryEnabledNow === 'function' && !isThreadHistoryEnabledNow()) return 0;
+      const threadId = String((payload && payload.threadId) || '').trim();
+      if (!/^\d{6,8}$/.test(threadId)) return 0;
+      const page = Math.max(1, Number(payload && payload.page) || 1);
+      const mode = 'normal';
+      const key = getThreadHistoryKey(mode, threadId);
+      const store = getThreadHistoryStore();
+      const tomb = (store.tombstones || {})[key];
+      if (tomb && !store.items[key]) return 0;              // 回收站里的串不复活
+      // 最新一条回复：取本次末页 Replies 的最后一条（过滤占位 9999999）
+      let lastReplyId = '';
+      let lastReplyTime = 0;
+      const replies = Array.isArray(payload && payload.replies) ? payload.replies : [];
+      for (let i = replies.length - 1; i >= 0; i -= 1) {
+        const r = replies[i];
+        if (!r || !r.id || Number(r.id) === 9999999) continue;
+        lastReplyId = String(r.id);
+        lastReplyTime = parseThreadHistorySiteTime(r.now);
+        break;
+      }
+      const url = buildThreadHistoryPageUrl(mode, threadId, page);
+      // 浏览时间 = 点击/触发刷新的时刻（同上：回复发布时间 ≠ 阅读时间）
+      const visitedAt = Date.now();
+      const old = store.items[key];
+      if (old) {
+        // 已有条目：位置层更新；访问次数 +1（用户主动看了该串的最新回复）
+        const prev = readThreadHistoryPosHotMap()[key] || old || {};
+        setThreadHistoryPosEntry(key, {
+          p: Math.max(Number(old.page) || 1, Number(prev.p) || 1, page),
+          u: url,
+          mv: Math.max(Number(old.maxVisitedPage) || 1, Number(prev.mv) || 1, page),
+          lk: Math.max(Number(old.lastKnownPage) || 0, Number(prev.lk) || 0, page),
+          rid: lastReplyId || prev.rid || old.lastReadReplyId || '',
+          rp: lastReplyId ? page : (Number(prev.rp) || Number(old.lastReadReplyPage) || page),
+          vat: Math.max(Number(prev.vat) || 0, Number(old.lastVisitedAt) || 0, visitedAt),
+          vc: Math.max(Number(prev.vc) || 0, Number(old.visitCount) || 0) + 1
+        }, Date.now());
+        invalidateThreadHistoryPosCache();
+        if (threadHistoryStoreCache) threadHistoryStoreNeedsPosOverlay = true;
+        if (!document.hidden) {
+          try { scheduleThreadHistoryLiveRender('board-refresh', false); } catch (e) {}
+          try { syncFavoriteThreadsLinks(); } catch (e) {}
+        }
+        logThreadHistory('board refresh: 浏览历史已更新（位置层，计数+1）', { key, page, replyId: lastReplyId || '(空)' });
+        return 1;
+      }
+      // 无条目 → 新建（用本次 page=1 响应里的 threadObj；正文为空则放弃，避免空条目）
+      const record = buildThreadHistoryRecordFromApiThread({
+        mode, threadId, page, url,
+        threadObj: (payload && payload.threadObj) || null,
+        replyId: lastReplyId || ''
+      });
+      if (!record || (!record.contentHtml && !record.contentText)) {
+        logThreadHistory('board refresh: 未取到正文，跳过新建', { key, page });
+        return 0;
+      }
+      record.lastReadReplyId = lastReplyId || '';
+      record.lastReadReplyPage = page;
+      upsertThreadHistoryRecord(record, { reason: 'board-refresh-create', visitedAt, countVisit: true });
+      logThreadHistory('board refresh: 浏览历史已新建', { key, page, replyId: lastReplyId || '(空)' });
+      return 2;
+    } catch (e) {
+      try { logThreadHistory('board refresh sync failed', { error: String(e && e.message || e) }); } catch (err) {}
+      return 0;
+    }
   }
   // === 通用：确保某个元素被折叠（幂等） ===
   function ensureCollapsed($elem, hint) {
