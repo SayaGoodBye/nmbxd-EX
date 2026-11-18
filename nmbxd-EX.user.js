@@ -805,6 +805,342 @@ function xdexEarlyDarkEnabled() {
       }
     });
   }
+  /* ===== 授权（功能门控）=====
+   * 未授权时：对应设置**保持原开/关值**、仅背景变灰、功能不加载；点击该行跳转到授权弹窗的对应项。
+   * 授权状态默认全部授予；随「导出/导入」与「WebDAV 同步」一起迁移（不必每端各授权一次）。
+   * 首次进入需要授权的版本：启动即弹窗，必须滚动读完并点「完成」才可关闭；此后不再主动弹。
+   */
+  const XDEX_CONSENT_KEY = 'xdex_consent';
+  const XDEX_CONSENT_TERMS_VERSION = 1;   // 升高 → 首次进入时重新要求阅读
+  const XDEX_CONSENT_FEATURES = [
+    { id: 'updateCheck', label: '检查更新', desc: 'GreasyFork / ScriptCat / GitHub', control: 'sp_enableUpdateCheck' },
+    { id: 'externalImage', label: '显示外部图床', desc: '串中指向的第三方图床', control: 'sp_enableExternalImagePreview' },
+    { id: 'searchService', label: '野生搜索酱', desc: 'site检索', control: 'sp_searchServiceBy4sY' },
+    { id: 'webdavSync', label: 'WebDAV 同步', desc: '用户自行配置的服务器（撤销不清空配置）', control: 'sp_webdavAutoSync' }
+  ];
+  function getConsentState() {
+    let raw = null;
+    try { raw = GM_getValue(XDEX_CONSENT_KEY, null); } catch (e) { raw = null; }
+    const st = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    const granted = (st.granted && typeof st.granted === 'object' && !Array.isArray(st.granted)) ? st.granted : {};
+    return { version: XDEX_CONSENT_TERMS_VERSION, readVersion: Number(st.readVersion) || 0, granted: Object.assign({}, granted) };
+  }
+  function saveConsentState(st) {
+    try { GM_setValue(XDEX_CONSENT_KEY, st); } catch (e) {}
+  }
+  function hasConsent(id) {                       // 缺省 = 已授权
+    return getConsentState().granted[id] !== false;
+  }
+  function setConsentGranted(id, on) {
+    const st = getConsentState();
+    st.granted[id] = !!on;
+    saveConsentState(st);
+    return st;
+  }
+  function isConsentTermsRead() { return getConsentState().readVersion >= XDEX_CONSENT_TERMS_VERSION; }
+  function markConsentTermsRead() {
+    const st = getConsentState();
+    st.readVersion = XDEX_CONSENT_TERMS_VERSION;
+    saveConsentState(st);
+  }
+  // 覆盖导出/导入与 WebDAV 的授权分区（两边 merge 时以传入值覆盖本机）
+  function applyImportedConsent(incoming) {
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return false;
+    const granted = (incoming.granted && typeof incoming.granted === 'object' && !Array.isArray(incoming.granted)) ? incoming.granted : null;
+    if (!granted) return false;
+    const st = getConsentState();
+    Object.keys(granted).forEach((k) => { if (XDEX_CONSENT_FEATURES.some(f => f.id === k)) st.granted[k] = granted[k] !== false; });
+    if (Number(incoming.readVersion) > st.readVersion) st.readVersion = Number(incoming.readVersion);
+    saveConsentState(st);
+    return true;
+  }
+  // ---- 门控：灰态 + 守卫 + 生效 ----
+  function getConsentControl(feature) {
+    try { return document.getElementById(feature.control); } catch (e) { return null; }
+  }
+  function applyConsentGateStyles() {
+    try {
+      XDEX_CONSENT_FEATURES.forEach((f) => {
+        const el = getConsentControl(f);
+        if (!el) return;
+        const on = hasConsent(f.id);
+        el.classList.toggle('is-unauthorized', !on);        // 灰态：不改开/关值，只改背景
+        const row = el.closest('.sp_fold_body, .sp_fold, .xdex-consent-row, div');
+        if (row) row.classList.toggle('is-unauthorized-row', !on);
+      });
+      const syncBtn = document.getElementById('btn_webdavSync');
+      if (syncBtn) {
+        const ok = hasConsent('webdavSync');
+        syncBtn.classList.toggle('is-unauthorized', !ok);
+        syncBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+      }
+      bindConsentGuards();
+      bindConsentPanelEntry();
+    } catch (e) {}
+  }
+  function bindConsentGuards() {
+    try {
+      if (bindConsentGuards.__done) return;
+      bindConsentGuards.__done = true;
+      XDEX_CONSENT_FEATURES.forEach((f) => {
+        const el = getConsentControl(f);
+        const row = el ? el.closest('div') : null;
+        const targets = [el, row].filter(Boolean);
+        targets.forEach((t) => ['click', 'keydown'].forEach((evt) => t.addEventListener(evt, (e) => {
+          if (hasConsent(f.id)) return;              // 已授权 → 正常交互
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          openConsentModal(f.id);                    // 只跳转，不改开/关值
+        }, true)));
+      });
+      const syncBtn = document.getElementById('btn_webdavSync');
+      if (syncBtn) {
+        syncBtn.addEventListener('click', (e) => {
+          if (hasConsent('webdavSync')) return;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          openConsentModal('webdavSync');
+        }, true);
+      }
+    } catch (e) {}
+  }
+  function bindConsentPanelEntry() {
+    try {
+      const btn = document.getElementById('btn_xdex_consent');
+      if (!btn || btn.__xdexBound) return;
+      btn.__xdexBound = true;
+      btn.addEventListener('click', (e) => { e.preventDefault(); openConsentModal(null); });
+    } catch (e) {}
+  }
+  // ---- 授权变更的即时生效（不依赖刷新）----
+  // changedId 为空 = 远端变更（全部检查一遍）；否则只处理被改动那一项，避免无谓的额外请求
+  function applyConsentEffects(changedId) {
+    const touch = (id) => !changedId || changedId === id;
+    // 检查更新：撤销 → 清计时器；授权 → 立即初始化并排下一次检查
+    if (touch('updateCheck')) {
+      try {
+        if (hasConsent('updateCheck')) {
+          if (typeof initializeUpdateReminderUI === 'function') initializeUpdateReminderUI();
+          if (typeof scheduleDailyUpdateCheck === 'function') scheduleDailyUpdateCheck();
+        } else if (typeof scheduleNextUpdateCheckTimer === 'function' && typeof getUpdateCheckState === 'function') {
+          scheduleNextUpdateCheckTimer(getUpdateCheckState());   // 内部 clearTimeout + 未授权时直接返回
+        }
+      } catch (e) {}
+    }
+    // 野生搜索酱：撤销 → 还原官方按钮；授权 → 重新替换（幂等）
+    if (touch('searchService')) {
+      try {
+        if (hasConsent('searchService')) { if (typeof searchServiceBy4sY === 'function') searchServiceBy4sY(); }
+        else if (typeof restoreSearchServiceButton === 'function') restoreSearchServiceButton();
+      } catch (e) {}
+    }
+    // 外部图床：由 createImageItem 处按授权现判（撤销后不再发起新请求）
+    // WebDAV：手动/自动同步入口按授权现判
+  }
+  // 跨页面/跨标签：别的页面改了授权 → 本页立刻重绘灰态并停/启功能
+  function bindConsentCrossPageSync() {
+    try {
+      if (bindConsentCrossPageSync.__done) return;
+      bindConsentCrossPageSync.__done = true;
+      if (typeof GM_addValueChangeListener !== 'function') return;
+      GM_addValueChangeListener(XDEX_CONSENT_KEY, (_key, _old, _next, remote) => {
+        if (!remote) return;                       // 本页自己的写入已在变更点即时处理
+        try { applyConsentGateStyles(); } catch (e) {}
+        try { applyConsentEffects(); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+  // ---- 授权弹窗 ----
+  const XDEX_CONSENT_TERMS_HTML = [
+    '<div style="background:#c0392b;color:#fff;padding:8px 10px;border-radius:6px;font-weight:bold;text-align:center;margin-bottom:10px;">本插件为第三方插件，不受 X岛 官方支持</div>',
+    '<h4>1. 本插件与 X岛 的关系</h4>',
+    '<p>X岛-EX（nmbxd-EX）为 X岛 的第三方浏览器扩展与用户脚本，由爱好者开发并维护，非 X岛 官方出品，亦不受 X岛 官方支持。</p>',
+    '<p>为提供浏览以外的功能（检查更新、显示外部图床、野生搜索酱、WebDAV 同步），本插件需与 X岛 官方以外的服务器通信。首次使用前请阅读本说明；阅读至末尾并点击「完成」后方可关闭本页。</p>',
+    '<h4>2. 官方服务器范围</h4>',
+    '<p>除下文列明的第三方服务器外，其余均属 X岛 官方服务器，不在本说明范围内：站点 www.nmbxd.com、www.nmbxd1.com、nmbxd1.com、nmbxd.com；图片 image.nmb.best；接口 api.nmb.best；封面图 moetu.org。</p>',
+    '<h4>3. 第三方服务器清单</h4>',
+    '<p><b>① 更新检查</b>（可在「授权」中关闭）<br>域：update.greasyfork.org、scriptcat.org、raw.githubusercontent.com、github.ikgy.top（镜像）<br>用途：检查是否存在新版本、下载新版本脚本或扩展安装包<br>传输信息：网络 IP、User-Agent，以及含脚本或扩展标识的请求地址（不含版本号）<br>不传输：登录凭据、账号信息、浏览内容。</p>',
+    '<p><b>② 野生搜索酱</b>（可在「授权」中关闭）<br>域：<a href="https://nmb-search.166666666.xyz/" target="_blank" rel="noopener noreferrer">nmb-search.166666666.xyz</a><br>用途：仅在用户点击搜索按钮时于新标签页打开该站点；本插件不内嵌其搜索结果，亦不合并其数据<br>来源：<a href="https://www.nmbxd1.com/t/64792841" target="_blank" rel="noopener noreferrer">https://www.nmbxd1.com/t/<font color="#789922">64792841</font></a><br>传输信息：网络 IP、User-Agent（<b>不发送来源页地址</b>）<br>不传输：登录凭据（受跨域限制，无法携带 X岛 凭据）。</p>',
+    '<p><b>③ 显示外部图床</b>（可在「授权」中关闭）<br>域：串内指向的第三方图床（由发串者指定，非本插件指定）<br>用途：该功能启用时，直接加载串内图片地址予以显示<br>传输信息：网络 IP、User-Agent、来源页地址<br>不传输：登录凭据。</p>',
+    '<p><b>④ WebDAV 同步</b>（可在「授权」中关闭；地址由用户自行填写）<br>域：用户指定的服务器（例如坚果云）<br>用途：将本机数据同步至该服务器<br>传输信息：同步信息，包含设置、浏览历史、发言历史、草稿、颜文字统计、串内饼干偏好、WebDAV 配置、授权状态，以及<b>自定义饼干（登录凭据）</b><br>该服务器由用户指定，本插件无法获知其数据处理方式；撤销授权不会删除已填写的配置，仅停止同步。</p>',
+    '<h4>4. 第三方获取的信息</h4>',
+    '<p>· <b>请求内容</b>：经第三方服务器转发的请求内容（如外部图床的图片地址、搜索关键词）对该服务器可见。<br>· <b>网络信息</b>：第三方服务器可获取网络 IP、User-Agent，以及在跨域加载图片或页面跳转时的来源页地址。<br>· <b>登录凭据</b>：X岛 的登录凭据（userhash）仅发送至 X岛 官方服务器；受跨域限制，第三方服务器无法获取。WebDAV 同步信息中的凭据由用户主动上传。</p>',
+    '<h4>5. 数据留存与责任</h4>',
+    '<p>上述请求由各第三方服务器依其自身策略处理与保存。本插件无法查看、修改或删除其日志，亦无从知晓其保存期限。<b>X岛 无法保证第三方服务器上的数据安全，本插件不对第三方服务器的行为负责。</b></p>',
+    '<p>本插件于本机保存的内容包括：浏览历史、发言历史、草稿、自定义饼干、自定义饼干切换时生成的会话记录，以及授权状态（均可在设置中清空或导出）。</p>',
+    '<h4>6. 内容来源</h4>',
+    '<p>本插件显示的内容均来源于 X岛（官网地址：https://www.nmbxd.com ）。导出文件的内容同样来源于 X岛，并保留原串链接；内容版权归 X岛 及原作者所有，仅限个人保存与私下分享。</p>',
+    '<h4>7. 相关公告原文引用</h4>',
+    '<p><font color="#789922">&gt;&gt;No.69730537</font><br><font color="#789922">&gt;&gt;No.69730629</font><br><font color="#789922">&gt;&gt;No.69750713</font></p>',
+    '<h4>8. 未授权的影响</h4>',
+    '<p>未授权不影响主要功能：看时间线、看串、发串、看图、浏览历史、发言历史、草稿、颜文字、深色模式、无缝翻页、引用预览、图片显示模式、原图加载等均照常可用（上述功能仅访问 X岛 官方服务器）。</p>',
+    '<p>受影响的功能为：检查更新、显示外部图床、野生搜索酱、WebDAV 备份同步。设置中已保存的开关状态将予保留，重新授权后按原状态生效（灰显仅表示未授权，并非关闭设置）。用户可随时于 设置 →「授权」 中修改。</p>',
+    '<p>点击「完成」即表示用户已阅读并接受本说明。</p>'
+  ].join('');
+  function ensureConsentModal() {
+    if (document.getElementById('xdex-consent-modal')) return document.getElementById('xdex-consent-modal');
+    const wrap = document.createElement('div');
+    wrap.id = 'xdex-consent-modal';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    // z-index 10003：高于设置面板(9999)/导出弹窗(10001)，但**低于引用浮窗(10004)**——
+    // 条款里的 >>No.x 要能触发原生引用预览与拓展引用浮窗，浮窗必须盖在本弹窗之上。
+    wrap.style.cssText = 'display:none;position:fixed;inset:0;z-index:10003;align-items:center;justify-content:center;padding:12px;';
+    wrap.innerHTML =
+      '<div id="xdex-consent-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.45);"></div>' +
+      '<div class="xdex-consent-dialog" style="position:relative;display:flex;flex-direction:column;width:min(94vw,760px);max-width:calc(100vw - 24px);' +
+      'max-height:calc(100vh - 64px);background:var(--xdex-sp-panel-bg,#FFFFEE);border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.3);">' +
+      '<div class="xdex-consent-head" style="flex:0 0 auto;padding:10px 16px;background:var(--xdex-sp-head-bg,#F0E0D6);font-weight:bold;font-size:15px;border-bottom:1px solid var(--xdex-sp-border,#eee);">授权</div>' +
+      '<div id="xdex-consent-body" class="xdex-consent-body" tabindex="0" style="flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 16px;font-size:13px;line-height:1.6;">' +
+      '<div id="xdex-consent-terms" class="h-threads-content">' + XDEX_CONSENT_TERMS_HTML + '</div>' +
+      '<div id="xdex-consent-list" style="margin-top:14px;border-top:1px solid var(--xdex-sp-border,#eee);padding-top:10px;"></div>' +
+      '</div>' +
+      '<div class="xdex-consent-foot" style="flex:0 0 auto;padding:10px 16px;border-top:1px solid var(--xdex-sp-border,#eee);display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
+      '<span id="xdex-consent-hint" style="font-size:11px;color:#999;">请向下滚动阅读至条款末尾</span>' +
+      '<button type="button" id="xdex-consent-done" disabled style="padding:6px 12px;">完成</button>' +
+      '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    // 配色写死 + !important：避免站点深色样式 / Dark Reader 把正文与标题压成暗底暗字
+    try {
+      if (!document.getElementById('xdex-consent-style')) {
+        const st = document.createElement('style');
+        st.id = 'xdex-consent-style';
+        st.textContent =
+          '#xdex-consent-modal{color-scheme:light;}' +
+          '#xdex-consent-modal .xdex-consent-dialog,#xdex-consent-modal .xdex-consent-body,#xdex-consent-modal .xdex-consent-foot{background:#FFFFEE !important;}' +
+          '#xdex-consent-modal .xdex-consent-head{background:#F0E0D6 !important;color:#333 !important;border-bottom-color:#eee !important;}' +
+          '#xdex-consent-modal .xdex-consent-body{color:#333 !important;}' +
+          '#xdex-consent-modal .xdex-consent-body h4,#xdex-consent-modal .xdex-consent-body b{color:#333 !important;}' +
+          '#xdex-consent-modal .xdex-consent-body p{color:#555 !important;}' +
+          '#xdex-consent-modal .xdex-consent-item{color:#333 !important;}' +
+          '#xdex-consent-modal .xdex-consent-item span{color:#555 !important;font-size:11px;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal .xdex-consent-item span{color:#aab4be !important;}' +
+          '#xdex-consent-modal .xdex-consent-item.is-target{background:#EAF6FF !important;border-color:#7da6bf !important;}' +
+          '#xdex-consent-modal .xdex-consent-foot{border-top-color:#eee !important;}' +
+          '#xdex-consent-modal #xdex-consent-hint{color:#999 !important;}' +
+          '#xdex-consent-modal #xdex-consent-hint.is-read{color:#0a8a0a !important;font-weight:bold;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal #xdex-consent-hint.is-read{color:#5fd07a !important;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal .xdex-consent-dialog,:root.xdex-custom-dark #xdex-consent-modal .xdex-consent-body,:root.xdex-custom-dark #xdex-consent-modal .xdex-consent-foot{background:#2b2b2b !important;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal .xdex-consent-head{background:#3a3a3a !important;color:#e6e6e6 !important;border-bottom-color:#444 !important;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal .xdex-consent-body,:root.xdex-custom-dark #xdex-consent-modal .xdex-consent-body h4,:root.xdex-custom-dark #xdex-consent-modal .xdex-consent-body b{color:#e6e6e6 !important;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal .xdex-consent-body p{color:#c9c9c9 !important;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal .xdex-consent-item.is-target{background:#33424f !important;border-color:#5c7d99 !important;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal .xdex-consent-foot{border-top-color:#444 !important;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal #xdex-consent-done{background:#3a3a3a;color:#e6e6e6;border-color:#555;}' +
+          ':root.xdex-custom-dark #xdex-consent-modal #xdex-consent-done:disabled{color:#888;}';
+        document.head.appendChild(st);
+      }
+    } catch (e) {}
+    // 滚轮约束：复用设置面板同一套（面板内可滚就滚面板，滚到头则吞掉，绝不穿透到后方页面）
+    try { if (typeof installWheelScrollContainment === 'function') installWheelScrollContainment(wrap, '#xdex-consent-body'); } catch (e) {}
+    try {
+      const bd = wrap.querySelector('#xdex-consent-backdrop');
+      if (bd) bd.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+    } catch (e) {}
+    // 四个授权开关（默认勾选 = 默认授权）
+    const list = wrap.querySelector('#xdex-consent-list');
+    XDEX_CONSENT_FEATURES.forEach((f) => {
+      const item = document.createElement('div');
+      item.dataset.consentItem = f.id;
+      item.className = 'xdex-consent-item';
+      item.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:8px;border-radius:6px;border:1px solid transparent;';
+      item.innerHTML = '<input type="checkbox" class="xdex-switch" id="xdex-consent-sw-' + f.id + '" style="margin-top:2px;">' +
+        '<label for="xdex-consent-sw-' + f.id + '" style="flex:1;cursor:pointer;">' +
+        '<b style="display:block;">' + f.label + '</b>' +
+        '<span style="font-size:11px;color:#666;">' + f.desc + '</span></label>';
+      list.appendChild(item);
+      const sw = item.querySelector('input');
+      sw.addEventListener('change', () => {
+        const before = hasConsent(f.id);
+        setConsentGranted(f.id, sw.checked);
+        applyConsentGateStyles();
+        if (before !== sw.checked) applyConsentEffects(f.id);   // 只对被改动的项即时停/启
+      });
+    });
+    try { bindConsentCrossPageSync(); } catch (e) {}
+    // 只能由「完成」关闭：遮罩点击与 Esc 都不关闭
+    wrap.querySelector('#xdex-consent-backdrop').addEventListener('click', (e) => e.stopPropagation());
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.stopPropagation(); }, true);
+    const body = wrap.querySelector('#xdex-consent-body');
+    const done = wrap.querySelector('#xdex-consent-done');
+    const hint = wrap.querySelector('#xdex-consent-hint');
+    const checkRead = () => {
+      const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 8;
+      if (atBottom) {
+        done.disabled = false;
+        hint.textContent = '已读完，可点击「完成」';
+        hint.classList.add('is-read');   // 颜色由样式表带 !important 控制（内联色会被它覆盖）
+      }
+    };
+    body.addEventListener('scroll', checkRead);
+    wrap.__xdexCheckRead = checkRead;
+    // 内容不足一屏时无需滚动：构建后先判一次，否则「完成」会一直禁用
+    try { requestAnimationFrame(checkRead); } catch (e) { setTimeout(checkRead, 0); }
+    done.addEventListener('click', () => {
+      if (done.disabled) return;
+      markConsentTermsRead();
+      closeConsentModal();
+      applyConsentGateStyles();
+    });
+    // 条款里的原生引用号：必须让**站点自身**的脚本绑定 hover 处理器，否则原生引用浮窗不会出现。
+    // 站点的绑定入口是 window.initContent(root)（本插件已把它包成"先原始逻辑 + 再 extendQuote"），
+    // 直接调用它即可同时得到：① 站点原生 hover 预览 ② 插件的拓展引用标注/点击浮窗。
+    try {
+      const termsEl = wrap.querySelector('#xdex-consent-terms');
+      if (typeof window.initContent === 'function') window.initContent(termsEl);
+      else if (typeof extendQuote === 'function') extendQuote(termsEl);
+    } catch (e) {}
+    return wrap;
+  }
+  function openConsentModal(targetId) {
+    let wrap = null;
+    try { wrap = ensureConsentModal(); } catch (e) { return; }
+    if (!wrap) return;
+    wrap.style.display = 'flex';
+    // 每次打开都补一次站点的引用号初始化（幂等）：条款节点需在可见后才被站点脚本正确处理。
+    // window.initContent 已被本插件包装为"站点原始逻辑 + extendQuote"，因此这一步同时覆盖
+    // 原生 hover 预览与插件的拓展引用（点击浮窗）。
+    try {
+      const termsEl = wrap.querySelector('#xdex-consent-terms');
+      if (termsEl) {
+        if (typeof window.initContent === 'function') window.initContent(termsEl);
+        else if (typeof extendQuote === 'function') extendQuote(termsEl);
+      }
+    } catch (e) {}
+    XDEX_CONSENT_FEATURES.forEach((f) => {
+      const sw = document.getElementById('xdex-consent-sw-' + f.id);
+      if (sw) sw.checked = hasConsent(f.id);
+    });
+    const body = wrap.querySelector('#xdex-consent-body');
+    const item = targetId ? wrap.querySelector('[data-consent-item="' + targetId + '"]') : null;
+    try {
+      wrap.querySelectorAll('[data-consent-item]').forEach((el) => el.classList.remove('is-target'));
+      if (item) {
+        item.classList.add('is-target');
+        body.scrollTop = Math.max(0, item.offsetTop - body.clientHeight / 2);
+      } else {
+        body.scrollTop = 0;
+      }
+    } catch (e) {}
+    // 弹窗打开期间锁住页面滚动（配合滚轮约束，避免后方页面跟着滚）
+    try {
+      if (!wrap.__xdexPrevBodyOverflow) wrap.__xdexPrevBodyOverflow = document.body.style.overflow || '';
+      document.body.style.overflow = 'hidden';
+    } catch (e) {}
+    try { (item ? item.querySelector('input') : wrap.querySelector('#xdex-consent-done')).focus(); } catch (e) {}
+    try { const cb = wrap.__xdexCheckRead; if (typeof cb === 'function') cb(); } catch (e) {}
+  }
+  function closeConsentModal() {
+    const wrap = document.getElementById('xdex-consent-modal');
+    if (wrap) wrap.style.display = 'none';
+    try {
+      if (wrap && wrap.__xdexPrevBodyOverflow !== undefined) {
+        document.body.style.overflow = wrap.__xdexPrevBodyOverflow || '';
+        wrap.__xdexPrevBodyOverflow = undefined;
+      }
+    } catch (e) {}
+  }
   const SettingPanel = {
     key: 'myScriptSettings',
     defaults: {
@@ -1846,6 +2182,7 @@ function xdexEarlyDarkEnabled() {
                   this.syncAuxiliaryControls();
                   if (typeof window.__xdexSyncDarkReaderTheme === 'function') window.__xdexSyncDarkReaderTheme();
                   $('#sp_cover').fadeIn();
+                  try { if (typeof applyConsentGateStyles === 'function') applyConsentGateStyles(); } catch (e) {}
                   spUpdate('maybeShowPendingUpdateDialogOnPanelOpen');
                 })
         );
@@ -1881,6 +2218,15 @@ function xdexEarlyDarkEnabled() {
           .xdex-switch::before { content:""; position:absolute; width:14px; height:14px; left:1px; top:1px; border-radius:50%; background:#FFFFEE; box-shadow:0 1px 2px rgba(0,0,0,.24); transition:transform .18s ease; }
           .xdex-switch:checked { background:#66CCFF; border-color:#7da6bf; }
           input.xdex-switch.fixed-on:checked:disabled { background:#00FFCC; border-color:#00b894; }
+          /* 未授权：保持原开/关位置，只把背景改成灰色（功能不加载，点击去授权） */
+          .xdex-switch.is-unauthorized,
+          .xdex-switch.is-unauthorized:checked,
+          input.xdex-switch.is-unauthorized.fixed-on:checked:disabled {
+            background:#c9c9c9 !important; border-color:#ababab !important; cursor:not-allowed !important;
+          }
+          .is-unauthorized-row > label,
+          .is-unauthorized-row > span { color:#999 !important; }
+          .xdex-unauthorized-locked { cursor:not-allowed !important; opacity:.6; }
           .xdex-switch:checked::before { transform:translateX(16px); }
           /* 饼干偏好开关圆圈：当前饼干命中本串偏好→深青(#006666)，未命中→红(#EE0000)；未开启偏好不着色 */
           .xdex-cookie-check-sw.xdex-cookie-pref-match::before { background:#006666; }
@@ -2303,6 +2649,7 @@ function xdexEarlyDarkEnabled() {
                 <button id="sp_feeds_next" type="button" style="padding:4px 10px;">下一页</button>
               </div>
               <div class="sp_panel_actions" style="display:flex;align-items:center;gap:10px;">
+                <button id="btn_xdex_consent" type="button" style="padding:6px 10px;display:none;">授权</button>
                 <button id="sp_apply" style="padding:6px 10px;">保存并刷新</button>
                 <button id="sp_close" style="padding:6px 10px;">关闭</button>
               </div>
@@ -2337,6 +2684,8 @@ function xdexEarlyDarkEnabled() {
         $('#sp_panel_footer .sp_panel_links').show();
         $('#sp_panel_footer .sp_panel_links a').toggle(nextModule === 'settings');
         $('#sp_apply').toggle(nextModule === 'settings');
+        // 「授权」仅属于设置页：浏览历史 / 我的发言 / 我的订阅 等模块不显示
+        $('#btn_xdex_consent').toggle(nextModule === 'settings');
         $('#sp_feeds_pager').toggle(nextModule === 'feeds');
         updateThreadHistoryDebugState({
           lastPanelModule: nextModule,
@@ -3902,6 +4251,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
       }
       function collectFullExportPayload(selection) {
         const payload = {};
+        // 授权状态（是否读过条款 + 四项授权）随导出/导入与 WebDAV 一并迁移，不必每端各授权一次
+        try { payload.xdexConsent = getConsentState(); } catch (e) {}
         if (selection.settings) {
           payload.myScriptSettings = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
         }
@@ -3981,6 +4332,7 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         options = options || {};
         const payload = importData.payload;
         const report = {};
+        try { if (payload.xdexConsent) applyImportedConsent(payload.xdexConsent); } catch (e) {}
         if (payload.myScriptSettings) {
           const local = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
           const merged = mergeSettingsForFullImport(local, payload.myScriptSettings);
@@ -5753,6 +6105,7 @@ ${markedSwatchHtml}
   }
   function isUpdateCheckEnabled() {
     try {
+      if (typeof hasConsent === 'function' && !hasConsent('updateCheck')) return false;   // 未授权 → 不发起更新请求
       const cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
       return !!cfg.enableUpdateCheck;
     } catch (e) {
@@ -6443,6 +6796,8 @@ ${markedSwatchHtml}
       `;
     }
     function createImageItem(url, containerWidth) {
+      // 授权撤销后不得再向第三方图床发起请求（已渲染的图片不回溯）
+      try { if (typeof hasConsent === 'function' && !hasConsent('externalImage')) return document.createDocumentFragment(); } catch (e) {}
       const frag = document.createDocumentFragment();
       const img = document.createElement('img');
       img.src = url;
@@ -9737,11 +10092,19 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     });
   }
   function getEarlyStartupConfig() {
+    let cfg;
     try {
-      return Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
+      cfg = Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
     } catch (e) {
-      return SettingPanel.defaults;
+      cfg = Object.assign({}, SettingPanel.defaults);
     }
+    // 未授权 → 对应功能不加载（**只影响生效，不改用户设置值**；重新授权后按原值恢复）
+    try {
+      if (!hasConsent('updateCheck')) cfg.enableUpdateCheck = false;
+      if (!hasConsent('externalImage')) cfg.enableExternalImagePreview = false;
+      if (!hasConsent('searchService')) cfg.searchServiceBy4sY = false;
+    } catch (e) {}
+    return cfg;
   }
   function collapseEarlyStartupBlocks(root, cfg) {
     if (!cfg || !cfg.hideEmptyTitleEmail || typeof Utils === 'undefined' || typeof Utils.collapse !== 'function') return;
@@ -25547,18 +25910,30 @@ function 注册自动保存编辑() {
   function searchServiceBy4sY() {
     const btn = document.querySelector('#h-menu-search-keyword');
     if (!btn) return; // 若按钮不存在则不处理
+    // 记住官方原始 href，便于撤销授权时还原
+    try { if (btn.__xdexOriginalHref === undefined) btn.__xdexOriginalHref = btn.getAttribute('href') || ''; } catch (e) {}
     // 移除原有的 href 与默认跳转行为
     btn.removeAttribute('href');
     btn.removeEventListener('click', btn._4sYHandler || (()=>{}));
     // 定义新的点击事件
     const handler = (e) => {
       e.preventDefault();
-      window.open('https://nmb-search.166666666.xyz/', '_blank');
+      // noopener,noreferrer：不向该第三方站点发送来源页地址（Referer），避免泄露当前所在页面
+      window.open('https://nmb-search.166666666.xyz/', '_blank', 'noopener,noreferrer');
     };
     // 绑定事件
     btn.addEventListener('click', handler);
     // 保存 handler 以便后续移除时使用（防止重复绑定）
     btn._4sYHandler = handler;
+  }
+  // 撤销授权 → 还原官方搜索按钮行为（保留原 href）
+  function restoreSearchServiceButton() {
+    const btn = document.querySelector('#h-menu-search-keyword');
+    if (!btn) return;
+    try {
+      if (btn._4sYHandler) { btn.removeEventListener('click', btn._4sYHandler); btn._4sYHandler = null; }
+      if (btn.__xdexOriginalHref) btn.setAttribute('href', btn.__xdexOriginalHref);
+    } catch (e) {}
   }
   function isNmbSearchPage() {
     return location.hostname === 'nmb-search.166666666.xyz';
@@ -36900,6 +37275,8 @@ function initReplyParamScrollTo() {
       try { applyRemoteDefaultSubscriptionFeed(parsed.data.payload && parsed.data.payload.myScriptSettings); } catch (e) {
         console.warn('[webdav] 默认订阅号合并失败', e);
       }
+      // WebDAV 远端带了授权状态 → 以远端为准（同为"不必每端各授权一次"）
+      try { if (parsed.data.payload && parsed.data.payload.xdexConsent) applyImportedConsent(parsed.data.payload.xdexConsent); } catch (e) {}
       // 设置差异检测：手动同步弹窗让用户选择；自动同步按「本地是否默认」决定
       // 决策仅作用于 myScriptSettings 分区，其余数据分区一律双向合并
       let settingsDecision = 'download';
@@ -37036,6 +37413,7 @@ function initReplyParamScrollTo() {
     }
   }
   function webdavAutoSyncIfEnabled() {
+    if (typeof hasConsent === 'function' && !hasConsent('webdavSync')) return;   // 未授权 → 不自动同步（配置保留）
     const cfg = getWebdavConfig();
     if (!cfg.url || !cfg.autoSync) return;
     const now = webdavAutoNow();
@@ -37194,6 +37572,11 @@ function initReplyParamScrollTo() {
           return;
         }
         if (btn.id === 'btn_webdavSync') {
+          if (typeof hasConsent === 'function' && !hasConsent('webdavSync')) {
+            toast('WebDAV 同步未授权，请在「授权」中开启', 2400, { queue: false, key: 'consent-webdav' });
+            openConsentModal('webdavSync');
+            return;
+          }
           e.preventDefault();
           e.stopPropagation();
           btn.classList.add('xdex-icon-loading');
@@ -38753,6 +39136,8 @@ function initReplyParamScrollTo() {
     };
     deferStartupSteps([
       // 切换自定义饼干时只在"当前域"对齐；跨域（nmbxd1.com ↔ nmbxd.com）由这里在载入时就地补上
+      // 授权：首次进入需要授权的版本 → 立刻弹窗（必须读完并点「完成」）；此后只在点「授权」或点灰色开关时打开
+      { label: 'startup.batch1.consent', run: () => { try { applyConsentGateStyles(); if (!isConsentTermsRead()) openConsentModal(null); } catch (e) {} }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.sessionAlign', run: () => ensureSessionAlignedOnLoad(), meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.enableHDImageAndLayoutFix', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImageAndLayoutFix(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
       { label: 'startup.batch1.enableHDImage', run: () => { if (cfg.enableHDImageAndLayoutFix) enableHDImage(document); }, meta: () => startupPerfDebug.summarizeRoot(document) },
