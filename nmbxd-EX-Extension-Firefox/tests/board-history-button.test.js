@@ -143,13 +143,12 @@ test('防御：展示条数为 0 时不得得出 N+5 的臆断值', () => {
 });
 
 // ─────────── ③ 写入语义（更新 vs 新建） ───────────
-test('已存在条目：只写位置层，访问次数不虚增', () => {
+test('已存在条目：写位置层，且访问次数 +1（再次访问）', () => {
   const add = extractFn('addBoardThreadToHistory');
-  assert(/if \(old\) \{/.test(add), '必须分支处理已有条目');
-  assert(/setThreadHistoryPosEntry\(key, \{/.test(add), '已有条目应写位置层');
-  assert(/vc: Math\.max\(Number\(prev\.vc\) \|\| 0, Number\(old\.visitCount\) \|\| 0\)/.test(add),
-    '位置层 vc 不得 +1（点按钮并非一次新访问）');
-  assert(/invalidateThreadHistoryPosCache\(\)/.test(add), '写后须失效位置缓存');
+  assert(add.indexOf('if (old) {') >= 0, 'must branch on existing entry');
+  assert(add.indexOf('setThreadHistoryPosEntry(key, {') >= 0, 'existing entry must use position layer');
+  assert(add.indexOf('Number(old.visitCount) || 0) + 1') >= 0, 'visit count must increase by 1');
+  assert(add.indexOf('invalidateThreadHistoryPosCache()') >= 0, 'must invalidate position cache');
 });
 
 test('不存在条目：用卡片正文新建，正文为空则不建', () => {

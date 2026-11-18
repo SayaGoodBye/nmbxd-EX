@@ -25810,7 +25810,7 @@ function 注册自动保存编辑() {
       const visitedAt = Date.now();
       const old = store.items[key];
       if (old) {
-        // 已有条目：只更新位置层（与"快捷回复后同步历史"同一口径：不整库写）
+        // 已有条目：更新位置层（不整库写），并按"再次访问"把访问次数 +1
         const prev = readThreadHistoryPosHotMap()[key] || getThreadHistoryStore().items[key] || {};
         setThreadHistoryPosEntry(key, {
           p: Math.max(Number(old.page) || 1, Number(prev.p) || 1, page),
@@ -25820,7 +25820,8 @@ function 注册自动保存编辑() {
           rid: snap.lastReplyId || prev.rid || old.lastReadReplyId || '',
           rp: snap.lastReplyId ? page : (Number(prev.rp) || Number(old.lastReadReplyPage) || page),
           vat: Math.max(Number(prev.vat) || 0, Number(old.lastVisitedAt) || 0, visitedAt),
-          vc: Math.max(Number(prev.vc) || 0, Number(old.visitCount) || 0)
+          // 再次点击「加入浏览历史」= 又访问了一次 → 访问次数 +1
+          vc: Math.max(Number(prev.vc) || 0, Number(old.visitCount) || 0) + 1
         }, Date.now());
         invalidateThreadHistoryPosCache();
         if (threadHistoryStoreCache) threadHistoryStoreNeedsPosOverlay = true;
