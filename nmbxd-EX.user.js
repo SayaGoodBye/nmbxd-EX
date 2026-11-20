@@ -13169,6 +13169,20 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         probe.onload = () => {
           try { img.src = hdUrl; } catch (e) {}
           finishAttempt(true);
+          // ★ 原图到位后必须重算"激活态"尺寸：
+          //   handleActiveImageBox 用的是 img.naturalWidth/Height，若激活发生在原图就绪**之前**，
+          //   当时读到的是缩略图尺寸，__sizeCache 会被永久固定成缩略图大小 ——
+          //   之后即使原图加载完成，再次激活仍然是缩略图大小（用户实测复现）。
+          //   这里在原图就绪时，若该图正处于激活态，强制重算一次。
+          try {
+            const box = img.closest && img.closest('.h-threads-img-box');
+            if (box && box.classList.contains('h-active') && typeof handleImageLayout !== 'undefined' && handleImageLayout && typeof handleImageLayout.handleActiveImageBox === 'function') {
+              // 尺寸来源已变（缩略图 → 原图），必须丢弃旧缓存
+              delete box.__sizeCache;
+              delete box.__maxWidth;
+              handleImageLayout.handleActiveImageBox(box, true);
+            }
+          } catch (e) {}
         };
         probe.onerror = () => finishAttempt(false);
       } else {
@@ -13777,9 +13791,16 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           // 无容器时，兜底用视口宽度
           maxWidth = Math.min(window.innerWidth - 240, 1200);
         }
-          // 如果最大宽度变化或首次计算，重新预计算所有旋转角度的尺寸
-          if (!imgBox.__sizeCache || shouldForceRecalculate || imgBox.__maxWidth !== maxWidth) {
+          // ★ 缓存必须与"尺寸来源"绑定：缓存里存的是**哪张图**（img.src）的尺寸。
+          //   否则：先以缩略图激活（缓存 300×150）→ 原图就绪（src 变了）→ 再次激活时
+          //   __maxWidth 未变且未 force → 直接复用缩略图缓存，表现为"打开过原图的图仍是缩略尺寸"。
+          //   实测：img.src 换图后**同步读 naturalWidth 仍是旧值**，只有下一帧才更新
+          //   （本函数整体跑在 rAF 里，因此这里读到的 naturalWidth 是准确的）。
+          const sizeSourceKey = String(img.currentSrc || img.src || '');
+          const sourceChanged = imgBox.__sizeSource !== sizeSourceKey;
+          if (!imgBox.__sizeCache || shouldForceRecalculate || imgBox.__maxWidth !== maxWidth || sourceChanged) {
             imgBox.__maxWidth = maxWidth;
+            imgBox.__sizeSource = sizeSourceKey;
             imgBox.__sizeCache = this.precalculateImageSizes(naturalWidth, naturalHeight, maxWidth);
           }
           // 获取当前旋转索引
@@ -13895,6 +13916,17 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             if (shouldOpen) {
               // 展开
               box.classList.add('h-active');
+              // ★ 若原图此前已成功加载过（xdexHdLoaded==='1'），收起时 src 会被回退成缩略图，
+              //   而 load() 的 ⓪ 步见到该标记会**直接 return**，不会把 src 切回原图 ——
+              //   于是 handleActiveImageBox 读到的是缩略图 naturalWidth，
+              //   表现为"已经用大图尺寸打开过的图，再次点开是缩略图尺寸"。
+              //   这里在计算尺寸之前先把 src 恢复成原图（命中缓存，近乎瞬时）。
+              try {
+                const knownHd = img.dataset.xdexHdSrc;
+                if (img.dataset.xdexHdLoaded === '1' && knownHd && (img.currentSrc || img.src) !== knownHd) {
+                  img.src = knownHd;
+                }
+              } catch (e) {}
               hdImageLazyLoader.load(img, anchor.href, { force: true });
               img.dataset.rotateIndex = '0'; // 重置旋转索引
               // 失败回退由 hdImageLazyLoader 统一处理（含退避重试），这里不再另挂 onerror——
@@ -14231,6 +14263,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           const ds = img.getAttribute('data-src');
           if (ds) img.src = ds;
           else if (img.dataset.xdexThumbSrc) img.src = img.dataset.xdexThumbSrc;
+          // ★ 回退到缩略图后必须清掉"原图已加载"标记：
+          //   load() 的 ⓪ 步会在 xdexHdLoaded === '1' 时**直接 return**，不会把 src 切回原图。
+          //   若这里只改 src、不清标记，下一次点击激活会带着缩略图 src 进入
+          //   handleActiveImageBox（naturalWidth 是缩略图尺寸）→ 永远以缩略图大小激活。
+          //   实测症状："已经用大图尺寸打开过的图，再次点开是缩略图尺寸"。
+          delete img.dataset.xdexHdLoaded;
           updatePreviewImageLayout(box);
         }
       });
