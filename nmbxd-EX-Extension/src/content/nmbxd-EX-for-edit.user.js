@@ -14383,11 +14383,19 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         }
         .qp-stack {
           position: fixed;
-          top: 55%; /* 下移一点 */
+          /* ★ 与回复浮窗（.qp-overlay > .qp-stack）保持同一套几何约束：
+             原来 top:55% + height:80vh 会把底边推到视口最下沿（实测 960px 视口里
+             底边在 912px，距底只剩 48px），底部的 10px 拖拽带几乎贴着屏幕边缘，
+             鼠标从下方靠近时先落进 .qp-overlay-quote 遮罩，被当作"点外部"关闭浮窗
+             → 表现为"最下方一条抓不到"。改为居中 + 内容贴合 + 安全边距。 */
+          top: 50%;
           left: 50%;
           transform: translate(-50%, -50%);
           width: min(90vw, 820px);
-          height: 80vh;
+          /* ⚠ 不能用 height:auto：内部的 .qp-quote 是 height:100% / position:absolute，
+             百分比高度需要父元素有确定高度，父元素若为 auto 就会塌缩成 0（实测面板变一条线）。
+             因此保持"确定高度"，但用 calc 扣掉上下安全边距，避免底边贴住视口最下沿。 */
+          height: min(80vh, calc(100vh - 40px));
           overflow: visible;
           box-sizing: border-box;
         }
@@ -14417,7 +14425,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         .qp-overlay-quote .qp-quote {
           position: absolute;
           top: 0; left: 0;
-          width: 100%; max-height: 100%;
+          /* 面板本身给一个基础层级，让上面的把手（z-index 9000）能压过它。
+             两者都是 .qp-stack 的子元素：.qp-quote 还有内联 zIndex（showQuote 写入 1000+depth），
+             若把手层级不够就会被整片盖住 —— 实测只有顶部超出面板 padding 的 10px 还能命中。 */
+          z-index: 1;
+          /* ★ 必须 height:100%（只看 .qp-stack 的尺寸），不能只写 max-height:100%：
+             max-height 只设上限，内容（如激活的大图）变高时 .qp-quote 自身高度会长大，
+             它的盒模型就与 .qp-stack 不再相等。把手虽已挂在 .qp-stack 上，
+             但面板底边/滚动区仍会与容器错位。回复浮窗正是 width/height:100% 的写法。 */
+          width: 100%; height: 100%; max-height: 100%;
           overflow: auto;
           /* 走 darkreader 兼容 token，避免写死 #FFFFEE */
           background: var(--xdex-qp-shell-bg, #FFFFEE);
@@ -14451,42 +14467,48 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         }
         .qp-overlay-quote .qp-quote.is-dragging,
         .qp-overlay-quote .qp-quote.is-resizing { cursor: grabbing !important; user-select: none !important; }
-        /* 引用浮窗四角拉伸（与回复浮窗一致：角=缩放，边=拖动） */
-        /* ★ 引用弹窗的 edges/corners 同样挂在 .qp-stack 上 */
-        .qp-overlay-quote .qp-resize-corner {
-          position: absolute;
-          width: 14px;
-          height: 14px;
-          z-index: 5;
-          pointer-events: auto;
-          background: transparent;
-        }
-        .qp-overlay-quote .qp-resize-corner.nw { top: 0; left: 0; cursor: nwse-resize; }
-        .qp-overlay-quote .qp-resize-corner.ne { top: 0; right: 0; cursor: nesw-resize; }
-        .qp-overlay-quote .qp-resize-corner.sw { bottom: 0; left: 0; cursor: nesw-resize; }
-        .qp-overlay-quote .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; }
-        .qp-overlay-quote .qp-drag-edge.top    { top: 0;    left: 14px; right: 14px; height: 10px; }
-        .qp-overlay-quote .qp-drag-edge.bottom { bottom: 0; left: 14px; right: 14px; height: 10px; }
-        .qp-overlay-quote .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
-        .qp-overlay-quote .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
         #h-ref-view { pointer-events: none !important; }
         #h-ref-view {
           z-index: 20000 !important; /* 保证原生引用框在浮窗之上 */
         }
-        /* 拖拽手柄：四边窄条，仅在手柄区域显示“移动”指针
-           ★ 宿主约束：这些元素必须是 .qp-quote 的**直接子元素**，且用 sticky 粘附——
-             .qp-quote 在滚动态是 overflow-y:auto 的滚动容器，absolute 子元素会随内容
-             一起滚动（拖拽带会跑到浮窗中间甚至跑出容器）；sticky 则固定于滚动视口。 */
-        .qp-drag-edge {
+        /* 拖拽手柄：四边窄条 + 四角拉伸。
+           ★ 宿主约束：**必须挂在 .qp-stack（尺寸容器）上**，不能挂 .qp-quote。
+             .qp-quote 是 absolute + max-height:100% 的滚动容器，内容（如激活大图）变高时
+             它自身高度会长大，挂在它上面的 bottom/left/right 手柄就跟着漂移，
+             表现为"拖拽条不随容器变化"。.qp-stack 是 fixed 的尺寸容器，
+             其几何即用户看到的外框 → 把手始终贴合边缘。
+           （与回复浮窗一致：把手跟随尺寸容器，不跟随内容。） */
+        .qp-overlay-quote .qp-stack > .qp-drag-edge,
+        .qp-overlay-quote .qp-stack > .qp-resize-corner {
           position: absolute;
           pointer-events: auto;
-          z-index: 3;
+          /* ★ 必须高于面板：.qp-quote 拿到的是**内联** zIndex = 1000 + 层深（showQuote 里设置），
+             把手若只写 6/7 会被整片盖住 —— 实测只有顶部露出面板边缘的 10px 还能命中。
+             这里用一个足够大的固定层级（面板层深远小于 1000 层）。 */
+          z-index: 9000;
+        }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge {
+          z-index: 9000;
           cursor: move;
         }
-        .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 10px; }
-        .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 10px; }
-        .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 10px; }
-        .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 10px; } 
+        /* ★ 上下边条必须**跨出容器边缘**，而不是内收到容器内侧：
+             实测（1168×960）内收 1px 时，可抓带是 y=851..863，而面板可见底边在 y=864 ——
+             用户把鼠标放在"面板底部"上命中的是遮罩，光标不变，于是觉得"底部没有拖拽条"。
+             改为 bottom/top: -4px + height:16px 后，可抓带覆盖面板边缘内外各一段，
+             鼠标落在视觉边缘即可抓住。（顶部对称处理，保持四个方向手感一致。） */
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.top    { top: -4px;    left: 14px; right: 14px; height: 16px; }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.bottom { bottom: -4px; left: 14px; right: 14px; height: 16px; }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner {
+          width: 14px; height: 14px; background: transparent;
+          /* ★ 与四边同一层级：面板是内联 zIndex 1000+depth，7 会被整片盖住 */
+          z-index: 9000;
+        }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.nw { top: 0;    left: 0;  cursor: nwse-resize; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.ne { top: 0;    right: 0; cursor: nesw-resize; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.sw { bottom: 0; left: 0;  cursor: nesw-resize; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; } 
         /* 标题栏作为拖拽手柄时的指针反馈 */
         .qp-header { cursor: move; }
       `;
@@ -14544,6 +14566,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       //    closest($top) 随即失效、被误判成「点了框外」而误关引用浮窗（jQuery 事件需取 originalEvent）
       const nativeEv = e.originalEvent || e;
       const evPath = typeof nativeEv.composedPath === 'function' ? nativeEv.composedPath() : null;
+      // ★ 把手（.qp-drag-edge / .qp-resize-corner）是 .qp-stack 的**直接子元素**，
+      //   与 .qp-quote 是兄弟关系 → composedPath 里没有 $top[0]，会被误判成"点了框外"
+      //   而直接关掉浮窗（表现为"拖底部条 = 关窗"，用户感知为"底部拖不动"）。
+      //   这里把把手与标题栏一并视为"面板自身"，不触发关闭。
+      const HANDLE_SEL = '.qp-drag-edge, .qp-resize-corner';
+      const inHandles = evPath
+          ? evPath.some((n) => n && n.classList && n.classList.contains && (n.classList.contains('qp-drag-edge') || n.classList.contains('qp-resize-corner')))
+          : !!(e.target && e.target.closest && e.target.closest(HANDLE_SEL));
+      if (inHandles) return;
       const inTopQuote = evPath
           ? evPath.indexOf($top[0]) !== -1
           : !!(e.target && e.target.closest && e.target.closest($top[0]));
@@ -14656,6 +14687,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       $quote.append($content.contents());
       // 在 $quote 内添加四条边框拖拽手柄 + 四角拉伸手柄
 
+      // ★ 把手挂在 .qp-stack（尺寸容器）上，而不是 .qp-quote（滚动容器）：
+      //   .qp-quote 是 absolute + max-height:100% 的滚动容器，内容（如激活大图）变高时
+      //   它自身高度会长大 → 挂在它上面的 bottom/left/right 手柄会漂移，
+      //   表现为"拖拽条不随容器变化"。.qp-stack 的几何才是用户看到的外框。
+      //   既有把手先摘掉，避免叠层时残留上一层的（每层一个 .qp-stack）。
+      $stack.children('.qp-drag-edge, .qp-resize-corner').remove();
       const $edges = $(
         '<div class="qp-drag-edge top"></div>' +
         '<div class="qp-drag-edge bottom"></div>' +
@@ -14666,11 +14703,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         '<div class="qp-resize-corner sw" data-dir="sw"></div>' +
         '<div class="qp-resize-corner se" data-dir="se"></div>'
       );
-      $quote.append($edges);
-      // 仅在标题栏 + 四边手柄上触发拖拽
-      enableDragForTop($quote, $quote.find('.qp-header, .qp-drag-edge'));
-      // 四角拉伸（与回复浮窗一致）
-      enableResizeForQuote($quote);
+      $stack.append($edges);
+      // 把手挂在 .qp-stack 上（解决"内容变高后拖拽条漂移"），但**被拖/被缩放的对象仍是 .qp-quote**：
+      //   .qp-quote 是 .qp-stack 内的 absolute 子元素（top/left/width/height 相对 stack），
+      //   而 .qp-stack 自身带 transform: translate(-50%,-50%)，直接改它的 top/left 会与 transform 打架。
+      enableDragForTop($quote, $quote.find('.qp-header').add($edges.filter('.qp-drag-edge')));
+      // 四角拉伸（与回复浮窗一致），作用对象仍是 .qp-quote，只是把手从 stack 上取
+      enableResizeForQuote($quote, $edges.filter('.qp-resize-corner'));
       $stack.append($quote);
       $overlay.fadeIn(160);
       if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
@@ -14778,10 +14817,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       });
     }
     // 引用浮窗四角拉伸：对角锚定，与回复浮窗交互一致
-    function enableResizeForQuote($quote) {
+    // ★ 作用对象是 .qp-stack（尺寸容器）；不传 corners 时回退到其内部查找
+    function enableResizeForQuote($target, $corners) {
+      const $box = ($target && $target.length) ? $target : $stack;
       const QUOTE_MIN_W = 280;
       const QUOTE_MIN_H = 160;
-      $quote.find('.qp-resize-corner').off('mousedown.qpresize').on('mousedown.qpresize', function (e) {
+      const $handles = ($corners && $corners.length) ? $corners : $box.find('.qp-resize-corner');
+      $handles.off('mousedown.qpresize').on('mousedown.qpresize', function (e) {
         if (e.button !== 0) return;
         const dir = this.getAttribute('data-dir') || '';
         if (!dir) return;
@@ -14789,12 +14831,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         e.stopPropagation();
         const startX = e.clientX;
         const startY = e.clientY;
-        const startRect = $quote[0].getBoundingClientRect();
-        const startTop = parseFloat($quote.css('top')) || 0;
-        const startLeft = parseFloat($quote.css('left')) || 0;
+        const startRect = $box[0].getBoundingClientRect();
+        const startTop = parseFloat($box.css('top')) || 0;
+        const startLeft = parseFloat($box.css('left')) || 0;
         const startW = startRect.width;
         const startH = startRect.height;
-        $quote.addClass('is-resizing');
+        $box.addClass('is-resizing');
         $overlay.data('isDragging', true); // 避免缩放结束点到遮罩误关
         const onMove = (ev) => {
           ev.preventDefault();
@@ -14826,7 +14868,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           const maxH = window.innerHeight;
           if (w > maxW) w = maxW;
           if (h > maxH) h = maxH;
-          $quote.css({
+          $box.css({
             width: w + 'px',
             height: h + 'px',
             maxHeight: 'none',
@@ -14835,7 +14877,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           });
         };
         const onUp = () => {
-          $quote.removeClass('is-resizing');
+          $box.removeClass('is-resizing');
           // 在捕获阶段拦截紧随 mouseup 的 click，防止误触关闭引用浮窗
           const overlayEl = $overlay[0];
           const eatClick = (ev) => {
@@ -31748,7 +31790,20 @@ function 注册自动保存编辑() {
     if (threadHistoryScrollTrackingInstalled) return;
     threadHistoryScrollTrackingInstalled = true;
     let scrollTimer = 0;
+    // ★ 只认"用户主动滚动"：无缝翻页追加内容会改变 scrollHeight 并触发 scroll，
+    //   若不加武装，会把"新加载页的末尾"误记为阅读位置（下次打开就直接跳到页尾）。
+    let userScrollArmed = false;
+    let armTimer = 0;
+    const armUserScroll = () => {
+      userScrollArmed = true;
+      if (armTimer) clearTimeout(armTimer);
+      armTimer = setTimeout(() => { userScrollArmed = false; }, 1000);
+    };
+    ['wheel', 'touchstart', 'touchmove', 'keydown', 'mousedown'].forEach((evt) => {
+      window.addEventListener(evt, armUserScroll, { passive: true });
+    });
     window.addEventListener('scroll', () => {
+      if (!userScrollArmed) return;               // 布局变化/程序滚动 → 不算阅读
       if (scrollTimer) return;
       scrollTimer = setTimeout(() => {
         scrollTimer = 0;
@@ -31772,7 +31827,7 @@ function 注册自动保存编辑() {
       }, 1200);
     }, { passive: true });
     window.addEventListener('pagehide', () => {
-      if (isThreadHistoryEnabledNow()) {
+      if (isThreadHistoryEnabledNow() && userScrollArmed) {
         const found = findClosestToViewportCenterReply();
         if (found.id && found.page >= threadHistoryLastReadReplyPage) {
           threadHistoryLastReadReplyId = found.id;
@@ -36738,22 +36793,49 @@ function initReplyParamScrollTo() {
       const hasPage = item && Number(item.lastReadReplyPage) >= 1;
       const targetPage = hasPage ? Math.max(1, Number(item.lastReadReplyPage)) : Math.max(1, Number(parsed.page) || 1);
       if (!/^\d{6,8}$/.test(target)) return;
-      // 阅读位置单调不降：lastReadReplyPage 恒 ≤ 当前页，正常情况等于当前 URL 页；
-      // 存量数据缺页码 → targetPage 回退为当前页，页内尝试即可（不跨页跳转）
-      const scrollTarget = () => document.querySelector('.h-threads-list [data-threads-id="' + target + '"]');
+      // ★★ 只允许"直接打开该页"时恢复；无缝翻页推进到的页**绝不**自动跳转。
+      //   （否则：在末页前一页读到底触发无缝翻页，末页锚点被追加进 DOM → 立刻被拉到页尾，
+      //     用户会看到页面凭空跳下去。）
+      //   两道闸门：
+      //     ① 目标页 ≠ 当前 URL 页 → 直接放弃（cross-page 一律不跳）；
+      //     ② 目标元素必须属于**当前页容器**（首页原生 DOM 无 data-cloned-page；
+      //        无缝追加的容器带 data-cloned-page=N），克隆页里的同名锚点不认。
+      const urlPage = Math.max(1, Number(parsed.page) || 1);
+      if (Number(targetPage) !== urlPage) return;
+      const inCurrentPageScope = (el) => {
+        if (!el) return false;
+        const container = el.closest('.h-threads-item-replies');
+        if (!container) return true;                      // 首页原生回复区（无包装容器）
+        const cloned = Number(container.getAttribute('data-cloned-page')) || 0;
+        return !cloned || cloned === urlPage;             // 克隆页：必须等于当前页
+      };
+      const scrollTarget = () => {
+        const all = document.querySelectorAll('.h-threads-list [data-threads-id="' + target + '"]');
+        for (let i = 0; i < all.length; i += 1) {
+          if (inCurrentPageScope(all[i])) return all[i];
+        }
+        return null;
+      };
+      // 无缝翻页发生即停止轮询：轮询只为等首屏渲染，绝不能跨到新追加的页
+      let stopped = false;
+      const stop = () => { stopped = true; };
+      try { document.addEventListener('SeamlessPageAppended', stop, { once: true }); } catch (e) {}
       let attempts = 0;
       const tryScroll = () => {
+        if (stopped) return;
         const el = scrollTarget();
         if (el) {
           el.scrollIntoView({ block: 'center', behavior: 'auto' });
           setTimeout(() => {
+            if (stopped) return;
             try {
-              if (el.isConnected) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+              if (el.isConnected && inCurrentPageScope(el)) el.scrollIntoView({ block: 'center', behavior: 'auto' });
             } catch (e) {}
           }, 800);
           return;
         }
-        if (++attempts <= 20) setTimeout(tryScroll, 300);
+        // 轮询窗口：只为等首屏渲染（约 2s）；不再覆盖"用户停留后触发翻页"的时段
+        if (++attempts <= 8) setTimeout(tryScroll, 250);
       };
       tryScroll();
     } catch (e) { /* 恢复失败不影响页面 */ }
