@@ -27,6 +27,15 @@ function extractFn(name) {
 const fnSrc = extractFn('bindF5ToSeamlessRefresh');
 const lastSrc = extractFn('isSeamlessThreadLastPage');
 const pagSrc = extractFn('getSeamlessBottomPagination');
+// F5 现在有本站守卫：沙箱必须提供真实判据（否则 xdexApexOfHost is not defined）
+const apexSrc = (() => {
+  const anchor = 'function xdexApexOfHost(host) {';
+  const start = src.indexOf(anchor);
+  assert(start !== -1, 'xdexApexOfHost 必须存在');
+  const end = src.indexOf('\n}', start);
+  assert(end > start, 'xdexApexOfHost 必须闭合');
+  return src.slice(start, end + 2);
+})();
 
 // 造一个极简 document：可派发 keydown、可返回按钮与 computedStyle、可配置翻页条末页与否
 function makeEnv(opts) {
@@ -48,14 +57,15 @@ function makeEnv(opts) {
     },
     // 被测函数依赖的外部工具
     __pags: o.pags || [],
-    location: { reload: () => { reloads.count += 1; } },
+    // 默认本站；用例可传 o.hostname 切到其它域（如野生搜索酱）验证守卫
+    location: { hostname: o.hostname || 'www.nmbxd.com', reload: () => { reloads.count += 1; } },
     getXDexRuntimeInfo: () => ({ kind: o.kind || 'extension' })
   };
   const sandbox = Object.assign({}, env, o.extra || {});
   // 沙箱内提供可控时钟（vm 内的 Date 与宿主不同，必须显式注入）
   sandbox.Date = { now: () => sandbox.__now };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(pagSrc + '\n' + fnSrc + '\n' + lastSrc + '\nthis.bind = bindF5ToSeamlessRefresh;', ctx);
+  vm.runInContext(apexSrc + '\n' + pagSrc + '\n' + fnSrc + '\n' + lastSrc + '\nthis.bind = bindF5ToSeamlessRefresh;', ctx);
   sandbox.bind();
   return { clicks, reloads, fire: (ev) => handler(ev), btn, sandbox };
 }
@@ -188,6 +198,25 @@ test('QwQNT 输入框内：仍保留热载（原有行为不丢）', () => {
   env.fire(e);
   assert(env.reloads.count === 1, '输入框内按 F5 必须热载');
   assert(env.clicks.length === 0, '不得触发局部刷新');
+});
+
+test('★ 非本站（QwQNT）：完全放行，由宿主统一整页刷新', () => {
+  // 脚本会被注入 nmb-search.166666666.xyz（@match 第三条），但那里没有"串内末页"语义。
+  // 刷新由宿主 main 的 before-input-event 负责（非 nmbxd 站点一律 reload）；
+  // 页面侧若也刷一次 → 同一次 F5 刷两遍。因此这里必须完全不动作。
+  const env = makeEnv({ hostname: 'nmb-search.166666666.xyz', display: 'flex', hasNext: false, kind: 'qwqnt' });
+  const e = makeKey();
+  env.fire(e);
+  assert(env.clicks.length === 0, '非本站不得触发局部刷新');
+  assert(env.reloads.count === 0, '页面侧不得 reload（宿主负责），实际 ' + env.reloads.count);
+  assert(!e.__prevented, '必须放行按键，交给宿主处理');
+});
+
+test('★ 非本站（浏览器/扩展端）：同样完全放行', () => {
+  const env = makeEnv({ hostname: 'nmb-search.166666666.xyz', display: 'flex', hasNext: false, kind: 'extension' });
+  const e = makeKey();
+  env.fire(e);
+  assert(env.clicks.length === 0 && env.reloads.count === 0 && !e.__prevented, 'must fully pass through');
 });
 
 test('QwQNT 按钮不存在时：仍然热载（不静默失效）', () => {

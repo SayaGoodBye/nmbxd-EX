@@ -259,6 +259,16 @@ function xdexEarlyDarkEnabled() {
         '.xdex-board-refresh-btn:disabled{opacity:.55;cursor:default}' +
         '.xdex-board-history-btn.xdex-history-added{color:#0a8a0a}' +
         '.xdex-edit-default-btn{display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:none;cursor:pointer;color:inherit;flex-shrink:0;vertical-align:middle;margin-right:2px;}' +
+        // ★ 圆角方框外观（与 .xdex-icon-btn 逐条等价），单独成一个类而不是直接复用 .xdex-icon-btn：
+        //   .xdex-edit-default-btn 是齿轮/铅笔等"无框图标按钮"的公共类，还用在
+        //   kaomoji-undo-btn / kaomoji-reset-btn / 默认饼干编辑等位置；把框加在公共类上会连带改一批按钮。
+        //   只有明确需要外框的按钮才挂 .xdex-boxed-btn。
+        //   尺寸/圆角/配色必须与设置面板里 sp_openThreadExport、sp_openImageViewer 那几个 30×30 按钮一致，
+        //   否则同一行里几个按钮大小不一（用户就此报过）。
+        '.xdex-edit-default-btn.xdex-boxed-btn{width:30px;height:30px;padding:0;border:1px solid var(--xdex-sp-border,#bfa58f);border-radius:8px;background:var(--xdex-sp-panel-bg,#F0E0D6);box-sizing:border-box;}' +
+        '.xdex-edit-default-btn.xdex-boxed-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-edit-default-btn.xdex-boxed-btn:active{border-color:#00b386 !important;color:#00b386 !important;}' +
+        ':root.xdex-custom-dark .xdex-edit-default-btn.xdex-boxed-btn,:root.xdex-darkreader-active .xdex-edit-default-btn.xdex-boxed-btn{background:#2b2c2d;border-color:#555;color:#d9d0d0;}' +
         '.xdex-edit-default-btn:hover{color:#00ffcc !important;}' +
         '#xdex-image-viewer.xdex-iv-no-sep .xv-page-separator{display:none !important;}' +
         ':root.xdex-custom-dark .kaomoji-item.kaomoji-active{background:#3a3d40 !important;}';
@@ -2308,7 +2318,7 @@ function xdexEarlyDarkEnabled() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label><button type="button" id="sp_openDefaultSubscriptionFeed" class="xdex-edit-default-btn" style="margin-left:4px;" title="设置默认订阅号">${XDEX_ICON_GEAR}</button></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label><button type="button" id="sp_openDefaultSubscriptionFeed" class="xdex-edit-default-btn xdex-boxed-btn" style="margin-left:4px;" title="设置默认订阅号">${XDEX_ICON_GEAR}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadExport" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadExport"> 导出串</label><button type="button" id="sp_openThreadExport" class="xdex-icon-btn" style="margin-left:4px;" title="打开导出窗口">${XDEX_EXPORT_ICON}</button></div>
@@ -12178,6 +12188,18 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         document.addEventListener('keydown', (e) => {
           if (e.key !== 'F5' && e.keyCode !== 116) return;
           if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+          // ★ 只在 nmbxd 站点（nmbxd1.com / nmbxd.com 及其子域）做「末页局部刷新」接管。
+          //   非 nmbxd 站点（野生搜索酱、第三方站、@match 之外的注入环境）一律走**默认整页刷新**，
+          //   理由：那里没有"串内末页"语义，接管局部刷新只会让用户失去正常的刷新行为。
+          //   xdexApexOfHost 对非本站返回 ''，是全局唯一的"是否 nmbxd 站点"判据，勿另写域名比较。
+          //
+          //   ⚠ 非本站**不能只是 return**：QwQNT(Electron) 没有浏览器默认的 F5 刷新行为，
+          //   直接 return 会让搜索页按 F5 完全无反应（用户实测：只有 Ctrl+F5 能刷新）。
+          //   兜底分两处、且只承担其一，避免与宿主重复刷新：
+          //     · QwQNT：宿主 main 的 before-input-event 已对「非 nmbxd 站点」统一 reload，
+          //       这里**必须放行**（不 preventDefault、不 reload），否则同一次 F5 会刷两遍。
+          //     · 浏览器/扩展端：浏览器自带 F5，同样放行即可。
+          if (!xdexApexOfHost(location.hostname)) return;
           try {
             const t = e.target;
             const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
@@ -13123,6 +13145,30 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     function withHdRetryBuster(url, attempt) {
       return url + (url.includes('?') ? '&' : '?') + 'xdexHdRetry=' + attempt;
     }
+    // 把 <img> 的 width/height **属性**恢复成缩略图尺寸。
+    // 失败回退时必须调用：属性决定非激活渲染尺寸，属性停在原图尺寸而 src 是缩略图会被拉伸。
+    // 尺寸来源：缩略图地址的游离 Image（浏览器缓存命中，通常同步可用）；取不到就删属性交给浏览器。
+    function restoreThumbSizeAttrs(img) {
+      const thumbSrc = img && img.dataset ? img.dataset.xdexThumbSrc : '';
+      if (!img || !thumbSrc) return;
+      // 与"原图就绪"路径保持同一写法：只写 width、删掉 height，
+      // 让浏览器按缩略图固有宽高比推算高度（写死两个属性会在被 max-width 压缩时变形）。
+      const apply = (w) => {
+        if (!(w > 0)) return;
+        if (img.getAttribute('width') !== String(w)) img.setAttribute('width', String(w));
+        if (img.hasAttribute('height')) img.removeAttribute('height');
+      };
+      try {
+        const probe = new Image();
+        probe.onload = () => apply(probe.naturalWidth | 0);
+        probe.onerror = () => {
+          // 拿不到缩略图尺寸：删掉属性，让浏览器按图片自身比例渲染（优于保留错误的原图尺寸）
+          try { img.removeAttribute('width'); img.removeAttribute('height'); } catch (e) {}
+        };
+        probe.src = thumbSrc;
+        if (probe.complete && probe.naturalWidth > 0) apply(probe.naturalWidth | 0);
+      } catch (e) {}
+    }
     function startHdAttempt(img, hdUrl, attempt, onSettled, baseHdUrl) {
       const rawHdUrl = baseHdUrl || hdUrl;   // 重试参数始终基于原始地址构造，避免 ?xdexHdRetry=1&xdexHdRetry=2 累积
       const thumbSrc = img.dataset.xdexThumbSrc || '';
@@ -13137,7 +13183,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           hdFailedCooldown.delete(img);
         } else {
           hdFailedCooldown.set(img, nowTs() + HD_RETRY_COOLDOWN_MS);
-          if (thumbSrc) img.src = thumbSrc;
+          if (thumbSrc) {
+            img.src = thumbSrc;
+            // ★ 回退缩略图时，width/height 属性也要回到缩略图尺寸：
+            //   否则原图尺寸属性 + 缩略图 src 会被拉伸放大（属性决定渲染尺寸）。
+            //   prepare() 在首次接触该图时记录过缩略图地址，缩略图尺寸以该地址的图片为准。
+            try { restoreThumbSizeAttrs(img); } catch (e) {}
+          }
         }
         if (typeof onSettled === 'function') { try { onSettled(ok); } catch (e) {} }
         // 唤醒"等这条链结束"的后来者（它们的槽位也要归还）
@@ -13168,6 +13220,33 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (probe) {
         probe.onload = () => {
           try { img.src = hdUrl; } catch (e) {}
+          // ★ 必须把原图真实尺寸写回 <img> 的 width/height **HTML 属性**：
+          //   站点给缩略图写的是 width/height 属性（缩略图尺寸），它优先于图片自身像素决定渲染尺寸。
+          //   只换 src 而不改属性时，原图仍按缩略图尺寸渲染 —— 实测 1200×900 的原图被
+          //   锁在 120×90（用户实测："很多图片都被固定到了缩略图未激活的宽度"）。
+          //   另外 applyResizeForRotation 也读 img.width（属性值）算旋转偏移，不同步会连带错位。
+          //   在 probe.onload 里写：此时原图已解码，naturalWidth/Height 必定是原图尺寸。
+          try {
+            const nw = probe.naturalWidth | 0;
+            if (nw > 0) {
+              // ★ 只写 width 属性、删掉 height 属性 —— 这是唯一稳定的写法：
+              //   · 站点给缩略图写的 width/height 属性会**锁死**渲染尺寸（属性优先于图片像素），
+              //     不更新就连 1200×900 的原图也只显示 120×90（用户实测的"固定到缩略图宽度"）。
+              //   · 但两个属性都写死会拉伸变形：站点用 max-width:100% 压宽，高度不跟着变，
+              //     实测 1200×900 在 600 宽容器里渲染成 600×900（比例 0.667 ✗）。
+              //   · 改加 height:auto 也不行：applyImageSize / 取消激活都会写 img.style.height
+              //     （内联样式），会把 height:auto 覆盖掉，比例又坏掉。
+              //   · 删掉 height 属性后，浏览器按图片**固有宽高比**自动推高度，
+              //     配合站点 max-width:100% 正好等比缩放（600×450，比例 1.333 ✓），
+              //     且不受任何内联 style.height 影响。实测三种时机均稳定。
+              if (img.getAttribute('width') !== String(nw)) {
+                img.setAttribute('width', String(nw));
+              }
+              if (img.hasAttribute('height')) {
+                img.removeAttribute('height');
+              }
+            }
+          } catch (e) {}
           finishAttempt(true);
           // ★ 原图到位后必须重算"激活态"尺寸：
           //   handleActiveImageBox 用的是 img.naturalWidth/Height，若激活发生在原图就绪**之前**，
@@ -13902,8 +13981,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
               aHeight: anchor.style.height || '',
               imgWidth: img.style.width || '',
               imgHeight: img.style.height || '',
-              imgNaturalWidth: img.width || 0,
-              imgNaturalHeight: img.height || 0
+              // ★ 记 width/height **属性**（站点按它决定非激活渲染尺寸）。
+              //   这里必须区分两种状态：原图已就绪时要记原图尺寸，否则收起后会把属性写回
+              //   缩略图尺寸（site 的属性是缩略图值），表现为"加载完成后宽度又变回缩略图宽"。
+              //   img.width 读的就是属性值，用 naturalWidth（原图已加载时即原图尺寸）更可靠。
+              imgNaturalWidth: (img.dataset.xdexHdLoaded === '1' ? (img.naturalWidth | 0) : 0) || img.width || 0,
+              imgNaturalHeight: (img.dataset.xdexHdLoaded === '1' ? (img.naturalHeight | 0) : 0) || img.height || 0
             };
           }
           const shouldOpen = !box.classList.contains('h-active');
@@ -13946,11 +14029,16 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                 anchor.style.height = initial.aHeight || '';
                 img.style.width = initial.imgWidth || '';
                 img.style.height = initial.imgHeight || '';
-                if (!initial.imgWidth && initial.imgNaturalWidth) {
-                  img.width = initial.imgNaturalWidth;
-                }
-                if (!initial.imgHeight && initial.imgNaturalHeight) {
-                  img.height = initial.imgNaturalHeight;
+                // ★ 原图已加载时不要把属性写回缩略图尺寸：
+                //   否则每"展开→收起"一次就把 width/height 属性重新锁成缩略图值，
+                //   与 probe.onload 的原图尺寸同步互相打架（用户实测：加载完成后宽度仍是缩略图宽）。
+                if (img.dataset.xdexHdLoaded !== '1') {
+                  if (!initial.imgWidth && initial.imgNaturalWidth) {
+                    img.width = initial.imgNaturalWidth;
+                  }
+                  if (!initial.imgHeight && initial.imgNaturalHeight) {
+                    img.height = initial.imgNaturalHeight;
+                  }
                 }
               }
               // 触发布局恢复
@@ -22166,10 +22254,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                   background: #fafafa;
                   border: 1px dashed #bbb;
                 }
-                /* 编辑模式三按钮：统一尺寸/圆角/hover 底，状态差异只用颜色与禁用态表达 */
-                .kaomoji-manage-btn,
-                .kaomoji-undo-btn,
-                .kaomoji-reset-btn {
+                /* 编辑模式三按钮：统一尺寸/圆角/hover 底，状态差异只用颜色与禁用态表达。
+                   ⚠ 必须排除 .xdex-boxed-btn：本样式块在 .xdex-boxed-btn 规则**之后**注入
+                   （boxed 走 xdex-icon-btn-global，本块在颜文字面板初始化时 22352 行才 append），
+                   后注入者胜出，这里的 border:0 / background:none / border-radius:4px 会把
+                   圆角方框整个抹掉（实测三按钮虽同为 30×30，但无边框无背景）。 */
+                .kaomoji-manage-btn:not(.xdex-boxed-btn),
+                .kaomoji-undo-btn:not(.xdex-boxed-btn),
+                .kaomoji-reset-btn:not(.xdex-boxed-btn) {
                     -webkit-appearance: none;
                     appearance: none;
                     display: inline-flex;
@@ -22186,10 +22278,27 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                     flex: 0 0 auto;
                     transition: color .15s ease, background-color .15s ease, opacity .15s ease;
                 }
-                .kaomoji-manage-btn:hover,
-                .kaomoji-undo-btn:hover,
-                .kaomoji-reset-btn:hover { background: rgba(127, 127, 127, .18); }
-                body.kaomoji-editing .kaomoji-manage-btn { color: #00FFCC; background: rgba(0, 255, 204, .16); }
+                /* 加框态：尺寸/边框/背景交给 .xdex-boxed-btn，这里只补交互与状态色 */
+                .kaomoji-manage-btn.xdex-boxed-btn,
+                .kaomoji-undo-btn.xdex-boxed-btn,
+                .kaomoji-reset-btn.xdex-boxed-btn {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 2px 0 0;
+                    font: inherit;
+                    cursor: pointer;
+                    flex: 0 0 auto;
+                    transition: color .15s ease, background-color .15s ease, opacity .15s ease;
+                }
+                .kaomoji-manage-btn:not(.xdex-boxed-btn):hover,
+                .kaomoji-undo-btn:not(.xdex-boxed-btn):hover,
+                .kaomoji-reset-btn:not(.xdex-boxed-btn):hover { background: rgba(127, 127, 127, .18); }
+                body.kaomoji-editing .kaomoji-manage-btn { color: #00FFCC; }
+                body.kaomoji-editing .kaomoji-manage-btn.xdex-boxed-btn { border-color: #00FFCC; background: rgba(0, 255, 204, .16); }
+                body.kaomoji-editing .kaomoji-manage-btn:not(.xdex-boxed-btn) { background: rgba(0, 255, 204, .16); }
                 body.kaomoji-editing .kaomoji-manage-btn:hover { background: rgba(0, 255, 204, .26); }
                 .kaomoji-undo-btn { position: relative; }
                 /* 回收站数量角标（>0 时显示） */
@@ -22302,7 +22411,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             // 自定义颜文字编辑入口（铅笔图标，样式对齐默认饼干设置的齿轮按钮）
             const manageBtn = document.createElement('button');
             manageBtn.type = 'button';
-            manageBtn.className = 'xdex-edit-default-btn kaomoji-manage-btn';
+            // ★ 只给编辑入口（铅笔）加外框：undo/reset 与本按钮共用 .kaomoji-*-btn 那组共享规则，
+            //   改共享规则会连带改掉另外两个按钮的观感
+            manageBtn.className = 'xdex-edit-default-btn kaomoji-manage-btn xdex-boxed-btn';
             manageBtn.title = '编辑颜文字（删除/添加）';
             manageBtn.innerHTML = XDEX_ICON_KAO_EDIT;
             manageBtn.addEventListener('click', (e) => {
@@ -22390,7 +22501,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             }
             const resetBtn = document.createElement('button');
             resetBtn.type = 'button';
-            resetBtn.className = 'xdex-edit-default-btn kaomoji-reset-btn';
+            // ★ 与铅笔同排（编辑模式下三者同时可见），必须同样挂 .xdex-boxed-btn：
+            //   否则 30×30 带框的铅笔旁边是 22×22 无框按钮，尺寸与观感都不齐。
+            resetBtn.className = 'xdex-edit-default-btn kaomoji-reset-btn xdex-boxed-btn';
             resetBtn.title = '重置颜文字面板为默认状态';
             resetBtn.innerHTML = XDEX_ICON_KAO_RESET;
             resetBtn.style.display = 'none';
@@ -23106,7 +23219,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             // 撤回按钮：仅编辑模式可见，位于「重置」之前（紧邻铅笔）
             const undoBtn = document.createElement('button');
             undoBtn.type = 'button';
-            undoBtn.className = 'xdex-edit-default-btn kaomoji-undo-btn';
+            // 同上：与铅笔、重置同排同尺寸，禁用态仅靠 opacity 表达，不再靠"无框"区分
+            undoBtn.className = 'xdex-edit-default-btn kaomoji-undo-btn xdex-boxed-btn';
             undoBtn.title = '回收站（空）';
             undoBtn.innerHTML = XDEX_ICON_KAO_UNDO;
             undoBtn.style.display = 'none';

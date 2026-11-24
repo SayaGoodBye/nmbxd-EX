@@ -259,6 +259,16 @@ function xdexEarlyDarkEnabled() {
         '.xdex-board-refresh-btn:disabled{opacity:.55;cursor:default}' +
         '.xdex-board-history-btn.xdex-history-added{color:#0a8a0a}' +
         '.xdex-edit-default-btn{display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:none;cursor:pointer;color:inherit;flex-shrink:0;vertical-align:middle;margin-right:2px;}' +
+        // ★ 圆角方框外观（与 .xdex-icon-btn 逐条等价），单独成一个类而不是直接复用 .xdex-icon-btn：
+        //   .xdex-edit-default-btn 是齿轮/铅笔等"无框图标按钮"的公共类，还用在
+        //   kaomoji-undo-btn / kaomoji-reset-btn / 默认饼干编辑等位置；把框加在公共类上会连带改一批按钮。
+        //   只有明确需要外框的按钮才挂 .xdex-boxed-btn。
+        //   尺寸/圆角/配色必须与设置面板里 sp_openThreadExport、sp_openImageViewer 那几个 30×30 按钮一致，
+        //   否则同一行里几个按钮大小不一（用户就此报过）。
+        '.xdex-edit-default-btn.xdex-boxed-btn{width:30px;height:30px;padding:0;border:1px solid var(--xdex-sp-border,#bfa58f);border-radius:8px;background:var(--xdex-sp-panel-bg,#F0E0D6);box-sizing:border-box;}' +
+        '.xdex-edit-default-btn.xdex-boxed-btn:hover{border-color:#00ffcc !important;color:#00ffcc !important;}' +
+        '.xdex-edit-default-btn.xdex-boxed-btn:active{border-color:#00b386 !important;color:#00b386 !important;}' +
+        ':root.xdex-custom-dark .xdex-edit-default-btn.xdex-boxed-btn,:root.xdex-darkreader-active .xdex-edit-default-btn.xdex-boxed-btn{background:#2b2c2d;border-color:#555;color:#d9d0d0;}' +
         '.xdex-edit-default-btn:hover{color:#00ffcc !important;}' +
         '#xdex-image-viewer.xdex-iv-no-sep .xv-page-separator{display:none !important;}' +
         ':root.xdex-custom-dark .kaomoji-item.kaomoji-active{background:#3a3d40 !important;}';
@@ -2308,7 +2318,7 @@ function xdexEarlyDarkEnabled() {
                   </select>
                 </div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableFavoriteThreads" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableFavoriteThreads"> 常用串</label></div>
-                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label><button type="button" id="sp_openDefaultSubscriptionFeed" class="xdex-edit-default-btn" style="margin-left:4px;" title="设置默认订阅号">${XDEX_ICON_GEAR}</button></div>
+                <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableSubscriptionFeed" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableSubscriptionFeed"> 我的订阅</label><button type="button" id="sp_openDefaultSubscriptionFeed" class="xdex-edit-default-btn xdex-boxed-btn" style="margin-left:4px;" title="设置默认订阅号">${XDEX_ICON_GEAR}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableImageViewerMode" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableImageViewerMode"> 阅图模式</label><input type="checkbox" id="sp_imageViewerSeparators" class="xdex-switch" role="switch"><label for="sp_imageViewerSeparators"> 分隔线</label><button type="button" id="sp_openImageViewer" class="xdex-icon-btn" style="margin-left:4px;" title="打开阅图模式">${XDEX_ICON_IMAGE}</button></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_autoSelectReportReason" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_autoSelectReportReason"> 值班室优化</label></div>
                 <div style="${checkboxRowStyle}"><input type="checkbox" id="sp_enableThreadExport" class="xdex-switch fixed-on" role="switch" checked disabled><label for="sp_enableThreadExport"> 导出串</label><button type="button" id="sp_openThreadExport" class="xdex-icon-btn" style="margin-left:4px;" title="打开导出窗口">${XDEX_EXPORT_ICON}</button></div>
@@ -12178,6 +12188,18 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         document.addEventListener('keydown', (e) => {
           if (e.key !== 'F5' && e.keyCode !== 116) return;
           if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+          // ★ 只在 nmbxd 站点（nmbxd1.com / nmbxd.com 及其子域）做「末页局部刷新」接管。
+          //   非 nmbxd 站点（野生搜索酱、第三方站、@match 之外的注入环境）一律走**默认整页刷新**，
+          //   理由：那里没有"串内末页"语义，接管局部刷新只会让用户失去正常的刷新行为。
+          //   xdexApexOfHost 对非本站返回 ''，是全局唯一的"是否 nmbxd 站点"判据，勿另写域名比较。
+          //
+          //   ⚠ 非本站**不能只是 return**：QwQNT(Electron) 没有浏览器默认的 F5 刷新行为，
+          //   直接 return 会让搜索页按 F5 完全无反应（用户实测：只有 Ctrl+F5 能刷新）。
+          //   兜底分两处、且只承担其一，避免与宿主重复刷新：
+          //     · QwQNT：宿主 main 的 before-input-event 已对「非 nmbxd 站点」统一 reload，
+          //       这里**必须放行**（不 preventDefault、不 reload），否则同一次 F5 会刷两遍。
+          //     · 浏览器/扩展端：浏览器自带 F5，同样放行即可。
+          if (!xdexApexOfHost(location.hostname)) return;
           try {
             const t = e.target;
             const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
@@ -13123,6 +13145,30 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     function withHdRetryBuster(url, attempt) {
       return url + (url.includes('?') ? '&' : '?') + 'xdexHdRetry=' + attempt;
     }
+    // 把 <img> 的 width/height **属性**恢复成缩略图尺寸。
+    // 失败回退时必须调用：属性决定非激活渲染尺寸，属性停在原图尺寸而 src 是缩略图会被拉伸。
+    // 尺寸来源：缩略图地址的游离 Image（浏览器缓存命中，通常同步可用）；取不到就删属性交给浏览器。
+    function restoreThumbSizeAttrs(img) {
+      const thumbSrc = img && img.dataset ? img.dataset.xdexThumbSrc : '';
+      if (!img || !thumbSrc) return;
+      // 与"原图就绪"路径保持同一写法：只写 width、删掉 height，
+      // 让浏览器按缩略图固有宽高比推算高度（写死两个属性会在被 max-width 压缩时变形）。
+      const apply = (w) => {
+        if (!(w > 0)) return;
+        if (img.getAttribute('width') !== String(w)) img.setAttribute('width', String(w));
+        if (img.hasAttribute('height')) img.removeAttribute('height');
+      };
+      try {
+        const probe = new Image();
+        probe.onload = () => apply(probe.naturalWidth | 0);
+        probe.onerror = () => {
+          // 拿不到缩略图尺寸：删掉属性，让浏览器按图片自身比例渲染（优于保留错误的原图尺寸）
+          try { img.removeAttribute('width'); img.removeAttribute('height'); } catch (e) {}
+        };
+        probe.src = thumbSrc;
+        if (probe.complete && probe.naturalWidth > 0) apply(probe.naturalWidth | 0);
+      } catch (e) {}
+    }
     function startHdAttempt(img, hdUrl, attempt, onSettled, baseHdUrl) {
       const rawHdUrl = baseHdUrl || hdUrl;   // 重试参数始终基于原始地址构造，避免 ?xdexHdRetry=1&xdexHdRetry=2 累积
       const thumbSrc = img.dataset.xdexThumbSrc || '';
@@ -13137,7 +13183,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           hdFailedCooldown.delete(img);
         } else {
           hdFailedCooldown.set(img, nowTs() + HD_RETRY_COOLDOWN_MS);
-          if (thumbSrc) img.src = thumbSrc;
+          if (thumbSrc) {
+            img.src = thumbSrc;
+            // ★ 回退缩略图时，width/height 属性也要回到缩略图尺寸：
+            //   否则原图尺寸属性 + 缩略图 src 会被拉伸放大（属性决定渲染尺寸）。
+            //   prepare() 在首次接触该图时记录过缩略图地址，缩略图尺寸以该地址的图片为准。
+            try { restoreThumbSizeAttrs(img); } catch (e) {}
+          }
         }
         if (typeof onSettled === 'function') { try { onSettled(ok); } catch (e) {} }
         // 唤醒"等这条链结束"的后来者（它们的槽位也要归还）
@@ -13168,7 +13220,48 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       if (probe) {
         probe.onload = () => {
           try { img.src = hdUrl; } catch (e) {}
+          // ★ 必须把原图真实尺寸写回 <img> 的 width/height **HTML 属性**：
+          //   站点给缩略图写的是 width/height 属性（缩略图尺寸），它优先于图片自身像素决定渲染尺寸。
+          //   只换 src 而不改属性时，原图仍按缩略图尺寸渲染 —— 实测 1200×900 的原图被
+          //   锁在 120×90（用户实测："很多图片都被固定到了缩略图未激活的宽度"）。
+          //   另外 applyResizeForRotation 也读 img.width（属性值）算旋转偏移，不同步会连带错位。
+          //   在 probe.onload 里写：此时原图已解码，naturalWidth/Height 必定是原图尺寸。
+          try {
+            const nw = probe.naturalWidth | 0;
+            if (nw > 0) {
+              // ★ 只写 width 属性、删掉 height 属性 —— 这是唯一稳定的写法：
+              //   · 站点给缩略图写的 width/height 属性会**锁死**渲染尺寸（属性优先于图片像素），
+              //     不更新就连 1200×900 的原图也只显示 120×90（用户实测的"固定到缩略图宽度"）。
+              //   · 但两个属性都写死会拉伸变形：站点用 max-width:100% 压宽，高度不跟着变，
+              //     实测 1200×900 在 600 宽容器里渲染成 600×900（比例 0.667 ✗）。
+              //   · 改加 height:auto 也不行：applyImageSize / 取消激活都会写 img.style.height
+              //     （内联样式），会把 height:auto 覆盖掉，比例又坏掉。
+              //   · 删掉 height 属性后，浏览器按图片**固有宽高比**自动推高度，
+              //     配合站点 max-width:100% 正好等比缩放（600×450，比例 1.333 ✓），
+              //     且不受任何内联 style.height 影响。实测三种时机均稳定。
+              if (img.getAttribute('width') !== String(nw)) {
+                img.setAttribute('width', String(nw));
+              }
+              if (img.hasAttribute('height')) {
+                img.removeAttribute('height');
+              }
+            }
+          } catch (e) {}
           finishAttempt(true);
+          // ★ 原图到位后必须重算"激活态"尺寸：
+          //   handleActiveImageBox 用的是 img.naturalWidth/Height，若激活发生在原图就绪**之前**，
+          //   当时读到的是缩略图尺寸，__sizeCache 会被永久固定成缩略图大小 ——
+          //   之后即使原图加载完成，再次激活仍然是缩略图大小（用户实测复现）。
+          //   这里在原图就绪时，若该图正处于激活态，强制重算一次。
+          try {
+            const box = img.closest && img.closest('.h-threads-img-box');
+            if (box && box.classList.contains('h-active') && typeof handleImageLayout !== 'undefined' && handleImageLayout && typeof handleImageLayout.handleActiveImageBox === 'function') {
+              // 尺寸来源已变（缩略图 → 原图），必须丢弃旧缓存
+              delete box.__sizeCache;
+              delete box.__maxWidth;
+              handleImageLayout.handleActiveImageBox(box, true);
+            }
+          } catch (e) {}
         };
         probe.onerror = () => finishAttempt(false);
       } else {
@@ -13777,9 +13870,16 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           // 无容器时，兜底用视口宽度
           maxWidth = Math.min(window.innerWidth - 240, 1200);
         }
-          // 如果最大宽度变化或首次计算，重新预计算所有旋转角度的尺寸
-          if (!imgBox.__sizeCache || shouldForceRecalculate || imgBox.__maxWidth !== maxWidth) {
+          // ★ 缓存必须与"尺寸来源"绑定：缓存里存的是**哪张图**（img.src）的尺寸。
+          //   否则：先以缩略图激活（缓存 300×150）→ 原图就绪（src 变了）→ 再次激活时
+          //   __maxWidth 未变且未 force → 直接复用缩略图缓存，表现为"打开过原图的图仍是缩略尺寸"。
+          //   实测：img.src 换图后**同步读 naturalWidth 仍是旧值**，只有下一帧才更新
+          //   （本函数整体跑在 rAF 里，因此这里读到的 naturalWidth 是准确的）。
+          const sizeSourceKey = String(img.currentSrc || img.src || '');
+          const sourceChanged = imgBox.__sizeSource !== sizeSourceKey;
+          if (!imgBox.__sizeCache || shouldForceRecalculate || imgBox.__maxWidth !== maxWidth || sourceChanged) {
             imgBox.__maxWidth = maxWidth;
+            imgBox.__sizeSource = sizeSourceKey;
             imgBox.__sizeCache = this.precalculateImageSizes(naturalWidth, naturalHeight, maxWidth);
           }
           // 获取当前旋转索引
@@ -13881,8 +13981,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
               aHeight: anchor.style.height || '',
               imgWidth: img.style.width || '',
               imgHeight: img.style.height || '',
-              imgNaturalWidth: img.width || 0,
-              imgNaturalHeight: img.height || 0
+              // ★ 记 width/height **属性**（站点按它决定非激活渲染尺寸）。
+              //   这里必须区分两种状态：原图已就绪时要记原图尺寸，否则收起后会把属性写回
+              //   缩略图尺寸（site 的属性是缩略图值），表现为"加载完成后宽度又变回缩略图宽"。
+              //   img.width 读的就是属性值，用 naturalWidth（原图已加载时即原图尺寸）更可靠。
+              imgNaturalWidth: (img.dataset.xdexHdLoaded === '1' ? (img.naturalWidth | 0) : 0) || img.width || 0,
+              imgNaturalHeight: (img.dataset.xdexHdLoaded === '1' ? (img.naturalHeight | 0) : 0) || img.height || 0
             };
           }
           const shouldOpen = !box.classList.contains('h-active');
@@ -13895,6 +13999,17 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             if (shouldOpen) {
               // 展开
               box.classList.add('h-active');
+              // ★ 若原图此前已成功加载过（xdexHdLoaded==='1'），收起时 src 会被回退成缩略图，
+              //   而 load() 的 ⓪ 步见到该标记会**直接 return**，不会把 src 切回原图 ——
+              //   于是 handleActiveImageBox 读到的是缩略图 naturalWidth，
+              //   表现为"已经用大图尺寸打开过的图，再次点开是缩略图尺寸"。
+              //   这里在计算尺寸之前先把 src 恢复成原图（命中缓存，近乎瞬时）。
+              try {
+                const knownHd = img.dataset.xdexHdSrc;
+                if (img.dataset.xdexHdLoaded === '1' && knownHd && (img.currentSrc || img.src) !== knownHd) {
+                  img.src = knownHd;
+                }
+              } catch (e) {}
               hdImageLazyLoader.load(img, anchor.href, { force: true });
               img.dataset.rotateIndex = '0'; // 重置旋转索引
               // 失败回退由 hdImageLazyLoader 统一处理（含退避重试），这里不再另挂 onerror——
@@ -13914,11 +14029,16 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                 anchor.style.height = initial.aHeight || '';
                 img.style.width = initial.imgWidth || '';
                 img.style.height = initial.imgHeight || '';
-                if (!initial.imgWidth && initial.imgNaturalWidth) {
-                  img.width = initial.imgNaturalWidth;
-                }
-                if (!initial.imgHeight && initial.imgNaturalHeight) {
-                  img.height = initial.imgNaturalHeight;
+                // ★ 原图已加载时不要把属性写回缩略图尺寸：
+                //   否则每"展开→收起"一次就把 width/height 属性重新锁成缩略图值，
+                //   与 probe.onload 的原图尺寸同步互相打架（用户实测：加载完成后宽度仍是缩略图宽）。
+                if (img.dataset.xdexHdLoaded !== '1') {
+                  if (!initial.imgWidth && initial.imgNaturalWidth) {
+                    img.width = initial.imgNaturalWidth;
+                  }
+                  if (!initial.imgHeight && initial.imgNaturalHeight) {
+                    img.height = initial.imgNaturalHeight;
+                  }
                 }
               }
               // 触发布局恢复
@@ -14231,6 +14351,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           const ds = img.getAttribute('data-src');
           if (ds) img.src = ds;
           else if (img.dataset.xdexThumbSrc) img.src = img.dataset.xdexThumbSrc;
+          // ★ 回退到缩略图后必须清掉"原图已加载"标记：
+          //   load() 的 ⓪ 步会在 xdexHdLoaded === '1' 时**直接 return**，不会把 src 切回原图。
+          //   若这里只改 src、不清标记，下一次点击激活会带着缩略图 src 进入
+          //   handleActiveImageBox（naturalWidth 是缩略图尺寸）→ 永远以缩略图大小激活。
+          //   实测症状："已经用大图尺寸打开过的图，再次点开是缩略图尺寸"。
+          delete img.dataset.xdexHdLoaded;
           updatePreviewImageLayout(box);
         }
       });
@@ -14383,11 +14509,19 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         }
         .qp-stack {
           position: fixed;
-          top: 55%; /* 下移一点 */
+          /* ★ 与回复浮窗（.qp-overlay > .qp-stack）保持同一套几何约束：
+             原来 top:55% + height:80vh 会把底边推到视口最下沿（实测 960px 视口里
+             底边在 912px，距底只剩 48px），底部的 10px 拖拽带几乎贴着屏幕边缘，
+             鼠标从下方靠近时先落进 .qp-overlay-quote 遮罩，被当作"点外部"关闭浮窗
+             → 表现为"最下方一条抓不到"。改为居中 + 内容贴合 + 安全边距。 */
+          top: 50%;
           left: 50%;
           transform: translate(-50%, -50%);
           width: min(90vw, 820px);
-          height: 80vh;
+          /* ⚠ 不能用 height:auto：内部的 .qp-quote 是 height:100% / position:absolute，
+             百分比高度需要父元素有确定高度，父元素若为 auto 就会塌缩成 0（实测面板变一条线）。
+             因此保持"确定高度"，但用 calc 扣掉上下安全边距，避免底边贴住视口最下沿。 */
+          height: min(80vh, calc(100vh - 40px));
           overflow: visible;
           box-sizing: border-box;
         }
@@ -14417,7 +14551,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         .qp-overlay-quote .qp-quote {
           position: absolute;
           top: 0; left: 0;
-          width: 100%; max-height: 100%;
+          /* 面板本身给一个基础层级，让上面的把手（z-index 9000）能压过它。
+             两者都是 .qp-stack 的子元素：.qp-quote 还有内联 zIndex（showQuote 写入 1000+depth），
+             若把手层级不够就会被整片盖住 —— 实测只有顶部超出面板 padding 的 10px 还能命中。 */
+          z-index: 1;
+          /* ★ 必须 height:100%（只看 .qp-stack 的尺寸），不能只写 max-height:100%：
+             max-height 只设上限，内容（如激活的大图）变高时 .qp-quote 自身高度会长大，
+             它的盒模型就与 .qp-stack 不再相等。把手虽已挂在 .qp-stack 上，
+             但面板底边/滚动区仍会与容器错位。回复浮窗正是 width/height:100% 的写法。 */
+          width: 100%; height: 100%; max-height: 100%;
           overflow: auto;
           /* 走 darkreader 兼容 token，避免写死 #FFFFEE */
           background: var(--xdex-qp-shell-bg, #FFFFEE);
@@ -14451,42 +14593,48 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         }
         .qp-overlay-quote .qp-quote.is-dragging,
         .qp-overlay-quote .qp-quote.is-resizing { cursor: grabbing !important; user-select: none !important; }
-        /* 引用浮窗四角拉伸（与回复浮窗一致：角=缩放，边=拖动） */
-        /* ★ 引用弹窗的 edges/corners 同样挂在 .qp-stack 上 */
-        .qp-overlay-quote .qp-resize-corner {
-          position: absolute;
-          width: 14px;
-          height: 14px;
-          z-index: 5;
-          pointer-events: auto;
-          background: transparent;
-        }
-        .qp-overlay-quote .qp-resize-corner.nw { top: 0; left: 0; cursor: nwse-resize; }
-        .qp-overlay-quote .qp-resize-corner.ne { top: 0; right: 0; cursor: nesw-resize; }
-        .qp-overlay-quote .qp-resize-corner.sw { bottom: 0; left: 0; cursor: nesw-resize; }
-        .qp-overlay-quote .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; }
-        .qp-overlay-quote .qp-drag-edge.top    { top: 0;    left: 14px; right: 14px; height: 10px; }
-        .qp-overlay-quote .qp-drag-edge.bottom { bottom: 0; left: 14px; right: 14px; height: 10px; }
-        .qp-overlay-quote .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
-        .qp-overlay-quote .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
         #h-ref-view { pointer-events: none !important; }
         #h-ref-view {
           z-index: 20000 !important; /* 保证原生引用框在浮窗之上 */
         }
-        /* 拖拽手柄：四边窄条，仅在手柄区域显示“移动”指针
-           ★ 宿主约束：这些元素必须是 .qp-quote 的**直接子元素**，且用 sticky 粘附——
-             .qp-quote 在滚动态是 overflow-y:auto 的滚动容器，absolute 子元素会随内容
-             一起滚动（拖拽带会跑到浮窗中间甚至跑出容器）；sticky 则固定于滚动视口。 */
-        .qp-drag-edge {
+        /* 拖拽手柄：四边窄条 + 四角拉伸。
+           ★ 宿主约束：**必须挂在 .qp-stack（尺寸容器）上**，不能挂 .qp-quote。
+             .qp-quote 是 absolute + max-height:100% 的滚动容器，内容（如激活大图）变高时
+             它自身高度会长大，挂在它上面的 bottom/left/right 手柄就跟着漂移，
+             表现为"拖拽条不随容器变化"。.qp-stack 是 fixed 的尺寸容器，
+             其几何即用户看到的外框 → 把手始终贴合边缘。
+           （与回复浮窗一致：把手跟随尺寸容器，不跟随内容。） */
+        .qp-overlay-quote .qp-stack > .qp-drag-edge,
+        .qp-overlay-quote .qp-stack > .qp-resize-corner {
           position: absolute;
           pointer-events: auto;
-          z-index: 3;
+          /* ★ 必须高于面板：.qp-quote 拿到的是**内联** zIndex = 1000 + 层深（showQuote 里设置），
+             把手若只写 6/7 会被整片盖住 —— 实测只有顶部露出面板边缘的 10px 还能命中。
+             这里用一个足够大的固定层级（面板层深远小于 1000 层）。 */
+          z-index: 9000;
+        }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge {
+          z-index: 9000;
           cursor: move;
         }
-        .qp-drag-edge.top    { top: 0;    left: 0;    right: 0;  height: 10px; }
-        .qp-drag-edge.bottom { bottom: 0; left: 0;    right: 0;  height: 10px; }
-        .qp-drag-edge.left   { top: 0;    bottom: 0;  left: 0;   width: 10px; }
-        .qp-drag-edge.right  { top: 0;    bottom: 0;  right: 0;  width: 10px; } 
+        /* ★ 上下边条必须**跨出容器边缘**，而不是内收到容器内侧：
+             实测（1168×960）内收 1px 时，可抓带是 y=851..863，而面板可见底边在 y=864 ——
+             用户把鼠标放在"面板底部"上命中的是遮罩，光标不变，于是觉得"底部没有拖拽条"。
+             改为 bottom/top: -4px + height:16px 后，可抓带覆盖面板边缘内外各一段，
+             鼠标落在视觉边缘即可抓住。（顶部对称处理，保持四个方向手感一致。） */
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.top    { top: -4px;    left: 14px; right: 14px; height: 16px; }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.bottom { bottom: -4px; left: 14px; right: 14px; height: 16px; }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.left   { top: 14px; bottom: 14px; left: 0;   width: 10px; }
+        .qp-overlay-quote .qp-stack > .qp-drag-edge.right  { top: 14px; bottom: 14px; right: 0;  width: 10px; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner {
+          width: 14px; height: 14px; background: transparent;
+          /* ★ 与四边同一层级：面板是内联 zIndex 1000+depth，7 会被整片盖住 */
+          z-index: 9000;
+        }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.nw { top: 0;    left: 0;  cursor: nwse-resize; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.ne { top: 0;    right: 0; cursor: nesw-resize; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.sw { bottom: 0; left: 0;  cursor: nesw-resize; }
+        .qp-overlay-quote .qp-stack > .qp-resize-corner.se { bottom: 0; right: 0; cursor: nwse-resize; } 
         /* 标题栏作为拖拽手柄时的指针反馈 */
         .qp-header { cursor: move; }
       `;
@@ -14544,6 +14692,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       //    closest($top) 随即失效、被误判成「点了框外」而误关引用浮窗（jQuery 事件需取 originalEvent）
       const nativeEv = e.originalEvent || e;
       const evPath = typeof nativeEv.composedPath === 'function' ? nativeEv.composedPath() : null;
+      // ★ 把手（.qp-drag-edge / .qp-resize-corner）是 .qp-stack 的**直接子元素**，
+      //   与 .qp-quote 是兄弟关系 → composedPath 里没有 $top[0]，会被误判成"点了框外"
+      //   而直接关掉浮窗（表现为"拖底部条 = 关窗"，用户感知为"底部拖不动"）。
+      //   这里把把手与标题栏一并视为"面板自身"，不触发关闭。
+      const HANDLE_SEL = '.qp-drag-edge, .qp-resize-corner';
+      const inHandles = evPath
+          ? evPath.some((n) => n && n.classList && n.classList.contains && (n.classList.contains('qp-drag-edge') || n.classList.contains('qp-resize-corner')))
+          : !!(e.target && e.target.closest && e.target.closest(HANDLE_SEL));
+      if (inHandles) return;
       const inTopQuote = evPath
           ? evPath.indexOf($top[0]) !== -1
           : !!(e.target && e.target.closest && e.target.closest($top[0]));
@@ -14656,6 +14813,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       $quote.append($content.contents());
       // 在 $quote 内添加四条边框拖拽手柄 + 四角拉伸手柄
 
+      // ★ 把手挂在 .qp-stack（尺寸容器）上，而不是 .qp-quote（滚动容器）：
+      //   .qp-quote 是 absolute + max-height:100% 的滚动容器，内容（如激活大图）变高时
+      //   它自身高度会长大 → 挂在它上面的 bottom/left/right 手柄会漂移，
+      //   表现为"拖拽条不随容器变化"。.qp-stack 的几何才是用户看到的外框。
+      //   既有把手先摘掉，避免叠层时残留上一层的（每层一个 .qp-stack）。
+      $stack.children('.qp-drag-edge, .qp-resize-corner').remove();
       const $edges = $(
         '<div class="qp-drag-edge top"></div>' +
         '<div class="qp-drag-edge bottom"></div>' +
@@ -14666,11 +14829,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         '<div class="qp-resize-corner sw" data-dir="sw"></div>' +
         '<div class="qp-resize-corner se" data-dir="se"></div>'
       );
-      $quote.append($edges);
-      // 仅在标题栏 + 四边手柄上触发拖拽
-      enableDragForTop($quote, $quote.find('.qp-header, .qp-drag-edge'));
-      // 四角拉伸（与回复浮窗一致）
-      enableResizeForQuote($quote);
+      $stack.append($edges);
+      // 把手挂在 .qp-stack 上（解决"内容变高后拖拽条漂移"），但**被拖/被缩放的对象仍是 .qp-quote**：
+      //   .qp-quote 是 .qp-stack 内的 absolute 子元素（top/left/width/height 相对 stack），
+      //   而 .qp-stack 自身带 transform: translate(-50%,-50%)，直接改它的 top/left 会与 transform 打架。
+      enableDragForTop($quote, $quote.find('.qp-header').add($edges.filter('.qp-drag-edge')));
+      // 四角拉伸（与回复浮窗一致），作用对象仍是 .qp-quote，只是把手从 stack 上取
+      enableResizeForQuote($quote, $edges.filter('.qp-resize-corner'));
       $stack.append($quote);
       $overlay.fadeIn(160);
       if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
@@ -14778,10 +14943,13 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       });
     }
     // 引用浮窗四角拉伸：对角锚定，与回复浮窗交互一致
-    function enableResizeForQuote($quote) {
+    // ★ 作用对象是 .qp-stack（尺寸容器）；不传 corners 时回退到其内部查找
+    function enableResizeForQuote($target, $corners) {
+      const $box = ($target && $target.length) ? $target : $stack;
       const QUOTE_MIN_W = 280;
       const QUOTE_MIN_H = 160;
-      $quote.find('.qp-resize-corner').off('mousedown.qpresize').on('mousedown.qpresize', function (e) {
+      const $handles = ($corners && $corners.length) ? $corners : $box.find('.qp-resize-corner');
+      $handles.off('mousedown.qpresize').on('mousedown.qpresize', function (e) {
         if (e.button !== 0) return;
         const dir = this.getAttribute('data-dir') || '';
         if (!dir) return;
@@ -14789,12 +14957,12 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         e.stopPropagation();
         const startX = e.clientX;
         const startY = e.clientY;
-        const startRect = $quote[0].getBoundingClientRect();
-        const startTop = parseFloat($quote.css('top')) || 0;
-        const startLeft = parseFloat($quote.css('left')) || 0;
+        const startRect = $box[0].getBoundingClientRect();
+        const startTop = parseFloat($box.css('top')) || 0;
+        const startLeft = parseFloat($box.css('left')) || 0;
         const startW = startRect.width;
         const startH = startRect.height;
-        $quote.addClass('is-resizing');
+        $box.addClass('is-resizing');
         $overlay.data('isDragging', true); // 避免缩放结束点到遮罩误关
         const onMove = (ev) => {
           ev.preventDefault();
@@ -14826,7 +14994,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           const maxH = window.innerHeight;
           if (w > maxW) w = maxW;
           if (h > maxH) h = maxH;
-          $quote.css({
+          $box.css({
             width: w + 'px',
             height: h + 'px',
             maxHeight: 'none',
@@ -14835,7 +15003,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           });
         };
         const onUp = () => {
-          $quote.removeClass('is-resizing');
+          $box.removeClass('is-resizing');
           // 在捕获阶段拦截紧随 mouseup 的 click，防止误触关闭引用浮窗
           const overlayEl = $overlay[0];
           const eatClick = (ev) => {
@@ -22086,10 +22254,14 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                   background: #fafafa;
                   border: 1px dashed #bbb;
                 }
-                /* 编辑模式三按钮：统一尺寸/圆角/hover 底，状态差异只用颜色与禁用态表达 */
-                .kaomoji-manage-btn,
-                .kaomoji-undo-btn,
-                .kaomoji-reset-btn {
+                /* 编辑模式三按钮：统一尺寸/圆角/hover 底，状态差异只用颜色与禁用态表达。
+                   ⚠ 必须排除 .xdex-boxed-btn：本样式块在 .xdex-boxed-btn 规则**之后**注入
+                   （boxed 走 xdex-icon-btn-global，本块在颜文字面板初始化时 22352 行才 append），
+                   后注入者胜出，这里的 border:0 / background:none / border-radius:4px 会把
+                   圆角方框整个抹掉（实测三按钮虽同为 30×30，但无边框无背景）。 */
+                .kaomoji-manage-btn:not(.xdex-boxed-btn),
+                .kaomoji-undo-btn:not(.xdex-boxed-btn),
+                .kaomoji-reset-btn:not(.xdex-boxed-btn) {
                     -webkit-appearance: none;
                     appearance: none;
                     display: inline-flex;
@@ -22106,10 +22278,27 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
                     flex: 0 0 auto;
                     transition: color .15s ease, background-color .15s ease, opacity .15s ease;
                 }
-                .kaomoji-manage-btn:hover,
-                .kaomoji-undo-btn:hover,
-                .kaomoji-reset-btn:hover { background: rgba(127, 127, 127, .18); }
-                body.kaomoji-editing .kaomoji-manage-btn { color: #00FFCC; background: rgba(0, 255, 204, .16); }
+                /* 加框态：尺寸/边框/背景交给 .xdex-boxed-btn，这里只补交互与状态色 */
+                .kaomoji-manage-btn.xdex-boxed-btn,
+                .kaomoji-undo-btn.xdex-boxed-btn,
+                .kaomoji-reset-btn.xdex-boxed-btn {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 2px 0 0;
+                    font: inherit;
+                    cursor: pointer;
+                    flex: 0 0 auto;
+                    transition: color .15s ease, background-color .15s ease, opacity .15s ease;
+                }
+                .kaomoji-manage-btn:not(.xdex-boxed-btn):hover,
+                .kaomoji-undo-btn:not(.xdex-boxed-btn):hover,
+                .kaomoji-reset-btn:not(.xdex-boxed-btn):hover { background: rgba(127, 127, 127, .18); }
+                body.kaomoji-editing .kaomoji-manage-btn { color: #00FFCC; }
+                body.kaomoji-editing .kaomoji-manage-btn.xdex-boxed-btn { border-color: #00FFCC; background: rgba(0, 255, 204, .16); }
+                body.kaomoji-editing .kaomoji-manage-btn:not(.xdex-boxed-btn) { background: rgba(0, 255, 204, .16); }
                 body.kaomoji-editing .kaomoji-manage-btn:hover { background: rgba(0, 255, 204, .26); }
                 .kaomoji-undo-btn { position: relative; }
                 /* 回收站数量角标（>0 时显示） */
@@ -22222,7 +22411,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             // 自定义颜文字编辑入口（铅笔图标，样式对齐默认饼干设置的齿轮按钮）
             const manageBtn = document.createElement('button');
             manageBtn.type = 'button';
-            manageBtn.className = 'xdex-edit-default-btn kaomoji-manage-btn';
+            // ★ 只给编辑入口（铅笔）加外框：undo/reset 与本按钮共用 .kaomoji-*-btn 那组共享规则，
+            //   改共享规则会连带改掉另外两个按钮的观感
+            manageBtn.className = 'xdex-edit-default-btn kaomoji-manage-btn xdex-boxed-btn';
             manageBtn.title = '编辑颜文字（删除/添加）';
             manageBtn.innerHTML = XDEX_ICON_KAO_EDIT;
             manageBtn.addEventListener('click', (e) => {
@@ -22310,7 +22501,9 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             }
             const resetBtn = document.createElement('button');
             resetBtn.type = 'button';
-            resetBtn.className = 'xdex-edit-default-btn kaomoji-reset-btn';
+            // ★ 与铅笔同排（编辑模式下三者同时可见），必须同样挂 .xdex-boxed-btn：
+            //   否则 30×30 带框的铅笔旁边是 22×22 无框按钮，尺寸与观感都不齐。
+            resetBtn.className = 'xdex-edit-default-btn kaomoji-reset-btn xdex-boxed-btn';
             resetBtn.title = '重置颜文字面板为默认状态';
             resetBtn.innerHTML = XDEX_ICON_KAO_RESET;
             resetBtn.style.display = 'none';
@@ -23026,7 +23219,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             // 撤回按钮：仅编辑模式可见，位于「重置」之前（紧邻铅笔）
             const undoBtn = document.createElement('button');
             undoBtn.type = 'button';
-            undoBtn.className = 'xdex-edit-default-btn kaomoji-undo-btn';
+            // 同上：与铅笔、重置同排同尺寸，禁用态仅靠 opacity 表达，不再靠"无框"区分
+            undoBtn.className = 'xdex-edit-default-btn kaomoji-undo-btn xdex-boxed-btn';
             undoBtn.title = '回收站（空）';
             undoBtn.innerHTML = XDEX_ICON_KAO_UNDO;
             undoBtn.style.display = 'none';
@@ -31748,7 +31942,20 @@ function 注册自动保存编辑() {
     if (threadHistoryScrollTrackingInstalled) return;
     threadHistoryScrollTrackingInstalled = true;
     let scrollTimer = 0;
+    // ★ 只认"用户主动滚动"：无缝翻页追加内容会改变 scrollHeight 并触发 scroll，
+    //   若不加武装，会把"新加载页的末尾"误记为阅读位置（下次打开就直接跳到页尾）。
+    let userScrollArmed = false;
+    let armTimer = 0;
+    const armUserScroll = () => {
+      userScrollArmed = true;
+      if (armTimer) clearTimeout(armTimer);
+      armTimer = setTimeout(() => { userScrollArmed = false; }, 1000);
+    };
+    ['wheel', 'touchstart', 'touchmove', 'keydown', 'mousedown'].forEach((evt) => {
+      window.addEventListener(evt, armUserScroll, { passive: true });
+    });
     window.addEventListener('scroll', () => {
+      if (!userScrollArmed) return;               // 布局变化/程序滚动 → 不算阅读
       if (scrollTimer) return;
       scrollTimer = setTimeout(() => {
         scrollTimer = 0;
@@ -31772,7 +31979,7 @@ function 注册自动保存编辑() {
       }, 1200);
     }, { passive: true });
     window.addEventListener('pagehide', () => {
-      if (isThreadHistoryEnabledNow()) {
+      if (isThreadHistoryEnabledNow() && userScrollArmed) {
         const found = findClosestToViewportCenterReply();
         if (found.id && found.page >= threadHistoryLastReadReplyPage) {
           threadHistoryLastReadReplyId = found.id;
@@ -36738,22 +36945,49 @@ function initReplyParamScrollTo() {
       const hasPage = item && Number(item.lastReadReplyPage) >= 1;
       const targetPage = hasPage ? Math.max(1, Number(item.lastReadReplyPage)) : Math.max(1, Number(parsed.page) || 1);
       if (!/^\d{6,8}$/.test(target)) return;
-      // 阅读位置单调不降：lastReadReplyPage 恒 ≤ 当前页，正常情况等于当前 URL 页；
-      // 存量数据缺页码 → targetPage 回退为当前页，页内尝试即可（不跨页跳转）
-      const scrollTarget = () => document.querySelector('.h-threads-list [data-threads-id="' + target + '"]');
+      // ★★ 只允许"直接打开该页"时恢复；无缝翻页推进到的页**绝不**自动跳转。
+      //   （否则：在末页前一页读到底触发无缝翻页，末页锚点被追加进 DOM → 立刻被拉到页尾，
+      //     用户会看到页面凭空跳下去。）
+      //   两道闸门：
+      //     ① 目标页 ≠ 当前 URL 页 → 直接放弃（cross-page 一律不跳）；
+      //     ② 目标元素必须属于**当前页容器**（首页原生 DOM 无 data-cloned-page；
+      //        无缝追加的容器带 data-cloned-page=N），克隆页里的同名锚点不认。
+      const urlPage = Math.max(1, Number(parsed.page) || 1);
+      if (Number(targetPage) !== urlPage) return;
+      const inCurrentPageScope = (el) => {
+        if (!el) return false;
+        const container = el.closest('.h-threads-item-replies');
+        if (!container) return true;                      // 首页原生回复区（无包装容器）
+        const cloned = Number(container.getAttribute('data-cloned-page')) || 0;
+        return !cloned || cloned === urlPage;             // 克隆页：必须等于当前页
+      };
+      const scrollTarget = () => {
+        const all = document.querySelectorAll('.h-threads-list [data-threads-id="' + target + '"]');
+        for (let i = 0; i < all.length; i += 1) {
+          if (inCurrentPageScope(all[i])) return all[i];
+        }
+        return null;
+      };
+      // 无缝翻页发生即停止轮询：轮询只为等首屏渲染，绝不能跨到新追加的页
+      let stopped = false;
+      const stop = () => { stopped = true; };
+      try { document.addEventListener('SeamlessPageAppended', stop, { once: true }); } catch (e) {}
       let attempts = 0;
       const tryScroll = () => {
+        if (stopped) return;
         const el = scrollTarget();
         if (el) {
           el.scrollIntoView({ block: 'center', behavior: 'auto' });
           setTimeout(() => {
+            if (stopped) return;
             try {
-              if (el.isConnected) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+              if (el.isConnected && inCurrentPageScope(el)) el.scrollIntoView({ block: 'center', behavior: 'auto' });
             } catch (e) {}
           }, 800);
           return;
         }
-        if (++attempts <= 20) setTimeout(tryScroll, 300);
+        // 轮询窗口：只为等首屏渲染（约 2s）；不再覆盖"用户停留后触发翻页"的时段
+        if (++attempts <= 8) setTimeout(tryScroll, 250);
       };
       tryScroll();
     } catch (e) { /* 恢复失败不影响页面 */ }
