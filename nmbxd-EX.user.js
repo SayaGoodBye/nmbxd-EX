@@ -4239,6 +4239,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         saveDraftRegistry(Array.from(newRegistry));
         return { imported, overwritten };
       }
+      // ★ 颜文字使用次数：**幂等合并**（取较大值），不做加法。
+      //   历史 bug：早期用「加法累加」做双向同步，每轮 WebDAV 拉取都把自己的计数当新增再叠加，
+      //   数值逐轮翻倍（实测 log2(count) 集中在 47~68，即约 47~68 轮，真实次数仅 1~8）。
+      //   加法在任何"重复投递"的场景（同步重试、导入同一份备份、基线过期）都会失控；
+      //   取最大值天然幂等：同一份数据合并 N 次结果不变。
+      //   代价：两台设备各自用了 5 次，合并后是 5 而非 10 —— 对「常用」排序无影响（取较重一侧）。
+      const KAOMOJI_COUNT_MAX = 1e6;   // 防御性上限：真用到百万次本就不现实，超出必是脏数据
       function mergeKaomojiStats(localStats, importedStats) {
         const local = (localStats && typeof localStats === 'object') ? localStats : {};
         const imported = (importedStats && typeof importedStats === 'object') ? importedStats : {};
@@ -4247,14 +4254,23 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const impVal = imported[key];
           const localVal = result[key];
           if (!localVal) {
-            result[key] = impVal;
+            // ★ 单边首次导入同样要过上限：脏数据往往就是"本地还没有"的那一侧，
+            //   直接赋值会把 1e21 原样带进来（实测漏网）。
+            if (impVal && typeof impVal === 'object' && (Number(impVal.count) || 0) > KAOMOJI_COUNT_MAX) {
+              result[key] = {
+                count: KAOMOJI_COUNT_MAX,
+                lastUsed: Number(impVal.lastUsed) || 0
+              };
+            } else {
+              result[key] = impVal;
+            }
           } else if (typeof impVal === 'object' && typeof localVal === 'object') {
             const localCount = Number(localVal.count) || 0;
             const impCount = Number(impVal.count) || 0;
             const localLast = Number(localVal.lastUsed) || 0;
             const impLast = Number(impVal.lastUsed) || 0;
             result[key] = {
-              count: localCount + impCount,
+              count: Math.min(Math.max(localCount, impCount), KAOMOJI_COUNT_MAX),
               lastUsed: Math.max(localLast, impLast)
             };
           }
@@ -4418,6 +4434,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                 console.log('[webdav] 颜文字统计基线缺失且本端曾同步过：已按当前本地值重建基线，避免旧计数被重复累加');
               }
             }
+            // ★ 增量语义改为**幂等取最大值**（不再用 r + (l - base)）。
+            //   旧写法的翻倍机理：delta = l - base 表示"本端新增"，再与远端全量相加。
+            //   一旦 base 过期（换设备 / 远端被别的设备推进 / 本地曾清空重建基线 /
+            //   别名折叠导致基线留有本地已无的 key），delta 会把远端已有的量重复算进来：
+            //     merged = R + (L - B)，当 L≈R 且 B≈0 时 → 2R，之后每轮再翻一倍。
+            //   实测：count 的 log2 值密集分布在 47~68（≈47~68 轮同步），反推真实次数仅 1~8；
+            //   213 条里 86 条已超出 Number.MAX_SAFE_INTEGER（2^53），完全失去整数精度。
+            //   取最大值不依赖基线是否正确 —— 基线再脏，合并结果也只会收敛到两端较重的一侧。
             merged = {};
             const keys = new Set(Object.keys(local).concat(Object.keys(payload.kaomojiStats)));
             keys.forEach((key) => {
@@ -4425,10 +4449,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               const r = payload.kaomojiStats[key];
               if (!r) { merged[key] = l; return; }
               if (!l || typeof l !== 'object' || typeof r !== 'object') { merged[key] = r; return; }
-              const baseCount = Number((kaoBase[key] && kaoBase[key].count) || 0);
-              const delta = Math.max(0, (Number(l.count) || 0) - baseCount);
               merged[key] = {
-                count: (Number(r.count) || 0) + delta,
+                count: Math.min(Math.max(Number(l.count) || 0, Number(r.count) || 0), KAOMOJI_COUNT_MAX),
                 lastUsed: Math.max(Number(l.lastUsed) || 0, Number(r.lastUsed) || 0)
               };
             });
@@ -21933,11 +21955,84 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             try { sel.dispatchEvent(new Event('kaomoji:sort-changed')); } catch (e) {}
           });
         }
+        // ★ 历史脏数据自愈：早期 WebDAV 增量合并每轮翻倍，count 已到 1e18~1e21 量级
+        //   （远超 2^53，整数精度早已丢失，且中位数也有 1e18）。
+        //   这类值无法反推准确次数，但**相对大小仍保留真实频次排序**，因此按排名重标定为
+        //   1..N（越大给越高分值），既保住"常用"排序，又让绝对值恢复到可读范围。
+        //   仅在整份数据"明显损坏"时触发（超过上限的条目占比 > 20%），避免误伤正常数据。
+        const KAO_STATS_SANE_MAX = 1e6;   // 与 KAOMOJI_COUNT_MAX 对齐；真实使用不可能到百万次
+        function healKaomojiStatsIfCorrupted(stats) {
+          try {
+            if (!stats || typeof stats !== 'object') return stats;
+            const keys = Object.keys(stats);
+            if (!keys.length) return stats;
+            const over = keys.filter((k) => (Number(stats[k] && stats[k].count) || 0) > KAO_STATS_SANE_MAX);
+            if (over.length / keys.length <= 0.2) return stats;   // 少量越界交给上限截断即可
+            // ★ 一轮"额外多算"的人工校正：用户按使用体感指出，「( ﾟ∀。)」及其之前的
+            //   条目又被多翻了一倍（该轮同步的远端增量被重复计入），需要各自再除以 2。
+            //   注意必须**在排名之前**除：若先按排名重标定（1..N）再对前 N 条除 2，
+            //   213/2=106 会掉到 203 之后，排序整体颠倒（实测确认）。
+            //   在排名前除，等于把它们在倒数第二位插入，排名自洽且相对顺序保留。
+            const EXTRA_HALVE_UNTIL_LABEL = '( ﾟ∀。)';
+            const labelOf = (key) => {
+              try {
+                if (key.startsWith('sk:site:')) {
+                  const rest = key.slice(8);
+                  const p = rest.indexOf('\nv:');
+                  return p >= 0 ? rest.slice(0, p) : rest;
+                }
+                if (key.startsWith('sk:extra:')) return key.slice(9);
+                if (key.startsWith('sk:rich:')) return key.slice(8);
+                if (key.startsWith('sk:custom:')) return key.slice(10);
+                if (key.startsWith('k:')) {
+                  const rest = key.slice(2);
+                  const p = rest.indexOf('\nv:');
+                  return p >= 0 ? rest.slice(0, p) : rest;
+                }
+              } catch (e) {}
+              return key;
+            };
+            // 按原始计数降序先排一次，确定"该边界条目及其之前"的集合
+            const byRaw = keys
+              .map((k) => ({ k, c: Number(stats[k] && stats[k].count) || 0 }))
+              .sort((a, b) => b.c - a.c);
+            // ★ 必须**精确匹配** label，不能用 indexOf/包含判断：
+            //   颜文字里 "( ﾟ∀。)" 是常见子串，( ﾟ∀。)7 / ᕕ( ﾟ∀。)ᕗ / (╬ﾟ∀。) /
+            //   ･ﾟ( ﾟ∀。) ﾟ。 等都会被子串匹配误抓进来，而它们计数低得多（4.8e15 量级），
+            //   被折半会破坏排序。实测该集合里这类条目共 8 条。
+            const boundaryIdx = byRaw.findIndex((row) => labelOf(row.k).trim() === EXTRA_HALVE_UNTIL_LABEL);
+            const halveSet = new Set(boundaryIdx >= 0 ? byRaw.slice(0, boundaryIdx + 1).map((r) => r.k) : []);
+            // 再按（必要时折半的）计数排序 → 重标定为 N..1
+            const ranked = keys
+              .map((k) => {
+                const raw = Number(stats[k] && stats[k].count) || 0;
+                return { k, c: halveSet.has(k) ? raw / 2 : raw };
+              })
+              .sort((a, b) => b.c - a.c);
+            const N = ranked.length;
+            const healed = {};
+            ranked.forEach((row, idx) => {
+              const entry = stats[row.k] || {};
+              healed[row.k] = {
+                count: N - idx,                       // 最大 → N，最小 → 1
+                lastUsed: Number(entry.lastUsed) || 0
+              };
+            });
+            try { GM_setValue(KAO_STATS_KEY, healed); } catch (e) {}
+            console.log('[kaomoji-stats] 检测到 ' + over.length + '/' + keys.length +
+              ' 条计数异常（历史同步翻倍），已按排名重标定为 1..' + N +
+              (halveSet.size ? '（其中「' + EXTRA_HALVE_UNTIL_LABEL + '」及之前 ' + halveSet.size + ' 条已额外除以 2）' : ''));
+            return healed;
+          } catch (e) {
+            return stats;
+          }
+        }
         function loadKaomojiStats() {
           try {
             const v = GM_getValue(KAO_STATS_KEY, {});
             kaomojiStatsReadable = !!(v && typeof v === 'object');
-            return kaomojiStatsReadable ? v : {};
+            if (!kaomojiStatsReadable) return {};
+            return healKaomojiStatsIfCorrupted(v);
           } catch (e) {
             kaomojiStatsReadable = false;
             return {};
@@ -37186,6 +37281,12 @@ function initReplyParamScrollTo() {
     const cfg = getWebdavConfig();
     const $url = $('#sp_webdavUrl');
     if (!$url.length) return;
+    // ★ 存储水合未完成时 getWebdavConfig() 会返回空配置（gm-compat 的 GM_getValue 此时读不到值）。
+    //   这种情况下**不要回填**：否则输入框保持空，紧接着的 saveWebdavConfigFromPanel 会把
+    //   空串写进存储，把用户已保存的地址抹掉（与 injector.ts 记录的历史事故同源）。
+    const storageReady = (typeof window === 'undefined') || window.__xdexGmStorageReady !== false;
+    const hasSaved = !!(cfg && (cfg.url || cfg.username || cfg.password));
+    if (!storageReady && !hasSaved) return;
     if (!$url.val()) $url.val(cfg.url);
     if (!$('#sp_webdavUsername').val()) $('#sp_webdavUsername').val(cfg.username);
     if (!$('#sp_webdavPassword').val()) $('#sp_webdavPassword').val(cfg.password);
@@ -37987,7 +38088,12 @@ function initReplyParamScrollTo() {
       return { ok: true, direction: 'bidirectional' };
   }
   async function webdavSyncNow() {
-    saveWebdavConfigFromPanel(false);
+    // ★ 只在面板**真的渲染在 DOM 里**时才采信面板输入值。
+    //   原实现无条件调用 saveWebdavConfigFromPanel(false)，而该函数读的是
+    //   $('#sp_webdavUrl').val()：面板未渲染 / 尚未回填 / 存储水合未完成时读到空串或旧值，
+    //   会把用户已保存的新配置覆盖回去（实测症状：改了 WebDAV 地址保存后，一点同步就变回旧地址）。
+    //   与 injector.ts 的事故记录同源：不要在存储水合完成前读-改-写设置。
+    if ($('#sp_webdavUrl').length) saveWebdavConfigFromPanel(false);
     const cfg = getWebdavConfig();
     if (!cfg.url) {
       if (typeof toast === 'function') toast('请先填写 WebDAV 链接');
@@ -38131,7 +38237,8 @@ function initReplyParamScrollTo() {
           e.stopPropagation();
           try {
             ensureWebdavConfigInPanel();
-            saveWebdavConfigFromPanel(false);
+            // 同上：面板存在才采信，避免空值/旧值覆盖已保存的配置
+            if ($('#sp_webdavUrl').length) saveWebdavConfigFromPanel(false);
             const cfg = getWebdavConfig();
             if (!cfg.url) {
               console.warn('[webdav] 检查连接：未填写链接');
