@@ -4239,6 +4239,13 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
         saveDraftRegistry(Array.from(newRegistry));
         return { imported, overwritten };
       }
+      // ★ 颜文字使用次数：**幂等合并**（取较大值），不做加法。
+      //   历史 bug：早期用「加法累加」做双向同步，每轮 WebDAV 拉取都把自己的计数当新增再叠加，
+      //   数值逐轮翻倍（实测 log2(count) 集中在 47~68，即约 47~68 轮，真实次数仅 1~8）。
+      //   加法在任何"重复投递"的场景（同步重试、导入同一份备份、基线过期）都会失控；
+      //   取最大值天然幂等：同一份数据合并 N 次结果不变。
+      //   代价：两台设备各自用了 5 次，合并后是 5 而非 10 —— 对「常用」排序无影响（取较重一侧）。
+      const KAOMOJI_COUNT_MAX = 1e6;   // 防御性上限：真用到百万次本就不现实，超出必是脏数据
       function mergeKaomojiStats(localStats, importedStats) {
         const local = (localStats && typeof localStats === 'object') ? localStats : {};
         const imported = (importedStats && typeof importedStats === 'object') ? importedStats : {};
@@ -4247,14 +4254,23 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
           const impVal = imported[key];
           const localVal = result[key];
           if (!localVal) {
-            result[key] = impVal;
+            // ★ 单边首次导入同样要过上限：脏数据往往就是"本地还没有"的那一侧，
+            //   直接赋值会把 1e21 原样带进来（实测漏网）。
+            if (impVal && typeof impVal === 'object' && (Number(impVal.count) || 0) > KAOMOJI_COUNT_MAX) {
+              result[key] = {
+                count: KAOMOJI_COUNT_MAX,
+                lastUsed: Number(impVal.lastUsed) || 0
+              };
+            } else {
+              result[key] = impVal;
+            }
           } else if (typeof impVal === 'object' && typeof localVal === 'object') {
             const localCount = Number(localVal.count) || 0;
             const impCount = Number(impVal.count) || 0;
             const localLast = Number(localVal.lastUsed) || 0;
             const impLast = Number(impVal.lastUsed) || 0;
             result[key] = {
-              count: localCount + impCount,
+              count: Math.min(Math.max(localCount, impCount), KAOMOJI_COUNT_MAX),
               lastUsed: Math.max(localLast, impLast)
             };
           }
@@ -4418,6 +4434,14 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
                 console.log('[webdav] 颜文字统计基线缺失且本端曾同步过：已按当前本地值重建基线，避免旧计数被重复累加');
               }
             }
+            // ★ 增量语义改为**幂等取最大值**（不再用 r + (l - base)）。
+            //   旧写法的翻倍机理：delta = l - base 表示"本端新增"，再与远端全量相加。
+            //   一旦 base 过期（换设备 / 远端被别的设备推进 / 本地曾清空重建基线 /
+            //   别名折叠导致基线留有本地已无的 key），delta 会把远端已有的量重复算进来：
+            //     merged = R + (L - B)，当 L≈R 且 B≈0 时 → 2R，之后每轮再翻一倍。
+            //   实测：count 的 log2 值密集分布在 47~68（≈47~68 轮同步），反推真实次数仅 1~8；
+            //   213 条里 86 条已超出 Number.MAX_SAFE_INTEGER（2^53），完全失去整数精度。
+            //   取最大值不依赖基线是否正确 —— 基线再脏，合并结果也只会收敛到两端较重的一侧。
             merged = {};
             const keys = new Set(Object.keys(local).concat(Object.keys(payload.kaomojiStats)));
             keys.forEach((key) => {
@@ -4425,10 +4449,8 @@ $('#favorite-thread-inputs-container').off('click', '.favorite-thread-delete').o
               const r = payload.kaomojiStats[key];
               if (!r) { merged[key] = l; return; }
               if (!l || typeof l !== 'object' || typeof r !== 'object') { merged[key] = r; return; }
-              const baseCount = Number((kaoBase[key] && kaoBase[key].count) || 0);
-              const delta = Math.max(0, (Number(l.count) || 0) - baseCount);
               merged[key] = {
-                count: (Number(r.count) || 0) + delta,
+                count: Math.min(Math.max(Number(l.count) || 0, Number(r.count) || 0), KAOMOJI_COUNT_MAX),
                 lastUsed: Math.max(Number(l.lastUsed) || 0, Number(r.lastUsed) || 0)
               };
             });
@@ -14509,19 +14531,25 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         }
         .qp-stack {
           position: fixed;
-          /* ★ 与回复浮窗（.qp-overlay > .qp-stack）保持同一套几何约束：
-             原来 top:55% + height:80vh 会把底边推到视口最下沿（实测 960px 视口里
-             底边在 912px，距底只剩 48px），底部的 10px 拖拽带几乎贴着屏幕边缘，
-             鼠标从下方靠近时先落进 .qp-overlay-quote 遮罩，被当作"点外部"关闭浮窗
-             → 表现为"最下方一条抓不到"。改为居中 + 内容贴合 + 安全边距。 */
-          top: 50%;
+          /* ★ 引用弹窗用**固定上沿**定位，而不是垂直居中。
+             原因：弹窗高度随内容变化（167px ~ 768px）。若用 top:50% + translate(-50%,-50%)
+             居中，上沿会随高度漂移 —— 内容短时面板只有 167px，上沿被推到 396px（约屏幕中部）。
+             固定上沿后，无论内容多少，面板顶端恒定在视口 18% 处（960 下 ≈173px）：
+               · 比回复浮窗最高时（80vh → 上沿 96px）低约 77px，视觉上在回复浮窗之下；
+               · 用户以侧栏"浏览历史"为参照要求再下移一段（原 13vh≈125px 与"常用串"齐平）。
+             只保留水平居中（translateX），垂直方向不再偏移。 */
+          top: 18vh;
           left: 50%;
-          transform: translate(-50%, -50%);
-          width: min(90vw, 820px);
-          /* ⚠ 不能用 height:auto：内部的 .qp-quote 是 height:100% / position:absolute，
-             百分比高度需要父元素有确定高度，父元素若为 auto 就会塌缩成 0（实测面板变一条线）。
-             因此保持"确定高度"，但用 calc 扣掉上下安全边距，避免底边贴住视口最下沿。 */
-          height: min(80vh, calc(100vh - 40px));
+          transform: translateX(-50%);
+          /* ★ 最大宽度放宽到原来的两倍（820 → 1640）：宽屏下引用内容（多图/长表格）
+             不再被 820px 掐住；仍受 90vw 约束，窄窗口表现为跟随视口。
+             最小宽度不变（由 .qp-quote 的 min-width 与内容决定）。 */
+          width: min(90vw, 1640px);
+          /* ⚠ 必须确定高度：内部 .qp-quote 是 height:100% / position:absolute，
+             百分比高度需要父元素有确定高度，父元素 auto 会塌缩成 0（实测面板变一条线）。
+             上沿固定 18vh → 高度上限 = 100vh - 18vh - 5vh(底部余量) = 77vh，保守取 72vh。
+             JS（syncQuoteStackHeight）会把实际内容高度写回这里的内联 height。 */
+          height: min(72vh, calc(100vh - 18vh - 5vh));
           overflow: visible;
           box-sizing: border-box;
         }
@@ -14549,6 +14577,10 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
           stroke: #00ffcc !important;
         }
         .qp-overlay-quote .qp-quote {
+          /* ★ 必须 absolute：面板内部有 absolute 定位的子元素（图片容器等），
+             若本层改 relative，这些子元素不参与父级高度计算，面板会塌成一条线（实测）。
+             高度由 .qp-stack 提供（height:100%），内容超出走内部滚动；
+             面板整体高度则由 syncQuoteStackHeight 用 scrollHeight 反推写回 stack。 */
           position: absolute;
           top: 0; left: 0;
           /* 面板本身给一个基础层级，让上面的把手（z-index 9000）能压过它。
@@ -14837,6 +14869,8 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       // 四角拉伸（与回复浮窗一致），作用对象仍是 .qp-quote，只是把手从 stack 上取
       enableResizeForQuote($quote, $edges.filter('.qp-resize-corner'));
       $stack.append($quote);
+      // 让把手容器跟随面板实际高度（否则底部把手会落在面板之外）
+      syncQuoteStackHeight($stack, $quote);
       $overlay.fadeIn(160);
       if (typeof syncQuotePopupTheme === 'function') syncQuotePopupTheme();
       enableHDImageAndLayoutFix($quote[0]);
@@ -14847,6 +14881,7 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
       enableHDImageAndLayoutFix();
       hideEmptyTitleAndEmail($quote[0]);
       initContent($quote[0]);
+      syncQuoteStackHeight($stack, $quote);   // 内容初始化后再贴合一次
       try {
         const cfg = typeof getFilterConfig === 'function' ? getFilterConfig() : Object.assign({}, SettingPanel.defaults, GM_getValue(SettingPanel.key, {}));
         markAllCookies(cfg.markedGroups || [], $quote[0]);
@@ -14881,6 +14916,149 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         return false;
       });
     };
+    // ★ 把 .qp-stack 的高度同步为 .qp-quote 的内容自然高度（含上限）。
+    //   为什么需要 JS：.qp-quote 是 absolute + height:100%，自己的高度由 stack 决定，
+    //   而 stack 又要按内容收缩/生长 —— 浏览器无法自动解这个环，必须显式回写。
+    //   ⚠ 只认 scrollHeight：offsetHeight 是"当前渲染高度"，会被 stack 现值反钳，
+    //     混进去会把缩小后的值当内容高度写回，面板永久锁在小尺寸
+    //     （实测"打开闪一下正确高度又缩回最小值、激活图片后不增长"）。
+    //   ⚠ 必须防缩水：内容异步变化（图片解码、字体替换）中途可能测到偏小的值，
+    //     用"缩水需连续两次确认"避免一次抖动就把面板压扁。
+    function syncQuoteStackHeight($stack, $quote) {
+      const stackEl = $stack && $stack[0];
+      const quoteEl = $quote && $quote[0];
+      if (!stackEl || !quoteEl) return;
+      // ★ .qp-stack 是**常驻复用**的单例（showQuote 外层创建，关闭时只 empty 子节点）。
+      //   所以上一轮挂在它上面的 observer / timer / 观察集合都还在，但它们盯的是
+      //   已被移除的旧 quote —— 新一轮 apply() 读的是新 quote，却不会被旧 observer 触发，
+      //   表现为"第一次打开停在折叠高度，手动拉高（触发 qpUserSized）后再打开才正常"。
+      //   每次进入本函数时，若发现记录的是**另一个** quote 元素，就重置这一套状态。
+      if (stackEl.__xdexStackQuote !== quoteEl) {
+        if (stackEl.__xdexStackRO) { try { stackEl.__xdexStackRO.disconnect(); } catch (e) {} }
+        if (stackEl.__xdexStackMO) { try { stackEl.__xdexStackMO.disconnect(); } catch (e) {} }
+        if (stackEl.__xdexStackTimer) { clearInterval(stackEl.__xdexStackTimer); }
+        stackEl.__xdexStackRO = null;
+        stackEl.__xdexStackROObserved = null;
+        stackEl.__xdexStackROObserve = null;
+        stackEl.__xdexStackMO = null;
+        stackEl.__xdexStackTimer = null;
+        stackEl.__xdexStackImgBound = false;
+        stackEl.__xdexStackRaf = null;
+        stackEl.__xdexStackQuote = quoteEl;
+      }
+      const maxAllowed = () => {
+        // 与 CSS .qp-stack 的 max 对齐：18vh 上沿 + 5vh 底部余量，保守取 72vh
+        const vh = window.innerHeight || 0;
+        return vh ? Math.max(160, Math.min(vh * 0.72, vh - vh * 0.18 - vh * 0.05)) : Infinity;
+      };
+      // ★ scrollHeight **不含 border**，而 clientHeight 是"高度 - border"。
+      //   .qp-quote 有 border:1px solid（上下 2px），若把 stack 高度直接写成 scrollHeight，
+      //   则 clientHeight = scrollHeight - 2 → 内容永远差 2px 溢出 → **恒定出现滚动条**
+      //   （实测：内容完全放得下也有一条细滚动条）。必须补上 border 的纵向总宽。
+      const measure = () => {
+        const h = quoteEl.scrollHeight || 0;
+        if (!(h > 0)) return 0;
+        const cs = window.getComputedStyle ? window.getComputedStyle(quoteEl) : null;
+        const borderY = cs
+          ? (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0)
+          : 0;
+        return Math.min(Math.ceil(h + borderY), Math.round(maxAllowed()));
+      };
+      let shrinkCandidate = -1;   // 连续两次测到同一较小值才承认缩水
+      const apply = () => {
+        if (!stackEl.isConnected || !quoteEl.isConnected) return;
+        if (stackEl.dataset.qpUserSized === '1') return;   // 用户手动调过尺寸，不覆盖
+        const target = measure();
+        if (!target) return;
+        const current = parseInt(stackEl.style.height, 10) || 0;
+        if (current && target < current - 2) {
+          // 疑似缩水：需连续两次一致才写入（防图片解码中途的瞬时小值）
+          if (shrinkCandidate !== target) { shrinkCandidate = target; return; }
+        } else {
+          shrinkCandidate = -1;
+        }
+        const next = target + 'px';
+        if (stackEl.style.height !== next) stackEl.style.height = next;
+      };
+      apply();
+
+      // ★ 事件驱动，不做定时轮询（无内容变化时零开销）：
+      //   · MutationObserver：子树结构/属性变化（懒加载插图、引用展开、display 切换）
+      //   · ResizeObserver：元素尺寸变化（图片解码完成、字体替换、激活大图）
+      //   · 图片 load：<img> 载入后尺寸才确定，其 load 事件不改变 DOM 属性、也不一定
+      //     触达 ResizeObserver 的观察对象，单独用事件捕获兜住（只在打开期间挂，onload 一次）
+      //   三者都只在**真的发生事情**时才调用 apply()，静态页面下完全静默。
+      const scheduleApply = () => {
+        if (stackEl.__xdexStackRaf) return;          // 同一帧内合并多次触发
+        const raf = (typeof requestAnimationFrame === 'function')
+          ? requestAnimationFrame
+          : (fn) => setTimeout(fn, 16);
+        stackEl.__xdexStackRaf = raf(() => {
+          stackEl.__xdexStackRaf = null;
+          try { apply(); } catch (e) {}
+        });
+      };
+
+      if (typeof ResizeObserver === 'function' && !stackEl.__xdexStackRO) {
+        const ro = new ResizeObserver(scheduleApply);
+        const observed = new Set();
+        const observe = (el) => {
+          if (!el || observed.has(el)) return;
+          // 只观察元素（文本节点无 box）
+          if (el.nodeType !== 1) return;
+          try { ro.observe(el, { box: 'border-box' }); observed.add(el); } catch (e) {}
+        };
+        observe(quoteEl);
+        Array.from(quoteEl.children).forEach(observe);
+        stackEl.__xdexStackRO = ro;
+        stackEl.__xdexStackROObserve = observe;
+        stackEl.__xdexStackROObserved = observed;
+      }
+
+      if (typeof MutationObserver === 'function' && !stackEl.__xdexStackMO) {
+        const mo = new MutationObserver((records) => {
+          // 新插入的元素补观察（图片激活会重建 .h-threads-img-box 内部结构）
+          const observe = stackEl.__xdexStackROObserve;
+          if (observe) {
+            for (const r of records) {
+              if (r.addedNodes) {
+                r.addedNodes.forEach((n) => {
+                  observe(n);
+                  if (n && n.children) Array.from(n.children).forEach(observe);
+                });
+              }
+            }
+          }
+          scheduleApply();
+        });
+        // attributes 只盯会影响高度的 style/class（图片激活靠切 class 改变尺寸）
+        mo.observe(quoteEl, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['style', 'class', 'width', 'height', 'src']
+        });
+        stackEl.__xdexStackMO = mo;
+      }
+
+      // 图片载入：捕获阶段监听（一次挂载覆盖浮窗内所有 img），load 后重测一次
+      if (!stackEl.__xdexStackImgBound) {
+        stackEl.__xdexStackImgBound = true;
+        quoteEl.addEventListener('load', (e) => {
+          const t = e.target;
+          if (t && t.tagName === 'IMG') scheduleApply();
+        }, true);
+        // 图片加载失败也会改变布局（占位塌陷），同样重测
+        quoteEl.addEventListener('error', (e) => {
+          const t = e.target;
+          if (t && t.tagName === 'IMG') scheduleApply();
+        }, true);
+      }
+
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(apply);
+      // 首帧后补一次：initContent 等同步初始化会改变高度，但可能不触发任何观察器
+      setTimeout(scheduleApply, 0);
+    }
     function enableDragForTop($quote, $handles) {
       // 与四角缩放一致：仅在本次 mousedown 手势内挂 window 监听，mouseup 卸掉。
       // 避免「后开层 off 掉全局 qpdrag → 关层后下层只剩 mousedown、拖不动」。
@@ -14964,6 +15142,11 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
         const startH = startRect.height;
         $box.addClass('is-resizing');
         $overlay.data('isDragging', true); // 避免缩放结束点到遮罩误关
+        // 用户手动缩放后标记一次（供其它逻辑判别"这是用户尺寸，不要自动改"）
+        try {
+          const stackEl = $box[0] && $box[0].parentElement;
+          if (stackEl && stackEl.classList.contains('qp-stack')) stackEl.dataset.qpUserSized = '1';
+        } catch (err) {}
         const onMove = (ev) => {
           ev.preventDefault();
           const dx = ev.clientX - startX;
@@ -15001,6 +15184,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             top: top + 'px',
             left: left + 'px'
           });
+          // ★ 把手挂在 .qp-stack 上，缩放改的是 .qp-quote —— 必须同步 stack 尺寸，
+          //   否则把手不跟随（拉大后面板边缘与把手错位、底部抓手抓不到）。
+          try {
+            const stackEl = $box[0] && $box[0].parentElement;
+            if (stackEl && stackEl.classList.contains('qp-stack')) {
+              stackEl.style.width = w + 'px';
+              stackEl.style.height = h + 'px';
+            }
+          } catch (err) {}
         };
         const onUp = () => {
           $box.removeClass('is-resizing');
@@ -17192,7 +17384,15 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             flex: 0 0 auto;
             overflow: visible;
           }
-          /* 兜底：引用弹窗保持内容自适应，不被回复浮窗规则压扁 */
+          /* ★ 引用弹窗**高度贴合内容**（不固定撑满 .qp-stack）：
+             引用内容是只读的短引用，固定 80vh 会留一大片空白（用户反馈"完全被撑开"）。
+             但把手挂在 .qp-stack 上，若 stack 仍是固定 80vh，bottom 边条会按 stack 底边
+             定位到面板下方 → 底部抓手抓不到（实测面板 176px 高，边条却在 881..897）。
+             解法：.qp-quote 用 **position:relative** 参与文档流，.qp-stack 用
+             height:auto + max-height 让浏览器自己算高度，两边盒模型天然相等，
+             四边/四角把手（挂在 .qp-stack 上）自动贴合，无需任何 JS 测量。
+             此前用 absolute + JS 反推 scrollHeight 的方案在"图片加载 / 字体替换 /
+             内容折叠"的时序里会测到偏小的值，导致面板闪一下正确高度又缩回最小值。 */
           .qp-overlay-quote .qp-quote {
             height: auto !important;
             max-height: 100% !important;
@@ -21933,11 +22133,84 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
             try { sel.dispatchEvent(new Event('kaomoji:sort-changed')); } catch (e) {}
           });
         }
+        // ★ 历史脏数据自愈：早期 WebDAV 增量合并每轮翻倍，count 已到 1e18~1e21 量级
+        //   （远超 2^53，整数精度早已丢失，且中位数也有 1e18）。
+        //   这类值无法反推准确次数，但**相对大小仍保留真实频次排序**，因此按排名重标定为
+        //   1..N（越大给越高分值），既保住"常用"排序，又让绝对值恢复到可读范围。
+        //   仅在整份数据"明显损坏"时触发（超过上限的条目占比 > 20%），避免误伤正常数据。
+        const KAO_STATS_SANE_MAX = 1e6;   // 与 KAOMOJI_COUNT_MAX 对齐；真实使用不可能到百万次
+        function healKaomojiStatsIfCorrupted(stats) {
+          try {
+            if (!stats || typeof stats !== 'object') return stats;
+            const keys = Object.keys(stats);
+            if (!keys.length) return stats;
+            const over = keys.filter((k) => (Number(stats[k] && stats[k].count) || 0) > KAO_STATS_SANE_MAX);
+            if (over.length / keys.length <= 0.2) return stats;   // 少量越界交给上限截断即可
+            // ★ 一轮"额外多算"的人工校正：用户按使用体感指出，「( ﾟ∀。)」及其之前的
+            //   条目又被多翻了一倍（该轮同步的远端增量被重复计入），需要各自再除以 2。
+            //   注意必须**在排名之前**除：若先按排名重标定（1..N）再对前 N 条除 2，
+            //   213/2=106 会掉到 203 之后，排序整体颠倒（实测确认）。
+            //   在排名前除，等于把它们在倒数第二位插入，排名自洽且相对顺序保留。
+            const EXTRA_HALVE_UNTIL_LABEL = '( ﾟ∀。)';
+            const labelOf = (key) => {
+              try {
+                if (key.startsWith('sk:site:')) {
+                  const rest = key.slice(8);
+                  const p = rest.indexOf('\nv:');
+                  return p >= 0 ? rest.slice(0, p) : rest;
+                }
+                if (key.startsWith('sk:extra:')) return key.slice(9);
+                if (key.startsWith('sk:rich:')) return key.slice(8);
+                if (key.startsWith('sk:custom:')) return key.slice(10);
+                if (key.startsWith('k:')) {
+                  const rest = key.slice(2);
+                  const p = rest.indexOf('\nv:');
+                  return p >= 0 ? rest.slice(0, p) : rest;
+                }
+              } catch (e) {}
+              return key;
+            };
+            // 按原始计数降序先排一次，确定"该边界条目及其之前"的集合
+            const byRaw = keys
+              .map((k) => ({ k, c: Number(stats[k] && stats[k].count) || 0 }))
+              .sort((a, b) => b.c - a.c);
+            // ★ 必须**精确匹配** label，不能用 indexOf/包含判断：
+            //   颜文字里 "( ﾟ∀。)" 是常见子串，( ﾟ∀。)7 / ᕕ( ﾟ∀。)ᕗ / (╬ﾟ∀。) /
+            //   ･ﾟ( ﾟ∀。) ﾟ。 等都会被子串匹配误抓进来，而它们计数低得多（4.8e15 量级），
+            //   被折半会破坏排序。实测该集合里这类条目共 8 条。
+            const boundaryIdx = byRaw.findIndex((row) => labelOf(row.k).trim() === EXTRA_HALVE_UNTIL_LABEL);
+            const halveSet = new Set(boundaryIdx >= 0 ? byRaw.slice(0, boundaryIdx + 1).map((r) => r.k) : []);
+            // 再按（必要时折半的）计数排序 → 重标定为 N..1
+            const ranked = keys
+              .map((k) => {
+                const raw = Number(stats[k] && stats[k].count) || 0;
+                return { k, c: halveSet.has(k) ? raw / 2 : raw };
+              })
+              .sort((a, b) => b.c - a.c);
+            const N = ranked.length;
+            const healed = {};
+            ranked.forEach((row, idx) => {
+              const entry = stats[row.k] || {};
+              healed[row.k] = {
+                count: N - idx,                       // 最大 → N，最小 → 1
+                lastUsed: Number(entry.lastUsed) || 0
+              };
+            });
+            try { GM_setValue(KAO_STATS_KEY, healed); } catch (e) {}
+            console.log('[kaomoji-stats] 检测到 ' + over.length + '/' + keys.length +
+              ' 条计数异常（历史同步翻倍），已按排名重标定为 1..' + N +
+              (halveSet.size ? '（其中「' + EXTRA_HALVE_UNTIL_LABEL + '」及之前 ' + halveSet.size + ' 条已额外除以 2）' : ''));
+            return healed;
+          } catch (e) {
+            return stats;
+          }
+        }
         function loadKaomojiStats() {
           try {
             const v = GM_getValue(KAO_STATS_KEY, {});
             kaomojiStatsReadable = !!(v && typeof v === 'object');
-            return kaomojiStatsReadable ? v : {};
+            if (!kaomojiStatsReadable) return {};
+            return healKaomojiStatsIfCorrupted(v);
           } catch (e) {
             kaomojiStatsReadable = false;
             return {};
@@ -37186,6 +37459,12 @@ function initReplyParamScrollTo() {
     const cfg = getWebdavConfig();
     const $url = $('#sp_webdavUrl');
     if (!$url.length) return;
+    // ★ 存储水合未完成时 getWebdavConfig() 会返回空配置（gm-compat 的 GM_getValue 此时读不到值）。
+    //   这种情况下**不要回填**：否则输入框保持空，紧接着的 saveWebdavConfigFromPanel 会把
+    //   空串写进存储，把用户已保存的地址抹掉（与 injector.ts 记录的历史事故同源）。
+    const storageReady = (typeof window === 'undefined') || window.__xdexGmStorageReady !== false;
+    const hasSaved = !!(cfg && (cfg.url || cfg.username || cfg.password));
+    if (!storageReady && !hasSaved) return;
     if (!$url.val()) $url.val(cfg.url);
     if (!$('#sp_webdavUsername').val()) $('#sp_webdavUsername').val(cfg.username);
     if (!$('#sp_webdavPassword').val()) $('#sp_webdavPassword').val(cfg.password);
@@ -37987,7 +38266,12 @@ function initReplyParamScrollTo() {
       return { ok: true, direction: 'bidirectional' };
   }
   async function webdavSyncNow() {
-    saveWebdavConfigFromPanel(false);
+    // ★ 只在面板**真的渲染在 DOM 里**时才采信面板输入值。
+    //   原实现无条件调用 saveWebdavConfigFromPanel(false)，而该函数读的是
+    //   $('#sp_webdavUrl').val()：面板未渲染 / 尚未回填 / 存储水合未完成时读到空串或旧值，
+    //   会把用户已保存的新配置覆盖回去（实测症状：改了 WebDAV 地址保存后，一点同步就变回旧地址）。
+    //   与 injector.ts 的事故记录同源：不要在存储水合完成前读-改-写设置。
+    if ($('#sp_webdavUrl').length) saveWebdavConfigFromPanel(false);
     const cfg = getWebdavConfig();
     if (!cfg.url) {
       if (typeof toast === 'function') toast('请先填写 WebDAV 链接');
@@ -38131,7 +38415,8 @@ function initReplyParamScrollTo() {
           e.stopPropagation();
           try {
             ensureWebdavConfigInPanel();
-            saveWebdavConfigFromPanel(false);
+            // 同上：面板存在才采信，避免空值/旧值覆盖已保存的配置
+            if ($('#sp_webdavUrl').length) saveWebdavConfigFromPanel(false);
             const cfg = getWebdavConfig();
             if (!cfg.url) {
               console.warn('[webdav] 检查连接：未填写链接');

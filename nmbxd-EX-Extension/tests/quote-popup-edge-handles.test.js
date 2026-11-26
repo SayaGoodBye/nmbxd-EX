@@ -82,12 +82,16 @@ test('四边与四角 z-index 都必须高于面板', () => {
 
 
 // ─────────── ⑥ 几何：底边不得贴住视口最下沿 ───────────
-test('.qp-stack 必须居中且有安全边距（不得是 top:55% + 固定 80vh）', () => {
+test('.qp-stack 上沿固定（18vh），底部仍有安全边距', () => {
   const i = src.indexOf('.qp-stack {');
-  const block = src.slice(i, i + 900);
-  assert(/top: 50%;/.test(block), 'stack must be vertically centered (top:50%)');
-  assert(!/top: 55%;/.test(block), 'must not be pushed down (top:55%)');
-  assert(/height: min\(80vh, calc\(100vh - 40px\)\);/.test(block), 'height must reserve >=20px top/bottom margin');
+  const j = src.indexOf('}', i);
+  const block = src.slice(i, j).replace(/\/\*[\s\S]*?\*\//g, '');
+  // 上沿固定而非居中：居中会让矮面板被推到屏幕中部（实测 167px 高 → 上沿 396px）
+  assert(/top: 18vh/.test(block), 'top edge must be anchored (top:18vh)');
+  assert(/transform: translateX\(-50%\)/.test(block), 'horizontal centering only');
+  assert(!/top: 55%/.test(block), 'must not revert to top:55% (bottom handle unreachable)');
+  // 上沿 18vh + 底部 5vh → 上限 77vh，保守取 72vh
+  assert(/height: min\(72vh, calc\(100vh - 18vh - 5vh\)\)/.test(block), 'height cap must leave bottom margin');
 });
 
 test('.qp-stack 不得使用 height:auto（内部 .qp-quote 是 height:100%，会塌缩成 0）', () => {
