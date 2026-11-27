@@ -13167,6 +13167,45 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     function withHdRetryBuster(url, attempt) {
       return url + (url.includes('?') ? '&' : '?') + 'xdexHdRetry=' + attempt;
     }
+    // ★ 缩略图自身加载完成时，把 width 属性校正为它的**真实**宽度。
+    //   起因：缩略图首次请求失败时，浏览器会用错误占位图（naturalWidth 通常为极小值，
+    //   如 16）参与布局，站点写入的 width/height 属性也随之固定成那个错误尺寸；
+    //   之后缩略图（或原图）加载成功，属性却没人再更新 → 图片以"占位图大小"渲染
+    //   （用户实测：未激活状态下图片变成一条很窄的竖条）。
+    //   这里在每次 <img> load 时校验：只有**属性与当前 naturalWidth 不一致**才写回，
+    //   且必须排除"仍在显示占位图"的情形（naturalWidth 过小视为无效，直接删属性交给浏览器）。
+    const XDEX_IMG_MIN_VALID_W = 32;   // 小于此宽度视为占位图/坏图，不写属性
+    function syncThumbWidthAttr(img) {
+      if (!img || img.tagName !== 'IMG') return;
+      const nw = img.naturalWidth | 0;
+      const nh = img.naturalHeight | 0;
+      if (!(nw > 0 && nh > 0)) return;
+      // 明显是占位图（极窄或极扁）→ 删属性，让浏览器按真实比例渲染
+      if (nw < XDEX_IMG_MIN_VALID_W || nh < 4) {
+        try { img.removeAttribute('width'); img.removeAttribute('height'); } catch (e) {}
+        return;
+      }
+      // 已激活的原图尺寸由原图路径负责，这里只处理"非激活 = 缩略图"的状态
+      if (img.dataset.xdexHdLoaded === '1') return;
+      if (img.getAttribute('width') !== String(nw)) {
+        img.setAttribute('width', String(nw));
+        if (img.hasAttribute('height')) img.removeAttribute('height');
+      }
+    }
+    // 全局一次性委托：捕获阶段监听所有图片 load/error（浮窗与页面共用）
+    function installImageWidthAttrFix() {
+      if (installImageWidthAttrFix.__installed) return;
+      installImageWidthAttrFix.__installed = true;
+      const handler = (e) => {
+        const t = e && e.target;
+        if (!t || t.tagName !== 'IMG') return;
+        if (e.type === 'load') syncThumbWidthAttr(t);
+        // 失败时属性可能已被浏览器写成占位尺寸，删掉让它按下次加载的真实尺寸渲染
+        else { try { t.removeAttribute('width'); t.removeAttribute('height'); } catch (err) {} }
+      };
+      document.addEventListener('load', handler, true);
+      document.addEventListener('error', handler, true);
+    }
     // 把 <img> 的 width/height **属性**恢复成缩略图尺寸。
     // 失败回退时必须调用：属性决定非激活渲染尺寸，属性停在原图尺寸而 src 是缩略图会被拉伸。
     // 尺寸来源：缩略图地址的游离 Image（浏览器缓存命中，通常同步可用）；取不到就删属性交给浏览器。
@@ -13409,6 +13448,11 @@ async function sendSubmitRequest(form, fd, controller, timeoutMs) {
     return !!(node && node.closest && node.closest('#sp_panel'));
   }
   function enableHDImageAndLayoutFix(root = document) {
+    // ★ 先挂全局图片 load/error 委托（幂等）：
+    //   缩略图"先失败（错误占位图）→ 后成功"时，width/height 属性会停留在占位尺寸，
+    //   必须在每次 load 时校正，否则未激活图片会以占位图大小渲染（用户实测的窄竖条）。
+    //   放在早退判断之前：即使 document 已处理过，也要确保监听已安装。
+    try { installImageWidthAttrFix(); } catch (e) {}
     return startupPerfDebug.measure('enableHDImageAndLayoutFix', () => {
     if (isSettingsPanelImageEnhancementRoot(root)) return;
     const isDocumentRoot = root === document;
